@@ -78,7 +78,20 @@ export function useBatchInventory(open: boolean) {
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString(undefined, {
+
+    // received_date and expiration_date are bare MySQL DATEs (no time, no zone).
+    // `new Date('2027-03-15')` parses that as UTC midnight, so rendering it in a
+    // negative-offset timezone shows the PREVIOUS day (Mar 14 in the US). Build
+    // the date from its parts instead so the calendar day is whatever was stored,
+    // in every timezone.
+    const bare = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
+    const d = bare
+      ? new Date(Number(bare[1]), Number(bare[2]) - 1, Number(bare[3]))
+      : new Date(dateStr);
+
+    if (isNaN(d.getTime())) return '-';
+
+    return d.toLocaleDateString(undefined, {
       year: 'numeric',
       month: 'short',
       day: '2-digit',
