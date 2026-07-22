@@ -75,3 +75,6 @@ license.dat
 
 # BIR e-journal runtime output (written by saveEJournalFiles; dev fallback root)
 /EJournals/
+
+# SDD scratch (task briefs, review packages, progress ledger)
+/.superpowers/

@@ -20,7 +20,24 @@
 - **REMOVE and TRANSFER modes never show or accept an expiry.** FIFO deduction stays untouched.
 - **Migrations follow the `099_add_mc_number.ts` idiom**: `registerMigration`, `information_schema` existence guard before each `ALTER`, console log per step, matching `down()`.
 - **E2E tests run on port 3100** against `verdix_test`, `workers: 1`. Run with `npm run test:e2e`.
-- **Verify with `npm run typecheck` and `npm run lint`** before every commit.
+- **DO NOT run `npm run lint`.** It is broken repo-wide (`next lint` in Next 16 misparses its
+  argument: `Invalid project directory provided, no such directory: ...\lint`). It is not a gate.
+- **`npm run typecheck` has 22 PRE-EXISTING errors** recorded in
+  `.superpowers/sdd/typecheck-baseline.txt`. A fully clean typecheck is impossible. The gate is
+  **no NEW errors in the files your task touched** — compare against that baseline file. Do NOT
+  attempt to fix pre-existing errors; they are out of scope.
+  Note that 8 of them are in `app/(app)/products/*/tabs/*` — the exact files Task 8 edits.
+- **E2E conventions are established — follow them, do not invent new ones:**
+  - Seed fixtures centrally in `tests/e2e/fixtures/test-data.ts`, inserted by
+    `tests/e2e/setup/prepare-test-db.ts`. Do not create products ad-hoc inside a spec.
+  - Query the test DB with `testQuery()` from `tests/e2e/helpers/db.ts`. Do not open your own
+    `mysql.createConnection`.
+  - Authenticate with `seedSession(page, DEFAULT_ADMIN)` from `tests/e2e/helpers/auth.ts`.
+  - `tests/e2e/inventory-adjust.spec.ts` is the reference spec for adjustment UI tests.
+  - Spec comments in this repo are written in Cebuano; match the surrounding style.
+- **The test DB is a SCHEMA CLONE of dev `verdix`**, not a migration replay
+  (`prepare-test-db.ts` header explains why). Migration 100 must be applied to your local dev DB
+  **before** `npm run test:e2e:db`, or the new columns will not exist in `verdix_test`.
 
 ---
 
@@ -789,10 +806,10 @@ to:
             const adjResult = await adjustStock(txData.productId, adjQty, txData.reason, item.created_by, true, txData.expirationDate || null);
 ```
 
-- [ ] **Step 5: Typecheck and lint**
+- [ ] **Step 5: Typecheck (no new errors)**
 
-Run: `npm run typecheck && npm run lint`
-Expected: no errors.
+Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
+Expected: no lines starting with `>` (no NEW errors). Pre-existing errors are expected — do not fix them.
 
 - [ ] **Step 6: Commit**
 
@@ -951,10 +968,10 @@ Expected: the product you toggled appears with `is_perishable` = 1.
 
 Keep this product — later tasks use it as the perishable test fixture.
 
-- [ ] **Step 5: Typecheck and lint**
+- [ ] **Step 5: Typecheck (no new errors)**
 
-Run: `npm run typecheck && npm run lint`
-Expected: no errors.
+Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
+Expected: no lines starting with `>` (no NEW errors). Pre-existing errors are expected — do not fix them.
 
 - [ ] **Step 6: Commit**
 
@@ -1113,10 +1130,10 @@ Expected: newest row shows `expiration_date` = `2027-01-31`.
 In the browser, add 3 more units to the same perishable product leaving the date blank. Expect success
 with no error. Confirm a new batch row exists with `expiration_date` = `NULL`.
 
-- [ ] **Step 10: Typecheck and lint**
+- [ ] **Step 10: Typecheck (no new errors)**
 
-Run: `npm run typecheck && npm run lint`
-Expected: no errors.
+Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
+Expected: no lines starting with `>` (no NEW errors). Pre-existing errors are expected — do not fix them.
 
 - [ ] **Step 11: Commit**
 
@@ -1321,10 +1338,10 @@ node -e "require('dotenv').config();const m=require('mysql2/promise');(async()=>
 ```
 Expected: the perishable product's batch carries `2027-03-15`; the non-perishable one is `NULL`.
 
-- [ ] **Step 11: Typecheck and lint**
+- [ ] **Step 11: Typecheck (no new errors)**
 
-Run: `npm run typecheck && npm run lint`
-Expected: no errors.
+Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
+Expected: no lines starting with `>` (no NEW errors). Pre-existing errors are expected — do not fix them.
 
 - [ ] **Step 12: Commit**
 
@@ -1374,10 +1391,10 @@ Run: `npm run dev`
 Open the batch view for the perishable product used in Task 9. Expect the batch created there to show
 `1/31/2027`, and the blank-expiry batch to show `—`.
 
-- [ ] **Step 5: Typecheck and lint**
+- [ ] **Step 5: Typecheck (no new errors)**
 
-Run: `npm run typecheck && npm run lint`
-Expected: no errors.
+Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
+Expected: no lines starting with `>` (no NEW errors). Pre-existing errors are expected — do not fix them.
 
 - [ ] **Step 6: Commit**
 
@@ -1626,10 +1643,10 @@ Run: `grep -rn "reports/" components/ app/\(app\)/layout.tsx --include=*.tsx | g
 Add an "Expiring Soon" entry pointing at `/reports/expiring-soon`, matching the surrounding entries'
 structure. If the reports nav is generated from a list, add to that list.
 
-- [ ] **Step 6: Typecheck and lint**
+- [ ] **Step 6: Typecheck (no new errors)**
 
-Run: `npm run typecheck && npm run lint`
-Expected: no errors.
+Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
+Expected: no lines starting with `>` (no NEW errors). Pre-existing errors are expected — do not fix them.
 
 - [ ] **Step 7: Commit**
 
@@ -1643,222 +1660,332 @@ git commit -m "feat(reports): add expiring soon report"
 ## Task 13: E2E coverage
 
 **Files:**
+- Modify: `tests/e2e/fixtures/test-data.ts` (add `PERISHABLE_PRODUCT` fixture)
+- Modify: `tests/e2e/setup/prepare-test-db.ts` (seed the fixture)
 - Create: `tests/e2e/adjustment-expiration.spec.ts`
 
 **Interfaces:**
 - Consumes: everything above
-- Produces: regression coverage for the six spec test cases
+- Produces: regression coverage for the expiry flow
 
-- [ ] **Step 1: Reset the test database**
+**Follow the repo's E2E conventions — do NOT invent new ones.** Read
+`tests/e2e/inventory-adjust.spec.ts` first; it is the reference spec for adjustment-dialog tests and
+this task mirrors its structure. Use `testQuery()` from `tests/e2e/helpers/db.ts` for DB assertions
+and `seedSession()` from `tests/e2e/helpers/auth.ts` for auth. Comments in this repo's specs are
+written in Cebuano — match that style.
+
+- [ ] **Step 1: Add the perishable fixture**
+
+In `tests/e2e/fixtures/test-data.ts`, directly after the `INVENTORY_PRODUCT` declaration, add:
+
+```typescript
+/**
+ * Dedicated nga PERISHABLE product para sa expiration-date test. Bulag gikan sa
+ * INVENTORY_PRODUCT aron ang is_perishable flag dili makaguba sa existing
+ * inventory-adjust spec (nga wala nagdahom ug expiry field sa dialog).
+ */
+export const PERISHABLE_PRODUCT: FullProduct = {
+  id: 'test-perishable-1',
+  name: 'Perishable Stock Item',
+  sku: 'PERISH-001',
+  description: 'Product para sa expiration-date test.',
+  price: 45,
+  stock: 50,
+  brand: TEST_BRAND.name,
+  category: TEST_CATEGORY.name,
+  unitOfMeasure: TEST_UNIT.name,
+};
+```
+
+- [ ] **Step 2: Seed the fixture**
+
+In `tests/e2e/setup/prepare-test-db.ts`, add `PERISHABLE_PRODUCT` to the import list from
+`../fixtures/test-data` (alongside `INVENTORY_PRODUCT`).
+
+The existing loop at roughly line 154 reads:
+
+```typescript
+  for (const p of [EDITABLE_PRODUCT, DELETABLE_PRODUCT, INVENTORY_PRODUCT]) {
+    await conn.query(
+      `INSERT INTO products (id, name, price, stock, sku, description, brand, category, unit_of_measure, availability)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Available')`,
+      [p.id, p.name, p.price, p.stock, p.sku, p.description, p.brand, p.category, p.unitOfMeasure],
+    );
+  }
+```
+
+Leave that loop alone and add a separate insert directly after it, because this product needs the
+`is_perishable` flag the shared loop does not set:
+
+```typescript
+  // Perishable product — managlahi ang insert kay kinahanglan niya ang is_perishable flag.
+  await conn.query(
+    `INSERT INTO products (id, name, price, stock, sku, description, brand, category, unit_of_measure, availability, is_perishable)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Available', 1)`,
+    [
+      PERISHABLE_PRODUCT.id, PERISHABLE_PRODUCT.name, PERISHABLE_PRODUCT.price,
+      PERISHABLE_PRODUCT.stock, PERISHABLE_PRODUCT.sku, PERISHABLE_PRODUCT.description,
+      PERISHABLE_PRODUCT.brand, PERISHABLE_PRODUCT.category, PERISHABLE_PRODUCT.unitOfMeasure,
+    ],
+  );
+```
+
+- [ ] **Step 3: Re-seed the test database**
+
+The test DB is a **schema clone of your local dev `verdix`**, so migration 100 must already be applied
+locally (Task 1) or `is_perishable` will not exist and this insert will fail.
 
 Run: `npm run test:e2e:db`
-Expected: `verdix_test` re-seeded. This clones the current schema, so migration 100 must already be
-applied locally (Task 1).
+Expected: completes without error.
 
-- [ ] **Step 2: Confirm the test DB has the new columns**
-
-Run:
+Verify the column and the fixture landed:
 ```bash
-node -e "require('dotenv').config();const m=require('mysql2/promise');(async()=>{const c=await m.createConnection({host:process.env.DB_HOST,port:process.env.DB_PORT,user:process.env.DB_USER,password:process.env.DB_PASSWORD,database:'verdix_test'});const [r]=await c.query(\"SELECT TABLE_NAME,COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='verdix_test' AND ((TABLE_NAME='products' AND COLUMN_NAME='is_perishable') OR (TABLE_NAME='inventory_batches' AND COLUMN_NAME='expiration_date'))\");console.table(r);await c.end();})()"
+node -e "require('dotenv').config();const m=require('mysql2/promise');(async()=>{const c=await m.createConnection({host:process.env.DB_HOST||'127.0.0.1',port:Number(process.env.DB_PORT)||3306,user:process.env.DB_USER||'root',password:process.env.DB_PASSWORD||'',database:'verdix_test'});const [r]=await c.query(\"SELECT id,name,is_perishable FROM products WHERE id IN ('test-perishable-1','test-inventory-1')\");console.table(r);const [b]=await c.query(\"SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='verdix_test' AND TABLE_NAME='inventory_batches' AND COLUMN_NAME='expiration_date'\");console.log('batch expiry col:',b[0].cnt);await c.end();})()"
 ```
-Expected: both rows present. If missing, re-run Step 1 — the E2E tests cannot pass otherwise.
+Expected: `test-perishable-1` with `is_perishable` = 1, `test-inventory-1` with 0, and `batch expiry col: 1`.
 
-- [ ] **Step 3: Write the test file**
+**If `batch expiry col: 0`, stop.** Migration 100 has not been applied to your dev DB — run
+`npm run migrate`, then `npm run test:e2e:db` again.
+
+- [ ] **Step 4: Write the spec**
 
 Create `tests/e2e/adjustment-expiration.spec.ts`:
 
 ```typescript
 import { test, expect } from '@playwright/test';
-import mysql from 'mysql2/promise';
+import { seedSession, DEFAULT_ADMIN } from './helpers/auth';
+import { testQuery } from './helpers/db';
+import { INVENTORY_PRODUCT, PERISHABLE_PRODUCT } from './fixtures/test-data';
 
 /**
- * Expiration date on stock adjustments.
+ * Expiration date sa stock adjustment — i-drive ang Adjust Stock dialog ug ang
+ * bulk endpoint batok sa verdix_test.
  *
- * These assert against the DATABASE, not just the UI, because the batch INSERT
- * sits inside a silent try/catch (a pre-migration guard) — a broken write shows
- * a success toast while persisting nothing. Only a DB read proves it landed.
+ * Ang mga assert mo-adto sa DATABASE, dili lang sa UI, kay ang batch INSERT naa
+ * sulod sa silent try/catch (pre-migration guard) — kung maguba ang write,
+ * mogawas gihapon ang success toast bisan walay na-save. DB read ra ang
+ * makapamatuod nga tinuod nga na-persist.
  */
 
-const dbConfig = {
-  host: process.env.DB_HOST,
-  port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: 'verdix_test',
-};
-
-async function withDb<T>(fn: (c: mysql.Connection) => Promise<T>): Promise<T> {
-  const conn = await mysql.createConnection(dbConfig);
-  try {
-    return await fn(conn);
-  } finally {
-    await conn.end();
-  }
-}
-
+/** Kuhaa ang pinakabag-o nga batch sa usa ka product. */
 async function latestBatch(productId: string) {
-  return withDb(async conn => {
-    const [rows]: any = await conn.query(
-      `SELECT id, quantity_in, expiration_date
-       FROM inventory_batches
-       WHERE product_id = ?
-       ORDER BY created_at DESC, id DESC
-       LIMIT 1`,
-      [productId]
-    );
-    return rows[0] || null;
-  });
+  const rows = await testQuery(
+    `SELECT id, quantity_in, expiration_date
+     FROM inventory_batches
+     WHERE product_id = ?
+     ORDER BY created_at DESC, id DESC
+     LIMIT 1`,
+    [productId],
+  );
+  return rows[0] || null;
 }
 
-async function seedProduct(opts: { perishable: boolean; name: string }) {
-  return withDb(async conn => {
-    const id = `test_exp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    await conn.query(
-      `INSERT INTO products (id, name, sku, stock, cost, price, unit_of_measure, is_perishable)
-       VALUES (?, ?, ?, 10, 5, 10, 'Piece', ?)`,
-      [id, opts.name, id.slice(-8).toUpperCase(), opts.perishable ? 1 : 0]
-    );
-    return id;
-  });
+/** I-normalize ang MySQL DATE ngadto sa YYYY-MM-DD string. */
+function toDateString(value: any): string | null {
+  if (value === null || value === undefined) return null;
+  const d = new Date(value);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 test.describe('Adjustment expiration dates', () => {
-  test('perishable product records the expiry on its batch', async () => {
-    const productId = await seedProduct({ perishable: true, name: 'E2E Perishable A' });
+  test('perishable product: makabutang ug expiry pinaagi sa Adjust Stock dialog', async ({ page }) => {
+    await seedSession(page, DEFAULT_ADMIN);
+    await page.goto('/inventory');
 
-    const res = await fetch('http://localhost:3100/api/inventory/adjust/bulk', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        adjustments: [{ productId, quantity: 5, reason: 'E2E expiry', expirationDate: '2027-06-30' }],
-        adjustmentType: 'add',
-        userId: 'e2e',
-      }),
-    });
-    expect(res.ok).toBeTruthy();
+    await page.getByPlaceholder(/search products by name or sku/i).fill(PERISHABLE_PRODUCT.sku);
 
-    const batch = await latestBatch(productId);
-    expect(batch).not.toBeNull();
-    const stored = new Date(batch.expiration_date).toISOString().slice(0, 10);
-    expect(stored).toBe('2027-06-30');
+    await page.getByRole('button', { name: 'Actions' }).first().click();
+    await page.getByRole('menuitem', { name: 'Adjust Stock' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Adjust Stock')).toBeVisible();
+
+    await dialog.getByLabel(/quantity to add/i).fill('5');
+
+    // Ang expiry field motungha ra para sa perishable nga product sa Add mode.
+    const expiryInput = dialog.getByLabel(/expiration date/i);
+    await expect(expiryInput).toBeVisible();
+    await expiryInput.fill('2027-06-30');
+
+    await dialog.getByRole('combobox').click();
+    await page.getByRole('option', { name: 'New Shipment' }).click();
+
+    await dialog.getByRole('button', { name: 'Confirm Adjustment' }).click();
+    await expect(dialog).toBeHidden();
+
+    await expect(async () => {
+      const batch = await latestBatch(PERISHABLE_PRODUCT.id);
+      expect(batch, 'naay batch nga na-create').toBeTruthy();
+      expect(toDateString(batch.expiration_date)).toBe('2027-06-30');
+    }).toPass({ timeout: 10_000 });
   });
 
-  test('blank expiry stores NULL and does not fail', async () => {
-    const productId = await seedProduct({ perishable: true, name: 'E2E Perishable B' });
+  test('non-perishable product: walay expiry field sa dialog', async ({ page }) => {
+    await seedSession(page, DEFAULT_ADMIN);
+    await page.goto('/inventory');
 
-    const res = await fetch('http://localhost:3100/api/inventory/adjust/bulk', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        adjustments: [{ productId, quantity: 4, reason: 'E2E no expiry', expirationDate: null }],
-        adjustmentType: 'add',
-        userId: 'e2e',
-      }),
-    });
-    expect(res.ok).toBeTruthy();
+    await page.getByPlaceholder(/search products by name or sku/i).fill(INVENTORY_PRODUCT.sku);
 
-    const batch = await latestBatch(productId);
-    expect(batch).not.toBeNull();
-    expect(batch.expiration_date).toBeNull();
+    await page.getByRole('button', { name: 'Actions' }).first().click();
+    await page.getByRole('menuitem', { name: 'Adjust Stock' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('Adjust Stock')).toBeVisible();
+
+    // Dili gyud motungha ang expiry field para sa dili-perishable.
+    await expect(dialog.getByLabel(/expiration date/i)).toHaveCount(0);
   });
 
-  test('product expiration cache reflects the soonest batch', async () => {
-    const productId = await seedProduct({ perishable: true, name: 'E2E Perishable C' });
+  test('perishable + Remove mode: gitago ang expiry field', async ({ page }) => {
+    await seedSession(page, DEFAULT_ADMIN);
+    await page.goto('/inventory');
 
-    for (const date of ['2027-09-01', '2027-03-01']) {
-      const res = await fetch('http://localhost:3100/api/inventory/adjust/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          adjustments: [{ productId, quantity: 2, reason: 'E2E cache', expirationDate: date }],
+    await page.getByPlaceholder(/search products by name or sku/i).fill(PERISHABLE_PRODUCT.sku);
+
+    await page.getByRole('button', { name: 'Actions' }).first().click();
+    await page.getByRole('menuitem', { name: 'Adjust Stock' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByLabel(/expiration date/i)).toBeVisible();
+
+    await dialog.getByRole('tab', { name: /remove stock/i }).click();
+    await expect(dialog.getByLabel(/expiration date/i)).toHaveCount(0);
+  });
+
+  test('bulk endpoint: gi-save ang expiry sa batch', async ({ request }) => {
+    const res = await request.post('/api/inventory/adjust/bulk', {
+      data: {
+        adjustments: [{
+          productId: PERISHABLE_PRODUCT.id,
+          quantity: 7,
+          reason: 'E2E bulk expiry',
+          expirationDate: '2027-09-15',
+        }],
+        adjustmentType: 'add',
+        userId: 'test-admin-uid',
+      },
+    });
+    expect(res.ok()).toBeTruthy();
+
+    await expect(async () => {
+      const batch = await latestBatch(PERISHABLE_PRODUCT.id);
+      expect(batch).toBeTruthy();
+      expect(toDateString(batch.expiration_date)).toBe('2027-09-15');
+    }).toPass({ timeout: 10_000 });
+  });
+
+  test('blank nga expiry: NULL ang batch, walay error', async ({ request }) => {
+    const res = await request.post('/api/inventory/adjust/bulk', {
+      data: {
+        adjustments: [{
+          productId: PERISHABLE_PRODUCT.id,
+          quantity: 3,
+          reason: 'E2E walay expiry',
+          expirationDate: null,
+        }],
+        adjustmentType: 'add',
+        userId: 'test-admin-uid',
+      },
+    });
+    expect(res.ok()).toBeTruthy();
+
+    await expect(async () => {
+      const batch = await latestBatch(PERISHABLE_PRODUCT.id);
+      expect(batch).toBeTruthy();
+      expect(batch.expiration_date).toBeNull();
+    }).toPass({ timeout: 10_000 });
+  });
+
+  test('products.expiration_date cache: ang pinakaduol nga petsa ang gigamit', async ({ request }) => {
+    // Duha ka batch: ang ulahi nga gi-add mas sayo mo-expire → siya dapat ang cache.
+    for (const date of ['2028-01-31', '2027-02-28']) {
+      const res = await request.post('/api/inventory/adjust/bulk', {
+        data: {
+          adjustments: [{
+            productId: PERISHABLE_PRODUCT.id,
+            quantity: 2,
+            reason: 'E2E cache',
+            expirationDate: date,
+          }],
           adjustmentType: 'add',
-          userId: 'e2e',
-        }),
+          userId: 'test-admin-uid',
+        },
       });
-      expect(res.ok).toBeTruthy();
+      expect(res.ok()).toBeTruthy();
     }
 
-    const cached = await withDb(async conn => {
-      const [rows]: any = await conn.query('SELECT expiration_date FROM products WHERE id = ?', [productId]);
-      return rows[0]?.expiration_date;
-    });
-    expect(new Date(cached).toISOString().slice(0, 10)).toBe('2027-03-01');
+    await expect(async () => {
+      const rows = await testQuery('SELECT expiration_date FROM products WHERE id = ?', [PERISHABLE_PRODUCT.id]);
+      expect(toDateString(rows[0]?.expiration_date)).toBe('2027-02-28');
+    }).toPass({ timeout: 10_000 });
   });
 
-  test('removal does not create a dated batch', async () => {
-    const productId = await seedProduct({ perishable: true, name: 'E2E Perishable D' });
-
-    const res = await fetch('http://localhost:3100/api/inventory/adjust/bulk', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        adjustments: [{ productId, quantity: 3, reason: 'E2E removal', expirationDate: '2027-06-30' }],
-        adjustmentType: 'remove',
-        userId: 'e2e',
-      }),
-    });
-    expect(res.ok).toBeTruthy();
-
-    const dated = await withDb(async conn => {
-      const [rows]: any = await conn.query(
-        'SELECT COUNT(*) AS cnt FROM inventory_batches WHERE product_id = ? AND expiration_date IS NOT NULL',
-        [productId]
-      );
-      return Number(rows[0].cnt);
-    });
-    expect(dated).toBe(0);
-  });
-
-  test('expiring soon report lists a near-dated batch', async () => {
-    const productId = await seedProduct({ perishable: true, name: 'E2E Perishable E' });
-
-    const res = await fetch('http://localhost:3100/api/inventory/adjust/bulk', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        adjustments: [{ productId, quantity: 6, reason: 'E2E report', expirationDate: '2027-06-30' }],
+  test('expiring-soon report: makita ang duol na mo-expire nga batch', async ({ request }) => {
+    const res = await request.post('/api/inventory/adjust/bulk', {
+      data: {
+        adjustments: [{
+          productId: PERISHABLE_PRODUCT.id,
+          quantity: 4,
+          reason: 'E2E report',
+          expirationDate: '2027-12-31',
+        }],
         adjustmentType: 'add',
-        userId: 'e2e',
-      }),
+        userId: 'test-admin-uid',
+      },
     });
-    expect(res.ok).toBeTruthy();
+    expect(res.ok()).toBeTruthy();
 
-    await withDb(conn =>
-      conn.query(
-        'UPDATE inventory_batches SET expiration_date = DATE_ADD(CURDATE(), INTERVAL 5 DAY) WHERE product_id = ?',
-        [productId]
-      )
+    // I-pull ang petsa palapit aron mosulod sa 30-day window.
+    await testQuery(
+      `UPDATE inventory_batches SET expiration_date = DATE_ADD(CURDATE(), INTERVAL 5 DAY)
+       WHERE product_id = ? AND expiration_date = '2027-12-31'`,
+      [PERISHABLE_PRODUCT.id],
     );
 
-    const report = await fetch('http://localhost:3100/api/reports/expiring-soon?days=30').then(r => r.json());
-    expect(report.success).toBeTruthy();
-    expect(report.items.some((i: any) => i.productId === productId)).toBeTruthy();
+    const report = await request.get('/api/reports/expiring-soon?days=30');
+    expect(report.ok()).toBeTruthy();
+    const body = await report.json();
+    expect(body.success).toBeTruthy();
+    expect(body.items.some((i: any) => i.productId === PERISHABLE_PRODUCT.id)).toBeTruthy();
   });
 });
 ```
 
-- [ ] **Step 4: Run the new tests**
+- [ ] **Step 5: Run the new spec**
 
 Run: `npx playwright test tests/e2e/adjustment-expiration.spec.ts --reporter=list`
-Expected: 5 passed.
+Expected: 7 passed.
 
-If a test fails, do NOT weaken the assertion. Trace the failure back: check that migration 100 applied
-to `verdix_test`, and that the batch INSERT is not swallowing an error in its `catch`.
+If the dialog tests fail on the `Actions` menu, confirm the search actually narrowed to one card —
+copy exactly what `tests/e2e/inventory-adjust.spec.ts` does.
 
-- [ ] **Step 5: Run the full suite for regressions**
+Do NOT weaken an assertion to make it pass. If expiry is not persisting, trace it: confirm migration
+100 applied to `verdix_test` (Step 3), then check whether the batch INSERT is swallowing an error in
+its `catch`.
+
+- [ ] **Step 6: Run the full suite for regressions**
 
 Run: `npm run test:e2e`
-Expected: no NEW failures versus the pre-change baseline. If you did not capture a baseline, run
-`git stash && npm run test:e2e` first to record which tests already failed, then `git stash pop`.
+Expected: no NEW failures versus baseline. Pay particular attention to
+`tests/e2e/inventory-adjust.spec.ts` — it drives the same dialog this feature modified, and is the
+most likely place to have broken something.
 
-- [ ] **Step 6: Commit**
+Record which specs failed BEFORE your changes if you did not already; report new failures only.
+
+- [ ] **Step 7: Typecheck (no new errors)**
+
+Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
+Expected: no lines starting with `>` (no NEW errors). Pre-existing errors are expected — do not fix them.
+
+- [ ] **Step 8: Commit**
 
 ```bash
-git add tests/e2e/adjustment-expiration.spec.ts
+git add tests/e2e/adjustment-expiration.spec.ts tests/e2e/fixtures/test-data.ts tests/e2e/setup/prepare-test-db.ts
 git commit -m "test(inventory): E2E coverage for adjustment expiration dates"
 ```
 
 ---
+
 
 ## Task 14: Manual verification of the approval path
 
@@ -1916,7 +2043,6 @@ observed `expiration_date` values.
 ## Final Verification
 
 - [ ] `npm run typecheck` — no errors
-- [ ] `npm run lint` — no errors
 - [ ] `npm run test:e2e` — no new failures vs. baseline
 - [ ] `npm run migrate:down && npm run migrate` — rollback and re-apply both clean
 - [ ] Task 14 approval path confirmed by hand
