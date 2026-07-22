@@ -34,6 +34,7 @@ export const productSchema = z.object({
   vatStatus: z.string().default('YES (Subject to 12% VAT)'),
   availability: z.string().default('Available'),
   earnsPoints: z.boolean().default(true),
+  isPerishable: z.boolean().optional(),
 });
 
 export type ProductFormValues = z.infer<typeof productSchema>;

@@ -127,6 +127,7 @@ export function useEditProductForm({
       vatStatus: product.vatStatus || 'YES (Subject to 12% VAT)',
       availability: product.availability || 'Available',
       earnsPoints: product.earnsPoints ?? true,
+      isPerishable: product.isPerishable ?? false,
       description: product.description ?? '',
     },
   });
@@ -182,6 +183,7 @@ export function useEditProductForm({
           vatStatus: product.vatStatus || 'YES (Subject to 12% VAT)',
           availability: product.availability || 'Available',
           earnsPoints: product.earnsPoints ?? true,
+          isPerishable: product.isPerishable ?? false,
           description: product.description ?? '',
           department: product.department ?? '',
       };

@@ -46,6 +46,7 @@ export type ProductFormData = {
   vatStatus?: string;
   availability?: string;
   earnsPoints?: boolean;
+  isPerishable?: boolean;
   __childProduct?: ProductFormData;
 };
 
@@ -480,6 +481,7 @@ export async function addProduct(
         vat_status: formData.vatStatus || 'YES (Subject to 12% VAT)',
         availability: formData.availability || 'Available',
         earns_points: formData.earnsPoints !== false,
+        is_perishable: formData.isPerishable ? 1 : 0,
       };
 
       const sql = `
@@ -488,8 +490,8 @@ export async function addProduct(
           subcategory, supplier_id, warehouse_id, stock, reorder_point, avg_daily_sales, price, cost,
           sku, barcode, image_url, image_hint,
           unit_of_measure, parent_id, conversion_factor, income_account, expense_account,
-          vat_status, availability, earns_points, shelf_location_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          vat_status, availability, earns_points, shelf_location_id, is_perishable
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       const legacyShelfId = formData.shelfLocationIds && formData.shelfLocationIds.length > 0 ? formData.shelfLocationIds[0] : null;
@@ -502,7 +504,7 @@ export async function addProduct(
         productData.barcode, productData.image_url, productData.image_hint, productData.unit_of_measure,
         productData.parent_id, productData.conversion_factor, productData.income_account,
         productData.expense_account, productData.vat_status, productData.availability, productData.earns_points,
-        legacyShelfId
+        legacyShelfId, productData.is_perishable
       ];
 
       await connection.query(sql, values_array);
@@ -623,16 +625,17 @@ export async function updateProduct(id: string, formData: ProductFormData) {
         vat_status: formData.vatStatus ?? existing.vat_status,
         availability: formData.availability ?? existing.availability,
         earns_points: formData.earnsPoints !== undefined ? formData.earnsPoints : (existing.earns_points === 1),
+        is_perishable: formData.isPerishable !== undefined ? (formData.isPerishable ? 1 : 0) : existing.is_perishable,
       };
 
       const sql = `
-        UPDATE products SET 
-          name = ?, description = ?, additional_description = ?, category = ?, brand = ?, 
-          department = ?, subcategory = ?, supplier_id = ?, warehouse_id = ?, stock = ?, 
-          reorder_point = ?, price = ?, cost = ?, sku = ?, barcode = ?, 
+        UPDATE products SET
+          name = ?, description = ?, additional_description = ?, category = ?, brand = ?,
+          department = ?, subcategory = ?, supplier_id = ?, warehouse_id = ?, stock = ?,
+          reorder_point = ?, price = ?, cost = ?, sku = ?, barcode = ?,
           image_url = ?, image_hint = ?, unit_of_measure = ?,
-          income_account = ?, expense_account = ?, vat_status = ?, 
-          availability = ?, earns_points = ?, shelf_location_id = ?
+          income_account = ?, expense_account = ?, vat_status = ?,
+          availability = ?, earns_points = ?, shelf_location_id = ?, is_perishable = ?
         WHERE id = ?
       `;
 
@@ -663,7 +666,7 @@ export async function updateProduct(id: string, formData: ProductFormData) {
         productData.price, productData.cost, productData.sku, productData.barcode,
         productData.image_url, productData.image_hint, productData.unit_of_measure,
         productData.income_account, productData.expense_account, productData.vat_status,
-        productData.availability, productData.earns_points, legacyShelfId, id
+        productData.availability, productData.earns_points, legacyShelfId, productData.is_perishable, id
       ];
 
       await connection.query(sql, values_array);

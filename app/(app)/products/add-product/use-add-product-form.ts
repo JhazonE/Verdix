@@ -122,6 +122,7 @@ export function useAddProductForm({
       conversionFactors: [],
       priceLevels: [],
       earnsPoints: true,
+      isPerishable: false,
     },
   });
 
