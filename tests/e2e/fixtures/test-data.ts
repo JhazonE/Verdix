@@ -154,6 +154,42 @@ export const PERISHABLE_PRODUCT: FullProduct = {
 };
 
 /**
+ * Family para sa "expiry lands on the wrong product" regression test.
+ * PERISHABLE_FAMILY_PARENT is a non-perishable, top-level root (unit "Box").
+ * PERISHABLE_FAMILY_CHILD is its perishable child (unit "Piece", factor 12/box).
+ *
+ * Adjusting the CHILD must apply the entered expiration date to the CHILD's own
+ * batch. The cascaded stock added to the PARENT (and any other family member)
+ * must stay NULL — it inherits no date, by design. Before the fix, `addFamilyStock`
+ * applied the expiry at `depth === 0` of the walk rooted at the family's ultimate
+ * root, which is the PARENT, not the product actually being adjusted.
+ */
+export const PERISHABLE_FAMILY_PARENT: FullProduct = {
+  id: 'test-perishable-family-parent',
+  name: 'Perishable Family Parent',
+  sku: 'PERISH-FAM-PAR-001',
+  description: 'Non-perishable root product para sa expiry-target regression test.',
+  price: 300,
+  stock: 10,
+  brand: TEST_BRAND.name,
+  category: TEST_CATEGORY.name,
+  unitOfMeasure: 'Box',
+};
+
+export const PERISHABLE_FAMILY_CHILD: FullProduct & { parentId: string } = {
+  id: 'test-perishable-family-child',
+  name: 'Perishable Family Child',
+  sku: 'PERISH-FAM-CHD-001',
+  description: 'Perishable child unit para sa expiry-target regression test.',
+  price: 30,
+  stock: 0,
+  brand: TEST_BRAND.name,
+  category: TEST_CATEGORY.name,
+  unitOfMeasure: 'Piece',
+  parentId: PERISHABLE_FAMILY_PARENT.id,
+};
+
+/**
  * Family para sa child-reassignment test. REASSIGN_PARENT_A is the current mother of
  * REASSIGN_CHILD (unit "Piece", factor 12 per box). REASSIGN_PARENT_B is an unrelated
  * top-level product the child gets moved under.

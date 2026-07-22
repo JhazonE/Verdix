@@ -32,6 +32,8 @@ import {
   DELETABLE_PRODUCT,
   INVENTORY_PRODUCT,
   PERISHABLE_PRODUCT,
+  PERISHABLE_FAMILY_PARENT,
+  PERISHABLE_FAMILY_CHILD,
   REASSIGN_PARENT_A,
   REASSIGN_PARENT_B,
   REASSIGN_CHILD,
@@ -169,6 +171,39 @@ async function seedFixtures(): Promise<void> {
       PERISHABLE_PRODUCT.stock, PERISHABLE_PRODUCT.sku, PERISHABLE_PRODUCT.description,
       PERISHABLE_PRODUCT.brand, PERISHABLE_PRODUCT.category, PERISHABLE_PRODUCT.unitOfMeasure,
     ],
+  );
+
+  // --- dedicated parent/child family para sa "expiry lands on wrong product" regression ---
+  await conn.query(
+    `INSERT INTO products (id, name, price, stock, sku, description, brand, category, unit_of_measure, availability)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Available')`,
+    [
+      PERISHABLE_FAMILY_PARENT.id, PERISHABLE_FAMILY_PARENT.name, PERISHABLE_FAMILY_PARENT.price,
+      PERISHABLE_FAMILY_PARENT.stock, PERISHABLE_FAMILY_PARENT.sku, PERISHABLE_FAMILY_PARENT.description,
+      PERISHABLE_FAMILY_PARENT.brand, PERISHABLE_FAMILY_PARENT.category, PERISHABLE_FAMILY_PARENT.unitOfMeasure,
+    ],
+  );
+  await conn.query(
+    `INSERT INTO products (id, name, price, stock, sku, description, brand, category, unit_of_measure, parent_id, availability, is_perishable)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Available', 1)`,
+    [
+      PERISHABLE_FAMILY_CHILD.id,
+      PERISHABLE_FAMILY_CHILD.name,
+      PERISHABLE_FAMILY_CHILD.price,
+      PERISHABLE_FAMILY_CHILD.stock,
+      PERISHABLE_FAMILY_CHILD.sku,
+      PERISHABLE_FAMILY_CHILD.description,
+      PERISHABLE_FAMILY_CHILD.brand,
+      PERISHABLE_FAMILY_CHILD.category,
+      PERISHABLE_FAMILY_CHILD.unitOfMeasure,
+      PERISHABLE_FAMILY_PARENT.id,
+    ],
+  );
+  await conn.query(
+    `INSERT INTO conversion_factors (id, product_id, unit, factor)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE factor = VALUES(factor)`,
+    ['perish-fam-par-cf-piece', PERISHABLE_FAMILY_PARENT.id, PERISHABLE_FAMILY_CHILD.unitOfMeasure, 12],
   );
 
   // --- dedicated parent/child family para sa child-reassignment test ---

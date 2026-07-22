@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
         if (finalQuantity < 0) {
           await deductFamilyStock(rootId, syncQty, adjustmentId, 'adjustment', finalReason, connection);
         } else {
-          await addFamilyStock(rootId, syncQty, adjustmentId, 'adjustment', finalReason, connection, 0, expirationDate);
+          await addFamilyStock(rootId, syncQty, adjustmentId, 'adjustment', finalReason, connection, 0, expirationDate, productId);
         }
 
         results.push({ productId, productName: product.name, newStock });

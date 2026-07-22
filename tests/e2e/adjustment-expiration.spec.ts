@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { seedSession, DEFAULT_ADMIN } from './helpers/auth';
 import { testQuery } from './helpers/db';
-import { INVENTORY_PRODUCT, PERISHABLE_PRODUCT } from './fixtures/test-data';
+import { INVENTORY_PRODUCT, PERISHABLE_PRODUCT, PERISHABLE_FAMILY_PARENT, PERISHABLE_FAMILY_CHILD } from './fixtures/test-data';
 
 /**
  * Expiration date sa stock adjustment — i-drive ang Adjust Stock dialog ug ang
@@ -32,6 +32,25 @@ async function batchByReason(productId: string, reason: string) {
      ORDER BY created_at DESC, id DESC
      LIMIT 1`,
     [productId, `Auto-batch for adjustment: ${reason}`],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Same idea as batchByReason, apan para sa mga batch nga gimugna pinaagi sa
+ * family cascade (addFamilyStock/deductFamilyStock). Ang cascaded nodes
+ * (depth > 0) mo-apend ug " (Depth N family sync)" sa notes — mao nga LIKE
+ * prefix match ang gigamit imbes exact match, aron makuha ang batch bisan sa
+ * unsang depth nahimutang ang product sulod sa family walk.
+ */
+async function familyBatchByReason(productId: string, reason: string) {
+  const rows = await testQuery(
+    `SELECT id, quantity_in, DATE_FORMAT(expiration_date, '%Y-%m-%d') AS expiration_date
+     FROM inventory_batches
+     WHERE product_id = ? AND notes LIKE ?
+     ORDER BY created_at DESC, id DESC
+     LIMIT 1`,
+    [productId, `Auto-batch for adjustment: ${reason}%`],
   );
   return rows[0] || null;
 }
@@ -199,5 +218,34 @@ test.describe('Adjustment expiration dates', () => {
     const body = await report.json();
     expect(body.success).toBeTruthy();
     expect(body.items.some((i: any) => i.productId === PERISHABLE_PRODUCT.id)).toBeTruthy();
+  });
+
+  test('family adjustment: ang expiry mo-adto sa CHILD nga gi-adjust, dili sa PARENT', async ({ request }) => {
+    // Gi-adjust ang CHILD (dili ang root/parent). Ang addFamilyStock mo-cascade
+    // paingon sa PARENT (12 pcs/box factor), apan ang expiry kinahanglan lang
+    // motungha sa batch sa CHILD — ang PARENT dapat NULL ang expiration_date.
+    const res = await request.post('/api/inventory/adjust/bulk', {
+      data: {
+        adjustments: [{
+          productId: PERISHABLE_FAMILY_CHILD.id,
+          quantity: 24,
+          reason: 'E2E family expiry target',
+          expirationDate: '2027-11-11',
+        }],
+        adjustmentType: 'add',
+        userId: 'test-admin-uid',
+      },
+    });
+    expect(res.ok()).toBeTruthy();
+
+    await expect(async () => {
+      const childBatch = await familyBatchByReason(PERISHABLE_FAMILY_CHILD.id, 'E2E family expiry target');
+      expect(childBatch, 'naay batch nga na-create para sa child').toBeTruthy();
+      expect(childBatch.expiration_date).toBe('2027-11-11');
+
+      const parentBatch = await familyBatchByReason(PERISHABLE_FAMILY_PARENT.id, 'E2E family expiry target');
+      expect(parentBatch, 'naay cascaded batch para sa parent').toBeTruthy();
+      expect(parentBatch.expiration_date).toBeNull();
+    }).toPass({ timeout: 10_000 });
   });
 });

@@ -289,14 +289,14 @@ export async function adjustStock(productId: string, quantity: number, reason: s
         if (quantity < 0) {
           await deductFamilyStock(rootId, rootQty, adjustmentId, 'adjustment', reason, connection);
         } else {
-          await addFamilyStock(rootId, rootQty, adjustmentId, 'adjustment', reason, connection, 0, expirationDate);
+          await addFamilyStock(rootId, rootQty, adjustmentId, 'adjustment', reason, connection, 0, expirationDate, productId);
         }
       } else {
         // This IS the root — propagate down through all descendants
         if (quantity < 0) {
           await deductFamilyStock(productId, Math.abs(quantity), adjustmentId, 'adjustment', reason, connection);
         } else {
-          await addFamilyStock(productId, quantity, adjustmentId, 'adjustment', reason, connection, 0, expirationDate);
+          await addFamilyStock(productId, quantity, adjustmentId, 'adjustment', reason, connection, 0, expirationDate, productId);
         }
       }
       return { success: true, adjustmentId, newStock };

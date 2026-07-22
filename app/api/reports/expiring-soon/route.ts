@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       JOIN products p ON p.id = b.product_id
       WHERE b.expiration_date IS NOT NULL
         AND b.quantity_remaining > 0
-        AND DATEDIFF(b.expiration_date, CURDATE()) <= ?
+        AND b.expiration_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)
       ORDER BY b.expiration_date ASC
     `, [days]);
 

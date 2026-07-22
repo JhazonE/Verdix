@@ -168,7 +168,8 @@ export async function addFamilyStock(
   notes: string,
   connection: PoolConnection,
   depth = 0,
-  expirationDate?: string | null
+  expirationDate?: string | null,
+  expiryTargetId?: string
 ): Promise<void> {
   if (depth > 10 || qty <= 0) return;
 
@@ -182,10 +183,15 @@ export async function addFamilyStock(
     refType,
     `${notes}${depth > 0 ? ` (Depth ${depth} family sync)` : ''}`,
     connection,
-    // Only the directly-adjusted product carries the expiry. Cascaded child
-    // batches (a 1kg bag's 250g sachets) are left NULL rather than inheriting a
-    // date nobody entered for them — see the follow-up note in the spec.
-    depth === 0 ? expirationDate : null
+    // Only the product the user actually adjusted carries the expiry — that is
+    // `expiryTargetId`, NOT "depth 0". The walk is always rooted at the family's
+    // ultimate root (see findUltimateRoot), so depth 0 is the ROOT, which is a
+    // different product than the one adjusted whenever the adjusted product is
+    // a child or descendant. Cascaded batches for every other family member (the
+    // root included, when it isn't the target) are left NULL rather than
+    // inheriting a date nobody entered for them — see the follow-up note in the
+    // spec.
+    nodeId === expiryTargetId ? expirationDate : null
   );
 
   const [children]: any = await connection.query(
@@ -207,7 +213,9 @@ export async function addFamilyStock(
       refType,
       notes,
       connection,
-      depth + 1
+      depth + 1,
+      expirationDate,
+      expiryTargetId
     );
   }
 }

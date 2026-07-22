@@ -135,7 +135,8 @@ export async function recordAdjustmentMovement(
   productName: string,
   quantityChange: number,
   reason: string,
-  expirationDate?: string | null
+  expirationDate?: string | null,
+  connection?: mysql.PoolConnection | mysql.Pool
 ): Promise<StockMovement> {
   // Get current stock for the product
   const currentStockResult = await query('SELECT stock FROM products WHERE id = ?', [productId]);
@@ -197,16 +198,23 @@ export async function recordAdjustmentMovement(
 
       const normalizedExpiry = normalizeExpirationDate(expirationDate);
 
-      await query(`
+      const batchSql = `
         INSERT INTO inventory_batches
           (id, product_id, received_date, quantity_in, quantity_remaining, unit_cost, selling_price, source_type, notes, expiration_date)
         VALUES (?, ?, CURDATE(), ?, ?, ?, ?, 'adjustment', ?, ?)
-      `, [
+      `;
+      const batchParams = [
         batchId, productId, quantityChange, quantityChange, unitCost, sellingPrice, `Auto-generated from adjustment: ${reason}`, normalizedExpiry
-      ]);
+      ];
+
+      if (connection) {
+        await connection.query(batchSql, batchParams);
+      } else {
+        await query(batchSql, batchParams);
+      }
 
       if (normalizedExpiry) {
-        await refreshProductExpirationCache(productId);
+        await refreshProductExpirationCache(productId, connection);
       }
     } else if (quantityChange < 0) {
       // DECREASE: Deduct from existing batches using FIFO
