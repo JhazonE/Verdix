@@ -22,7 +22,7 @@
 - **E2E tests run on port 3100** against `verdix_test`, `workers: 1`. Run with `npm run test:e2e`.
 - **DO NOT run `npm run lint`.** It is broken repo-wide (`next lint` in Next 16 misparses its
   argument: `Invalid project directory provided, no such directory: ...\lint`). It is not a gate.
-- **`npm run typecheck` has 22 PRE-EXISTING errors** recorded in
+- **`npm run typecheck` has 10 PRE-EXISTING source-file errors** recorded in
   `.superpowers/sdd/typecheck-baseline.txt`. A fully clean typecheck is impossible. The gate is
   **no NEW errors in the files your task touched** — compare against that baseline file. Do NOT
   attempt to fix pre-existing errors; they are out of scope.
@@ -808,7 +808,7 @@ to:
 
 - [ ] **Step 5: Typecheck (no new errors)**
 
-Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
+Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | grep -v "^.next" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
 Expected: no lines starting with `>` (no NEW errors). Pre-existing errors are expected — do not fix them.
 
 - [ ] **Step 6: Commit**
@@ -970,7 +970,7 @@ Keep this product — later tasks use it as the perishable test fixture.
 
 - [ ] **Step 5: Typecheck (no new errors)**
 
-Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
+Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | grep -v "^.next" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
 Expected: no lines starting with `>` (no NEW errors). Pre-existing errors are expected — do not fix them.
 
 - [ ] **Step 6: Commit**
@@ -1132,7 +1132,7 @@ with no error. Confirm a new batch row exists with `expiration_date` = `NULL`.
 
 - [ ] **Step 10: Typecheck (no new errors)**
 
-Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
+Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | grep -v "^.next" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
 Expected: no lines starting with `>` (no NEW errors). Pre-existing errors are expected — do not fix them.
 
 - [ ] **Step 11: Commit**
@@ -1340,7 +1340,7 @@ Expected: the perishable product's batch carries `2027-03-15`; the non-perishabl
 
 - [ ] **Step 11: Typecheck (no new errors)**
 
-Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
+Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | grep -v "^.next" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
 Expected: no lines starting with `>` (no NEW errors). Pre-existing errors are expected — do not fix them.
 
 - [ ] **Step 12: Commit**
@@ -1393,7 +1393,7 @@ Open the batch view for the perishable product used in Task 9. Expect the batch 
 
 - [ ] **Step 5: Typecheck (no new errors)**
 
-Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
+Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | grep -v "^.next" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
 Expected: no lines starting with `>` (no NEW errors). Pre-existing errors are expected — do not fix them.
 
 - [ ] **Step 6: Commit**
@@ -1645,7 +1645,7 @@ structure. If the reports nav is generated from a list, add to that list.
 
 - [ ] **Step 6: Typecheck (no new errors)**
 
-Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
+Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | grep -v "^.next" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
 Expected: no lines starting with `>` (no NEW errors). Pre-existing errors are expected — do not fix them.
 
 - [ ] **Step 7: Commit**
@@ -1974,7 +1974,7 @@ Record which specs failed BEFORE your changes if you did not already; report new
 
 - [ ] **Step 7: Typecheck (no new errors)**
 
-Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
+Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | grep -v "^.next" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
 Expected: no lines starting with `>` (no NEW errors). Pre-existing errors are expected — do not fix them.
 
 - [ ] **Step 8: Commit**
