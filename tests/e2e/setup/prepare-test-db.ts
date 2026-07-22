@@ -31,6 +31,7 @@ import {
   EDITABLE_PRODUCT,
   DELETABLE_PRODUCT,
   INVENTORY_PRODUCT,
+  PERISHABLE_PRODUCT,
   REASSIGN_PARENT_A,
   REASSIGN_PARENT_B,
   REASSIGN_CHILD,
@@ -158,6 +159,17 @@ async function seedFixtures(): Promise<void> {
       [p.id, p.name, p.price, p.stock, p.sku, p.description, p.brand, p.category, p.unitOfMeasure],
     );
   }
+
+  // Perishable product — managlahi ang insert kay kinahanglan niya ang is_perishable flag.
+  await conn.query(
+    `INSERT INTO products (id, name, price, stock, sku, description, brand, category, unit_of_measure, availability, is_perishable)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Available', 1)`,
+    [
+      PERISHABLE_PRODUCT.id, PERISHABLE_PRODUCT.name, PERISHABLE_PRODUCT.price,
+      PERISHABLE_PRODUCT.stock, PERISHABLE_PRODUCT.sku, PERISHABLE_PRODUCT.description,
+      PERISHABLE_PRODUCT.brand, PERISHABLE_PRODUCT.category, PERISHABLE_PRODUCT.unitOfMeasure,
+    ],
+  );
 
   // --- dedicated parent/child family para sa child-reassignment test ---
   for (const p of [REASSIGN_PARENT_A, REASSIGN_PARENT_B]) {

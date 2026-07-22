@@ -137,6 +137,23 @@ export const INVENTORY_PRODUCT: FullProduct = {
 };
 
 /**
+ * Dedicated nga PERISHABLE product para sa expiration-date test. Bulag gikan sa
+ * INVENTORY_PRODUCT aron ang is_perishable flag dili makaguba sa existing
+ * inventory-adjust spec (nga wala nagdahom ug expiry field sa dialog).
+ */
+export const PERISHABLE_PRODUCT: FullProduct = {
+  id: 'test-perishable-1',
+  name: 'Perishable Stock Item',
+  sku: 'PERISH-001',
+  description: 'Product para sa expiration-date test.',
+  price: 45,
+  stock: 50,
+  brand: TEST_BRAND.name,
+  category: TEST_CATEGORY.name,
+  unitOfMeasure: TEST_UNIT.name,
+};
+
+/**
  * Family para sa child-reassignment test. REASSIGN_PARENT_A is the current mother of
  * REASSIGN_CHILD (unit "Piece", factor 12 per box). REASSIGN_PARENT_B is an unrelated
  * top-level product the child gets moved under.
