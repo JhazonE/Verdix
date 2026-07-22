@@ -50,6 +50,10 @@ export function StockAdjustmentDialog({ product, children, defaultReason, onSucc
     dialogTitle,
     variance,
     projectedStock,
+    expirationDate,
+    setExpirationDate,
+    showExpirationField,
+    isExpirationInPast,
     reasons,
     handleQuantityChange,
     handlePhysicalCountChange,
@@ -167,6 +171,26 @@ export function StockAdjustmentDialog({ product, children, defaultReason, onSucc
                   </div>
                 </div>
               </div>
+
+              {showExpirationField && (
+                <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                  <Label htmlFor="expirationDate" className="text-sm font-medium">
+                    Expiration Date <span className="text-muted-foreground font-normal">(Optional)</span>
+                  </Label>
+                  <Input
+                    id="expirationDate"
+                    type="date"
+                    value={expirationDate}
+                    onChange={(e) => setExpirationDate(e.target.value)}
+                    className="h-11"
+                  />
+                  {isExpirationInPast && (
+                    <p className="text-xs text-amber-600 dark:text-amber-500">
+                      This date is in the past. The stock will be recorded as already expired.
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="reason" className="text-sm font-medium">Reason for Adjustment</Label>

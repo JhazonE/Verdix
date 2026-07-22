@@ -44,6 +44,7 @@ export function useStockAdjustment({
   const [reason, setReason] = useState(defaultReason || '');
   const [customReason, setCustomReason] = useState('');
   const [adjustmentType, setAdjustmentType] = useState<'add' | 'remove'>('add');
+  const [expirationDate, setExpirationDate] = useState('');
 
   const [physicalCount, setPhysicalCount] = useState<number | null>(null);
 
@@ -51,6 +52,20 @@ export function useStockAdjustment({
   const [isLoadingChildren, setIsLoadingChildren] = useState(false);
 
   const isPhysicalCountMode = defaultReason === 'Physical Count';
+
+  // Expiry applies only when receiving new stock into a perishable product.
+  // Removals deduct oldest-first via FIFO, and a physical count reconciles
+  // stock that already exists — neither receives a new date.
+  const showExpirationField =
+    Boolean(product.isPerishable) && adjustmentType === 'add' && !isPhysicalCountMode;
+
+  // Recording already-expired stock found during a count is legitimate, so this
+  // warns without blocking.
+  const isExpirationInPast = useMemo(() => {
+    if (!expirationDate) return false;
+    const today = new Date().toISOString().slice(0, 10);
+    return expirationDate < today;
+  }, [expirationDate]);
 
   const dialogTitle = isPhysicalCountMode ? `Physical Count` : `Adjust Stock`;
 
@@ -100,6 +115,7 @@ export function useStockAdjustment({
       setAdjustmentType('add');
       setPhysicalCount(Number(product.stock));
       setChildProducts([]);
+      setExpirationDate('');
     }
   }, [isOpen, defaultReason, product.stock]);
 
@@ -170,7 +186,14 @@ export function useStockAdjustment({
     try {
       const userSession = localStorage.getItem('mock-user-session');
       const userId = userSession ? JSON.parse(userSession).uid : 'system';
-      const parentResult = await adjustStock(product.id, adjustment, finalReason, userId);
+      const parentResult = await adjustStock(
+        product.id,
+        adjustment,
+        finalReason,
+        userId,
+        false,
+        showExpirationField && expirationDate ? expirationDate : null
+      );
       const res = parentResult as any;
 
       if (!res.success) {
@@ -244,6 +267,10 @@ export function useStockAdjustment({
     dialogTitle,
     variance,
     projectedStock,
+    expirationDate,
+    setExpirationDate,
+    showExpirationField,
+    isExpirationInPast,
     reasons,
     handleQuantityChange,
     handlePhysicalCountChange,
