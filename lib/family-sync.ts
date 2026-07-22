@@ -167,7 +167,8 @@ export async function addFamilyStock(
   refType: 'sale' | 'purchase' | 'adjustment' | 'return' | 'transfer',
   notes: string,
   connection: PoolConnection,
-  depth = 0
+  depth = 0,
+  expirationDate?: string | null
 ): Promise<void> {
   if (depth > 10 || qty <= 0) return;
 
@@ -180,7 +181,11 @@ export async function addFamilyStock(
     refId,
     refType,
     `${notes}${depth > 0 ? ` (Depth ${depth} family sync)` : ''}`,
-    connection
+    connection,
+    // Only the directly-adjusted product carries the expiry. Cascaded child
+    // batches (a 1kg bag's 250g sachets) are left NULL rather than inheriting a
+    // date nobody entered for them — see the follow-up note in the spec.
+    depth === 0 ? expirationDate : null
   );
 
   const [children]: any = await connection.query(
