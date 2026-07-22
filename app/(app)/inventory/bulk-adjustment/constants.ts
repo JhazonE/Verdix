@@ -9,6 +9,7 @@ export interface AdjustmentItem {
   quantity: number;
   type: AdjustmentType;
   reason: string;
+  expirationDate?: string;
 }
 
 export const typeConfig: Record<AdjustmentType, { label: string; color: string; icon: LucideIcon; dot: string }> = {

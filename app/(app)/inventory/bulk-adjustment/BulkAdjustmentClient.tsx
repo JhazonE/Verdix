@@ -49,6 +49,8 @@ export default function BulkAdjustmentClient() {
     setNote,
     adjustments,
     isProcessing,
+    showExpirationColumn,
+    applyExpirationToAll,
     mobileView,
     setMobileView,
     filteredProducts,
@@ -77,6 +79,8 @@ export default function BulkAdjustmentClient() {
     setSupplierId,
     note,
     setNote,
+    showExpirationColumn,
+    applyExpirationToAll,
   };
 
   return (
@@ -125,13 +129,14 @@ export default function BulkAdjustmentClient() {
                     <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Type</TableHead>
                     <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Quantity</TableHead>
                     <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Impact</TableHead>
+                    {showExpirationColumn && <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Expiry</TableHead>}
                     <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Note</TableHead>
                     <TableHead className="pr-4 py-3 w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {adjustments.map(adj => (
-                    <AdjustmentTableRow key={adj.product.id} adj={adj} onUpdate={updateAdjustment} onRemove={removeAdjustment} />
+                    <AdjustmentTableRow key={adj.product.id} adj={adj} onUpdate={updateAdjustment} onRemove={removeAdjustment} showExpirationColumn={showExpirationColumn} />
                   ))}
                 </TableBody>
               </Table>
@@ -228,7 +233,7 @@ export default function BulkAdjustmentClient() {
               ) : (
                 <div className="p-4 space-y-3 pb-4">
                   {adjustments.map(adj => (
-                    <AdjustmentMobileCard key={adj.product.id} adj={adj} onUpdate={updateAdjustment} onRemove={removeAdjustment} />
+                    <AdjustmentMobileCard key={adj.product.id} adj={adj} onUpdate={updateAdjustment} onRemove={removeAdjustment} showExpirationColumn={showExpirationColumn} />
                   ))}
                 </div>
               )}

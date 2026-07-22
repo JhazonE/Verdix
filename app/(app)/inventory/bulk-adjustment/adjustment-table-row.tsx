@@ -12,10 +12,12 @@ export function AdjustmentTableRow({
   adj,
   onUpdate,
   onRemove,
+  showExpirationColumn,
 }: {
   adj: AdjustmentItem;
   onUpdate: (productId: string, updates: Partial<AdjustmentItem>) => void;
   onRemove: (productId: string) => void;
+  showExpirationColumn?: boolean;
 }) {
   const newStock = adj.type === 'remove' ? adj.product.stock - adj.quantity : adj.product.stock + adj.quantity;
   const isNegative = newStock < 0;
@@ -77,6 +79,20 @@ export function AdjustmentTableRow({
           )}
         </div>
       </TableCell>
+      {showExpirationColumn && (
+        <TableCell className="py-4">
+          {adj.product.isPerishable ? (
+            <Input
+              type="date"
+              className="h-8 text-xs w-[150px]"
+              value={adj.expirationDate || ''}
+              onChange={e => onUpdate(adj.product.id, { expirationDate: e.target.value })}
+            />
+          ) : (
+            <span className="text-xs text-muted-foreground/50">—</span>
+          )}
+        </TableCell>
+      )}
       <TableCell className="py-4">
         <Input
           placeholder="Optional note..."

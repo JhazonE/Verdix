@@ -39,6 +39,19 @@ export function useBulkAdjustment() {
   const [adjustments, setAdjustments] = useState<AdjustmentItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // The column only earns its width when it can actually be used: adding stock,
+  // with at least one perishable product in the batch.
+  const showExpirationColumn =
+    adjustmentType === 'add' && adjustments.some(a => Boolean(a.product.isPerishable));
+
+  // One delivery usually shares a single expiry, so let the user stamp them all
+  // at once instead of typing the same date on every row.
+  const applyExpirationToAll = (date: string) => {
+    setAdjustments(prev =>
+      prev.map(a => (a.product.isPerishable ? { ...a, expirationDate: date } : a))
+    );
+  };
+
   // Mobile: show config panel or list
   const [mobileView, setMobileView] = useState<'list' | 'config'>('list');
   // Mobile: show search overlay
@@ -137,6 +150,7 @@ export function useBulkAdjustment() {
           productId: a.product.id,
           quantity: a.quantity,
           reason: a.reason || note || 'Bulk Stock Adjustment',
+          expirationDate: a.product.isPerishable && adjustmentType === 'add' ? (a.expirationDate || null) : null,
         })),
         notes: note || 'Bulk Stock Adjustment',
         userId, warehouseId, targetWarehouseId, referenceNo, supplierId, adjustmentType
@@ -200,6 +214,8 @@ export function useBulkAdjustment() {
     setNote,
     adjustments,
     isProcessing,
+    showExpirationColumn,
+    applyExpirationToAll,
     mobileView,
     setMobileView,
     showMobileSearch,

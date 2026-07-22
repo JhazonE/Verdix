@@ -11,10 +11,12 @@ export function AdjustmentMobileCard({
   adj,
   onUpdate,
   onRemove,
+  showExpirationColumn,
 }: {
   adj: AdjustmentItem;
   onUpdate: (productId: string, updates: Partial<AdjustmentItem>) => void;
   onRemove: (productId: string) => void;
+  showExpirationColumn?: boolean;
 }) {
   const newStock = adj.type === 'remove' ? adj.product.stock - adj.quantity : adj.product.stock + adj.quantity;
   const isNegative = newStock < 0;
@@ -88,6 +90,18 @@ export function AdjustmentMobileCard({
             onChange={e => onUpdate(adj.product.id, { reason: e.target.value })}
           />
         </div>
+
+        {showExpirationColumn && adj.product.isPerishable && (
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase text-muted-foreground font-semibold">Expiry (Optional)</label>
+            <Input
+              type="date"
+              className="h-8 text-xs w-full"
+              value={adj.expirationDate || ''}
+              onChange={e => onUpdate(adj.product.id, { expirationDate: e.target.value })}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -25,6 +25,8 @@ export function ConfigFields({
   setSupplierId,
   note,
   setNote,
+  showExpirationColumn,
+  applyExpirationToAll,
 }: {
   compact?: boolean;
   adjustmentType: AdjustmentType;
@@ -41,6 +43,8 @@ export function ConfigFields({
   setSupplierId: (value: string) => void;
   note: string;
   setNote: (value: string) => void;
+  showExpirationColumn?: boolean;
+  applyExpirationToAll?: (date: string) => void;
 }) {
   return (
     <div className={cn("space-y-5", compact && "space-y-4")}>
@@ -143,6 +147,22 @@ export function ConfigFields({
           onChange={e => setNote(e.target.value)}
         />
       </div>
+
+      {showExpirationColumn && (
+        <div className="space-y-2">
+          <label className="text-xs font-semibold uppercase text-muted-foreground">
+            Expiry For All Perishables
+          </label>
+          <Input
+            type="date"
+            className="h-9"
+            onChange={e => applyExpirationToAll?.(e.target.value)}
+          />
+          <p className="text-[10px] text-muted-foreground">
+            Sets this date on every perishable item in the batch.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
