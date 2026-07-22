@@ -17,6 +17,7 @@ export interface InventoryBatch {
   source_type: string;
   notes: string | null;
   created_at: string;
+  expirationDate: string | null;
 }
 
 export function useBatchInventory(open: boolean) {

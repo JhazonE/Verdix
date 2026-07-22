@@ -131,6 +131,7 @@ export function BatchInventoryDrawer({ open, onOpenChange }: BatchInventoryDrawe
                   <TableHead className="text-xs">Product</TableHead>
                   <TableHead className="text-xs">PO Reference</TableHead>
                   <TableHead className="text-xs">Received</TableHead>
+                  <TableHead className="text-xs">Expiry</TableHead>
                   <TableHead className="text-right text-xs">Qty In</TableHead>
                   <TableHead className="text-right text-xs">Remaining</TableHead>
                   <TableHead className="text-xs w-[120px]">Usage</TableHead>
@@ -161,6 +162,9 @@ export function BatchInventoryDrawer({ open, onOpenChange }: BatchInventoryDrawe
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-muted-foreground">
                         {formatDate(batch.received_date)}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-muted-foreground">
+                        {batch.expirationDate ? formatDate(batch.expirationDate) : <span className="text-muted-foreground/50">—</span>}
                       </TableCell>
                       <TableCell className="text-right font-medium tabular-nums">
                         {formatQuantity(batch.quantity_in)}

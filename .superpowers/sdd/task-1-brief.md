@@ -1,123 +1,136 @@
-### Task 1: Width-aware text formatting helpers
+## Task 1: Migration — schema for expiration tracking
 
 **Files:**
-- Create: `lib/ejournal/text-format.ts`
-- Test: `tests/unit/ejournal-text-format.test.ts`
-- Modify: `tests/unit/run.ts`
+- Create: `scripts/migrations/100_add_expiration_tracking.ts`
+- Modify: `scripts/migrations/index.ts`
 
 **Interfaces:**
-- Consumes: nothing.
-- Produces:
-  - `colsFor(paperSize?: string): number` — 48 for `'80mm'`, else 32.
-  - `money(n: number): string` — `1234.5` → `"1,234.50"`.
-  - `center(text: string, width: number): string`
-  - `row(left: string, right: string, width: number): string` — left+right justified, truncated to width if it overflows.
-  - `divider(width: number, ch?: string): string` — `ch` repeated `width` times (default `'-'`).
-  - `wrap(text: string, width: number): string[]` — word-wrap, never returns empty array (returns `['']` for empty input).
+- Consumes: nothing
+- Produces: `products.is_perishable` (TINYINT(1) NOT NULL DEFAULT 0), `inventory_batches.expiration_date` (DATE NULL), index `idx_ib_expiration`
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the migration**
 
-```ts
-// tests/unit/ejournal-text-format.test.ts
-import assert from 'node:assert/strict';
-import { colsFor, money, center, row, divider, wrap } from '../../lib/ejournal/text-format';
+Create `scripts/migrations/100_add_expiration_tracking.ts`:
 
-assert.equal(colsFor('80mm'), 48, '80mm is 48 cols');
-assert.equal(colsFor('58mm'), 32, '58mm is 32 cols');
-assert.equal(colsFor(undefined), 32, 'default is 32 cols');
+```typescript
+import { registerMigration, Migration } from './runner';
+import { query } from '../../lib/mysql';
 
-assert.equal(money(1234.5), '1,234.50', 'money formats with commas and 2 decimals');
-assert.equal(money(0), '0.00', 'money zero');
+/**
+ * Expiration tracking for stock adjustments.
+ *
+ *   1. products.is_perishable — gates whether expiry inputs appear for a product.
+ *      Defaults to 0, so every existing product is non-perishable until marked.
+ *   2. inventory_batches.expiration_date — the source of truth. Per-batch, so a
+ *      June delivery and a July delivery of the same product keep separate dates,
+ *      which is what the existing FIFO deduction already assumes.
+ *
+ * products.expiration_date already exists (migration 052) and is retained as a
+ * denormalized cache of the soonest upcoming batch expiry, so screens already
+ * reading it keep working.
+ *
+ * Historical batches are deliberately NOT backfilled — there is no data to infer
+ * an expiry from, and guessing would make the expiring-soon report lie.
+ */
+const migration: Migration = {
+  name: '100_add_expiration_tracking',
+  timestamp: '2026-07-22_12-00-00',
 
-assert.equal(center('AB', 6), '  AB  ', 'center pads both sides');
-assert.equal(center('ABCDEFG', 4), 'ABCDEFG', 'center leaves overflow untouched');
-
-assert.equal(row('L', 'R', 6), 'L    R', 'row justifies to width');
-assert.equal(row('LEFT', 'RIGHT', 6).length <= 6, true, 'row truncates overflow to width');
-
-assert.equal(divider(4), '----', 'divider default dash');
-assert.equal(divider(3, '='), '===', 'divider custom char');
-
-assert.deepEqual(wrap('hello world foo', 5), ['hello', 'world', 'foo'], 'wrap splits on width');
-assert.deepEqual(wrap('', 5), [''], 'wrap empty returns single empty line');
-```
-
-- [ ] **Step 2: Register the test and run to verify it fails**
-
-Add `import './ejournal-text-format.test';` to `tests/unit/run.ts` (after the last import).
-Run: `npm run test:unit`
-Expected: FAIL — cannot find module `../../lib/ejournal/text-format`.
-
-- [ ] **Step 3: Write minimal implementation**
-
-```ts
-// lib/ejournal/text-format.ts
-export function colsFor(paperSize?: string): number {
-  return paperSize === '80mm' ? 48 : 32;
-}
-
-export function money(n: number): string {
-  return (Number(n) || 0).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-export function center(text: string, width: number): string {
-  if (text.length >= width) return text;
-  const total = width - text.length;
-  const left = Math.floor(total / 2);
-  return ' '.repeat(left) + text + ' '.repeat(total - left);
-}
-
-export function row(left: string, right: string, width: number): string {
-  const spaces = width - left.length - right.length;
-  if (spaces <= 0) return `${left} ${right}`.substring(0, width);
-  return `${left}${' '.repeat(spaces)}${right}`;
-}
-
-export function divider(width: number, ch: string = '-'): string {
-  return ch.repeat(width);
-}
-
-export function wrap(text: string, width: number): string[] {
-  const words = text.split(' ');
-  const lines: string[] = [];
-  let current = '';
-  for (const word of words) {
-    if (word.length > width) {
-      if (current) { lines.push(current); current = ''; }
-      let rest = word;
-      while (rest.length > width) {
-        lines.push(rest.substring(0, width));
-        rest = rest.substring(width);
-      }
-      current = rest;
-      continue;
-    }
-    const candidate = current ? `${current} ${word}` : word;
-    if (candidate.length > width) {
-      lines.push(current);
-      current = word;
+  async up(): Promise<void> {
+    const [perishableCol]: any = await query(`
+      SELECT COUNT(*) AS cnt
+      FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'products'
+        AND COLUMN_NAME = 'is_perishable'
+    `);
+    if (perishableCol?.cnt > 0) {
+      console.log('• products.is_perishable already exists — skipping');
     } else {
-      current = candidate;
+      await query(`
+        ALTER TABLE products
+        ADD COLUMN is_perishable TINYINT(1) NOT NULL DEFAULT 0
+      `);
+      console.log('✅ Added products.is_perishable');
     }
+
+    const [expiryCol]: any = await query(`
+      SELECT COUNT(*) AS cnt
+      FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'inventory_batches'
+        AND COLUMN_NAME = 'expiration_date'
+    `);
+    if (expiryCol?.cnt > 0) {
+      console.log('• inventory_batches.expiration_date already exists — skipping');
+      return;
+    }
+
+    await query(`
+      ALTER TABLE inventory_batches
+      ADD COLUMN expiration_date DATE NULL
+    `);
+    console.log('✅ Added inventory_batches.expiration_date');
+
+    // Indexed because the expiring-soon report filters on a date range across
+    // every batch in the system.
+    await query(`
+      CREATE INDEX idx_ib_expiration
+      ON inventory_batches (expiration_date)
+    `);
+    console.log('✅ Added idx_ib_expiration');
+  },
+
+  async down(): Promise<void> {
+    await query(`DROP INDEX idx_ib_expiration ON inventory_batches`);
+    await query(`ALTER TABLE inventory_batches DROP COLUMN expiration_date`);
+    console.log('✅ Dropped inventory_batches.expiration_date');
+
+    await query(`ALTER TABLE products DROP COLUMN is_perishable`);
+    console.log('✅ Dropped products.is_perishable');
   }
-  if (current) lines.push(current);
-  return lines.length ? lines : [''];
-}
+};
+
+registerMigration(migration);
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 2: Register the migration**
 
-Run: `npm run test:unit`
-Expected: PASS (all existing tests plus the new file).
+In `scripts/migrations/index.ts`, find the line `import './099_add_mc_number';` and add directly below it:
 
-- [ ] **Step 5: Commit**
+```typescript
+import './100_add_expiration_tracking';
+```
+
+- [ ] **Step 3: Run the migration**
+
+Run: `npm run migrate`
+Expected: output contains `✅ Added products.is_perishable`, `✅ Added inventory_batches.expiration_date`, `✅ Added idx_ib_expiration`
+
+- [ ] **Step 4: Verify the schema landed**
+
+Run:
+```bash
+node -e "require('dotenv').config();const m=require('mysql2/promise');(async()=>{const c=await m.createConnection({host:process.env.DB_HOST,port:process.env.DB_PORT,user:process.env.DB_USER,password:process.env.DB_PASSWORD,database:process.env.DB_NAME});const [r]=await c.query(\"SELECT TABLE_NAME,COLUMN_NAME,IS_NULLABLE,COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND ((TABLE_NAME='products' AND COLUMN_NAME='is_perishable') OR (TABLE_NAME='inventory_batches' AND COLUMN_NAME='expiration_date'))\");console.table(r);await c.end();})()"
+```
+Expected: two rows — `products.is_perishable` (NO, `0`) and `inventory_batches.expiration_date` (YES, `NULL`).
+
+- [ ] **Step 5: Verify rollback works, then re-apply**
+
+Run: `npm run migrate:down`
+Expected: `✅ Dropped inventory_batches.expiration_date` and `✅ Dropped products.is_perishable`
+
+Run: `npm run migrate`
+Expected: both columns re-added. This proves `down()` is correct — do not skip it.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add lib/ejournal/text-format.ts tests/unit/ejournal-text-format.test.ts tests/unit/run.ts
-git commit -m "feat(ejournal): width-aware text formatting helpers"
+git add scripts/migrations/100_add_expiration_tracking.ts scripts/migrations/index.ts
+git commit -m "feat(inventory): add expiration tracking columns
+
+products.is_perishable gates the UI; inventory_batches.expiration_date
+is the per-batch source of truth."
 ```
 
 ---

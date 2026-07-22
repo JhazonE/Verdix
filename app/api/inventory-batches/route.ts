@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     const total = countResult[0]?.total ?? 0;
 
     const rows: any[] = await query(
-      `SELECT 
+      `SELECT
          ib.id,
          ib.product_id,
          p.name as product_name,
@@ -55,7 +55,8 @@ export async function GET(request: NextRequest) {
          ib.selling_price,
          ib.source_type,
          ib.notes,
-         ib.created_at
+         ib.created_at,
+         DATE_FORMAT(ib.expiration_date, '%Y-%m-%d') as expirationDate
        FROM inventory_batches ib
        LEFT JOIN products p ON ib.product_id = p.id
        LEFT JOIN purchase_orders po ON ib.purchase_order_id = po.id
