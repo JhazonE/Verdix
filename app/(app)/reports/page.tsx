@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import Link from 'next/link';
-import { Package, ArrowLeftRight, AlertTriangle, TrendingUp, ClipboardList, Receipt, Package2, Percent, Undo, Users, BarChart, LineChart, PhilippinePeso, ShoppingCart, Layers, CreditCard, ShieldCheck, Landmark, Calendar } from 'lucide-react';
+import { Package, ArrowLeftRight, AlertTriangle, TrendingUp, ClipboardList, Receipt, Package2, Percent, Undo, Users, BarChart, LineChart, PhilippinePeso, ShoppingCart, Layers, CreditCard, ShieldCheck, Landmark, Calendar, CalendarClock } from 'lucide-react';
 
 export default function ReportsPage() {
   return (
@@ -90,6 +90,18 @@ export default function ReportsPage() {
                   Adjustment Report
                 </CardTitle>
                 <CardDescription>Log of damaged, lost, or corrected stock.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+
+          <Link href="/reports/expiring-soon">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CalendarClock className="h-5 w-5 text-red-500" />
+                  Expiring Soon
+                </CardTitle>
+                <CardDescription>Stock on hand approaching its expiration date.</CardDescription>
               </CardHeader>
             </Card>
           </Link>
