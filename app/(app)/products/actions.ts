@@ -288,6 +288,7 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
         availability: product.availability,
         earns_points: product.earns_points === 1,
         expirationDate: product.expiration_date,
+        isPerishable: Boolean(product.is_perishable),
         createdAt: product.created_at,
         updatedAt: product.updated_at,
         hasPendingApproval: product.has_pending_approval === 1,

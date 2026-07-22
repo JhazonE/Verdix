@@ -24,6 +24,7 @@ export interface Product {
   taxType?: 'VAT' | 'NON_VAT' | 'ZERO_RATED' | 'VAT_EXEMPT';
   earnsPoints?: boolean;
   expirationDate?: string;
+  isPerishable?: boolean;
 
   // Accounting
   incomeAccount?: string;
