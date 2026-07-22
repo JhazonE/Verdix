@@ -214,7 +214,7 @@ import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
 import { withTransaction } from '@/lib/mysql';
 import { deductFamilyStock, addFamilyStock, findUltimateRoot } from '@/lib/family-sync';
 
-export async function adjustStock(productId: string, quantity: number, reason: string, userId: string = 'system', isInternalFinalization: boolean = false) {
+export async function adjustStock(productId: string, quantity: number, reason: string, userId: string = 'system', isInternalFinalization: boolean = false, expirationDate?: string | null) {
   try {
     // 1. Check if multi-level approval is required
     const isApprovalRequired = !isInternalFinalization && await checkApprovalRequired('STOCK_ADJUSTMENT');
@@ -232,16 +232,17 @@ export async function adjustStock(productId: string, quantity: number, reason: s
 
       // Submit to approval queue instead of executing
       console.log('Stock adjustment submitted for approval:', { productId, quantity, reason });
-      const { queueId, pendingApproval } = await submitToApprovalQueue('STOCK_ADJUSTMENT', { 
-        productId, 
-        quantity, 
+      const { queueId, pendingApproval } = await submitToApprovalQueue('STOCK_ADJUSTMENT', {
+        productId,
+        quantity,
         reason,
         productName: productInfo.name,
         productSku: productInfo.sku,
         productBarcode: productInfo.barcode,
         warehouseName: productInfo.warehouse_name,
         shelfName: productInfo.shelf_name,
-        currentStock: parseInt(productInfo.stock || 0)
+        currentStock: parseInt(productInfo.stock || 0),
+        expirationDate: expirationDate || null
       }, userId);
       
       if (pendingApproval) {
@@ -288,14 +289,14 @@ export async function adjustStock(productId: string, quantity: number, reason: s
         if (quantity < 0) {
           await deductFamilyStock(rootId, rootQty, adjustmentId, 'adjustment', reason, connection);
         } else {
-          await addFamilyStock(rootId, rootQty, adjustmentId, 'adjustment', reason, connection);
+          await addFamilyStock(rootId, rootQty, adjustmentId, 'adjustment', reason, connection, 0, expirationDate);
         }
       } else {
         // This IS the root — propagate down through all descendants
         if (quantity < 0) {
           await deductFamilyStock(productId, Math.abs(quantity), adjustmentId, 'adjustment', reason, connection);
         } else {
-          await addFamilyStock(productId, quantity, adjustmentId, 'adjustment', reason, connection);
+          await addFamilyStock(productId, quantity, adjustmentId, 'adjustment', reason, connection, 0, expirationDate);
         }
       }
       return { success: true, adjustmentId, newStock };
