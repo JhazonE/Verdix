@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import mysql from 'mysql2/promise';
 import { generateBatchId } from './batch-utils';
 import { deductFromBatches } from './batch-deduction';
+import { normalizeExpirationDate, refreshProductExpirationCache } from './expiration';
 
 /**
  * Records a stock movement in the database
@@ -133,7 +134,8 @@ export async function recordAdjustmentMovement(
   productId: string,
   productName: string,
   quantityChange: number,
-  reason: string
+  reason: string,
+  expirationDate?: string | null
 ): Promise<StockMovement> {
   // Get current stock for the product
   const currentStockResult = await query('SELECT stock FROM products WHERE id = ?', [productId]);
@@ -193,13 +195,19 @@ export async function recordAdjustmentMovement(
       const unitCost = costInfo?.[0]?.cost ? parseFloat(costInfo[0].cost) : 0;
       const sellingPrice = costInfo?.[0]?.price ? parseFloat(costInfo[0].price) : 0;
 
+      const normalizedExpiry = normalizeExpirationDate(expirationDate);
+
       await query(`
         INSERT INTO inventory_batches
-          (id, product_id, received_date, quantity_in, quantity_remaining, unit_cost, selling_price, source_type, notes)
-        VALUES (?, ?, CURDATE(), ?, ?, ?, ?, 'adjustment', ?)
+          (id, product_id, received_date, quantity_in, quantity_remaining, unit_cost, selling_price, source_type, notes, expiration_date)
+        VALUES (?, ?, CURDATE(), ?, ?, ?, ?, 'adjustment', ?, ?)
       `, [
-        batchId, productId, quantityChange, quantityChange, unitCost, sellingPrice, `Auto-generated from adjustment: ${reason}`
+        batchId, productId, quantityChange, quantityChange, unitCost, sellingPrice, `Auto-generated from adjustment: ${reason}`, normalizedExpiry
       ]);
+
+      if (normalizedExpiry) {
+        await refreshProductExpirationCache(productId);
+      }
     } else if (quantityChange < 0) {
       // DECREASE: Deduct from existing batches using FIFO
       // This is critical for Physical Counts that reduce stock to prevent "exhausted" batch errors
@@ -318,7 +326,8 @@ export async function updateStockAndRecordMovement(
   referenceId?: string,
   referenceType?: 'sale' | 'purchase' | 'adjustment' | 'return' | 'transfer',
   notes?: string,
-  connection?: mysql.PoolConnection | mysql.Pool
+  connection?: mysql.PoolConnection | mysql.Pool,
+  expirationDate?: string | null
 ): Promise<StockMovement> {
   // Get current product info
   const productSql = 'SELECT name, stock FROM products WHERE id = ?';
@@ -418,26 +427,33 @@ export async function updateStockAndRecordMovement(
         const unitCost = costInfo?.[0]?.cost ? parseFloat(costInfo[0].cost) : 0;
         const sellingPrice = costInfo?.[0]?.price ? parseFloat(costInfo[0].price) : 0;
 
+        const normalizedExpiry = normalizeExpirationDate(expirationDate);
+
         const batchSql = `
           INSERT INTO inventory_batches
-            (id, product_id, received_date, quantity_in, quantity_remaining, unit_cost, selling_price, source_type, notes)
-          VALUES (?, ?, CURDATE(), ?, ?, ?, ?, ?, ?)
+            (id, product_id, received_date, quantity_in, quantity_remaining, unit_cost, selling_price, source_type, notes, expiration_date)
+          VALUES (?, ?, CURDATE(), ?, ?, ?, ?, ?, ?, ?)
         `;
         const batchParams = [
-          batchId, 
-          productId, 
-          numericChange, 
-          numericChange, 
-          unitCost, 
-          sellingPrice, 
-          movementType, 
-          notes ? `Auto-batch for ${movementType}: ${notes}` : `Auto-batch for ${movementType}`
+          batchId,
+          productId,
+          numericChange,
+          numericChange,
+          unitCost,
+          sellingPrice,
+          movementType,
+          notes ? `Auto-batch for ${movementType}: ${notes}` : `Auto-batch for ${movementType}`,
+          normalizedExpiry
         ];
 
         if (connection) {
           await connection.query(batchSql, batchParams);
         } else {
           await query(batchSql, batchParams);
+        }
+
+        if (normalizedExpiry) {
+          await refreshProductExpirationCache(productId, connection);
         }
       } else if (numericChange < 0) {
         // DECREASE: Deduct from batches (FIFO)
