@@ -97,6 +97,7 @@ import './096_create_membership_payments';
 import './097_add_product_approval_setting';
 import './098_fix_si_number_initial_value';
 import './099_add_mc_number';
+import './100_add_expiration_tracking';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';
