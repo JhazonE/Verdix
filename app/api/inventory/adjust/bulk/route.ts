@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     // 2. Process each adjustment
     await withTransaction(async (connection) => {
       for (const adj of adjustments) {
-        const { productId, quantity, reason, targetProductId: itemTargetProductId } = adj;
+        const { productId, quantity, reason, targetProductId: itemTargetProductId, expirationDate } = adj;
 
         if (!productId || quantity === undefined) {
           throw new Error(`Invalid adjustment details for product ${productId}`);
@@ -80,7 +80,8 @@ export async function POST(request: NextRequest) {
             warehouseName: resolvedWarehouseName,
             referenceNo,
             supplierId,
-            adjustmentType
+            adjustmentType,
+            expirationDate: expirationDate || null
           };
 
           if (isTransfer) {
@@ -177,7 +178,7 @@ export async function POST(request: NextRequest) {
         if (finalQuantity < 0) {
           await deductFamilyStock(rootId, syncQty, adjustmentId, 'adjustment', finalReason, connection);
         } else {
-          await addFamilyStock(rootId, syncQty, adjustmentId, 'adjustment', finalReason, connection);
+          await addFamilyStock(rootId, syncQty, adjustmentId, 'adjustment', finalReason, connection, 0, expirationDate);
         }
 
         results.push({ productId, productName: product.name, newStock });

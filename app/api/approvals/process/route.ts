@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
             if (txData.adjustmentType === 'remove' && adjQty > 0) {
               adjQty = -adjQty;
             }
-            const adjResult = await adjustStock(txData.productId, adjQty, txData.reason, item.created_by, true);
+            const adjResult = await adjustStock(txData.productId, adjQty, txData.reason, item.created_by, true, txData.expirationDate || null);
             result = { success: adjResult.success, error: (adjResult as any).error || '' };
           }
         } else if (item.transaction_type === 'PURCHASE_ORDER') {
