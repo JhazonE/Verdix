@@ -22,6 +22,10 @@ export async function GET(request: NextRequest) {
     const conditions: string[] = [];
     const params: any[] = [];
 
+    // Services are excluded: they carry no stock, so they would otherwise pad
+    // this valuation report with zero-value rows and inflate totalItems.
+    conditions.push("p.type = 'standard'");
+
     if (category && category !== 'all') {
       conditions.push('p.category = ?');
       params.push(category);

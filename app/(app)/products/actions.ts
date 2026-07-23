@@ -1537,7 +1537,7 @@ export async function getOutOfStockProducts() {
       SELECT p.*, w.name as warehouse_name
       FROM products p
       LEFT JOIN warehouses w ON p.warehouse_id = w.id
-      WHERE p.stock <= 0
+      WHERE p.stock <= 0 AND p.type = 'standard'
       ORDER BY p.name ASC
     `;
     return await query(sql);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { withTransaction, query } from '@/lib/mysql';
 import { addFamilyStock, deductFamilyStock, findUltimateRoot } from '@/lib/family-sync';
+import { isService } from '@/lib/product-type';
 
 // GET endpoint to fetch stock adjustments
 export async function GET(request: NextRequest) {
@@ -84,12 +85,15 @@ export async function POST(request: NextRequest) {
 
     return await withTransaction(async (connection) => {
       // Get current product stock
-      const [productResult]: any = await connection.query('SELECT id, name, stock FROM products WHERE id = ?', [productId]);
+      const [productResult]: any = await connection.query('SELECT id, name, stock, type FROM products WHERE id = ?', [productId]);
       if (!productResult || productResult.length === 0) {
         throw new Error('Product not found');
       }
 
       const product = productResult[0];
+      if (isService(product)) {
+        throw new Error('Services do not carry stock and cannot be adjusted');
+      }
       const currentStock = Number(product.stock || 0);
       const newStock = currentStock + quantity;
 
@@ -134,8 +138,14 @@ export async function POST(request: NextRequest) {
         timestamp: new Date().toISOString()
       });
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating stock adjustment:', error);
+    if (error?.message === 'Services do not carry stock and cannot be adjusted') {
+      return NextResponse.json(
+        { success: false, error: error.message },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
       { success: false, error: 'Failed to create stock adjustment' },
       { status: 500 }

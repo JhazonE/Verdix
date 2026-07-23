@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { Product } from '@/lib/types';
+import { isService } from '@/lib/product-type';
 
 import { StockAdjustmentDialog } from './stock-adjustment-dialog/StockAdjustmentDialog';
 import { StockTransferDialog } from './stock-transfer-dialog/StockTransferDialog';
@@ -21,6 +22,10 @@ export function ProductRowActions({ product, onSuccess, requireAdjustmentConfirm
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const [isCountOpen, setIsCountOpen] = useState(false);
   const [isTransferOpen, setIsTransferOpen] = useState(false);
+
+  // Services have no stock to adjust, count, or transfer — the API rejects
+  // these anyway (defense in depth), but hide the dead-end menu items too.
+  const isProductService = isService(product);
 
   return (
     <>
@@ -34,43 +39,51 @@ export function ProductRowActions({ product, onSuccess, requireAdjustmentConfirm
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Actions</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => setIsAdjustOpen(true)}>
-            <Pencil className="mr-2 h-4 w-4 text-muted-foreground" />
-            <span>Adjust Stock</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setIsCountOpen(true)}>
-            <ClipboardCheck className="mr-2 h-4 w-4 text-muted-foreground" />
-            <span>Physical Count</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setIsTransferOpen(true)}>
-            <MoveHorizontal className="mr-2 h-4 w-4 text-muted-foreground" />
-            <span>Transfer Stock</span>
-          </DropdownMenuItem>
+          {!isProductService && (
+            <>
+              <DropdownMenuItem onSelect={() => setIsAdjustOpen(true)}>
+                <Pencil className="mr-2 h-4 w-4 text-muted-foreground" />
+                <span>Adjust Stock</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setIsCountOpen(true)}>
+                <ClipboardCheck className="mr-2 h-4 w-4 text-muted-foreground" />
+                <span>Physical Count</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setIsTransferOpen(true)}>
+                <MoveHorizontal className="mr-2 h-4 w-4 text-muted-foreground" />
+                <span>Transfer Stock</span>
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <StockAdjustmentDialog
-        product={product}
-        onSuccess={onSuccess}
-        requireConfirmation={requireAdjustmentConfirmation}
-        open={isAdjustOpen}
-        onOpenChange={setIsAdjustOpen}
-      />
-      <StockAdjustmentDialog
-        product={product}
-        defaultReason="Physical Count"
-        onSuccess={onSuccess}
-        requireConfirmation={requireAdjustmentConfirmation}
-        open={isCountOpen}
-        onOpenChange={setIsCountOpen}
-      />
-      <StockTransferDialog
-        product={product}
-        onSuccess={onSuccess}
-        requireConfirmation={requireTransferConfirmation}
-        open={isTransferOpen}
-        onOpenChange={setIsTransferOpen}
-      />
+      {!isProductService && (
+        <>
+          <StockAdjustmentDialog
+            product={product}
+            onSuccess={onSuccess}
+            requireConfirmation={requireAdjustmentConfirmation}
+            open={isAdjustOpen}
+            onOpenChange={setIsAdjustOpen}
+          />
+          <StockAdjustmentDialog
+            product={product}
+            defaultReason="Physical Count"
+            onSuccess={onSuccess}
+            requireConfirmation={requireAdjustmentConfirmation}
+            open={isCountOpen}
+            onOpenChange={setIsCountOpen}
+          />
+          <StockTransferDialog
+            product={product}
+            onSuccess={onSuccess}
+            requireConfirmation={requireTransferConfirmation}
+            open={isTransferOpen}
+            onOpenChange={setIsTransferOpen}
+          />
+        </>
+      )}
     </>
   );
 }

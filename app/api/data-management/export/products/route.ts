@@ -10,6 +10,7 @@ export async function GET() {
     const products = await query(`
       SELECT
         name,
+        type,
         barcode,
         description,
         category,
