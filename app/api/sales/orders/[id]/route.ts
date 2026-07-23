@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withTransaction } from '../../../../../lib/mysql';
 import { addFamilyStock, findUltimateRoot } from '../../../../../lib/family-sync';
+import { isService } from '@/lib/product-type';
 
 // Statuses for which inventory has already been deducted (deduction happens at delivery).
 const STOCK_DEDUCTED_STATUSES = ['Delivered', 'Invoiced', 'Returned'];
@@ -34,8 +35,17 @@ export async function DELETE(
             const wasStockDeducted = STOCK_DEDUCTED_STATUSES.includes(orderStatus);
 
             if (wasStockDeducted) {
-                const [items]: any = await connection.query('SELECT product_id, quantity FROM sales_order_items WHERE sales_order_id = ?', [orderId]);
-                for (const item of items) {
+                // Services are excluded: no stock left on delivery, so there is
+                // nothing to give back. Restoring them would invent inventory
+                // for something that has none.
+                const [items]: any = await connection.query(
+                    `SELECT soi.product_id, soi.quantity, p.type
+                     FROM sales_order_items soi
+                     LEFT JOIN products p ON p.id = soi.product_id
+                     WHERE soi.sales_order_id = ?`,
+                    [orderId]
+                );
+                for (const item of items.filter((i: any) => !isService(i))) {
                     const { rootId, factorToRoot } = await findUltimateRoot(item.product_id, connection as any);
                     const quantityToAddInRootUnits = item.quantity / factorToRoot;
                     await addFamilyStock(
