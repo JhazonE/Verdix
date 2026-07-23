@@ -2,6 +2,7 @@
 
 import { Wand2 } from 'lucide-react';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
@@ -15,6 +16,7 @@ import { addBrand, updateBrand, addCategory, updateCategory, addSubcategory, upd
 export function BasicInfoTab() {
   const {
     form,
+    product,
     brands,
     categories,
     subcategories,
@@ -28,6 +30,15 @@ export function BasicInfoTab() {
 
   return (
     <>
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium">Product Type:</span>
+        <Badge variant="secondary">
+          {product.type === 'service' ? 'Service' : 'Standard'}
+        </Badge>
+        <span className="text-xs text-muted-foreground">
+          Cannot be changed after creation.
+        </span>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField
           control={form.control}
