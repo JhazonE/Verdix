@@ -32,6 +32,7 @@ export function AddProductDialog(props: UseAddProductFormProps) {
     tabErrors,
     markupSource,
     onSubmit,
+    itemType, setItemType,
   } = controller;
 
   return (
@@ -54,6 +55,40 @@ export function AddProductDialog(props: UseAddProductFormProps) {
             <Form {...form}>
               <form id="add-product-form" onSubmit={form.handleSubmit(onSubmit)}>
                 <div className="h-full">
+                  {/* Above the tabs on purpose: this changes the whole form,
+                      not one section. */}
+                  <div className="flex items-center gap-3 px-6 pb-4">
+                    <span className="text-sm font-medium">Product Type:</span>
+                    <div className="inline-flex rounded-lg border p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setItemType('standard')}
+                        className={`rounded-md px-4 py-1.5 text-sm transition-colors ${
+                          itemType === 'standard'
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Standard
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setItemType('service')}
+                        className={`rounded-md px-4 py-1.5 text-sm transition-colors ${
+                          itemType === 'service'
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        Service
+                      </button>
+                    </div>
+                    {itemType === 'service' && (
+                      <span className="text-xs text-muted-foreground">
+                        No stock tracking — always available for sale.
+                      </span>
+                    )}
+                  </div>
                   <Tabs defaultValue="basic" className="w-full h-full">
                     <TabsList className="w-full h-auto justify-start rounded-none border-b bg-transparent p-0">
                       <TabsTrigger
@@ -77,13 +112,15 @@ export function AddProductDialog(props: UseAddProductFormProps) {
                         Price Levels
                         {tabErrors.priceLevels && <span className="ml-1.5 inline-flex h-2 w-2 rounded-full bg-destructive" />}
                       </TabsTrigger>
-                      <TabsTrigger
-                        value="conversion"
-                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
-                      >
-                        Conversion
-                        {tabErrors.conversion && <span className="ml-1.5 inline-flex h-2 w-2 rounded-full bg-destructive" />}
-                      </TabsTrigger>
+                      {itemType === 'standard' && (
+                        <TabsTrigger
+                          value="conversion"
+                          className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
+                        >
+                          Conversion
+                          {tabErrors.conversion && <span className="ml-1.5 inline-flex h-2 w-2 rounded-full bg-destructive" />}
+                        </TabsTrigger>
+                      )}
                       <TabsTrigger
                         value="loyalty"
                         className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
@@ -97,9 +134,11 @@ export function AddProductDialog(props: UseAddProductFormProps) {
                     <TabsContent value="inventory" className="space-y-4 p-6">
                       <InventoryTab />
                     </TabsContent>
-                    <TabsContent value="conversion" className="space-y-4 p-6">
-                      <ConversionTab />
-                    </TabsContent>
+                    {itemType === 'standard' && (
+                      <TabsContent value="conversion" className="space-y-4 p-6">
+                        <ConversionTab />
+                      </TabsContent>
+                    )}
                     <TabsContent value="price-levels" className="space-y-4 p-6">
                       <PriceLevelsTab />
                     </TabsContent>
