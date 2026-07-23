@@ -471,7 +471,10 @@ export async function addProduct(
         reorder_point: formData.reorderPoint || formData.supplierMappings?.find(m => m.isPrimary)?.rop || 0,
         avg_daily_sales: 0,
         price: formData.price,
-        cost: formData.cost || null,
+        // `|| null` would turn a deliberate 0 into NULL. That matters for
+        // services: cost is required at creation precisely so cost_at_sale is
+        // never NULL, and 0 is a legitimate answer for a pure-margin service.
+        cost: formData.cost ?? null,
         sku: formData.sku,
         barcode: formData.barcode || null,
         image_url: formData.image || null,
