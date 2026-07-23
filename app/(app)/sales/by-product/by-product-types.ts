@@ -17,7 +17,14 @@ export type ProductSalesData = {
 };
 
 export type TransactionData = {
+  /**
+   * The sale ID. NOT unique across rows: a return shares the sale_id of the
+   * sale it reverses, so a sale and its return both carry this same value.
+   * Use `posTransactionId` when a unique identifier is needed.
+   */
   id: string;
+  /** Unique per transaction row — the sale and its return differ here. */
+  posTransactionId: string;
   orderNumber: string;
   date: string;
   customer: { name: string };

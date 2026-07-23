@@ -107,7 +107,10 @@ export function ByProductTable({
                                         (i: any) => i.productId === row.original.product.id
                                       );
                                       return (
-                                        <TableRow key={tx.id} className="hover:bg-muted/50 border-0">
+                                        // Keyed by posTransactionId, not id: a
+                                        // return carries the sale_id of the sale
+                                        // it reverses, so both rows share `id`.
+                                        <TableRow key={tx.posTransactionId ?? tx.id} className="hover:bg-muted/50 border-0">
                                           <TableCell>
                                             {format(new Date(tx.date), 'MMM dd, yyyy HH:mm')}
                                           </TableCell>
