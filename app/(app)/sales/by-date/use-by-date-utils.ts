@@ -83,7 +83,7 @@ export function useByDateUtils({ salesData, interval, dateRange, terminal, payme
   const exportToCSV = async () => {
     const data = await fetchAllSalesForExport();
     const headers = [
-      'Date', 'Terminal', 'OR Start', 'OR End', 'Transaction Count', 'Discount', 'Revenue',
+      'Date', 'Terminal', 'SI No. Start', 'SI No. End', 'Transaction Count', 'Discount', 'Revenue',
       'Vatable Sales', 'VAT Amount', 'VAT Exempt', 'Zero Rated', 'Non-VAT', 'Cost', 'Profit',
     ];
     const csvRows = data.map((item) => [
@@ -131,7 +131,7 @@ export function useByDateUtils({ salesData, interval, dateRange, terminal, payme
           <table>
             <thead>
               <tr>
-                <th>Date</th><th>OR Range</th>
+                <th>Date</th><th>SI No. Range</th>
                 <th class="text-right">Discount</th><th class="text-right">Revenue</th>
                 <th class="text-right">Vatable</th><th class="text-right">VAT</th>
                 <th class="text-right">Exempt</th><th class="text-right">Zero</th>

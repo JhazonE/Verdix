@@ -65,8 +65,16 @@ export async function GET(request: NextRequest) {
         SELECT
             ${selectDate} as date,
             COUNT(DISTINCT pt.id) as transaction_count,
-            MIN(pt.order_number) as start_or,
-            MAX(pt.order_number) as end_or,
+            -- SI numbers, not order numbers: this column reports the invoice
+            -- range for the day, which is what BIR filing is reconciled
+            -- against.
+            --
+            -- Rows with no SI number are excluded rather than falling back to
+            -- the order number: mixing the two numbering schemes in one range
+            -- (e.g. "000007 - 20") reads as a real invoice span and would be
+            -- wrong to file against. A day with no SI numbers shows "-".
+            MIN(pt.si_number) as start_or,
+            MAX(pt.si_number) as end_or,
             SUM(pt.total_amount) as total_revenue,
             SUM(pt.discount_amount) as total_discount,
             SUM(pt.tax_amount) as total_tax,

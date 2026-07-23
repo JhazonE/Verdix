@@ -115,7 +115,7 @@ export function useByDateTable({ filteredSalesData, totalPages, formatDate, form
       },
       {
         id: 'orRange',
-        header: 'OR Range',
+        header: 'SI No. Range',
         cell: ({ row }) =>
           row.original.startOR && row.original.endOR ? (
             <div className="flex flex-col text-xs text-muted-foreground">
