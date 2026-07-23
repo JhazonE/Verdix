@@ -93,7 +93,7 @@ export function ByProductTable({
                                 <TableHeader>
                                   <TableRow className="bg-muted hover:bg-muted">
                                     <TableHead className="font-semibold">Date</TableHead>
-                                    <TableHead className="font-semibold">Order #</TableHead>
+                                    <TableHead className="font-semibold">Order # / SI No.</TableHead>
                                     <TableHead className="font-semibold">Customer</TableHead>
                                     <TableHead className="font-semibold text-right">Qty</TableHead>
                                     <TableHead className="font-semibold text-right">Price</TableHead>
@@ -114,7 +114,16 @@ export function ByProductTable({
                                           <TableCell>
                                             {format(new Date(tx.date), 'MMM dd, yyyy HH:mm')}
                                           </TableCell>
-                                          <TableCell>{tx.orderNumber}</TableCell>
+                                          {/* Both numbers, not one: an SI number
+                                              can repeat across orders, so the
+                                              order number is what identifies
+                                              the row. */}
+                                          <TableCell>
+                                            {tx.orderNumber}
+                                            {tx.siNumber ? (
+                                              <span className="text-muted-foreground"> / {tx.siNumber}</span>
+                                            ) : null}
+                                          </TableCell>
                                           <TableCell>{tx.customer?.name}</TableCell>
                                           <TableCell className="text-right">
                                             {productItem?.quantity || 0}

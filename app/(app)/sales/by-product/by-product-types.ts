@@ -3,6 +3,7 @@ export type ProductSalesData = {
     id: string;
     name: string;
     sku: string;
+    barcode: string | null;
     category: string;
     brand: string;
     unitOfMeasure: string;
@@ -26,6 +27,8 @@ export type TransactionData = {
   /** Unique per transaction row — the sale and its return differ here. */
   posTransactionId: string;
   orderNumber: string;
+  /** BIR sales invoice number. Nullable on historical rows. */
+  siNumber: string | null;
   date: string;
   customer: { name: string };
   quantity: number;

@@ -105,11 +105,15 @@ export function useByProductTable({ productSales, totalPages, dateRange, termina
         enableHiding: false,
       },
       {
-        id: 'sku',
-        accessorFn: (row) => row.product.sku,
-        header: 'Code',
+        id: 'barcode',
+        accessorFn: (row) => row.product.barcode,
+        header: 'Barcode',
         enableSorting: false,
-        cell: ({ getValue }) => <span className="font-medium">{getValue() as string}</span>,
+        // Barcode is nullable — services and hand-entered products often have
+        // none, so fall back to a dash rather than rendering an empty cell.
+        cell: ({ getValue }) => (
+          <span className="font-medium">{(getValue() as string) || '—'}</span>
+        ),
       },
       {
         id: 'name',
