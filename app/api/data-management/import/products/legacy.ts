@@ -36,12 +36,16 @@ export async function legacyProductCsvImport(request: NextRequest) {
         } else {
           await query(
             `INSERT INTO products (id, name, sku, barcode, description, category, brand, subcategory, unit_of_measure,
-               cost, price, stock, reorder_point, parent_id, image_url, conversion_factor, warehouse_id, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+               cost, price, stock, reorder_point, parent_id, image_url, conversion_factor, warehouse_id, type, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
             [uuidv4(), p.name, p.sku, p.barcode || null, p.description || '', p.category || 'General', p.brand || null,
               p.subcategory || null, p.unit || 'pcs', parseFloat(p.cost_price) || 0, parseFloat(p.selling_price) || 0,
               parseFloat(p.stock_quantity) || 0, parseFloat(p.reorder_point) || 0, p.parent_id || null, p.image_url || null,
-              parseFloat(p.conversion_factor) || 1, defaultWarehouseId],
+              parseFloat(p.conversion_factor) || 1, defaultWarehouseId,
+              // Explicit ternary rather than passing the raw cell through: an
+              // unrecognised value would be rejected by MySQL in strict mode.
+              // Matches addProduct() and the JSON import path.
+              String(p.type || '').toLowerCase() === 'service' ? 'service' : 'standard'],
           );
           successCount++;
         }
