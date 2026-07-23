@@ -14,7 +14,13 @@
 - **DB column:** `products.type ENUM('standard','service') NOT NULL DEFAULT 'standard'`
 - **Migration guard:** Follow the existing `information_schema` existence-check pattern (see `scripts/migrations/100_add_expiration_tracking.ts`) so re-running is safe.
 - **No ORM:** Raw SQL only, via `lib/mysql.ts`.
+- **DO NOT run `npm run lint`.** It is broken repo-wide — `next lint` misparses its argument and dies with `Invalid project directory provided, no such directory: ...\lint`. This is unrelated to any change here. Never use it as a gate.
+- **Typecheck gate:** `npm run typecheck 2>&1 | grep -v "^\.next" | grep -E "error TS"` must print nothing. Source files are currently clean; `.next/` build artifacts always emit parse noise and must be filtered. Do not "fix" `.next/` errors.
+- **Unit tests:** custom runner, `npm run test:unit` → `tsx tests/unit/run.ts`. Tests use `node:assert/strict`, self-execute on import, and must be registered in `run.ts`. Model on `tests/unit/product-tree.test.ts`.
+- **Never import `lib/mysql.ts` (directly or transitively) from a unit test** — it opens a connection pool and starts a background worker on import, so the runner never exits. To exercise a function that pulls in `lib/mysql.ts`, copy it into a scratch file instead.
+- **mysql2 renders bare DATE columns as local-time JS Dates.** A stored `2027-06-30` prints as `2027-06-29T16:00:00.000Z` at UTC+8. When asserting dates use `DATE_FORMAT(col,'%Y-%m-%d')` in SQL — never compare `.toISOString()`.
 - **E2E:** Playwright on port 3100 against `verdix_test`, `workers: 1`. Never parallelize.
+- **`verdix_test` is a schema CLONE of the dev `verdix` DB**, not a migration replay. Migration 101 must be applied to the dev DB *before* `npm run test:e2e:db`, or the test DB will lack `products.type`.
 - **BIR:** Do not touch SI numbering. Services get invoices like any other line item.
 - **Cost for services is required** (zero allowed). A blank cost would write `NULL` to `cost_at_sale` and break profit reports.
 
@@ -25,7 +31,7 @@
 **Create:**
 - `scripts/migrations/101_add_product_type.ts` — the column
 - `lib/product-type.ts` — `isService()` predicate + shared `ProductType` type
-- `lib/__tests__/product-type.test.ts` — unit tests for the helper
+- `tests/unit/product-type.test.ts` — unit tests for the helper (registered in `tests/unit/run.ts`)
 - `tests/e2e/product-type-service.spec.ts` — end-to-end coverage
 
 **Modify:**
@@ -125,7 +131,7 @@ Expected output contains: `✅ Added products.type` and `✅ Added idx_products_
 
 Run:
 ```bash
-node -e "require('ts-node/register');const{query}=require('./lib/mysql');query('SHOW COLUMNS FROM products LIKE \"type\"').then(r=>{console.log(JSON.stringify(r[0]));process.exit(0)})"
+npx tsx scripts/dbq.ts "SHOW COLUMNS FROM products LIKE 'type'"
 ```
 Expected: `Type` is `enum('standard','service')`, `Null` is `NO`, `Default` is `standard`
 
@@ -133,7 +139,7 @@ Expected: `Type` is `enum('standard','service')`, `Null` is `NO`, `Default` is `
 
 Run:
 ```bash
-node -e "require('ts-node/register');const{query}=require('./lib/mysql');query('SELECT type, COUNT(*) c FROM products GROUP BY type').then(r=>{console.log(JSON.stringify(r));process.exit(0)})"
+npx tsx scripts/dbq.ts "SELECT type, COUNT(*) c FROM products GROUP BY type"
 ```
 Expected: a single row with `type: 'standard'` covering every product. No `service` rows yet.
 
@@ -150,6 +156,8 @@ git commit -m "feat(db): add products.type column for standard vs service"
 
 **Files:**
 - Create: `lib/product-type.ts`
+- Test: `tests/unit/product-type.test.ts`
+- Modify: `tests/unit/run.ts`
 
 **Interfaces:**
 - Produces:
@@ -159,9 +167,47 @@ git commit -m "feat(db): add products.type column for standard vs service"
 
 This helper exists so `type === 'service'` never gets scattered across call sites. Every later task imports from here.
 
-**No unit test here.** This repo has no unit test runner — `package.json` defines no `test` script, and there is no jest or vitest dependency. Playwright E2E is the entire test infrastructure. Adding a runner to test a four-line predicate is not worth the dependency; the helper's behaviour is covered end-to-end in Task 14, and Step 3 below verifies it directly.
+**Test runner:** this repo has a custom unit runner — `npm run test:unit` → `tsx tests/unit/run.ts`. Tests use `node:assert/strict` and self-execute on import; `run.ts` imports each test file. Model the new test on `tests/unit/product-tree.test.ts`.
 
-- [ ] **Step 1: Write the implementation**
+**Critical constraint:** the test must import ONLY `lib/product-type.ts`. Importing anything that reaches `lib/mysql.ts` hangs the runner forever — that module opens a connection pool and starts a background sync worker on import. `lib/product-type.ts` has no imports, so it is safe.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/unit/product-type.test.ts`:
+
+```typescript
+import assert from 'node:assert/strict';
+import { isService, PRODUCT_TYPES } from '../../lib/product-type';
+
+assert.equal(isService({ type: 'service' }), true, 'service product');
+assert.equal(isService({ type: 'standard' }), false, 'standard product');
+
+// A missing or unknown type must read as standard. This direction matters:
+// a SELECT that forgets the column must never silently disable stock
+// deduction on a real product.
+assert.equal(isService({}), false, 'undefined type falls back to standard');
+assert.equal(isService({ type: null }), false, 'null type falls back to standard');
+assert.equal(isService({ type: 'bundle' }), false, 'unknown type falls back to standard');
+
+assert.deepEqual([...PRODUCT_TYPES], ['standard', 'service'], 'both types exposed');
+
+console.log('product-type: all assertions passed');
+```
+
+- [ ] **Step 2: Register the test in the runner**
+
+Add to the end of the import list in `tests/unit/run.ts`:
+
+```typescript
+import './product-type.test';
+```
+
+- [ ] **Step 3: Run it to verify it fails**
+
+Run: `npm run test:unit`
+Expected: FAIL — cannot resolve `../../lib/product-type`
+
+- [ ] **Step 4: Write the implementation**
 
 Create `lib/product-type.ts`:
 
@@ -192,30 +238,20 @@ export function isService(product: { type?: string | null }): boolean {
 }
 ```
 
-- [ ] **Step 2: Typecheck**
+- [ ] **Step 5: Run the test to verify it passes**
 
-Run: `npm run typecheck`
-Expected: no errors
+Run: `npm run test:unit`
+Expected: the full suite passes, ending with `product-type: all assertions passed`
 
-- [ ] **Step 3: Verify the predicate behaves correctly**
+- [ ] **Step 6: Typecheck**
 
-Run:
-```bash
-npx tsx -e "import{isService,PRODUCT_TYPES}from'./lib/product-type';const cases:[any,boolean][]=[[{type:'service'},true],[{type:'standard'},false],[{},false],[{type:null},false],[{type:'bundle'},false]];let ok=true;for(const[input,want]of cases){const got=isService(input);if(got!==want){console.error('FAIL',JSON.stringify(input),'want',want,'got',got);ok=false}}console.log('PRODUCT_TYPES:',PRODUCT_TYPES.join(','));console.log(ok?'ALL PASS':'FAILURES');process.exit(ok?0:1)"
-```
+Run: `npm run typecheck 2>&1 | grep -v "^\.next" | grep -E "error TS"`
+Expected: no output
 
-Expected output:
-```
-PRODUCT_TYPES: standard,service
-ALL PASS
-```
-
-The `{}` and `{type: null}` cases are the important ones: a missing type must read as standard, so a SELECT that forgets the column can never silently disable stock deduction.
-
-- [ ] **Step 4: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add lib/product-type.ts
+git add lib/product-type.ts tests/unit/product-type.test.ts tests/unit/run.ts
 git commit -m "feat(products): add isService predicate helper"
 ```
 
@@ -325,7 +361,7 @@ export type ServiceProductValues = z.infer<typeof serviceProductSchema>;
 
 - [ ] **Step 2: Typecheck to find every consumer that breaks**
 
-Run: `npm run typecheck`
+Run: `npm run typecheck 2>&1 | grep -v "^.next" | grep -E "error TS"`
 Expected: errors in `use-add-product-form.ts` and the tab components, because `ProductFormValues` is now a union and the stock fields are no longer unconditionally present. This is the intended signal — Tasks 4-6 fix each one. Record the error list; it is the checklist for those tasks.
 
 - [ ] **Step 3: Commit**
@@ -442,7 +478,7 @@ Find the return object at line 482 and add the pair next to the existing `produc
 
 - [ ] **Step 7: Typecheck**
 
-Run: `npm run typecheck`
+Run: `npm run typecheck 2>&1 | grep -v "^.next" | grep -E "error TS"`
 Expected: errors remain in the tab components (fixed in Tasks 5-6), but none in `use-add-product-form.ts`
 
 - [ ] **Step 8: Commit**
@@ -551,7 +587,7 @@ Find the Conversion `TabsContent` at lines 100-102 and wrap it the same way:
 
 - [ ] **Step 5: Typecheck**
 
-Run: `npm run typecheck`
+Run: `npm run typecheck 2>&1 | grep -v "^.next" | grep -E "error TS"`
 Expected: no errors in `add-product-dialog.tsx`
 
 - [ ] **Step 6: Manually verify the toggle**
@@ -627,7 +663,7 @@ Find the Cost `FormField` and make its label conditional:
 
 - [ ] **Step 5: Typecheck**
 
-Run: `npm run typecheck`
+Run: `npm run typecheck 2>&1 | grep -v "^.next" | grep -E "error TS"`
 Expected: no errors anywhere. If errors remain elsewhere, they are leftovers from the Task 3 list — fix them now.
 
 - [ ] **Step 6: Manually verify field hiding**
@@ -712,7 +748,7 @@ Run: `npm run dev`
 Create a service via the UI named `Test Service A`, cost 200, price 500. Then run:
 
 ```bash
-node -e "require('ts-node/register');const{query}=require('./lib/mysql');query(\"SELECT id,name,type,stock,cost FROM products WHERE name='Test Service A'\").then(r=>{console.log(JSON.stringify(r,null,2));process.exit(0)})"
+npx tsx scripts/dbq.ts "SELECT id,name,type,stock,cost FROM products WHERE name='Test Service A'"
 ```
 Expected: one row, `type: 'service'`, `stock: 0`, `cost: 200`
 
@@ -720,7 +756,7 @@ Expected: one row, `type: 'service'`, `stock: 0`, `cost: 200`
 
 Run:
 ```bash
-node -e "require('ts-node/register');const{query}=require('./lib/mysql');query(\"SELECT COUNT(*) c FROM inventory_batches b JOIN products p ON p.id=b.product_id WHERE p.name='Test Service A'\").then(r=>{console.log(JSON.stringify(r));process.exit(0)})"
+npx tsx scripts/dbq.ts "SELECT COUNT(*) c FROM inventory_batches b JOIN products p ON p.id=b.product_id WHERE p.name='Test Service A'"
 ```
 Expected: `c: 0`
 
@@ -841,7 +877,7 @@ Then close that new `if` block after the existing `deductFamilyStock` call compl
 
 Any later use of `soldProdResult[0]` inside the loop must now read `soldProd`.
 
-Run: `npm run typecheck`
+Run: `npm run typecheck 2>&1 | grep -v "^.next" | grep -E "error TS"`
 Expected: no errors
 
 - [ ] **Step 6: Verify a service sale at POS**
@@ -851,7 +887,7 @@ Run: `npm run dev`
 At http://localhost:3000/pos, sell 3 units of `Test Service A` (created in Task 7). Then run:
 
 ```bash
-node -e "require('ts-node/register');const{query}=require('./lib/mysql');Promise.all([query(\"SELECT stock FROM products WHERE name='Test Service A'\"),query(\"SELECT quantity,cost_at_sale,batch_source FROM sale_items WHERE product_name='Test Service A' ORDER BY id DESC LIMIT 1\")]).then(([p,s])=>{console.log('stock:',JSON.stringify(p));console.log('item:',JSON.stringify(s));process.exit(0)})"
+npx tsx scripts/dbq.ts "SELECT p.stock, s.quantity, s.cost_at_sale, s.batch_source FROM products p LEFT JOIN sale_items s ON s.product_name=p.name WHERE p.name='Test Service A' ORDER BY s.id DESC LIMIT 1"
 ```
 Expected: `stock: 0` (unchanged), `quantity: 3`, `cost_at_sale: 200`, `batch_source: null`
 
@@ -931,7 +967,7 @@ If Step 1 revealed a stock UPDATE or family-sync call in this loop, wrap it in `
 
 - [ ] **Step 6: Typecheck**
 
-Run: `npm run typecheck`
+Run: `npm run typecheck 2>&1 | grep -v "^.next" | grep -E "error TS"`
 Expected: no errors
 
 - [ ] **Step 7: Commit**
@@ -983,7 +1019,7 @@ Open http://localhost:3000/reports and confirm `Test Service A` (stock 0) does n
 
 - [ ] **Step 4: Typecheck**
 
-Run: `npm run typecheck`
+Run: `npm run typecheck 2>&1 | grep -v "^.next" | grep -E "error TS"`
 Expected: no errors
 
 - [ ] **Step 5: Commit**
@@ -1027,7 +1063,7 @@ For each screen in the Step 1 list, open its product picker and confirm `Test Se
 
 - [ ] **Step 4: Typecheck**
 
-Run: `npm run typecheck`
+Run: `npm run typecheck 2>&1 | grep -v "^.next" | grep -E "error TS"`
 Expected: no errors
 
 - [ ] **Step 5: Commit**
@@ -1099,7 +1135,7 @@ At http://localhost:3000/inventory, confirm `Test Service A` shows a Service bad
 
 - [ ] **Step 6: Typecheck and lint**
 
-Run: `npm run typecheck && npm run lint`
+Run: `npm run typecheck 2>&1 | grep -v "^.next" | grep -E "error TS"`
 Expected: no errors
 
 - [ ] **Step 7: Commit**
@@ -1348,7 +1384,7 @@ if (rowType === 'standard') {
 
 - [ ] **Step 4: Typecheck**
 
-Run: `npm run typecheck`
+Run: `npm run typecheck 2>&1 | grep -v "^.next" | grep -E "error TS"`
 Expected: no errors
 
 - [ ] **Step 5: Commit**
@@ -1365,13 +1401,13 @@ git commit -m "feat(import): support product type on product import"
 - [ ] **Step 1: Clean up manual test data**
 
 ```bash
-node -e "require('ts-node/register');const{query}=require('./lib/mysql');query(\"DELETE FROM products WHERE name='Test Service A'\").then(()=>process.exit(0))"
+npx tsx scripts/dbq.ts "DELETE FROM products WHERE name='Test Service A'"
 ```
 
 - [ ] **Step 2: Full quality gate**
 
-Run: `npm run lint && npm run typecheck`
-Expected: both clean
+Run: `npm run typecheck 2>&1 | grep -v "^.next" | grep -E "error TS"`
+Expected: no output
 
 - [ ] **Step 3: Full test suite**
 
