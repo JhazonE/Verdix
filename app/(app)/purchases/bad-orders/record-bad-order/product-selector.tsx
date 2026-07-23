@@ -108,7 +108,11 @@ export function ProductSelector({
   // When a supplier is selected, only that supplier's products are searchable.
   // Otherwise, all products are shown.
   const filterSupplierId = supplierId && supplierId !== 'none' ? supplierId : undefined;
-  const { products, loading, error } = useProducts(undefined, undefined, filterSupplierId);
+  const { products: allProducts, loading, error } = useProducts(undefined, undefined, filterSupplierId);
+  // Services are excluded: they have no stock, so they can't be reported as a
+  // bad order. useProducts() is shared with POS/sales, so filter here rather
+  // than in the hook or API route.
+  const products = allProducts.filter((p) => p.type !== 'service');
   const [inputValue, setInputValue] = useState('');
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
   const [commandSearch, setCommandSearch] = useState('');

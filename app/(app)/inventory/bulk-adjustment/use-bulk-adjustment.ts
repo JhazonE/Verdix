@@ -77,7 +77,10 @@ export function useBulkAdjustment() {
     setIsLoadingProducts(true);
     try {
       const data = await getProducts();
-      setAllProducts(data);
+      // Services are excluded: they have no stock, so they can't be added,
+      // removed, or transferred. getProducts() is shared with the general
+      // inventory list, so filter here rather than in the action itself.
+      setAllProducts(data.filter((p: Product) => p.type !== 'service'));
     } catch (error) {
       console.error('Failed to load products:', error);
     } finally {

@@ -2280,13 +2280,15 @@ export async function searchProducts(searchQuery: string) {
   try {
     if (!searchQuery || searchQuery.trim().length < 2) return [];
     const like = `%${searchQuery.trim()}%`;
+    // Services are excluded: repackaging (break pack / consolidate) moves
+    // physical stock between products, which services never have.
     const sql = `
       SELECT p.id, p.name, p.sku, p.barcode, p.stock, p.unit_of_measure, p.parent_id, p.conversion_factor, p.price, p.cost,
-             (SELECT JSON_ARRAYAGG(JSON_OBJECT('unit', unit, 'factor', factor)) 
-              FROM conversion_factors cf 
+             (SELECT JSON_ARRAYAGG(JSON_OBJECT('unit', unit, 'factor', factor))
+              FROM conversion_factors cf
               WHERE cf.product_id = p.id) as conversion_factors
       FROM products p
-      WHERE (p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?)
+      WHERE (p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?) AND p.type = 'standard'
       ORDER BY p.name ASC
       LIMIT 20
     `;

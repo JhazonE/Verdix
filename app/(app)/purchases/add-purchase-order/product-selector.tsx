@@ -101,7 +101,11 @@ export function ProductSelector({
   const [inputValue, setInputValue] = useState('');
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
   const [commandSearch, setCommandSearch] = useState('');
-  const { products, loading, error } = useProducts(undefined, undefined, supplierId);
+  const { products: allProducts, loading, error } = useProducts(undefined, undefined, supplierId);
+  // Services are excluded: they have no stock, so they can't be ordered from a
+  // supplier. useProducts() is shared with POS/sales, so filter here rather
+  // than in the hook or API route.
+  const products = allProducts.filter((p) => p.type !== 'service');
 
   const handleScanOrPunch = () => {
     const term = inputValue.trim();

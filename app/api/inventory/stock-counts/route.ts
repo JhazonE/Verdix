@@ -29,7 +29,9 @@ export async function POST(request: NextRequest) {
     const effectiveShelfIds = shelfLocationIds || (shelfLocationId ? [shelfLocationId] : []);
     
     // 1. Fetch products to include in the snapshot based on filters
-    let productsSql = `SELECT id, name, stock, sku, barcode FROM products WHERE availability = 'available'`;
+    // Services are excluded: they have no stock, so a physical count of them
+    // is meaningless.
+    let productsSql = `SELECT id, name, stock, sku, barcode FROM products WHERE availability = 'available' AND type = 'standard'`;
     const params: any[] = [];
     
     if (warehouseId) {
