@@ -45,50 +45,50 @@ export function AddProductDialog(props: UseAddProductFormProps) {
       </DialogTrigger>
       <DialogContent className="sm:max-w-3xl h-[85vh] flex flex-col overflow-hidden !rounded-3xl !duration-500 ease-in-out data-[state=open]:!animate-in data-[state=closed]:!animate-out data-[state=closed]:!fade-out-0 data-[state=open]:!fade-in-0 data-[state=closed]:!zoom-out-95 data-[state=open]:!zoom-in-90 data-[state=closed]:!slide-out-to-top-[5%] data-[state=open]:!slide-in-from-top-[5%]">
         <DialogHeader className="flex-shrink-0">
-          <DialogTitle>Add New Product</DialogTitle>
-          <DialogDescription>
-            Fill in the details below to add a new product.
-          </DialogDescription>
+          {/* The type choice sits in the header, outside the scroll area: it
+              decides which form you are filling in, so it must stay visible
+              while you scroll. The description doubles as the hint slot so
+              switching type never shifts the layout. */}
+          <div className="flex items-start justify-between gap-4 pr-8">
+            <div className="space-y-1.5">
+              <DialogTitle>Add New Product</DialogTitle>
+              <DialogDescription>
+                {itemType === 'service'
+                  ? 'No stock tracking — always available for sale.'
+                  : 'Fill in the details below to add a new product.'}
+              </DialogDescription>
+            </div>
+            <div
+              role="group"
+              aria-label="Product type"
+              className="inline-flex flex-shrink-0 rounded-lg border bg-muted/40 p-0.5"
+            >
+              {([
+                { value: 'standard', label: 'Standard' },
+                { value: 'service', label: 'Service' },
+              ] as const).map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={itemType === value}
+                  onClick={() => setItemType(value)}
+                  className={`rounded-md px-3.5 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                    itemType === value
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         </DialogHeader>
         <AddProductFormProvider controller={controller}>
           <div className="flex-1 overflow-y-auto px-4 py-1">
             <Form {...form}>
               <form id="add-product-form" onSubmit={form.handleSubmit(onSubmit)}>
                 <div className="h-full">
-                  {/* Above the tabs on purpose: this changes the whole form,
-                      not one section. */}
-                  <div className="flex items-center gap-3 px-6 pb-4">
-                    <span className="text-sm font-medium">Product Type:</span>
-                    <div className="inline-flex rounded-lg border p-0.5">
-                      <button
-                        type="button"
-                        onClick={() => setItemType('standard')}
-                        className={`rounded-md px-4 py-1.5 text-sm transition-colors ${
-                          itemType === 'standard'
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        Standard
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setItemType('service')}
-                        className={`rounded-md px-4 py-1.5 text-sm transition-colors ${
-                          itemType === 'service'
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        Service
-                      </button>
-                    </div>
-                    {itemType === 'service' && (
-                      <span className="text-xs text-muted-foreground">
-                        No stock tracking — always available for sale.
-                      </span>
-                    )}
-                  </div>
                   <Tabs defaultValue="basic" className="w-full h-full">
                     <TabsList className="w-full h-auto justify-start rounded-none border-b bg-transparent p-0">
                       <TabsTrigger
