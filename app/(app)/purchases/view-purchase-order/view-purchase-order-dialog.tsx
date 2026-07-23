@@ -54,7 +54,10 @@ export function ViewPurchaseOrderDialog(props: ViewPurchaseOrderDialogProps) {
         </DialogHeader>
 
         <div
-          className="p-8 space-y-8 bg-white text-sm overflow-y-auto flex-1"
+          // Paper preview: white sheet with dark ink in both themes, matching
+          // what prints. Without an explicit text colour, inherited theme
+          // tokens turn near-white in dark mode and disappear.
+          className="p-8 space-y-8 bg-white text-slate-900 text-sm overflow-y-auto flex-1"
           id="printable-order-content"
         >
           <PoHeaderInfo order={order} profile={profile} />

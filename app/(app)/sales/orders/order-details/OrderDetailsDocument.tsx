@@ -33,14 +33,18 @@ export function OrderDetailsDocument({
     <div className="flex-1 overflow-y-auto p-12 bg-slate-100/50 non-printable flex justify-center">
       <div
         ref={printContentRef}
-        className="printable-area space-y-6 p-[20mm] bg-white shadow-xl border w-[210mm] min-h-[297mm] mx-auto print:shadow-none print:border-none print:p-0 print:w-full print:min-h-0"
+        // The page is a paper preview: it stays white with dark ink in both
+        // themes, because that is what actually prints. Theme tokens are
+        // avoided throughout for the same reason — `text-foreground` turns
+        // near-white in dark mode and vanished against the white sheet.
+        className="printable-area space-y-6 p-[20mm] bg-white text-slate-900 shadow-xl border border-slate-200 w-[210mm] min-h-[297mm] mx-auto print:shadow-none print:border-none print:p-0 print:w-full print:min-h-0"
       >
-        <div className="text-xs text-muted-foreground non-printable">1 of 1</div>
+        <div className="text-xs text-slate-500 non-printable">1 of 1</div>
 
         {/* Header */}
         <div className="flex justify-between items-start">
           <div className="flex flex-col items-start gap-1">
-            <div className="h-20 w-20 flex items-center justify-center border-2 border-foreground/10 rounded-full overflow-hidden mb-1">
+            <div className="h-20 w-20 flex items-center justify-center border-2 border-slate-200 rounded-full overflow-hidden mb-1">
               {settings.logoPath ? (
                 <img src={settings.logoPath} alt="Company Logo" className="h-full w-full object-cover" />
               ) : (
@@ -55,7 +59,7 @@ export function OrderDetailsDocument({
           </div>
 
           <div className="text-right">
-            <h1 className="text-3xl font-black text-foreground/80 mb-6 italic tracking-tighter">
+            <h1 className="text-3xl font-black text-slate-800 mb-6 italic tracking-tighter">
               {documentTitle}
             </h1>
             <table className="text-xs ml-auto border-collapse">
@@ -96,13 +100,13 @@ export function OrderDetailsDocument({
           <div>
             <h3 className="font-bold text-sm mb-1">Bill to:</h3>
             <p className="text-sm">{order.customer.name}</p>
-            <p className="text-sm text-muted-foreground">{order.customer.contactNumber || '-'}</p>
+            <p className="text-sm text-slate-500">{order.customer.contactNumber || '-'}</p>
           </div>
           <div>
             <h3 className="font-bold text-sm mb-1">Ship to:</h3>
             <p className="text-sm">{order.customer.name}</p>
-            <p className="text-sm text-muted-foreground">{order.deliveryAddress || '-'}</p>
-            <p className="text-sm text-muted-foreground">{order.customer.contactNumber || '-'}</p>
+            <p className="text-sm text-slate-500">{order.deliveryAddress || '-'}</p>
+            <p className="text-sm text-slate-500">{order.customer.contactNumber || '-'}</p>
           </div>
         </div>
 
@@ -110,7 +114,7 @@ export function OrderDetailsDocument({
         <div className="mt-8">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-y border-foreground/30">
+              <tr className="border-y border-slate-400">
                 <th className="py-2.5 text-left font-bold tracking-wider">DESCRIPTION</th>
                 <th className="py-2.5 text-center font-bold tracking-wider w-32">QUANTITY</th>
                 <th className="py-2.5 text-right font-bold tracking-wider w-32">PRICE</th>
@@ -120,7 +124,7 @@ export function OrderDetailsDocument({
             </thead>
             <tbody>
               {order.items.map((item, index) => (
-                <tr key={index} className="border-b border-foreground/5">
+                <tr key={index} className="border-b border-slate-100">
                   <td className="py-3 uppercase font-medium">{item.product.name}</td>
                   <td className="py-3 text-center">{formatQuantity(item.quantity)} {(item.product as any).unit || 'pc'}</td>
                   <td className="py-2 text-right">{item.price.toFixed(2)}</td>
@@ -140,7 +144,7 @@ export function OrderDetailsDocument({
         <div className="grid grid-cols-2 gap-8 mt-4">
           <div>
             <h3 className="font-bold text-sm mb-2">Terms and Conditions</h3>
-            <p className="text-xs text-muted-foreground whitespace-pre-line">{(order as any).notes || (order as any).note || settings.salesOrderTerms || '-'}</p>
+            <p className="text-xs text-slate-500 whitespace-pre-line">{(order as any).notes || (order as any).note || settings.salesOrderTerms || '-'}</p>
           </div>
           <div className="space-y-1 text-xs">
             <div className="flex justify-between">
@@ -155,7 +159,7 @@ export function OrderDetailsDocument({
               <span className="font-bold">VAT INCLUDED</span>
               <span>0.00</span>
             </div>
-            <div className="flex justify-between font-black text-sm border-t-2 border-foreground pt-2 mt-2">
+            <div className="flex justify-between font-black text-sm border-t-2 border-slate-900 pt-2 mt-2">
               <span>GRAND TOTAL</span>
               <span>{grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
