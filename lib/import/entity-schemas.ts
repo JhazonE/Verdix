@@ -25,6 +25,7 @@ export const ENTITY_SCHEMAS: Record<EntityKey, EntitySchema> = {
     matchKeys: ['barcode', 'name'],
     fields: [
       { key: 'name', label: 'Product Name', type: 'text', required: true, aliases: ['name', 'product', 'product name', 'item', 'item name', 'description name'] },
+      { key: 'type', label: 'Product Type', type: 'text', default: 'standard', aliases: ['type', 'product type', 'item type'] },
       { key: 'barcode', label: 'Barcode', type: 'text', aliases: ['barcode', 'bar code', 'upc', 'ean'] },
       { key: 'description', label: 'Description', type: 'text', default: '', aliases: ['description', 'desc', 'details'] },
       { key: 'category', label: 'Category', type: 'text', default: 'General', aliases: ['category', 'cat', 'group'] },
