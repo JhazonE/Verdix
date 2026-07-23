@@ -6,7 +6,7 @@ import { Switch } from '@/components/ui/switch';
 import { useAddProductFormContext } from '../add-product-form-context';
 
 export function LoyaltyTab() {
-  const { form } = useAddProductFormContext();
+  const { form, itemType } = useAddProductFormContext();
 
   return (
     <div className="space-y-4">
@@ -32,23 +32,25 @@ export function LoyaltyTab() {
           </FormItem>
         )}
       />
-      <FormField
-        control={form.control}
-        name="isPerishable"
-        render={({ field }) => (
-          <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
-            <div className="space-y-0.5">
-              <FormLabel>Perishable</FormLabel>
-              <FormDescription>
-                Track expiration dates when adding stock for this product.
-              </FormDescription>
-            </div>
-            <FormControl>
-              <Switch checked={field.value} onCheckedChange={field.onChange} />
-            </FormControl>
-          </FormItem>
-        )}
-      />
+      {itemType === 'standard' && (
+        <FormField
+          control={form.control}
+          name="isPerishable"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+              <div className="space-y-0.5">
+                <FormLabel>Perishable</FormLabel>
+                <FormDescription>
+                  Track expiration dates when adding stock for this product.
+                </FormDescription>
+              </div>
+              <FormControl>
+                <Switch checked={field.value} onCheckedChange={field.onChange} />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+      )}
     </div>
   );
 }
