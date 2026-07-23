@@ -9,10 +9,6 @@ import { getApiUrl } from '@/lib/api-config';
 import type { Product, PaymentMethod, SalesPerson, Customer, Sale } from '@/lib/types';
 import { salesOrderSchema, type SalesOrderFormValues } from './add-order-types';
 
-function generateReference() {
-  return `SO-${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
-}
-
 type Props = {
   paymentMethods: PaymentMethod[];
   salesPersons: SalesPerson[];
@@ -76,7 +72,10 @@ export function useAddOrderForm({ paymentMethods, salesPersons, customers, initi
         })),
       });
     } else {
-      form.setValue('reference', generateReference());
+      // Left blank on purpose: the SO number comes from the shared counter
+      // server-side when the order is saved, so it stays sequential and
+      // cannot collide.
+      form.setValue('reference', '');
     }
   }, [isOpen]);
 

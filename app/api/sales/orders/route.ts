@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withTransaction, query } from '../../../../lib/mysql';
+import { withTransaction, query, getNextReference } from '../../../../lib/mysql';
 
 // Helper function to format ISO date strings to MySQL format
 function formatDateForMySQL(dateValue: string | null | undefined): string | null {
@@ -286,6 +286,16 @@ export async function POST(request: NextRequest) {
     const total = items.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
 
     return await withTransaction(async (connection) => {
+      // Allocate the SO number from the shared counter, on THIS transaction's
+      // connection: a rolled-back order releases its number instead of
+      // leaving a gap.
+      //
+      // The client used to generate this with Math.random(), which could
+      // collide (50% odds by ~1,200 orders) and carried no ordering. Any
+      // reference sent by the client is ignored.
+      const nextOrderVal = await getNextReference('sales_order', connection);
+      const orderReference = `SO-${nextOrderVal.toString().padStart(6, '0')}`;
+
       // Insert sales order
       const insertOrderQuery = `
         INSERT INTO sales_orders (
@@ -300,7 +310,7 @@ export async function POST(request: NextRequest) {
         customer.id,
         formatDateForMySQL(orderDate),
         formatDateForMySQL(deliveryDate),
-        reference || null,
+        orderReference,
         deliveryAddress || null,
         total,
         paymentMethod,

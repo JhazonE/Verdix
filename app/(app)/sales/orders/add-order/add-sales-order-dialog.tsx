@@ -59,7 +59,13 @@ export function AddSalesOrderDialog({ initialData, isOpen: controlledIsOpen, onO
         <DialogHeader className="px-6 py-4 border-b bg-background">
           <DialogTitle>New Sales Order</DialogTitle>
           <DialogDescription>
-            Create a sales transaction. Reference: <span className="font-mono font-medium text-primary">{formHook.form.watch('reference')}</span>
+            {/* On a new order the number is allocated by the server at save
+                time, so there is nothing to show yet. Editing an existing
+                order still displays its assigned number. */}
+            Create a sales transaction. Reference:{' '}
+            <span className="font-mono font-medium text-primary">
+              {formHook.form.watch('reference') || 'assigned on save'}
+            </span>
           </DialogDescription>
         </DialogHeader>
 

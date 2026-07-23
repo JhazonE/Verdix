@@ -99,6 +99,7 @@ import './098_fix_si_number_initial_value';
 import './099_add_mc_number';
 import './100_add_expiration_tracking';
 import './101_add_product_type';
+import './102_unique_sales_order_reference';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';
