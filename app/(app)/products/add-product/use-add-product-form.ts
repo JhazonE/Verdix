@@ -216,6 +216,12 @@ export function useAddProductForm({
   // typed while Standard was selected stay in form state and fail the service
   // branch's z.undefined() checks on submit, with no visible field to fix.
   useEffect(() => {
+    // Must run for BOTH branches: this is the only place that writes the
+    // discriminator into react-hook-form state. `itemType` otherwise lives
+    // only in React state, so the zod resolver would always see 'standard'
+    // and serviceProductSchema (and its required-cost rule) would never run.
+    form.setValue('itemType', itemType);
+
     if (itemType === 'service') {
       form.setValue('stock', 0);
       form.setValue('reorderPoint', 0);
