@@ -10,6 +10,7 @@ import { logActivity } from '@/lib/client-activity-logger';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
 import { Category, Brand, UnitOfMeasure, Supplier, TaxRate, SystemSettings } from '@/lib/types';
+import type { ProductType } from '@/lib/product-type';
 
 import {
   getCategories,
@@ -50,6 +51,9 @@ export function useAddProductForm({
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [productType, setProductType] = useState<'parent' | 'child'>('parent');
+  // Standard vs Service. Distinct from `productType` above, which is the
+  // parent/child family selector.
+  const [itemType, setItemType] = useState<ProductType>('standard');
   const [autoCreateChild, setAutoCreateChild] = useState(true);
   const { toast } = useToast();
 
@@ -101,6 +105,7 @@ export function useAddProductForm({
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
     defaultValues: {
+      itemType: 'standard',
       name: '',
       brand: '',
       department: '',
@@ -206,6 +211,24 @@ export function useAddProductForm({
       // since conversion factors are now managed separately
     }
   }, [productType]);
+
+  // Switching to Service clears every stock-side field. Without this, values
+  // typed while Standard was selected stay in form state and fail the service
+  // branch's z.undefined() checks on submit, with no visible field to fix.
+  useEffect(() => {
+    if (itemType === 'service') {
+      form.setValue('stock', 0);
+      form.setValue('reorderPoint', 0);
+      form.setValue('cost', 0);
+      form.setValue('supplier', undefined);
+      form.setValue('warehouse', undefined);
+      form.setValue('shelfLocationIds', undefined);
+      form.setValue('parentId', undefined);
+      form.setValue('conversionFactor', undefined);
+      form.setValue('conversionFactors', undefined);
+      form.setValue('isPerishable', undefined);
+    }
+  }, [itemType, form]);
 
   const watchedCost = form.watch('cost');
   const watchedCategoryName = form.watch('category');
@@ -363,6 +386,7 @@ export function useAddProductForm({
       // Build the auto-child intent (if applicable) so a single approval covers parent + child.
       let childProduct: any = undefined;
       const willAutoChild =
+        itemType === 'standard' &&
         productType === 'parent' &&
         autoCreateChild &&
         values.conversionFactors &&
@@ -395,6 +419,7 @@ export function useAddProductForm({
       const result = await addProduct(
         {
           ...values,
+          itemType,
           image: `https://picsum.photos/seed/${values.sku}/400/300`,
           ...(childProduct ? { __childProduct: childProduct } : {}),
         } as any,
@@ -484,6 +509,7 @@ export function useAddProductForm({
     isOpen, setIsOpen,
     isSubmitting,
     productType, setProductType,
+    itemType, setItemType,
     autoCreateChild, setAutoCreateChild,
     form,
 
