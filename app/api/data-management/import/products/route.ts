@@ -55,19 +55,21 @@ export async function POST(request: NextRequest) {
           const stock = num(p.stock_quantity);
           const cost = num(p.cost_price);
           const price = num(p.selling_price);
+          const rowType = String(p.type || '').toLowerCase() === 'service' ? 'service' : 'standard';
           await query(
             `INSERT INTO products (id, name, sku, barcode, description, category, brand, subcategory,
-               unit_of_measure, cost, price, stock, reorder_point, image_url, conversion_factor, warehouse_id, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+               unit_of_measure, cost, price, stock, reorder_point, image_url, conversion_factor, warehouse_id, type, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
             [
               id, p.name, sku, barcode, p.description ?? '', p.category ?? 'General', p.brand ?? null, p.subcategory ?? null,
               p.unit ?? 'pcs', cost, price, stock, num(p.reorder_point), p.image_url ?? null,
-              p.conversion_factor != null ? num(p.conversion_factor) : 1, defaultWarehouseId,
+              p.conversion_factor != null ? num(p.conversion_factor) : 1, defaultWarehouseId, rowType,
             ],
           );
 
           // Opening stock -> FIFO batch + audit movement (keeps costing correct).
-          if (stock > 0) {
+          // Services have no stock tracking: no batches, no FIFO, no movements.
+          if (rowType === 'standard' && stock > 0) {
             try {
               await query(
                 `INSERT INTO inventory_batches
