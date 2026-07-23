@@ -169,7 +169,10 @@ export function InventoryTab() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Warehouse and Shelf are stock-only, leaving Unit of Measure alone here
+          for a service. Two columns keeps it the same width as the fields
+          above rather than shrinking it to a third. */}
+      <div className={`grid grid-cols-1 gap-4 ${itemType === 'standard' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
         {itemType === 'standard' && (
           <FormField
             control={form.control}
@@ -309,7 +312,10 @@ export function InventoryTab() {
         />
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Stock and Reorder Point are standard-only, leaving Cost alone here for
+          a service — kept at two columns so it lines up with every field
+          above it. */}
+      <div className={`grid grid-cols-1 gap-4 ${itemType === 'standard' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
         {itemType === 'standard' && (
           <FormField
             control={form.control}
