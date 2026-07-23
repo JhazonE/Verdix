@@ -4,6 +4,7 @@ import { deductFamilyStock, findUltimateRoot } from '@/lib/family-sync';
 import { deductFromBatches, getBatchCostingSettings } from '@/lib/batch-deduction';
 import { ensureCustomerCreditColumn } from '@/lib/ensure-customer-credit';
 import { query } from '@/lib/mysql';
+import { isService } from '@/lib/product-type';
 
 // Cached per process — the columns can't disappear once ensured, so don't pay
 // an INFORMATION_SCHEMA round trip on every checkout.
@@ -151,26 +152,49 @@ export async function POST(request: NextRequest) {
         const item = items[i];
         const itemId = `${saleId}-ITEM-${i + 1}`;
 
+        // Loaded before batch costing because `type` decides whether we deduct
+        // at all. Same single query that already served loyalty + family sync.
+        const [soldProdResult]: any = await connection.query(`
+          SELECT
+            p.id, p.parent_id, p.unit_of_measure, p.name, p.stock, p.type, p.cost,
+            c.markup_percentage, p.category, p.earns_points
+          FROM products p
+          LEFT JOIN categories c ON p.category = c.name
+          WHERE p.id = ?
+        `, [item.id]);
+
+        const soldProd = soldProdResult?.[0];
+        const itemIsService = soldProd ? isService(soldProd) : false;
+
         // --- BATCH COSTING: FIFO deduction & cost recording ---
         let costAtSale: number | null = null;
         let batchSource: string | null = null;
-        try {
-          const bcs = await getBCS();
-          const deduction = await deductFromBatches(
-            item.id,
-            item.quantity,
-            bcs.oversellBlock,
-            connection as any
-          );
-          costAtSale = deduction.weightedAvgCost;
-          batchSource = JSON.stringify(deduction.splits);
-        } catch (batchErr: any) {
-          // If oversell_block is ON, rethrow to abort the transaction
-          if (batchErr.message && batchErr.message.startsWith('Batch stock exhausted')) {
-            throw batchErr;
+
+        if (itemIsService) {
+          // Services have no batches. Cost is the fixed value on the product,
+          // so sale_items.cost_at_sale stays populated and profit reports work
+          // identically for services and standard goods.
+          costAtSale = soldProd?.cost != null ? parseFloat(soldProd.cost) : 0;
+          batchSource = null;
+        } else {
+          try {
+            const bcs = await getBCS();
+            const deduction = await deductFromBatches(
+              item.id,
+              item.quantity,
+              bcs.oversellBlock,
+              connection as any
+            );
+            costAtSale = deduction.weightedAvgCost;
+            batchSource = JSON.stringify(deduction.splits);
+          } catch (batchErr: any) {
+            // If oversell_block is ON, rethrow to abort the transaction
+            if (batchErr.message && batchErr.message.startsWith('Batch stock exhausted')) {
+              throw batchErr;
+            }
+            // Otherwise non-fatal (e.g. migration not yet run) — log and continue
+            console.warn('[BatchCosting] Could not deduct batch (migration pending?):', batchErr.message);
           }
-          // Otherwise non-fatal (e.g. migration not yet run) — log and continue
-          console.warn('[BatchCosting] Could not deduct batch (migration pending?):', batchErr.message);
         }
         // --- END BATCH COSTING ---
 
@@ -190,19 +214,8 @@ export async function POST(request: NextRequest) {
         ]);
 
         // --- Stock Deduction with Full Hierarchy Sync & Loyalty Calculation ---
-        const [soldProdResult]: any = await connection.query(`
-          SELECT
-            p.id, p.parent_id, p.unit_of_measure, p.name, p.stock,
-            c.markup_percentage, p.category, p.earns_points
-          FROM products p
-          LEFT JOIN categories c ON p.category = c.name
-          WHERE p.id = ?
-        `, [item.id]);
-
-        if (soldProdResult && soldProdResult.length > 0) {
-          const soldProd = soldProdResult[0];
-
-          // Loyalty Points Calculation
+        if (soldProd) {
+          // Loyalty Points Calculation — applies to services too.
           const hasFivePercentMarkup = Math.abs((soldProd.markup_percentage || 0) - 5) < 0.01;
           const earnsPointsEnabled = soldProd.earns_points !== 0 && soldProd.earns_points !== false;
           const isExcluded = hasFivePercentMarkup || !earnsPointsEnabled;
@@ -212,43 +225,46 @@ export async function POST(request: NextRequest) {
              console.log(`Item ${item.name} excluded from points. Markup: ${soldProd.markup_percentage}, Earns: ${soldProd.earns_points}`);
           }
 
-          // Walk the FULL ancestor chain to find the ultimate root and the
-          // cumulative factor (handles grandchildren, great-grandchildren, etc.)
-          // Products with no parent ARE the root — skip the walk entirely.
-          //
-          // Example — selling Sugar 500g (grandchild):
-          //   findUltimateRoot(Sugar500g)
-          //     → rootId = Sugar25kg, factorToRoot = 50
-          //   rootQty = 10 Sugar500g / 50 = 0.2 Sugar25kg
-          //   deductFamilyStock(Sugar25kg, 0.2) then cascades:
-          //     → deduct 0.2 from Sugar25kg
-          //     → find Sugar1kg (factor 25) → deduct 5 from Sugar1kg
-          //         → find Sugar500g (factor 2) → deduct 10 from Sugar500g ✓
-          const { rootId, factorToRoot } = soldProd.parent_id
-            ? await findUltimateRoot(soldProd.id, connection)
-            : { rootId: soldProd.id, factorToRoot: 1 };
+          // Services carry no stock and belong to no family — nothing to sync.
+          if (!itemIsService) {
+            // Walk the FULL ancestor chain to find the ultimate root and the
+            // cumulative factor (handles grandchildren, great-grandchildren, etc.)
+            // Products with no parent ARE the root — skip the walk entirely.
+            //
+            // Example — selling Sugar 500g (grandchild):
+            //   findUltimateRoot(Sugar500g)
+            //     → rootId = Sugar25kg, factorToRoot = 50
+            //   rootQty = 10 Sugar500g / 50 = 0.2 Sugar25kg
+            //   deductFamilyStock(Sugar25kg, 0.2) then cascades:
+            //     → deduct 0.2 from Sugar25kg
+            //     → find Sugar1kg (factor 25) → deduct 5 from Sugar1kg
+            //         → find Sugar500g (factor 2) → deduct 10 from Sugar500g ✓
+            const { rootId, factorToRoot } = soldProd.parent_id
+              ? await findUltimateRoot(soldProd.id, connection)
+              : { rootId: soldProd.id, factorToRoot: 1 };
 
-          if (factorToRoot > 1 || rootId !== soldProd.id) {
-            // Sold item is NOT the root — convert qty to root units and deduct from root down
-            const rootQty = item.quantity / factorToRoot;
-            await deductFamilyStock(
-              rootId,
-              rootQty,
-              saleId,
-              'sale',
-              `POS Sale: ${saleId} (sold: ${soldProd.name}, syncing full tree)`,
-              connection
-            );
-          } else {
-            // Sold item IS the root — deduct and propagate to all descendants
-            await deductFamilyStock(
-              soldProd.id,
-              item.quantity,
-              saleId,
-              'sale',
-              `POS Sale: ${saleId}`,
-              connection
-            );
+            if (factorToRoot > 1 || rootId !== soldProd.id) {
+              // Sold item is NOT the root — convert qty to root units and deduct from root down
+              const rootQty = item.quantity / factorToRoot;
+              await deductFamilyStock(
+                rootId,
+                rootQty,
+                saleId,
+                'sale',
+                `POS Sale: ${saleId} (sold: ${soldProd.name}, syncing full tree)`,
+                connection
+              );
+            } else {
+              // Sold item IS the root — deduct and propagate to all descendants
+              await deductFamilyStock(
+                soldProd.id,
+                item.quantity,
+                saleId,
+                'sale',
+                `POS Sale: ${saleId}`,
+                connection
+              );
+            }
           }
         }
 
