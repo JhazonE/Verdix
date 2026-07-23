@@ -19,6 +19,10 @@ export async function GET(request: NextRequest) {
     const conditions = [];
     const params = [];
 
+    // Services are excluded: they have no stock, so they would otherwise appear
+    // permanently out-of-stock and drag inventory valuation totals to zero.
+    conditions.push("p.type = 'standard'");
+
     if (category && category !== 'all') {
       conditions.push('p.category = ?');
       params.push(category);
