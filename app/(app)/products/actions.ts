@@ -454,6 +454,22 @@ export async function addProduct(
     }
 
     const productId = `${formData.sku}-${Date.now()}`;
+    const isServiceProduct = formData.itemType === 'service';
+
+    // Services are performed at the store, not stocked in a warehouse the user
+    // picks — so the field is hidden on the form and the main warehouse is
+    // assigned here instead. Without this they would land with a NULL
+    // warehouse and show a blank column in the product list.
+    let resolvedWarehouseId = formData.warehouse || null;
+    if (isServiceProduct) {
+      const [mainWarehouse]: any = await query(
+        `SELECT id FROM warehouses
+         WHERE is_active = 1
+         ORDER BY is_main DESC, (id = 'wh_main') DESC, created_at ASC
+         LIMIT 1`,
+      );
+      resolvedWarehouseId = mainWarehouse?.id ?? null;
+    }
 
     await withTransaction(async (connection) => {
       const productData = {
@@ -463,10 +479,12 @@ export async function addProduct(
         additional_description: formData.additionalDescription || null,
         category: formData.category,
         brand: formData.brand,
-        department: formData.department || null,
+        // Department groups stocked goods for markup and reporting; it does not
+        // apply to services, so it is never written for one.
+        department: isServiceProduct ? null : (formData.department || null),
         subcategory: formData.subcategory || null,
         supplier_id: formData.supplier || null,
-        warehouse_id: formData.warehouse || null,
+        warehouse_id: resolvedWarehouseId,
         stock: formData.stock || 0,
         reorder_point: formData.reorderPoint || formData.supplierMappings?.find(m => m.isPrimary)?.rop || 0,
         avg_daily_sales: 0,

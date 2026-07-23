@@ -13,31 +13,18 @@ import { cn, formatStockQuantity } from '@/lib/utils';
 
 import type { ProductWithChildren } from './product-list-types';
 import { ProductRowActions } from './ProductRowActions';
+import { getStockStatus, useStockStatus } from './use-stock-status';
 
 export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmentConfirmation, requireTransferConfirmation }: { productGroup: ProductWithChildren, onSuccess?: () => void, requireAdjustmentConfirmation?: boolean, requireTransferConfirmation?: boolean }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const hasChildren = productGroup.children && productGroup.children.length > 0;
 
   const displayStock = productGroup.stock;
-  const stockStatus =
-    displayStock === 0
-      ? 'out-of-stock'
-      : displayStock < productGroup.reorderPoint
-      ? 'low-stock'
-      : 'in-stock';
-
-  const badgeVariant =
-    stockStatus === 'out-of-stock'
-      ? 'destructive'
-      : stockStatus === 'low-stock'
-      ? 'secondary'
-      : 'default';
-  const badgeText =
-    stockStatus === 'out-of-stock'
-      ? 'Out of Stock'
-      : stockStatus === 'low-stock'
-      ? 'Low Stock'
-      : 'In Stock';
+  const { badgeVariant, badgeTextFull: badgeText } = useStockStatus(
+    displayStock,
+    productGroup.reorderPoint,
+    productGroup.type,
+  );
 
   return (
     <>
@@ -92,25 +79,8 @@ export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmen
         </TableCell>
       </TableRow>
       {isExpanded && hasChildren && productGroup.children!.map((child) => {
-          const childStockStatus =
-            child.stock === 0
-              ? 'out-of-stock'
-              : child.stock < child.reorderPoint
-              ? 'low-stock'
-              : 'in-stock';
-
-          const childBadgeVariant =
-            childStockStatus === 'out-of-stock'
-              ? 'destructive'
-              : childStockStatus === 'low-stock'
-              ? 'secondary'
-              : 'default';
-          const childBadgeText =
-            childStockStatus === 'out-of-stock'
-              ? 'Out of Stock'
-              : childStockStatus === 'low-stock'
-              ? 'Low Stock'
-              : 'In Stock';
+          const { badgeVariant: childBadgeVariant, badgeTextFull: childBadgeText } =
+            getStockStatus(child.stock, child.reorderPoint, child.type);
 
           return (
             <TableRow key={child.id} className="bg-muted/30">

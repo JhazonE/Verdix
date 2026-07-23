@@ -39,6 +39,7 @@ export function InventoryTab() {
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {itemType === 'standard' && (
         <FormField
           control={form.control}
           name="department"
@@ -75,6 +76,7 @@ export function InventoryTab() {
             </FormItem>
           )}
         />
+        )}
 
         <FormField
           control={form.control}

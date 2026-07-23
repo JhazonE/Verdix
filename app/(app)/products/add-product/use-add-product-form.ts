@@ -226,6 +226,7 @@ export function useAddProductForm({
       form.setValue('stock', 0);
       form.setValue('reorderPoint', 0);
       form.setValue('cost', 0);
+      form.setValue('department', undefined);
       form.setValue('supplier', undefined);
       form.setValue('warehouse', undefined);
       form.setValue('shelfLocationIds', undefined);

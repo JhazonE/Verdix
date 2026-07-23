@@ -83,8 +83,10 @@ test.describe('Service product type', () => {
     await expect(dialog.getByLabel('Supplier (Optional)')).toBeHidden();
     await expect(dialog.getByLabel('Warehouse (Optional)')).toBeHidden();
     await expect(dialog.getByLabel('Shelf Locations (Optional)')).toBeHidden();
+    // Ang Department nag-grupo sa mga stocked nga produkto para sa markup ug
+    // reporting — walay kalabotan sa serbisyo, mao nga tago sad.
+    await expect(dialog.getByLabel('Department', { exact: true })).toBeHidden();
     // Confirmed visible fields for a Service on the Inventory tab.
-    await expect(dialog.getByLabel('Department', { exact: true })).toBeVisible();
     await expect(dialog.getByLabel('VAT Status', { exact: true })).toBeVisible();
     await expect(dialog.getByLabel('Availability', { exact: true })).toBeVisible();
     await expect(dialog.getByLabel('Base Unit of Measure', { exact: true })).toBeVisible();
@@ -166,6 +168,27 @@ test.describe('Service product type', () => {
     await expect(page.getByRole('heading', { name: 'Low Stock Report' })).toBeVisible();
     // The API excludes p.type <> 'standard' outright, regardless of stock/reorder point.
     await expect(page.getByText(SERVICE_NAME)).toBeHidden();
+  });
+
+  test('a service reads as Available, never Out of Stock', async ({ page }) => {
+    // Stock 0 is the normal, permanent state of a service. The stock ladder
+    // would call that "Out of Stock", which reads as a problem to fix.
+    await testQuery(
+      `INSERT INTO products (id, name, description, category, brand, sku, stock, reorder_point, price, cost, unit_of_measure, type)
+       VALUES (?, ?, 'E2E service', 'IT Services', 'Generic', ?, 0, 0, 500, 200, 'Service', 'service')`,
+      [SERVICE_SKU, SERVICE_NAME, SERVICE_SKU]
+    );
+
+    await seedSession(page, DEFAULT_ADMIN);
+    await page.goto('/inventory');
+
+    // Scope to the card by its heading, then walk up to the card element —
+    // filtering on `div` alone matches inner wrappers that exclude the badge.
+    const card = page
+      .getByRole('heading', { name: SERVICE_NAME })
+      .locator('xpath=ancestor::div[contains(@class,"relative")][1]');
+    await expect(card.getByText('Available', { exact: true })).toBeVisible();
+    await expect(card.getByText('Out of Stock')).toBeHidden();
   });
 
   test('type is read-only in Edit Product', async ({ page }) => {

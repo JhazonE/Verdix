@@ -20,6 +20,7 @@ import { isService } from '@/lib/product-type';
 
 import { StockAdjustmentDialog } from './stock-adjustment-dialog/StockAdjustmentDialog';
 import { StockTransferDialog } from './stock-transfer-dialog/StockTransferDialog';
+import { useStockStatus } from './use-stock-status';
 
 export function ProductCard({ product, hasChildren = false, onSuccess, requireAdjustmentConfirmation, requireTransferConfirmation }: { product: Product, hasChildren?: boolean, onSuccess?: () => void, requireAdjustmentConfirmation?: boolean, requireTransferConfirmation?: boolean }) {
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
@@ -32,25 +33,11 @@ export function ProductCard({ product, hasChildren = false, onSuccess, requireAd
 
   const displayStock = product.stock;
 
-  const stockStatus =
-    displayStock === 0
-      ? 'out-of-stock'
-      : displayStock < product.reorderPoint
-      ? 'low-stock'
-      : 'in-stock';
-
-  const badgeVariant =
-    stockStatus === 'out-of-stock'
-      ? 'destructive'
-      : stockStatus === 'low-stock'
-      ? 'secondary'
-      : 'default';
-  const badgeText =
-    stockStatus === 'out-of-stock'
-      ? 'Out of Stock'
-      : stockStatus === 'low-stock'
-      ? 'Low Stock'
-      : 'In Stock';
+  const { badgeVariant, badgeTextFull: badgeText } = useStockStatus(
+    displayStock,
+    product.reorderPoint,
+    product.type,
+  );
 
   return (
     <Card className="relative h-full min-h-[220px] flex flex-col shadow-sm hover:shadow-md transition-all duration-300">

@@ -71,21 +71,31 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
   const [printBarcodeOpen, setPrintBarcodeOpen] = useState(false);
 
   const { toast } = useToast();
+  // Services carry no stock, so the stock ladder does not apply — flagging one
+  // "Out of Stock" reads as a problem to fix when it is simply how they work.
+  const isServiceProduct = product.type === 'service';
+
   const stockStatus =
-    product.stock <= 0
+    isServiceProduct
+      ? 'service'
+      : product.stock <= 0
       ? 'out-of-stock'
       : product.stock < product.reorderPoint
         ? 'low-stock'
         : 'in-stock';
 
   const badgeVariant =
-    stockStatus === 'out-of-stock'
+    stockStatus === 'service'
+      ? 'outline'
+      : stockStatus === 'out-of-stock'
       ? 'destructive'
       : stockStatus === 'low-stock'
         ? 'destructive'
         : 'default';
   const badgeText =
-    stockStatus === 'out-of-stock'
+    stockStatus === 'service'
+      ? 'Available'
+      : stockStatus === 'out-of-stock'
       ? 'Out of Stock'
       : stockStatus === 'low-stock'
         ? 'Low Stock'
