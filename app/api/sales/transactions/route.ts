@@ -366,7 +366,10 @@ export async function POST(request: NextRequest) {
           item.quantity,
           item.price,
           deduction.weightedAvgCost,
-          JSON.stringify(deduction.splits)
+          // NULL rather than "[]" when no batches were consumed, matching what
+          // the POS checkout path writes for services. One logical state, one
+          // representation.
+          deduction.splits.length > 0 ? JSON.stringify(deduction.splits) : null
         ]);
         // --- END BATCH COSTING ---
 
