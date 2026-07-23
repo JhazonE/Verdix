@@ -46,6 +46,9 @@ import {
   TEST_SUPPLIER,
   TEST_WAREHOUSE,
   PO_PRODUCT,
+  SO_CUSTOMER,
+  SO_PRODUCT,
+  SO_SERVICE,
 } from '../fixtures/test-data';
 
 dotenv.config();
@@ -296,6 +299,17 @@ async function seedFixtures(): Promise<void> {
      VALUES (?, ?, ?, ?, ?, ?, ?, 'Available')`,
     [PO_PRODUCT.id, PO_PRODUCT.name, PO_PRODUCT.price, PO_PRODUCT.cost, PO_PRODUCT.stock, PO_PRODUCT.sku, PO_PRODUCT.supplierId],
   );
+
+  // --- sales-order fixtures: customer + usa ka stocked nga produkto + usa ka serbisyo ---
+  await conn.query('INSERT INTO customers (id, name) VALUES (?, ?)', [SO_CUSTOMER.id, SO_CUSTOMER.name]);
+
+  for (const p of [SO_PRODUCT, SO_SERVICE]) {
+    await conn.query(
+      `INSERT INTO products (id, name, price, cost, stock, sku, availability, type)
+       VALUES (?, ?, ?, ?, ?, ?, 'Available', ?)`,
+      [p.id, p.name, p.price, p.cost, p.stock, p.sku, p === SO_SERVICE ? 'service' : 'standard'],
+    );
+  }
 
   // --- pos_terminals (gikinahanglan sa POS shift + sale flow) ---
   await conn.query(

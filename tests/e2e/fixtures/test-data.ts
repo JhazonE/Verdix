@@ -340,3 +340,38 @@ export const PO_PRODUCT = {
   stock: 0,
   supplierId: TEST_SUPPLIER.id,
 };
+
+/** Customer para sa sales-order flow (ang SO nagkinahanglan ug customer_id). */
+export const SO_CUSTOMER = { id: 'cust-so-test', name: 'SO Test Customer' };
+
+/**
+ * Stocked nga produkto para sa sales-order delivery.
+ *
+ * Ang stock 50 gituyo nga taas: ang delivery test mo-deduct gikan niini, ug
+ * ang assertions nag-compare sa before/after imbes sa fixed nga numero, mao
+ * nga dili sila magkabangi bisan mag-uban ang mga test sa usa ka run.
+ */
+export const SO_PRODUCT = {
+  id: 'test-so-product-1',
+  name: 'SO Line Item',
+  sku: 'SO-ITEM-001',
+  price: 120,
+  cost: 80,
+  stock: 50,
+};
+
+/**
+ * Serbisyo para sa sales-order flow.
+ *
+ * Kini nag-cover sa bug diin ang usa ka SO nga naay serbisyo DILI ma-deliver:
+ * ang delivery route mo-check ug stock sa matag linya, ug ang serbisyo kanunay
+ * naa sa 0, mao nga na-block ang tibuok order.
+ */
+export const SO_SERVICE = {
+  id: 'test-so-service-1',
+  name: 'SO Service Line',
+  sku: 'SO-SVC-001',
+  price: 500,
+  cost: 200,
+  stock: 0,
+};
