@@ -21,6 +21,7 @@ export function InventoryTab() {
   const {
     form,
     productType,
+    itemType,
     departments, isLoadingDepartments,
     taxRates,
     suppliers, isLoadingSuppliers,
@@ -122,130 +123,136 @@ export function InventoryTab() {
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="supplier"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Supplier (Optional)</FormLabel>
-              <InlineEditableSelect
-                items={suppliers}
-                isLoading={isLoadingSuppliers}
-                value={field.value}
-                onChange={field.onChange}
-                open={selects.suppliers}
-                onOpenChange={(o) => setSelects((p) => ({ ...p, suppliers: o }))}
-                placeholder="Select a supplier"
-                addLabel="Add Supplier"
-                emptyLabel="No suppliers found"
-                getId={(s: Supplier) => s.id}
-                getValue={(s: Supplier) => s.id}
-                getOptionLabel={(s: Supplier) => s.name}
-                getName={(s: Supplier) => s.name}
-                onAdd={async (name) => {
-                  const r = await addSupplier({ name });
-                  if (r.success) {
-                    await refreshSuppliers();
-                    const fresh = await getSuppliers();
-                    const created = fresh.find((s) => s.name === name);
-                    return created?.id;
-                  }
-                  return undefined;
-                }}
-                onRename={async (id, name) => {
-                  const existing = suppliers.find((s: Supplier) => s.id === id);
-                  if (!existing) return undefined;
-                  const r = await updateSupplier(id, { ...existing, name });
-                  if (r.success) { await refreshSuppliers(); return id; }
-                  return undefined;
-                }}
-              />
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {itemType === 'standard' && (
+          <FormField
+            control={form.control}
+            name="supplier"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Supplier (Optional)</FormLabel>
+                <InlineEditableSelect
+                  items={suppliers}
+                  isLoading={isLoadingSuppliers}
+                  value={field.value}
+                  onChange={field.onChange}
+                  open={selects.suppliers}
+                  onOpenChange={(o) => setSelects((p) => ({ ...p, suppliers: o }))}
+                  placeholder="Select a supplier"
+                  addLabel="Add Supplier"
+                  emptyLabel="No suppliers found"
+                  getId={(s: Supplier) => s.id}
+                  getValue={(s: Supplier) => s.id}
+                  getOptionLabel={(s: Supplier) => s.name}
+                  getName={(s: Supplier) => s.name}
+                  onAdd={async (name) => {
+                    const r = await addSupplier({ name });
+                    if (r.success) {
+                      await refreshSuppliers();
+                      const fresh = await getSuppliers();
+                      const created = fresh.find((s) => s.name === name);
+                      return created?.id;
+                    }
+                    return undefined;
+                  }}
+                  onRename={async (id, name) => {
+                    const existing = suppliers.find((s: Supplier) => s.id === id);
+                    if (!existing) return undefined;
+                    const r = await updateSupplier(id, { ...existing, name });
+                    if (r.success) { await refreshSuppliers(); return id; }
+                    return undefined;
+                  }}
+                />
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <FormField
-          control={form.control}
-          name="warehouse"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Warehouse (Optional)</FormLabel>
-              <InlineEditableSelect
-                items={warehouses}
-                isLoading={isLoadingWarehouses}
-                value={field.value}
-                onChange={field.onChange}
-                open={selects.warehouses}
-                onOpenChange={(o) => setSelects((p) => ({ ...p, warehouses: o }))}
-                placeholder="Select a warehouse"
-                addLabel="Add Warehouse"
-                emptyLabel="No warehouses found"
-                getId={(w: any) => w.id}
-                getValue={(w: any) => w.id}
-                getOptionLabel={(w: any) => w.name}
-                getName={(w: any) => w.name}
-                onAdd={async (name) => {
-                  const r = await addWarehouse(name);
-                  if (r.success) {
-                    await refreshWarehouses();
-                    const fresh = await getWarehouses();
-                    const created = fresh.find((w: any) => w.name === name);
-                    return created?.id;
-                  }
-                  return undefined;
-                }}
-                onRename={async (id, name) => {
-                  const existing = warehouses.find((w: any) => w.id === id);
-                  const r = await updateWarehouse(id, name, existing?.location);
-                  if (r.success) { await refreshWarehouses(); return id; }
-                  return undefined;
-                }}
-              />
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {itemType === 'standard' && (
+          <FormField
+            control={form.control}
+            name="warehouse"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Warehouse (Optional)</FormLabel>
+                <InlineEditableSelect
+                  items={warehouses}
+                  isLoading={isLoadingWarehouses}
+                  value={field.value}
+                  onChange={field.onChange}
+                  open={selects.warehouses}
+                  onOpenChange={(o) => setSelects((p) => ({ ...p, warehouses: o }))}
+                  placeholder="Select a warehouse"
+                  addLabel="Add Warehouse"
+                  emptyLabel="No warehouses found"
+                  getId={(w: any) => w.id}
+                  getValue={(w: any) => w.id}
+                  getOptionLabel={(w: any) => w.name}
+                  getName={(w: any) => w.name}
+                  onAdd={async (name) => {
+                    const r = await addWarehouse(name);
+                    if (r.success) {
+                      await refreshWarehouses();
+                      const fresh = await getWarehouses();
+                      const created = fresh.find((w: any) => w.name === name);
+                      return created?.id;
+                    }
+                    return undefined;
+                  }}
+                  onRename={async (id, name) => {
+                    const existing = warehouses.find((w: any) => w.id === id);
+                    const r = await updateWarehouse(id, name, existing?.location);
+                    if (r.success) { await refreshWarehouses(); return id; }
+                    return undefined;
+                  }}
+                />
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
-        <FormField
-          control={form.control}
-          name="shelfLocationIds"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Shelf Locations (Optional)</FormLabel>
-              <InlineEditableMultiSelect
-                items={shelfLocations || []}
-                value={field.value || []}
-                onChange={field.onChange}
-                placeholder="Select locations..."
-                searchPlaceholder="Search location..."
-                addLabel="Add Shelf Location"
-                emptyLabel="No location found."
-                getId={(loc: any) => loc.id}
-                getName={(loc: any) => loc.name}
-                onAdd={async (name) => {
-                  const r = await addShelfLocation(name);
-                  if (r.success) {
-                    await refreshShelfLocations();
-                    const fresh = await getShelfLocations();
-                    const created = fresh.find((l: any) => l.name === name);
-                    return created?.id;
-                  }
-                  return undefined;
-                }}
-                onRename={async (id, name) => {
-                  const existing = (shelfLocations || []).find((l: any) => l.id === id);
-                  const r = await updateShelfLocation(id, name, existing?.description);
-                  if (r.success) { await refreshShelfLocations(); return id; }
-                  return undefined;
-                }}
-              />
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {itemType === 'standard' && (
+          <FormField
+            control={form.control}
+            name="shelfLocationIds"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Shelf Locations (Optional)</FormLabel>
+                <InlineEditableMultiSelect
+                  items={shelfLocations || []}
+                  value={field.value || []}
+                  onChange={field.onChange}
+                  placeholder="Select locations..."
+                  searchPlaceholder="Search location..."
+                  addLabel="Add Shelf Location"
+                  emptyLabel="No location found."
+                  getId={(loc: any) => loc.id}
+                  getName={(loc: any) => loc.name}
+                  onAdd={async (name) => {
+                    const r = await addShelfLocation(name);
+                    if (r.success) {
+                      await refreshShelfLocations();
+                      const fresh = await getShelfLocations();
+                      const created = fresh.find((l: any) => l.name === name);
+                      return created?.id;
+                    }
+                    return undefined;
+                  }}
+                  onRename={async (id, name) => {
+                    const existing = (shelfLocations || []).find((l: any) => l.id === id);
+                    const r = await updateShelfLocation(id, name, existing?.description);
+                    if (r.success) { await refreshShelfLocations(); return id; }
+                    return undefined;
+                  }}
+                />
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <FormField
           control={form.control}
@@ -285,7 +292,7 @@ export function InventoryTab() {
         />
       </div>
 
-      {productType === 'child' && (
+      {itemType === 'standard' && productType === 'child' && (
         <FormField
           control={form.control}
           name="conversionFactor"
@@ -303,39 +310,43 @@ export function InventoryTab() {
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <FormField
-          control={form.control}
-          name="stock"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Initial Stock</FormLabel>
-              <FormControl>
-                <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="reorderPoint"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Reorder Point</FormLabel>
-              <FormControl>
-                <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {itemType === 'standard' && (
+          <FormField
+            control={form.control}
+            name="stock"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Initial Stock</FormLabel>
+                <FormControl>
+                  <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
+        {itemType === 'standard' && (
+          <FormField
+            control={form.control}
+            name="reorderPoint"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Reorder Point</FormLabel>
+                <FormControl>
+                  <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
         <FormField
           control={form.control}
           name="cost"
           render={({ field }) => (
             <FormItem>
               <div className="flex items-center justify-between h-6">
-                <FormLabel>Cost (₱)</FormLabel>
+                <FormLabel>{itemType === 'service' ? 'Cost (required)' : 'Cost (₱)'}</FormLabel>
               </div>
               <FormControl>
                 <Input type="number" step="0.01" placeholder="e.g., 50.00" value={field.value || ''} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
