@@ -13,6 +13,7 @@ export function useInventoryPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'stock' | 'sku'>('name');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'standard' | 'service'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
   const [isBatchDrawerOpen, setIsBatchDrawerOpen] = useState(false);
@@ -39,13 +40,17 @@ export function useInventoryPage() {
 
   const products = useMemo(() => {
     const lower = searchTerm.toLowerCase().trim();
-    const filtered = lower
+    const searched = lower
       ? allLoadedProducts.filter((p: Product) =>
           (p.name?.toLowerCase() ?? '').includes(lower) ||
           (p.sku?.toLowerCase() ?? '').includes(lower) ||
           (p.barcode?.toLowerCase() ?? '').includes(lower)
         )
       : allLoadedProducts;
+
+    const filtered = typeFilter === 'all'
+      ? searched
+      : searched.filter((p: Product) => (p.type ?? 'standard') === typeFilter);
 
     const grouped: ProductWithChildren[] = [];
     const parentMap = new Map<string, ProductWithChildren>();
@@ -77,7 +82,7 @@ export function useInventoryPage() {
     });
 
     return grouped;
-  }, [allLoadedProducts, searchTerm, sortBy]);
+  }, [allLoadedProducts, searchTerm, sortBy, typeFilter]);
 
   const totalProducts = products.length;
   const pagedProducts = useMemo(() =>
@@ -95,6 +100,11 @@ export function useInventoryPage() {
     setCurrentPage(1);
   };
 
+  const handleTypeFilterChange = (value: 'all' | 'standard' | 'service') => {
+    setTypeFilter(value);
+    setCurrentPage(1);
+  };
+
   return {
     searchTerm,
     handleSearch,
@@ -103,6 +113,9 @@ export function useInventoryPage() {
     setSortBy,
     viewMode,
     setViewMode,
+    typeFilter,
+    setTypeFilter,
+    handleTypeFilterChange,
     currentPage,
     setCurrentPage,
     pageSize,

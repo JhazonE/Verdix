@@ -121,6 +121,9 @@ export function ProductCard({ product, hasChildren = false, onSuccess, requireAd
             <span className="font-medium">{formatStockQuantity(displayStock, product.unitOfMeasure)}</span> {product.unitOfMeasure}
           </span>
           <Badge variant={badgeVariant} className="text-xs">{badgeText}</Badge>
+          {product.type === 'service' && (
+            <Badge variant="secondary" className="text-xs">Service</Badge>
+          )}
           {product.hasPendingApproval && (
             <Badge variant="outline" className="text-xs border-amber-500 text-amber-500 bg-amber-500/10">
               Pending Approval

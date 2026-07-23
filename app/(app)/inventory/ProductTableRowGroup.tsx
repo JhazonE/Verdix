@@ -74,7 +74,12 @@ export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmen
           <span className="font-medium">{formatStockQuantity(displayStock, productGroup.unitOfMeasure)}</span> <span className="text-muted-foreground text-xs">{productGroup.unitOfMeasure}</span>
         </TableCell>
         <TableCell>
-          <Badge variant={badgeVariant} className="text-xs">{badgeText}</Badge>
+          <div className="flex items-center gap-1.5">
+            <Badge variant={badgeVariant} className="text-xs">{badgeText}</Badge>
+            {productGroup.type === 'service' && (
+              <Badge variant="secondary" className="text-xs">Service</Badge>
+            )}
+          </div>
         </TableCell>
         <TableCell className="text-muted-foreground">{formatStockQuantity(productGroup.reorderPoint, productGroup.unitOfMeasure)}</TableCell>
         <TableCell className="text-right whitespace-nowrap">
@@ -126,7 +131,12 @@ export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmen
                  <span className="font-medium">{formatStockQuantity(child.stock, child.unitOfMeasure)}</span> <span className="text-muted-foreground text-xs">{child.unitOfMeasure}</span>
               </TableCell>
               <TableCell>
-                 <Badge variant={childBadgeVariant} className="text-xs">{childBadgeText}</Badge>
+                 <div className="flex items-center gap-1.5">
+                   <Badge variant={childBadgeVariant} className="text-xs">{childBadgeText}</Badge>
+                   {child.type === 'service' && (
+                     <Badge variant="secondary" className="text-xs">Service</Badge>
+                   )}
+                 </div>
               </TableCell>
               <TableCell className="text-muted-foreground text-sm">{formatStockQuantity(child.reorderPoint, child.unitOfMeasure)}</TableCell>
               <TableCell className="text-right">

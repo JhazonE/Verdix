@@ -35,6 +35,9 @@ export function CondensedProductRow({ product, isLast = false, onSuccess, requir
         <div className="text-right">
           <div className="text-xs font-bold leading-none">{formatStockQuantity(displayStock, product.unitOfMeasure)} <span className="text-[9px] font-normal text-muted-foreground">{product.unitOfMeasure}</span></div>
           <Badge variant={badgeVariant} className="text-[8px] px-1 py-0 h-3.5 mt-0.5 uppercase tracking-tighter">{badgeTextShort}</Badge>
+          {product.type === 'service' && (
+            <Badge variant="secondary" className="text-[8px] px-1 py-0 h-3.5 mt-0.5 uppercase tracking-tighter">Service</Badge>
+          )}
         </div>
 
         <ProductRowActions

@@ -49,6 +49,8 @@ export default function InventoryPage() {
     setSortBy,
     viewMode,
     setViewMode,
+    typeFilter,
+    handleTypeFilterChange,
     currentPage,
     setCurrentPage,
     pageSize,
@@ -154,6 +156,16 @@ export default function InventoryPage() {
             <SelectItem value="name">Name</SelectItem>
             <SelectItem value="stock">Stock Level</SelectItem>
             <SelectItem value="sku">SKU</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={typeFilter} onValueChange={(v) => handleTypeFilterChange(v as 'all' | 'standard' | 'service')}>
+          <SelectTrigger className="w-full md:w-[180px]">
+            <SelectValue placeholder="Product type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            <SelectItem value="standard">Standard</SelectItem>
+            <SelectItem value="service">Service</SelectItem>
           </SelectContent>
         </Select>
       </div>
