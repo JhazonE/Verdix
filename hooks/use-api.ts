@@ -56,6 +56,7 @@ export function useProducts(search?: string, availability?: string, supplierId?:
         subcategory: '',
         supplier: '',
         stock: item.stock || 0,
+        type: item.type,
         reorderPoint: item.reorderPoint || 0,
         avgDailySales: item.avgDailySales || 0,
         price: parseFloat(item.price) || 0,

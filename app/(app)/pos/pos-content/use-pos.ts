@@ -708,7 +708,7 @@ export function usePOS() {
     if (isFrontliner) return;
     if (items.length > 0) {
       if (!enableNegativeInventory) {
-        const lowStock = items.filter(item => item.quantity > item.stock);
+        const lowStock = items.filter(item => item.type !== 'service' && item.quantity > item.stock);
         if (lowStock.length > 0) { setInsufficientItems(lowStock); setIsInsufficientStockOpen(true); return; }
       }
       setTenderMethod(method);

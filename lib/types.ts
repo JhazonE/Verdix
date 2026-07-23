@@ -25,6 +25,7 @@ export interface Product {
   earnsPoints?: boolean;
   expirationDate?: string;
   isPerishable?: boolean;
+  type?: 'standard' | 'service';
 
   // Accounting
   incomeAccount?: string;

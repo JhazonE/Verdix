@@ -13,6 +13,7 @@ export class MySqlProductRepository implements ProductRepository {
         products.brand,
         products.department,
         products.stock,
+        products.type,
         products.price,
         products.cost,
         products.sku,
