@@ -386,10 +386,12 @@ export async function getLowStockAlerts() {
     const settingsResult = await query('SELECT low_stock_threshold FROM pos_settings LIMIT 1');
     const globalThreshold = settingsResult.length > 0 ? settingsResult[0].low_stock_threshold : 10;
 
+    // Services are excluded: they have no stock, so they would otherwise sit
+    // permanently in the notification bell as a low-stock alert.
     const sql = `
       SELECT id, name, stock, reorder_point
       FROM products
-      WHERE stock < reorder_point OR stock < ?
+      WHERE type = 'standard' AND (stock < reorder_point OR stock < ?)
     `;
     const products = await query(sql, [globalThreshold]);
     return products.map((p: any) => ({
