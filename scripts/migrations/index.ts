@@ -98,6 +98,7 @@ import './097_add_product_approval_setting';
 import './098_fix_si_number_initial_value';
 import './099_add_mc_number';
 import './100_add_expiration_tracking';
+import './101_add_product_type';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';
