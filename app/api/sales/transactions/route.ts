@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // Force rebuild: Fixed import path
 import { query, withTransaction, getNextReference, getNextReceiptNumber } from '@/lib/mysql';
 import { deductFromBatches, getBatchCostingSettings } from '@/lib/batch-deduction';
+import { isService } from '@/lib/product-type';
 
 export async function GET(request: NextRequest) {
   try {
@@ -338,8 +339,24 @@ export async function POST(request: NextRequest) {
         const item = items[i];
         const itemId = `${saleId}-ITEM-${i + 1}`;
 
+        const [prodRows]: any = await connection.query(
+          'SELECT id, type, cost FROM products WHERE id = ?',
+          [item.id]
+        );
+        const prod = prodRows?.[0];
+        const itemIsService = prod ? isService(prod) : false;
+
         // --- BATCH COSTING: FIFO Deduction ---
-        const deduction = await deductFromBatches(item.id, item.quantity, oversellBlock, connection);
+        // Services have no batches; cost comes from the product's fixed cost.
+        let deduction: { weightedAvgCost: number; splits: any[] };
+        if (itemIsService) {
+          deduction = {
+            weightedAvgCost: prod?.cost != null ? parseFloat(prod.cost) : 0,
+            splits: [],
+          };
+        } else {
+          deduction = await deductFromBatches(item.id, item.quantity, oversellBlock, connection);
+        }
 
         await connection.query(insertItemSql, [
           itemId,
@@ -355,27 +372,29 @@ export async function POST(request: NextRequest) {
 
         // Stock Deduction Logic (Simplified for API - assumes standard product flow)
         // Note: Full family sync logic from checkout is omitted for brevity unless critical.
-        // If critical, we should extract to a shared library. 
+        // If critical, we should extract to a shared library.
         // For now, doing direct stock update for the specific product to ensure basic correctness.
-        
-        // Fetch current stock
-        const [prodResult]: any = await connection.query('SELECT stock FROM products WHERE id = ?', [item.id]);
-        if (prodResult && prodResult.length > 0) {
-            const currentStock = Number(prodResult[0].stock || 0);
-            const newStock = currentStock - item.quantity;
-            
-            // Record movement
-            const movementId = `MOV-${Date.now()}-${i}-${item.id.substring(Math.max(0, item.id.length - 4))}`;
-            await connection.query(`
-                INSERT INTO stock_movements (
-                    id, product_id, product_name, movement_type, 
-                    quantity_change, previous_stock, new_stock, 
-                    reference_id, reference_type, notes, created_at, updated_at
-                ) VALUES (?, ?, ?, 'sale', ?, ?, ?, ?, 'sale', ?, NOW(), NOW())
-            `, [movementId, item.id, item.name, -item.quantity, currentStock, newStock, saleId, 'API Sale']);
+        // Services carry no stock — nothing to deduct or log a movement for.
+        if (!itemIsService) {
+          // Fetch current stock
+          const [prodResult]: any = await connection.query('SELECT stock FROM products WHERE id = ?', [item.id]);
+          if (prodResult && prodResult.length > 0) {
+              const currentStock = Number(prodResult[0].stock || 0);
+              const newStock = currentStock - item.quantity;
 
-            // Update product
-            await connection.query('UPDATE products SET stock = ? WHERE id = ?', [newStock, item.id]);
+              // Record movement
+              const movementId = `MOV-${Date.now()}-${i}-${item.id.substring(Math.max(0, item.id.length - 4))}`;
+              await connection.query(`
+                  INSERT INTO stock_movements (
+                      id, product_id, product_name, movement_type,
+                      quantity_change, previous_stock, new_stock,
+                      reference_id, reference_type, notes, created_at, updated_at
+                  ) VALUES (?, ?, ?, 'sale', ?, ?, ?, ?, 'sale', ?, NOW(), NOW())
+              `, [movementId, item.id, item.name, -item.quantity, currentStock, newStock, saleId, 'API Sale']);
+
+              // Update product
+              await connection.query('UPDATE products SET stock = ? WHERE id = ?', [newStock, item.id]);
+          }
         }
       }
 
