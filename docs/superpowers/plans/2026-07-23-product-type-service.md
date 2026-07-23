@@ -359,10 +359,16 @@ export type StandardProductValues = z.infer<typeof standardProductSchema>;
 export type ServiceProductValues = z.infer<typeof serviceProductSchema>;
 ```
 
-- [ ] **Step 2: Typecheck to find every consumer that breaks**
+- [ ] **Step 2: Typecheck**
 
-Run: `npm run typecheck 2>&1 | grep -v "^.next" | grep -E "error TS"`
-Expected: errors in `use-add-product-form.ts` and the tab components, because `ProductFormValues` is now a union and the stock fields are no longer unconditionally present. This is the intended signal — Tasks 4-6 fix each one. Record the error list; it is the checklist for those tasks.
+Run: `npm run typecheck 2>&1 | grep -E "^[^ ].*error TS" | grep -v "^\.next" | sort > .superpowers/sdd/tc-now.txt; diff .superpowers/sdd/typecheck-baseline.txt .superpowers/sdd/tc-now.txt`
+Expected: no diff — the 10 pre-existing baseline errors, zero new ones.
+
+**Do NOT expect this change to produce new typecheck errors.** An earlier draft of this plan assumed the union would break every consumer, and that the resulting error list would be the checklist for Tasks 4-6. It does not, and relying on it would silently under-verify three tasks.
+
+Reason: react-hook-form types `defaultValues` as `DefaultValues<T> = DeepPartial<T>`, which flattens the union — a `defaultValues` object with no `itemType` still typechecks. And no consumer narrows on `itemType` yet, so nothing forces branch selection.
+
+**Consequence for Tasks 4-6:** add `itemType` handling affirmatively from each brief, and verify behaviourally — in a browser and by submitting the form — not by chasing compiler errors. Their verification steps already work this way.
 
 - [ ] **Step 3: Commit**
 
