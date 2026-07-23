@@ -47,6 +47,7 @@ export type ProductFormData = {
   availability?: string;
   earnsPoints?: boolean;
   isPerishable?: boolean;
+  itemType?: 'standard' | 'service';
   __childProduct?: ProductFormData;
 };
 
@@ -482,6 +483,7 @@ export async function addProduct(
         availability: formData.availability || 'Available',
         earns_points: formData.earnsPoints !== false,
         is_perishable: formData.isPerishable ? 1 : 0,
+        type: formData.itemType === 'service' ? 'service' : 'standard',
       };
 
       const sql = `
@@ -490,8 +492,8 @@ export async function addProduct(
           subcategory, supplier_id, warehouse_id, stock, reorder_point, avg_daily_sales, price, cost,
           sku, barcode, image_url, image_hint,
           unit_of_measure, parent_id, conversion_factor, income_account, expense_account,
-          vat_status, availability, earns_points, shelf_location_id, is_perishable
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          vat_status, availability, earns_points, shelf_location_id, is_perishable, type
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       const legacyShelfId = formData.shelfLocationIds && formData.shelfLocationIds.length > 0 ? formData.shelfLocationIds[0] : null;
@@ -504,13 +506,15 @@ export async function addProduct(
         productData.barcode, productData.image_url, productData.image_hint, productData.unit_of_measure,
         productData.parent_id, productData.conversion_factor, productData.income_account,
         productData.expense_account, productData.vat_status, productData.availability, productData.earns_points,
-        legacyShelfId, productData.is_perishable
+        legacyShelfId, productData.is_perishable, productData.type
       ];
 
       await connection.query(sql, values_array);
 
       // --- BATCH COSTING: Auto-create batch for initial stock ---
-      if (formData.stock && formData.stock > 0) {
+      // Services never get a batch: they have no stock, and an empty batch
+      // would make them appear in FIFO deduction and valuation reports.
+      if (productData.type === 'standard' && formData.stock && formData.stock > 0) {
         try {
           const batchId = generateBatchId();
           await connection.query(`
