@@ -116,13 +116,15 @@ export function EditProductDialog({
                           Price Levels
                           {tabErrors.priceLevels && <span className="ml-1.5 inline-flex h-2 w-2 rounded-full bg-destructive" />}
                         </TabsTrigger>
-                        <TabsTrigger
-                          value="conversion"
-                          className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
-                        >
-                          Conversion
-                          {tabErrors.conversion && <span className="ml-1.5 inline-flex h-2 w-2 rounded-full bg-destructive" />}
-                        </TabsTrigger>
+                        {product?.type !== 'service' && (
+                          <TabsTrigger
+                            value="conversion"
+                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
+                          >
+                            Conversion
+                            {tabErrors.conversion && <span className="ml-1.5 inline-flex h-2 w-2 rounded-full bg-destructive" />}
+                          </TabsTrigger>
+                        )}
                         <TabsTrigger
                           value="loyalty"
                           className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
@@ -136,9 +138,11 @@ export function EditProductDialog({
                       <TabsContent value="inventory" className="space-y-4 p-6">
                         <InventoryTab />
                       </TabsContent>
-                      <TabsContent value="conversion" className="space-y-4 p-6">
-                        <ConversionTab />
-                      </TabsContent>
+                      {product?.type !== 'service' && (
+                        <TabsContent value="conversion" className="space-y-4 p-6">
+                          <ConversionTab />
+                        </TabsContent>
+                      )}
                       <TabsContent value="price-levels" className="space-y-4 p-6">
                         <PriceLevelsTab />
                       </TabsContent>

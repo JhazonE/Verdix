@@ -37,6 +37,11 @@ export function InventoryTab() {
     refreshUnits,
   } = useEditProductFormContext();
 
+  // Derived from the saved product, not from state: type is immutable after
+  // creation, so editing a service must show the same fields the Add form
+  // shows when Service is selected.
+  const isServiceProduct = product?.type === 'service';
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -123,6 +128,7 @@ export function InventoryTab() {
           )}
         />
 
+        {!isServiceProduct && (
         <FormField
           control={form.control}
           name="supplier"
@@ -165,9 +171,14 @@ export function InventoryTab() {
             </FormItem>
           )}
         />
+        )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Warehouse and Shelf are stock-only, leaving Unit of Measure alone here
+          for a service. Two columns keeps it the same width as the fields
+          above rather than shrinking it to a third. Mirrors the Add form. */}
+      <div className={`grid grid-cols-1 gap-4 ${isServiceProduct ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+        {!isServiceProduct && (
         <FormField
           control={form.control}
           name="warehouse"
@@ -209,7 +220,9 @@ export function InventoryTab() {
             </FormItem>
           )}
         />
+        )}
 
+        {!isServiceProduct && (
         <FormField
           control={form.control}
           name="shelfLocationIds"
@@ -247,6 +260,7 @@ export function InventoryTab() {
             </FormItem>
           )}
         />
+        )}
 
         <FormField
           control={form.control}
@@ -286,7 +300,11 @@ export function InventoryTab() {
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Stock and Reorder Point are standard-only, leaving Cost alone here for
+          a service — kept at two columns so it lines up with every field
+          above it. Mirrors the Add form. */}
+      <div className={`grid grid-cols-1 gap-4 ${isServiceProduct ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+        {!isServiceProduct && (
         <div className="space-y-2">
           <Label>Initial Stock</Label>
           <div>
@@ -294,6 +312,8 @@ export function InventoryTab() {
           </div>
           <p className="text-sm text-muted-foreground">Stock is updated via transactions.</p>
         </div>
+        )}
+        {!isServiceProduct && (
         <FormField
           control={form.control}
           name="reorderPoint"
@@ -307,13 +327,14 @@ export function InventoryTab() {
             </FormItem>
           )}
         />
+        )}
         <FormField
           control={form.control}
           name="cost"
           render={({ field }) => (
             <FormItem>
               <div className="flex items-center justify-between h-6">
-                <FormLabel>Cost (₱)</FormLabel>
+                <FormLabel>{isServiceProduct ? 'Cost (required)' : 'Cost (₱)'}</FormLabel>
               </div>
               <FormControl>
                 <Input type="number" step="0.01" placeholder="e.g., 50.00" value={field.value || ''} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
