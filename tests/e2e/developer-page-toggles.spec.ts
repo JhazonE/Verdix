@@ -67,4 +67,30 @@ test.describe('developer page toggles — sidebar', () => {
       return (await r.json()).disabled;
     }).toContain('sales_orders');
   });
+
+  test('POS Mode is settable from developer options and persists', async ({ page, request }) => {
+    // Start from a known state: default mode.
+    await request.post('/api/pos-settings', { data: { posMode: 'default' } });
+
+    await seedSession(page, ADMIN);
+    await page.goto('/developer/options');
+
+    // The Queue block is hidden until Pharmacy is selected.
+    await expect(page.getByText('Queue Number Settings')).toHaveCount(0);
+
+    // Select Pharmacy — saves on click.
+    await page.getByRole('button', { name: 'Pharmacy' }).click();
+
+    // Persisted to pos-settings.
+    await expect.poll(async () => {
+      const r = await request.get('/api/pos-settings');
+      return (await r.json()).data?.posMode;
+    }).toBe('pharmacy');
+
+    // Queue block now visible.
+    await expect(page.getByText('Queue Number Settings')).toBeVisible();
+
+    // Reset to default so we don't leak pharmacy mode into other tests.
+    await request.post('/api/pos-settings', { data: { posMode: 'default' } });
+  });
 });

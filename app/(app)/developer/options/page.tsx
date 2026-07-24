@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { Save, ShieldAlert } from 'lucide-react';
+import { PosModeCard } from './PosModeCard';
 
 export default function DeveloperOptionsPage() {
   const router = useRouter();
@@ -86,14 +87,20 @@ export default function DeveloperOptionsPage() {
 
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <ShieldAlert className="h-7 w-7 text-primary" />
-            Developer Options
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Enable or disable pages. Disabled pages are hidden from the sidebar and their URLs redirect to the dashboard.
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+          <ShieldAlert className="h-7 w-7 text-primary" />
+          Developer Options
+        </h2>
+      </div>
+
+      <PosModeCard />
+
+      <div className="flex items-end justify-between pt-2 gap-4">
+        <div className="space-y-1">
+          <h3 className="text-lg font-semibold">Page Visibility</h3>
+          <p className="text-sm text-muted-foreground">
+            Disabled pages are hidden from the sidebar and their URLs redirect to the dashboard.
           </p>
         </div>
         <Button onClick={save} disabled={saving || loading}>
