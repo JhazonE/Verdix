@@ -2,7 +2,18 @@ import { test, expect } from '@playwright/test';
 import { testQuery } from './helpers/db';
 import { seedSession, DEFAULT_ADMIN } from './helpers/auth';
 
-const SUPER_ADMIN = { ...DEFAULT_ADMIN, permissions: ['super_admin'] };
+// A realistic full-admin permission set (matches the real seeded admin, which has
+// no 'super_admin' permission — that string does not exist in this system).
+// manage_settings gates /developer/options; view_sales makes the Sales section render.
+const ADMIN = {
+  ...DEFAULT_ADMIN,
+  permissions: [
+    'view_dashboard', 'manage_products', 'manage_inventory', 'view_sales',
+    'manage_customers', 'manage_suppliers', 'manage_purchases', 'view_approvals',
+    'manage_approval_settings', 'view_reports', 'manage_users', 'manage_settings',
+    'access_pos',
+  ],
+};
 
 test.describe('developer page toggles — sidebar', () => {
   test.afterEach(async () => {
@@ -12,7 +23,7 @@ test.describe('developer page toggles — sidebar', () => {
   test('disabling sales_orders hides the Sales Order link', async ({ page, request }) => {
     await request.post('/api/developer/disabled-pages', { data: { disabled: ['sales_orders'] } });
 
-    await seedSession(page, SUPER_ADMIN);
+    await seedSession(page, ADMIN);
     await page.goto('/dashboard');
     // Open the Sales section so its sub-links render.
     await page.getByRole('button', { name: 'Sales' }).click();
@@ -24,7 +35,7 @@ test.describe('developer page toggles — sidebar', () => {
   test('navigating to a disabled page URL redirects to dashboard', async ({ page, request }) => {
     await request.post('/api/developer/disabled-pages', { data: { disabled: ['sales_orders'] } });
 
-    await seedSession(page, SUPER_ADMIN);
+    await seedSession(page, ADMIN);
     await page.goto('/sales/orders');
     await page.waitForURL('**/dashboard');
     expect(new URL(page.url()).pathname).toBe('/dashboard');
@@ -33,7 +44,7 @@ test.describe('developer page toggles — sidebar', () => {
   test('re-enabling a page restores the link and the URL', async ({ page, request }) => {
     await request.post('/api/developer/disabled-pages', { data: { disabled: [] } });
 
-    await seedSession(page, SUPER_ADMIN);
+    await seedSession(page, ADMIN);
     await page.goto('/sales/orders');
     // Should stay on /sales/orders, not redirect.
     await page.waitForLoadState('networkidle');
@@ -43,7 +54,7 @@ test.describe('developer page toggles — sidebar', () => {
   test('developer options page toggles a page off end-to-end', async ({ page, request }) => {
     await request.post('/api/developer/disabled-pages', { data: { disabled: [] } });
 
-    await seedSession(page, SUPER_ADMIN);
+    await seedSession(page, ADMIN);
     await page.goto('/developer/options');
 
     // Toggle Sales Order off (switch is labelled by the page label).

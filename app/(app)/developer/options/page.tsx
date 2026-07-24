@@ -18,11 +18,13 @@ export default function DeveloperOptionsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Super-admin gate.
+  // Admin gate: manage_settings is the permission that guards the Settings page.
+  // (There is no 'super_admin' permission in this system — gating on it would lock
+  // out every real user.)
   useEffect(() => {
     try {
       const session = JSON.parse(localStorage.getItem('mock-user-session') || '{}');
-      if (session?.permissions?.includes('super_admin')) {
+      if (session?.permissions?.includes('manage_settings')) {
         setAuthorized(true);
       } else {
         router.replace('/dashboard');
