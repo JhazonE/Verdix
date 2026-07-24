@@ -1,3 +1,15 @@
+// Shares a crypto contract with src/licensing/core.ts in the verdix-license-server
+// repo. That copy is multi-product (prefix/product are parameters); this one is a
+// single-product VERIFIER and deliberately keeps PRODUCT_ID/KEY_PREFIX as
+// constants. The divergence is intentional — do not sync the files wholesale.
+//
+// What MUST stay identical on both sides, or already-issued licenses stop
+// verifying:
+//   1. The LicensePayload shape (field names, types, JSON serialization).
+//   2. The signature scheme: Ed25519, crypto.sign(null, data, key) over the
+//      UTF-8 JSON of the payload.
+//   3. The token layout: <prefix>.<base64url payload>.<base64url signature>.
+
 /**
  * Verdix POS — License Cryptography Core
  * ----------------------------------------------------------------------------
