@@ -39,4 +39,21 @@ test.describe('developer page toggles — sidebar', () => {
     await page.waitForLoadState('networkidle');
     expect(new URL(page.url()).pathname).toBe('/sales/orders');
   });
+
+  test('developer options page toggles a page off end-to-end', async ({ page, request }) => {
+    await request.post('/api/developer/disabled-pages', { data: { disabled: [] } });
+
+    await seedSession(page, SUPER_ADMIN);
+    await page.goto('/developer/options');
+
+    // Toggle Sales Order off (switch is labelled by the page label).
+    await page.getByRole('switch', { name: 'Sales Order' }).click();
+    await page.getByRole('button', { name: /save/i }).click();
+
+    // Confirm it persisted via the API.
+    await expect.poll(async () => {
+      const r = await request.get('/api/developer/disabled-pages');
+      return (await r.json()).disabled;
+    }).toContain('sales_orders');
+  });
 });
