@@ -20,4 +20,23 @@ test.describe('developer page toggles — sidebar', () => {
     await expect(page.getByRole('link', { name: 'Sales Invoice/Delivery' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Sales Order' })).toHaveCount(0);
   });
+
+  test('navigating to a disabled page URL redirects to dashboard', async ({ page, request }) => {
+    await request.post('/api/developer/disabled-pages', { data: { disabled: ['sales_orders'] } });
+
+    await seedSession(page, SUPER_ADMIN);
+    await page.goto('/sales/orders');
+    await page.waitForURL('**/dashboard');
+    expect(new URL(page.url()).pathname).toBe('/dashboard');
+  });
+
+  test('re-enabling a page restores the link and the URL', async ({ page, request }) => {
+    await request.post('/api/developer/disabled-pages', { data: { disabled: [] } });
+
+    await seedSession(page, SUPER_ADMIN);
+    await page.goto('/sales/orders');
+    // Should stay on /sales/orders, not redirect.
+    await page.waitForLoadState('networkidle');
+    expect(new URL(page.url()).pathname).toBe('/sales/orders');
+  });
 });

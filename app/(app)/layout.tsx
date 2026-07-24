@@ -2,12 +2,14 @@
 
 import React, { Suspense } from 'react';
 import { Store } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { AnimatedSidebarTrigger } from '@/components/AnimatedSidebarTrigger';
 import { WindowControls } from '@/components/window-controls';
 import { AppBreadcrumbs } from '@/components/app-breadcrumbs';
 import { NavigationProgress } from '@/components/navigation-progress';
+import { pageKeyForHref, isProtectedHref } from '@/lib/page-registry';
 import { queryClient } from './layout-nav-config';
 import { useAppLayout } from './use-app-layout';
 import { AppSidebar } from './AppSidebar';
@@ -22,8 +24,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     filteredInventoryNavItems, filteredSalesNavItems,
     filteredCustomerNavItems, filteredSuppliersNavItems,
     filteredPurchasesNavItems,
+    disabledKeys, disabledLoaded,
     pathname,
   } = useAppLayout();
+
+  const router = useRouter();
 
   useLicenseHeartbeat();
 
@@ -34,6 +39,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     const match = document.cookie.match(/(?:^|;\s*)sidebar_state=(true|false)/);
     return match ? match[1] === 'true' : true;
   });
+
+  // Redirect away from pages disabled via developer options. Wait for the set
+  // to load so an enabled page is not redirected during the fetch window.
+  React.useEffect(() => {
+    if (!disabledLoaded) return;
+    if (isProtectedHref(pathname)) return;
+    const key = pageKeyForHref(pathname);
+    if (key && disabledKeys.has(key)) {
+      router.replace('/dashboard');
+    }
+  }, [disabledLoaded, disabledKeys, pathname, router]);
 
   if (isPOSPage) return <>{children}</>;
 
