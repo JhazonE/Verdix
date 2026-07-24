@@ -19,6 +19,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     user, isUserLoading, isPOSPage,
     businessName, hasPermission, getInitials,
     filteredNavItems, filteredOtherNavItems,
+    filteredInventoryNavItems, filteredSalesNavItems,
+    filteredCustomerNavItems, filteredSuppliersNavItems,
+    filteredPurchasesNavItems,
     pathname,
   } = useAppLayout();
 
@@ -53,6 +56,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           hasPermission={hasPermission}
           filteredNavItems={filteredNavItems}
           filteredOtherNavItems={filteredOtherNavItems}
+          inventoryNavItems={filteredInventoryNavItems}
+          salesNavItems={filteredSalesNavItems}
+          customerNavItems={filteredCustomerNavItems}
+          suppliersNavItems={filteredSuppliersNavItems}
+          purchasesNavItems={filteredPurchasesNavItems}
           pathname={pathname}
           getInitials={getInitials}
         />

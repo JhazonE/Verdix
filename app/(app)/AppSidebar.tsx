@@ -20,10 +20,6 @@ import {
 } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { handleSignOut } from '../auth-actions';
-import {
-  inventoryNavItems, salesNavItems, customerNavItems,
-  suppliersNavItems, purchasesNavItems,
-} from './layout-nav-config';
 import { buildNavIndex, filterNavIndex, matchSegments } from '@/lib/sidebar-search';
 import { useMemo, useRef, useState, useEffect } from 'react';
 
@@ -34,6 +30,11 @@ type Props = {
   hasPermission: (permission?: string) => boolean;
   filteredNavItems: { href: string; icon: any; label: string; permission?: string }[];
   filteredOtherNavItems: { href: string; icon: any; label: string; permission?: string }[];
+  inventoryNavItems: { href: string; label: string }[];
+  salesNavItems: { href: string; label: string }[];
+  customerNavItems: { href: string; label: string }[];
+  suppliersNavItems: { href: string; label: string }[];
+  purchasesNavItems: { href: string; label: string }[];
   pathname: string;
   getInitials: (email?: string | null) => string;
 };
@@ -41,6 +42,8 @@ type Props = {
 export function AppSidebar({
   user, hasPermission,
   filteredNavItems, filteredOtherNavItems,
+  inventoryNavItems, salesNavItems, customerNavItems,
+  suppliersNavItems, purchasesNavItems,
   pathname, getInitials,
 }: Props) {
   const isSalesPage = pathname.startsWith('/sales');
