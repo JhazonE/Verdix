@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-**Verdix POS** — a Philippine retail point-of-sale system built as a Next.js 16 web app wrapped in Electron 33 for Windows desktop deployment. It has a separate standalone **License Management Server** at `license-server/` that runs independently on port 4100.
+**Verdix POS** — a Philippine retail point-of-sale system built as a Next.js 16 web app wrapped in Electron 33 for Windows desktop deployment. Its **License Management Server** lives in a separate repository at `../verdix-license-server` and runs independently on port 4100.
 
 ---
 
@@ -37,12 +37,12 @@ npm run test:e2e:ui          # Open Playwright UI mode
 npm run test:e2e:report      # Show last test report
 npm run test:e2e:db          # Re-seed the test database only
 
-# License server (runs separately, port 4100)
-npm run license:keygen       # One-time: generate Ed25519 keypair
-npm run license:migrate      # Create verdix_license DB tables
-npm run license:seed-admin -- --username admin --password "..."
-npm run license:server       # Start dashboard at http://localhost:4100
-npm run license:new -- --product-key VRDX-XXXX-XXXX-XXXX --machine "..."
+# License server — now a SEPARATE REPO at ../verdix-license-server
+# (run these from that repo, not here)
+#   npm run migrate      # Create verdix_license DB tables
+#   npm run seed-admin -- --username admin --password "..."
+#   npm run server       # Start dashboard at http://localhost:4100
+#   npm run new -- --product-key VRDX-XXXX-XXXX-XXXX --machine "..."
 ```
 
 ---
@@ -96,12 +96,14 @@ Migrations in `scripts/migrations/` — numbered TypeScript files (001–088+), 
 
 **BIR Compliance (Philippine Tax)** — Sales invoices use BIR-format SI numbers (sequential, never gapped). Z-readings and X-readings are locked reports required for tax filing. `lib/fiscal-utils.ts` handles VAT calculations. These are legally significant — do not change numbering logic without understanding the impact.
 
-### License System (`license-server/`)
+### License System (separate repo: `../verdix-license-server`)
 
-A completely standalone HTTP server (no Next.js). Manages Ed25519-signed, machine-bound license keys for the POS.
+A completely standalone HTTP server (no Next.js), in its own git repository. Manages Ed25519-signed, machine-bound license keys for the POS.
 
-- **Private key** lives only on this server (`license-server/keys/`, gitignored)
+- **Private key** lives only on that server (`keys/` in that repo, gitignored)
 - **Public key** embedded in the POS at `lib/licensing/public-key.ts`
+- **Shared crypto is duplicated, not shared.** `lib/licensing/core.ts` here and `src/licensing/core.ts` in the license repo are intentional copies of the same Ed25519 contract. If you change the key format or algorithm in one, you MUST make the identical change in the other or previously issued licenses stop verifying.
+- This repo keeps `lib/licensing/` + `lib/crypto/aes-gcm.ts` because the POS **verifies** licenses (`app/api/license/*`); only the signing server moved out.
 - POS calls `POST /api/license/activate-online` → license server validates product key, checks seat count, signs and returns a machine-bound JWT-like token
 - Offline flow: admin generates key from dashboard, gives to customer manually
 - `lib/licensing/machine.ts` — Windows hardware fingerprint (registry MachineGuid + WMI serials) used as machine ID in license payloads
@@ -123,4 +125,4 @@ Playwright tests run on port 3100 against a separate `verdix_test` database. `te
 - **No parallel E2E tests** — The test DB is shared across the test suite; always `workers: 1`.
 - **`CLOUD_DB_*` is optional** — If unset, cloud sync is silently skipped. Never throw or crash when cloud is unreachable.
 - **BIR SI numbers are legally significant** — The sequential numbering in `sales_invoice_number` must never have gaps or duplicates.
-- **License server is a separate process** — It has its own DB (`verdix_license`), its own auth, and runs independently of the Next.js app. It must be started separately with `npm run license:server`.
+- **License server is a separate repo and process** — It lives at `../verdix-license-server`, has its own DB (`verdix_license`), its own auth, and runs independently of the Next.js app. Start it from that repo with `npm run server`.
