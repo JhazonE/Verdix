@@ -43,8 +43,10 @@ export function useAppLayout() {
       .catch(() => {});
   }, []);
 
-  // Disabled pages (store-wide developer toggles).
+  // Disabled pages (store-wide developer toggles). Skipped on POS/customer-display,
+  // which render before the sidebar and never consume the disabled set.
   useEffect(() => {
+    if (isPOSPage) { setDisabledLoaded(true); return; }
     fetch(getApiUrl('/developer/disabled-pages'))
       .then(res => { if (!res.ok) throw new Error(); return res.json(); })
       .then(result => {
@@ -54,7 +56,7 @@ export function useAppLayout() {
       })
       .catch(() => {})
       .finally(() => setDisabledLoaded(true));
-  }, []);
+  }, [isPOSPage]);
 
   // Document title
   useEffect(() => { document.title = businessName; }, [businessName]);
