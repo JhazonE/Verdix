@@ -537,7 +537,8 @@ Expected: PASS — "Sales Order" link absent, "Sales Invoice/Delivery" visible.
 
 - [ ] **Step 7: Typecheck**
 
-Run: `npm run typecheck`
+Run: `npm run typecheck 2>&1 | grep -v "^.next" | grep -E "error TS"`
+Expected: prints nothing (baseline empty; .next noise filtered).
 Expected: no errors.
 
 - [ ] **Step 8: Commit**
@@ -629,7 +630,8 @@ Expected: PASS (all cases — hide, redirect, re-enable).
 
 - [ ] **Step 5: Typecheck**
 
-Run: `npm run typecheck`
+Run: `npm run typecheck 2>&1 | grep -v "^.next" | grep -E "error TS"`
+Expected: prints nothing (baseline empty; .next noise filtered).
 Expected: no errors.
 
 - [ ] **Step 6: Commit**
@@ -840,7 +842,8 @@ Expected: PASS — `sales_orders` appears in the persisted disabled set.
 - [ ] **Step 6: Run the full spec + typecheck**
 
 Run: `npx playwright test tests/e2e/developer-page-toggles.spec.ts --project=chromium`
-Run: `npm run typecheck`
+Run: `npm run typecheck 2>&1 | grep -v "^.next" | grep -E "error TS"`
+Expected: prints nothing (baseline empty; .next noise filtered).
 Expected: all PASS; no type errors.
 
 - [ ] **Step 7: Commit**
@@ -852,19 +855,14 @@ git commit -m "feat(developer): super-admin page to toggle page visibility"
 
 ---
 
-### Task 6: Full regression + lint
+### Task 6: Full regression
 
 **Files:** none (verification only).
 
-- [ ] **Step 1: Lint**
+- [ ] **Step 1: Typecheck (lint is broken repo-wide — do NOT run `npm run lint`)**
 
-Run: `npm run lint`
-Expected: no new errors in changed files.
-
-- [ ] **Step 2: Typecheck**
-
-Run: `npm run typecheck`
-Expected: no errors.
+Run: `npm run typecheck 2>&1 | grep -v "^\.next" | grep -E "error TS"`
+Expected: prints nothing (baseline is empty; `.next/` parse noise is filtered out and must never be "fixed").
 
 - [ ] **Step 3: Run the new specs together**
 
