@@ -292,7 +292,7 @@ export const CHAPTERS: Chapter[] = [
           {
             kind: 'steps',
             items: [
-              'On the Products page, click the "Add New Product" button.',
+              'On the Products page, click the "Add Product" button.',
               'Fill in the basic details: name, SKU, barcode, brand, category, and department.',
               'Switch to the pricing tab to set the cost and retail price.',
               'Switch to the inventory tab to set the reorder point and starting stock, if any.',
