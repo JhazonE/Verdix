@@ -21,3 +21,4 @@ import './ejournal-writer.test';
 import './product-type.test';
 import './manual-screens.test';
 import './manual-overlay.test';
+import './manual-content.test';
