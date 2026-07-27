@@ -25,7 +25,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report",
     "test:e2e:db": "tsx tests/e2e/setup/prepare-test-db.ts",
-    "test:unit": "tsx tests/unit/run.ts"
+    "test:unit": "tsx tests/unit/run.ts",
+    "manual:capture": "tsx scripts/manual/capture.ts"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",

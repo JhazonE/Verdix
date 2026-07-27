@@ -1,0 +1,196 @@
+import { chromium, type Page } from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
+import { SCREENS, type Screen } from './screens';
+import { calloutOverlayCss, calloutMarkup, type ResolvedCallout } from './overlay';
+import { seedSession, DEFAULT_ADMIN } from '../../tests/e2e/helpers/auth';
+import { TEST_USERS, TEST_PRODUCTS } from '../../tests/e2e/fixtures/test-data';
+import { resetPosState } from '../../tests/e2e/helpers/db';
+
+/**
+ * Screenshots every screen in `SCREENS` (with numbered callout badges overlaid)
+ * into `docs/manual/images/<slug>.png` for the user manual generator.
+ *
+ * Run: `npm run manual:capture` — expects a dev server already running on
+ * http://localhost:3100 against the `verdix_test` database (see
+ * tests/e2e/setup/prepare-test-db.ts / playwright.config.ts webServer block).
+ */
+
+const BASE_URL = 'http://localhost:3100';
+const VIEWPORT = { width: 1440, height: 900 };
+const OUTPUT_DIR = path.join(__dirname, '..', '..', 'docs', 'manual', 'images');
+
+const cashier = TEST_USERS.cashier;
+const product = TEST_PRODUCTS[0];
+
+/** Named POS setup sequences referenced by `Screen.setup`. Mirrors tests/e2e/pos-sale.spec.ts. */
+const POS_SETUPS: Record<string, (page: Page) => Promise<void>> = {
+  async posLoginForm(page) {
+    await page.goto('/pos');
+    await page.getByRole('heading', { name: /cashier login/i }).waitFor();
+  },
+
+  async posStartShiftDialog(page) {
+    await page.goto('/pos');
+    await page.getByRole('heading', { name: /cashier login/i }).waitFor();
+    await page.getByLabel('Username').fill(cashier.username);
+    await page.getByLabel('Password').fill(cashier.password);
+    await page.getByRole('button', { name: /login to pos/i }).click();
+    await page.getByRole('heading', { name: /start new shift/i }).waitFor();
+  },
+
+  async posShiftStarted(page) {
+    await POS_SETUPS.posStartShiftDialog(page);
+    await page.getByRole('button', { name: /start shift/i }).click();
+    await page.getByPlaceholder(/scan barcode or enter product sku/i).waitFor();
+  },
+
+  async posWithCart(page) {
+    await POS_SETUPS.posShiftStarted(page);
+    const barcode = page.getByPlaceholder(/scan barcode or enter product sku/i);
+    const deadline = Date.now() + 15_000;
+    let lastErr: unknown;
+    while (Date.now() < deadline) {
+      try {
+        await barcode.fill(product.sku);
+        await barcode.press('Enter');
+        await page.getByText(product.name).first().waitFor({ timeout: 2_000 });
+        return;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error('posWithCart: failed to add product to cart');
+  },
+};
+
+/** Resolve callout definitions to concrete pixel positions in the current viewport. */
+async function resolveCallouts(page: Page, screen: Screen): Promise<ResolvedCallout[]> {
+  const resolved: ResolvedCallout[] = [];
+  if (!screen.callouts) return resolved;
+
+  for (const callout of screen.callouts) {
+    if (callout.selector) {
+      try {
+        const locator = page.locator(callout.selector).first();
+        const box = await locator.boundingBox();
+        if (!box) {
+          console.warn(`  ! ${screen.slug}: callout ${callout.n} selector "${callout.selector}" not visible — skipping`);
+          continue;
+        }
+        resolved.push({ n: callout.n, x: box.x + 12, y: box.y + 12 });
+      } catch (err) {
+        console.warn(`  ! ${screen.slug}: callout ${callout.n} selector "${callout.selector}" failed to resolve — skipping`, err);
+      }
+    } else if (callout.x !== undefined && callout.y !== undefined) {
+      resolved.push({ n: callout.n, x: callout.x * VIEWPORT.width, y: callout.y * VIEWPORT.height });
+    } else {
+      console.warn(`  ! ${screen.slug}: callout ${callout.n} has neither selector nor x/y — skipping`);
+    }
+  }
+
+  return resolved;
+}
+
+async function captureScreen(page: Page, screen: Screen): Promise<void> {
+  if (screen.auth === 'admin') {
+    await seedSession(page, DEFAULT_ADMIN);
+  }
+
+  if (screen.setup) {
+    const setupFn = POS_SETUPS[screen.setup];
+    if (!setupFn) throw new Error(`unknown setup sequence "${screen.setup}"`);
+    await setupFn(page);
+    // Setup sequences all start at /pos. If the screen targets a different
+    // route (e.g. /pos/x-reading), navigate there after the sequence so the
+    // shift state (created in the DB by the setup) is visible to the report.
+    //
+    // /pos and /pos/customer-display bypass the app's outer auth guard
+    // entirely (see app/(app)/use-app-layout.ts isPOSPage); every other
+    // /pos/* route (x-reading, z-reading) is a normal guarded (app) page that
+    // requires `mock-user-session`, plus its own AdminAuthDialog PIN gate.
+    if (screen.route !== '/pos') {
+      await seedSession(page, DEFAULT_ADMIN);
+      await page.goto(screen.route);
+      const adminAuthHeading = page.getByText(/admin authentication required/i);
+      const sawAdminAuth = await adminAuthHeading
+        .waitFor({ state: 'visible', timeout: 5_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (sawAdminAuth) {
+        await page.getByLabel('Username').fill(TEST_USERS.admin.username);
+        await page.getByLabel('Password').fill(TEST_USERS.admin.password);
+        await page.getByRole('button', { name: /authenticate/i }).click();
+        await adminAuthHeading.waitFor({ state: 'hidden', timeout: 10_000 });
+      }
+    }
+  } else {
+    await page.goto(screen.route);
+  }
+
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(700);
+
+  if (screen.waitFor) {
+    await page.locator(screen.waitFor).first().waitFor({ timeout: 15_000 });
+  }
+
+  const resolved = await resolveCallouts(page, screen);
+
+  await page.addStyleTag({ content: calloutOverlayCss() });
+  await page.evaluate((markup) => {
+    document.body.insertAdjacentHTML('beforeend', markup);
+  }, calloutMarkup(resolved));
+
+  const outPath = path.join(OUTPUT_DIR, `${screen.slug}.png`);
+  await page.screenshot({ path: outPath });
+}
+
+async function main() {
+  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+
+  const browser = await chromium.launch();
+  const failed: { slug: string; message: string }[] = [];
+
+  // POS screens resume an active shift automatically, so start each POS
+  // sequence from a clean shift/sale state.
+  const needsPosReset = SCREENS.some((s) => s.setup);
+  if (needsPosReset) {
+    await resetPosState();
+  }
+
+  for (const screen of SCREENS) {
+    const context = await browser.newContext({ baseURL: BASE_URL, viewport: VIEWPORT });
+    const page = await context.newPage();
+    try {
+      // Each POS setup sequence assumes a fresh shift state — reset before
+      // every POS screen so earlier screens' carts/shifts don't bleed in.
+      if (screen.setup) {
+        await resetPosState();
+      }
+      await captureScreen(page, screen);
+      console.log(`✓ ${screen.slug}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`✗ ${screen.slug}: ${message}`);
+      failed.push({ slug: screen.slug, message });
+    } finally {
+      await context.close();
+    }
+  }
+
+  await browser.close();
+
+  console.log('');
+  console.log(`Captured ${SCREENS.length - failed.length}/${SCREENS.length} screens.`);
+  if (failed.length > 0) {
+    console.log(`Failed (${failed.length}):`);
+    for (const f of failed) console.log(`  - ${f.slug}: ${f.message}`);
+    process.exitCode = 1;
+  }
+}
+
+main().catch((err) => {
+  console.error('manual:capture crashed:', err);
+  process.exitCode = 1;
+});
