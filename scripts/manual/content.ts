@@ -477,6 +477,48 @@ export const CHAPTERS: Chapter[] = [
         ],
       },
       {
+        heading: 'How receiving a delivery changes cost and retail price',
+        blocks: [
+          {
+            kind: 'para',
+            text: 'When you receive a delivery, Verdix does not simply overwrite the product\'s cost and retail price with whatever is on the new purchase order. It follows one simple rule, which applies to the cost and the retail price separately: the higher value always wins.',
+          },
+          {
+            kind: 'para',
+            text: 'In other words, a delivery can raise a product\'s cost and retail price, but it can never lower them. If your supplier charges more this time, the product takes the new, higher cost and retail price. If your supplier charges less this time, the product keeps the older, higher figures it already had.',
+          },
+          {
+            kind: 'table',
+            headers: ['What happened on the new delivery', 'What the product ends up with'],
+            rows: [
+              ['New cost is HIGHER than the current cost', 'The product takes the new, higher cost.'],
+              ['New cost is LOWER than the current cost', 'The product keeps its existing, higher cost. The new lower cost is ignored.'],
+              ['New retail price is HIGHER than the current retail price', 'The product takes the new, higher retail price.'],
+              ['New retail price is LOWER than the current retail price', 'The product keeps its existing, higher retail price.'],
+              ['The retail price is left blank on the purchase order', 'The product keeps its existing retail price — a blank price never lowers it.'],
+            ],
+          },
+          {
+            kind: 'para',
+            text: 'Here is a worked example. A product currently has a cost of 100 pesos and a retail price of 130 pesos. A delivery arrives where the same product cost 120 pesos, so the cost rises to 120 and, if the purchase order also carries a higher retail price, the retail price rises with it. On the next delivery the supplier charges only 90 pesos. Because 90 is lower than 120, the product keeps its cost of 120 — the cheaper price does not pull it back down.',
+          },
+          {
+            kind: 'para',
+            text: 'The cost being compared is the landed cost, not just the price on the supplier\'s invoice. Landed cost is the item cost plus that item\'s share of the shipping fee entered on the purchase order. So a delivery with a large shipping fee can raise a product\'s cost even when the supplier\'s unit price has not changed.',
+          },
+          {
+            kind: 'note',
+            variant: 'tip',
+            text: 'Tip: This rule protects your selling price from dropping by accident when a supplier happens to give you one cheap delivery. If you genuinely want a product to cost or sell for less, change it yourself on the Products page — receiving a cheaper delivery alone will not do it.',
+          },
+          {
+            kind: 'note',
+            variant: 'warning',
+            text: 'Warning: Your profit reports are not distorted by this rule. Each delivery is still stored as its own FIFO cost batch at the real price you actually paid, so batch and profit-margin reports show true costs. The highest-wins rule only affects the single headline cost and retail price shown on the product record.',
+          },
+        ],
+      },
+      {
         heading: 'Recording a bad order',
         blocks: [
           {
