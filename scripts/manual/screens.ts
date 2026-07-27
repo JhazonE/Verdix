@@ -87,6 +87,8 @@ export const SCREENS: Screen[] = [
   { slug: 'pos-start-shift', route: '/pos', title: 'Start shift dialog', auth: 'pos', setup: 'posStartShiftDialog' },
   { slug: 'pos-empty', route: '/pos', title: 'The POS screen', auth: 'pos', setup: 'posShiftStarted' },
   { slug: 'pos-cart', route: '/pos', title: 'Items in the cart', auth: 'pos', setup: 'posWithCart' },
-  { slug: 'pos-x-reading', route: '/pos/x-reading', title: 'X-Reading', auth: 'pos', setup: 'posShiftStarted' },
-  { slug: 'pos-z-reading', route: '/pos/z-reading', title: 'Z-Reading', auth: 'pos', setup: 'posShiftStarted' },
+  // Both readings run a completed sale first, so the report shows real figures
+  // instead of a page of P0.00 — an all-zero report teaches the reader nothing.
+  { slug: 'pos-x-reading', route: '/pos/x-reading', title: 'X-Reading', auth: 'pos', setup: 'posWithCompletedSale' },
+  { slug: 'pos-z-reading', route: '/pos/z-reading', title: 'Z-Reading', auth: 'pos', setup: 'posWithCompletedSale' },
 ];

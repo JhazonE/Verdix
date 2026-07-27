@@ -62,6 +62,32 @@ const POS_SETUPS: Record<string, (page: Page) => Promise<void>> = {
     }
     throw lastErr instanceof Error ? lastErr : new Error('posWithCart: failed to add product to cart');
   },
+
+  /**
+   * Ring up and tender a real cash sale, so the X/Z-reading reports have actual
+   * figures to show. Without a completed sale every line reads P0.00, which is
+   * useless as a manual figure — the reader cannot see what the report is for.
+   *
+   * Mirrors the tender flow proven in tests/e2e/pos-sale.spec.ts: an empty
+   * barcode + Enter opens the tender dialog pre-filled with the exact total.
+   */
+  async posWithCompletedSale(page) {
+    await POS_SETUPS.posWithCart(page);
+
+    const barcode = page.getByPlaceholder(/scan barcode or enter product sku/i);
+    await barcode.click();
+    await barcode.press('Enter');
+
+    await page.getByText(/tender payment/i).waitFor({ timeout: 10_000 });
+    await page.getByRole('button', { name: /confirm payment/i }).click();
+
+    // The sale is saved once the print prompt appears; skip printing (no
+    // printer attached in capture) and wait for the cart to clear, which
+    // confirms the transaction was committed to the DB.
+    await page.getByText(/saved successfully/i).waitFor({ timeout: 15_000 });
+    await page.getByRole('button', { name: /no, skip/i }).click();
+    await page.getByText(/cart is empty/i).waitFor({ timeout: 10_000 });
+  },
 };
 
 /**
@@ -222,17 +248,34 @@ async function captureScreen(page: Page, screen: Screen): Promise<void> {
 async function main() {
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
+  // Optional slug filter: `npm run manual:capture -- pos-x-reading pos-z-reading`
+  // re-shoots just those screens. A full run is ~25 minutes, so fixing one bad
+  // screenshot should not require recapturing all of them.
+  //
+  // Resolved BEFORE launching the browser: a bad slug must fail immediately,
+  // not after paying for a browser that would then never be closed.
+  const only = process.argv.slice(2).filter((a) => !a.startsWith('-'));
+  const targets = only.length > 0 ? SCREENS.filter((s) => only.includes(s.slug)) : SCREENS;
+
+  if (only.length > 0) {
+    const unknown = only.filter((slug) => !SCREENS.some((s) => s.slug === slug));
+    if (unknown.length > 0) {
+      throw new Error(`Unknown screen slug(s): ${unknown.join(', ')}`);
+    }
+    console.log(`manual: capturing ${targets.length} of ${SCREENS.length} screens`);
+  }
+
   const browser = await chromium.launch();
   const failed: { slug: string; message: string }[] = [];
 
   // POS screens resume an active shift automatically, so start each POS
   // sequence from a clean shift/sale state.
-  const needsPosReset = SCREENS.some((s) => s.setup);
+  const needsPosReset = targets.some((s) => s.setup);
   if (needsPosReset) {
     await resetPosState();
   }
 
-  for (const screen of SCREENS) {
+  for (const screen of targets) {
     const context = await browser.newContext({ baseURL: BASE_URL, viewport: VIEWPORT });
     const page = await context.newPage();
     try {
@@ -255,7 +298,7 @@ async function main() {
   await browser.close();
 
   console.log('');
-  console.log(`Captured ${SCREENS.length - failed.length}/${SCREENS.length} screens.`);
+  console.log(`Captured ${targets.length - failed.length}/${targets.length} screens.`);
   if (failed.length > 0) {
     console.log(`Failed (${failed.length}):`);
     for (const f of failed) console.log(`  - ${f.slug}: ${f.message}`);

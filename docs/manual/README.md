@@ -71,6 +71,15 @@ This script:
 - Overlays numbered red callout badges (if defined)
 - Saves PNGs to `docs/manual/images/<slug>.png`
 - Continues on partial failure (e.g., if one screen times out, the rest still capture)
+
+**To re-shoot only some screens**, pass their slugs — a full run is ~25 minutes,
+so fixing one bad screenshot should not require recapturing everything:
+
+```powershell
+npm run manual:capture -- pos-x-reading pos-z-reading
+```
+
+An unknown slug fails immediately rather than silently capturing nothing.
 - Reports missing captures at the end
 
 A full run takes approximately 25 minutes. Progress is logged to the console.
