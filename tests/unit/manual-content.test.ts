@@ -13,6 +13,17 @@ const badRefs = allBlocks
   .filter((slug) => !knownSlugs.has(slug));
 assert.deepEqual(badRefs, [], `content references unknown screen slugs: ${badRefs.join(', ')}`);
 
+// Reverse direction: a screen registered in SCREENS with no figure block ever
+// referencing it gets captured (~45s wasted) and produces a PNG that never
+// appears in the manual.
+const referencedSlugs = new Set(
+  allBlocks
+    .filter((b) => b.kind === 'figure')
+    .map((b) => (b as { kind: 'figure'; slug: string }).slug),
+);
+const unusedScreens = SCREENS.map((s) => s.slug).filter((slug) => !referencedSlugs.has(slug));
+assert.deepEqual(unusedScreens, [], `screens have no figure block referencing them: ${unusedScreens.join(', ')}`);
+
 assert.deepEqual(CHAPTERS.map((c) => c.number), [1, 2, 3, 4, 5, 6, 7, 8, 9], 'chapters 1-9');
 
 for (const c of CHAPTERS) {

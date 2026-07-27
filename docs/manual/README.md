@@ -118,9 +118,9 @@ To document a new feature or interface:
 
 ### Validation
 
-- Unit tests in `npm run test:unit` verify that every figure slug in content has a matching screen definition and vice versa.
+- Unit tests in `npm run test:unit` verify both directions of the slug/screen relationship: every figure block's slug must have a matching entry in `SCREENS`, and every entry in `SCREENS` must be referenced by at least one figure block in content.
 - Missing PNGs do not abort the build. The document includes a shaded placeholder (`[SCREENSHOT MISSING: slug]`) and logs which images to recapture.
-- If you add a figure to content but forget to add it to SCREENS, `npm run test:unit` will fail with a clear message.
+- If you add a figure to content but forget to add it to SCREENS (or vice versa — register a screen but never reference it), `npm run test:unit` will fail with a clear message.
 
 ## Troubleshooting
 

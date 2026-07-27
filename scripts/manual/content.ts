@@ -292,7 +292,7 @@ export const CHAPTERS: Chapter[] = [
           {
             kind: 'steps',
             items: [
-              'On the Products page, click the button to add a new product.',
+              'On the Products page, click the "Add New Product" button.',
               'Fill in the basic details: name, SKU, barcode, brand, category, and department.',
               'Switch to the pricing tab to set the cost and retail price.',
               'Switch to the inventory tab to set the reorder point and starting stock, if any.',
@@ -512,7 +512,7 @@ export const CHAPTERS: Chapter[] = [
             kind: 'steps',
             items: [
               'Go to Suppliers → Balance to Supplier to see the summary of what is owed.',
-              'Click into a supplier\'s row to view their transaction history, or use the make-payment action to record a payment against their balance.',
+              'Click into a supplier\'s row to view their transaction history, or use the "Make Payment" action to record a payment against their balance.',
               'For paying several suppliers at once, use the bulk payment option after selecting multiple suppliers in the table.',
             ],
           },
@@ -819,7 +819,7 @@ export const CHAPTERS: Chapter[] = [
             kind: 'steps',
             items: [
               'Go to Settings → Tax Rates. If your store requires authentication for this page, enter admin credentials when prompted.',
-              'Click the button to add a new tax rate, or use the edit action on an existing rate.',
+              'Click the "Add Tax Rate" button, or use the edit action on an existing rate.',
               'Set the "Registration Type" to "VAT Registered" or "Non-VAT Registered" as applicable to your store.',
             ],
           },
@@ -842,7 +842,7 @@ export const CHAPTERS: Chapter[] = [
             kind: 'steps',
             items: [
               'Go to User Management.',
-              'Click the button to add a new user, filling in their name, username, password, and user type.',
+              'Click the "Add User" button, filling in their name, username, password, and user type.',
               'Use "Manage User Types" if you need to create or edit the permission sets assigned to users (for example Admin, Manager, Cashier).',
               'Click a user\'s row actions to edit their details or deactivate their account.',
               'Switch to the "Activity Logs" tab to see an audit trail of actions taken across Inventory, Sales, Customers, Purchases, Suppliers, Products, and more.',

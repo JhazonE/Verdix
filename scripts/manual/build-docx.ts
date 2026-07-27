@@ -187,8 +187,11 @@ function renderBlock(block: Block, state: BuildState): (Paragraph | Table)[] {
       return [image, caption];
     }
 
-    default:
+    default: {
+      const _exhaustive: never = block;
+      void _exhaustive;
       return [];
+    }
   }
 }
 
