@@ -78,3 +78,6 @@ license.dat
 
 # SDD scratch (task briefs, review packages, progress ledger)
 /.superpowers/
+
+# Office lock files (created when a .docx/.xlsx is open in Word/Excel)
+~$*

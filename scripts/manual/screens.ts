@@ -13,6 +13,14 @@ export type Screen = {
   waitFor?: string;
   /** Named POS sequence to run before shooting (see capture.ts). */
   setup?: string;
+  /**
+   * Mock `/api/license/status` as unlicensed for this screen only, so
+   * `components/license-gate.tsx` renders its activation card instead of the
+   * real (licensed) app. Scoped per-screen — never applied globally, or every
+   * other screenshot would break (LicenseGate blocks the whole app when
+   * unlicensed). See capture.ts.
+   */
+  mockUnlicensed?: boolean;
 };
 
 const ROOT_ROUTES = new Set(['/login', '/signup', '/activate']);
@@ -27,7 +35,10 @@ export const SCREENS: Screen[] = [
   // Ch.1 Getting Started
   { slug: 'login', route: '/login', title: 'The login screen', auth: 'none',
     callouts: [{ n: 1, selector: 'input#username' }, { n: 2, selector: 'input#password' }] },
-  { slug: 'activate', route: '/activate', title: 'License activation', auth: 'none' },
+  { slug: 'activate-online', route: '/login', title: 'License activation — Online', auth: 'none',
+    mockUnlicensed: true },
+  { slug: 'activate-offline', route: '/login', title: 'License activation — Offline', auth: 'none',
+    mockUnlicensed: true, setup: 'activateOfflineTab' },
   { slug: 'dashboard', route: '/dashboard', title: 'The dashboard', auth: 'admin',
     callouts: [{ n: 1, selector: '[data-slot="sidebar"]' }] },
 

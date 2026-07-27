@@ -64,6 +64,19 @@ const POS_SETUPS: Record<string, (page: Page) => Promise<void>> = {
   },
 };
 
+/**
+ * Named non-POS setup sequences referenced by `Screen.setup`. Unlike
+ * `POS_SETUPS`, these run against whatever `screen.route` the screen already
+ * navigated to (see captureScreen) rather than assuming `/pos` and remapping
+ * afterward.
+ */
+const SETUPS: Record<string, (page: Page) => Promise<void>> = {
+  async activateOfflineTab(page) {
+    await page.getByRole('button', { name: /^offline$/i }).click();
+    await page.getByText('Your Machine ID').waitFor();
+  },
+};
+
 /** Resolve callout definitions to concrete pixel positions in the current viewport. */
 async function resolveCallouts(page: Page, screen: Screen): Promise<ResolvedCallout[]> {
   const resolved: ResolvedCallout[] = [];
@@ -112,9 +125,33 @@ async function captureScreen(page: Page, screen: Screen): Promise<void> {
     await seedSession(page, DEFAULT_ADMIN);
   }
 
-  if (screen.setup) {
+  // Make the machine appear unlicensed for this screen only, so
+  // components/license-gate.tsx renders its activation card instead of the
+  // real (licensed) app. Fake, obviously-placeholder values only — never the
+  // real customer name or this dev machine's real hardware fingerprint.
+  if (screen.mockUnlicensed) {
+    await page.route('**/api/license/status', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            status: 'unlicensed',
+            licensed: false,
+            machineId: 'XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX',
+            customer: null,
+            edition: null,
+            expires: null,
+            daysRemaining: null,
+          },
+        }),
+      })
+    );
+  }
+
+  if (screen.setup && POS_SETUPS[screen.setup]) {
     const setupFn = POS_SETUPS[screen.setup];
-    if (!setupFn) throw new Error(`unknown setup sequence "${screen.setup}"`);
     await setupFn(page);
     // Setup sequences all start at /pos. If the screen targets a different
     // route (e.g. /pos/x-reading), navigate there after the sequence so the
@@ -141,6 +178,11 @@ async function captureScreen(page: Page, screen: Screen): Promise<void> {
     }
   } else {
     await page.goto(screen.route);
+    if (screen.setup) {
+      const setupFn = SETUPS[screen.setup];
+      if (!setupFn) throw new Error(`unknown setup sequence "${screen.setup}"`);
+      await setupFn(page);
+    }
   }
 
   await page.waitForLoadState('networkidle');

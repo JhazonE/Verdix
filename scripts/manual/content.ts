@@ -40,23 +40,35 @@ export const CHAPTERS: Chapter[] = [
         blocks: [
           {
             kind: 'para',
-            text: 'The first time Verdix POS is installed on a computer, it will not let you log in until it has been activated with a license key. This is a one-time step per computer. If you see a screen titled "Vendix POS — Software Activation" instead of the login screen, follow the steps below.',
+            text: 'The first time Verdix POS is installed on a computer, it will not let you use the system until it has been activated with a license key. This is a one-time step per computer — once activation succeeds, that computer stays activated. If you see a card titled "Verdix POS — License Activation" instead of the app you expect, follow the steps below.',
+          },
+          {
+            kind: 'para',
+            text: 'The license is tied to that specific computer through its Machine ID, a unique code generated from the computer\'s own hardware. A license activated on one computer will not work on another — if you move Verdix to a new or replacement computer, it needs to be activated again with a new key for that machine.',
           },
           {
             kind: 'steps',
             items: [
-              'Look at the banner at the top of the screen. It tells you why activation is needed (for example "Not Activated" or "License Expired").',
-              'If your computer has an internet connection, stay on the "Online Activation" tab. Type the product key you were given (it looks like VRDX-XXXX-XXXX-XXXX) into the "Product Key" field.',
+              'Look at the text under the card title. It tells you why activation is needed (for example "Activation required" or "License expired").',
+              'If this computer has an internet connection, stay on the "Online" tab. Type the product key you were given (it looks like VRDX-XXXX-XXXX-XXXX) into the "Product Key" field.',
               'Click the "Activate Online" button.',
-              'If you do not have internet access, click the "Offline Activation" tab instead. Paste the full signed license key your vendor sent you into the "Signed License Key" box, then click "Activate".',
-              'Once activation succeeds, you will see "Activated Successfully" and the system will send you to the login screen automatically.',
             ],
           },
-          { kind: 'figure', slug: 'activate' },
+          { kind: 'figure', slug: 'activate-online' },
+          {
+            kind: 'steps',
+            items: [
+              'If this computer does not have internet access, click the "Offline" tab instead.',
+              'Under "Your Machine ID" you will see this computer\'s unique code. Click the small copy button next to it and send the copied code to your supplier.',
+              'Your supplier will send back a license key. Paste the full key they gave you into the "License Key" box.',
+              'Click the "Activate License" button.',
+            ],
+          },
+          { kind: 'figure', slug: 'activate-offline' },
           {
             kind: 'note',
             variant: 'tip',
-            text: 'If activation fails because the license was issued for a different computer, use the "Copy Machine ID" button next to "Your Machine ID" to copy this computer\'s unique ID, then send it to your vendor so they can issue a new key for this machine.',
+            text: 'If activation fails because the license was issued for a different computer, copy this computer\'s "Your Machine ID" (on the "Offline" tab) and send it to your supplier so they can issue a new key for this machine.',
           },
         ],
       },
