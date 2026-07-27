@@ -495,7 +495,7 @@ export const CHAPTERS: Chapter[] = [
             items: [
               'Go to Suppliers → Supplier List.',
               'Click "Add Supplier" to create a new one, filling in its name, contact number, address, and payment terms.',
-              'Click a supplier row to edit its details, or use the export button to download the list as CSV or PDF.',
+              'Click a supplier row to edit its details, or use the "Export as CSV" or "Export as PDF" buttons to download the list.',
             ],
           },
           { kind: 'figure', slug: 'suppliers-list' },
@@ -597,7 +597,7 @@ export const CHAPTERS: Chapter[] = [
               'Go to Customer → Loyalty.',
               'Click "Add Loyalty Card" to register a new card for a customer.',
               'Use the row actions menu to "Edit Loyalty Card", "Adjust Points" (add or subtract points manually), "View History" (every point-earning and point-spending event), or "Delete" a card.',
-              'Click "Loyalty Settings" to change how many points are earned per peso spent, store-wide.',
+              'Click "Loyalty Points Settings" to change how many points are earned per peso spent, store-wide.',
             ],
           },
           { kind: 'figure', slug: 'customer-loyalty' },

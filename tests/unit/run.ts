@@ -22,3 +22,4 @@ import './product-type.test';
 import './manual-screens.test';
 import './manual-overlay.test';
 import './manual-content.test';
+import './manual-build.test';
