@@ -78,7 +78,22 @@ async function resolveCallouts(page: Page, screen: Screen): Promise<ResolvedCall
           console.warn(`  ! ${screen.slug}: callout ${callout.n} selector "${callout.selector}" not visible — skipping`);
           continue;
         }
-        resolved.push({ n: callout.n, x: box.x + 12, y: box.y + 12 });
+        // The badge's own CSS centers it on (x, y) via `margin: -14px 0 0 -14px`
+        // (overlay.ts) — i.e. (x, y) is the badge's CENTER, a 28px circle.
+        // Anchoring near the element's TOP-LEFT CORNER is unreliable: form
+        // fields commonly have a <label> sitting just a few px above the
+        // input (e.g. 8px on the login form), so a badge centered near the
+        // corner collides with either the label above or the placeholder
+        // text inside, depending on which way it's nudged.
+        //
+        // Anchor instead to the element's LEFT-CENTER edge, offset further
+        // left by half the badge's own radius (14px) plus a small gap, so
+        // the badge sits fully outside the control on its left side —
+        // clearing both the label above and the placeholder inside — while
+        // still sitting close enough to unambiguously point at it.
+        const badgeRadius = 14;
+        const gap = 6;
+        resolved.push({ n: callout.n, x: box.x - badgeRadius - gap, y: box.y + box.height / 2 });
       } catch (err) {
         console.warn(`  ! ${screen.slug}: callout ${callout.n} selector "${callout.selector}" failed to resolve — skipping`, err);
       }
@@ -136,6 +151,22 @@ async function captureScreen(page: Page, screen: Screen): Promise<void> {
   }
 
   const resolved = await resolveCallouts(page, screen);
+
+  // Toasts (e.g. "Shift Started", "Manual Terminal Connected") use
+  // TOAST_REMOVE_DELAY = 1_000_000ms (hooks/use-toast.ts) — they never
+  // self-dismiss within our wait, so they'd otherwise bleed into every
+  // screenshot taken shortly after a toast-triggering action. Radix's
+  // ToastProvider wraps ToastViewport's <ol> in its own `<div role="region">`
+  // (the role lives on the DIV, not the OL) — remove that wrapper so the
+  // whole toast stack (and its "region" landmark) disappears in one shot.
+  //
+  // Also strip Next.js dev-mode's floating indicator (`<nextjs-portal>`
+  // custom element) — it's dev tooling, not part of the app, and must not
+  // appear in a customer-facing manual.
+  await page.evaluate(() => {
+    document.querySelectorAll('[role="region"]').forEach((el) => el.remove());
+    document.querySelectorAll('nextjs-portal').forEach((el) => el.remove());
+  });
 
   await page.addStyleTag({ content: calloutOverlayCss() });
   await page.evaluate((markup) => {
