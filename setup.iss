@@ -86,6 +86,17 @@ Source: "node_modules\next\*"; DestDir: "{app}\node_modules\next"; Flags: ignore
 ; resolved dynamically), which silently breaks the backup scheduler on installs.
 ; Overlay the full package the same way as 'next' above.
 Source: "node_modules\node-cron\*"; DestDir: "{app}\node_modules\node-cron"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Runtime deps of 'next' that the standalone trace OMITS from node_modules.
+; The traced next/dist/shared/lib/constants.js requires @swc/helpers, next
+; loads @next/env, and server rendering requires react — but none get bundled
+; into .next/standalone/node_modules. On the client (no repo node_modules to
+; fall back to) the server crashes at startup with "Cannot find module
+; '@swc/helpers/_/_interop_require_default'" (then @next/env, then react), so
+; it never binds port 3000 and Electron shows "server failed to respond".
+; Ship each as a sibling, same overlay pattern as 'next' above.
+Source: "node_modules\@swc\helpers\*"; DestDir: "{app}\node_modules\@swc\helpers"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\@next\env\*"; DestDir: "{app}\node_modules\@next\env"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\react\*"; DestDir: "{app}\node_modules\react"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: ".next\static\*"; DestDir: "{app}\.next\static"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "public\*"; DestDir: "{app}\public"; Flags: ignoreversion recursesubdirs createallsubdirs
 
