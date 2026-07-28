@@ -100,7 +100,7 @@ const POS_SETUPS: Record<string, (page: Page) => Promise<void>> = {
   async posMembershipDialog(page) {
     await POS_SETUPS.posShiftStarted(page);
 
-    await page.getByRole('button', { name: /^customer$/i }).click();
+    await page.getByRole('button', { name: /customer/i }).first().click();
 
     // The dialog's customer picker is a Radix Select (role=combobox), anchored
     // by its "Select Customer" placeholder — there is also an RFID text input
