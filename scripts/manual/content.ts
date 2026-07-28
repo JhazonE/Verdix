@@ -234,6 +234,10 @@ export const CHAPTERS: Chapter[] = [
             ],
           },
           {
+            kind: 'para',
+            text: 'If you collected any membership fees in cash during your shift, they appear on their own line, "Membership Fees (cash)", above the "Expected Transfer" total. That money is part of what the drawer should hold, so it is already included in the expected amount you count against.',
+          },
+          {
             kind: 'note',
             variant: 'tip',
             text: 'Re-count carefully if you see a shortage larger than a few pesos before confirming — once the shift is ended it cannot be reopened.',
@@ -257,6 +261,10 @@ export const CHAPTERS: Chapter[] = [
           },
           { kind: 'figure', slug: 'pos-x-reading' },
           { kind: 'figure', slug: 'pos-z-reading' },
+          {
+            kind: 'para',
+            text: 'When membership fees were collected in cash during the shift, the printed reading slip carries a "Membership (cash)" line with the number of activations and renewals beneath it. Note that this line is on the printed slip — the on-screen report does not show it, so print the reading if you need membership figures for your records.',
+          },
           {
             kind: 'note',
             variant: 'warning',
@@ -829,7 +837,7 @@ export const CHAPTERS: Chapter[] = [
               ['Movements', '/reports/movements', 'Full log of every stock movement — sales, purchases, transfers, and adjustments.'],
               ['Adjustments', '/reports/adjustments', 'Manual stock adjustments only, with reasons and approval status.'],
               ['Velocity', '/reports/velocity', 'How fast each product sells, useful for planning reorder quantities.'],
-              ['Membership', '/reports/membership', 'Membership fee collections and loyalty program activity.'],
+              ['Membership', '/reports/membership', 'Membership activations and renewals, with amount, payment method, cashier, and how long each membership runs.'],
               ['Fiscal Year', '/reports/fiscal-year', 'Summary figures aligned to your store\'s configured fiscal year.'],
             ],
           },
@@ -878,6 +886,25 @@ export const CHAPTERS: Chapter[] = [
             ],
           },
           { kind: 'figure', slug: 'settings-pos-setup' },
+          {
+            kind: 'para',
+            text: 'The General tab also holds the Membership settings, which control what customers pay for a loyalty card and how long that card stays valid. Cashiers cannot collect a membership fee until these are set.',
+          },
+          {
+            kind: 'steps',
+            items: [
+              'Go to Settings → POS Setup and open the "General" tab.',
+              'Set "Membership Fee (₱)" — the amount charged to activate or renew a customer\'s loyalty card.',
+              'Set "Membership Duration (months)" — how long a paid membership lasts, counted from the day it is paid. The default is 12 months.',
+              'Click "Save Settings" at the top of the page.',
+            ],
+          },
+          { kind: 'figure', slug: 'settings-membership' },
+          {
+            kind: 'note',
+            variant: 'tip',
+            text: 'Leaving the membership fee at ₱0.00 stops cashiers from selling memberships altogether — the payment dialog at the POS refuses to confirm and points back to this tab. Set a real amount before the store starts offering memberships.',
+          },
         ],
       },
       {

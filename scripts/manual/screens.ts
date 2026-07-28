@@ -82,6 +82,7 @@ export const SCREENS: Screen[] = [
   // Ch.9 Settings & Users
   { slug: 'settings', route: '/settings', title: 'Settings', auth: 'admin' },
   { slug: 'settings-pos-setup', route: '/settings/pos-setup', title: 'POS setup', auth: 'admin' },
+  { slug: 'settings-membership', route: '/settings/pos-setup', title: 'Membership fee setup', auth: 'admin', setup: 'posSetupGeneralTab' },
   { slug: 'settings-pos-terminals', route: '/settings/pos-terminals', title: 'POS terminals', auth: 'admin' },
   { slug: 'settings-tax-rates', route: '/settings/tax-rates', title: 'Tax rates', auth: 'admin' },
   { slug: 'user-management', route: '/user-management', title: 'User management', auth: 'admin' },
