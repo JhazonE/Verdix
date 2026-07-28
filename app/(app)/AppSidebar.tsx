@@ -23,6 +23,33 @@ import { handleSignOut } from '../auth-actions';
 import { buildNavIndex, filterNavIndex, matchSegments } from '@/lib/sidebar-search';
 import { useMemo, useRef, useState, useEffect } from 'react';
 
+/**
+ * Sign out, recovering automatically when this tab is running a stale bundle.
+ *
+ * Server Action ids are minted per build, so a tab left open across a deploy
+ * posts an id the current server no longer knows and the action rejects with
+ * "Failed to find Server Action". The tab is then stuck: every click repeats
+ * the same dead id. Reloading is the only cure, because the old id lives in
+ * the already-downloaded bundle — so do it for the user instead of leaving
+ * them on a button that silently does nothing.
+ *
+ * A plain try/catch would be wrong here: redirect() signals success by
+ * THROWING, so the happy path lands in catch too. Re-throw those (they carry
+ * a NEXT_REDIRECT digest) and only reload on a genuine failure.
+ */
+async function signOut() {
+  try {
+    await handleSignOut();
+  } catch (err) {
+    const digest = (err as { digest?: string })?.digest;
+    if (typeof digest === 'string' && digest.startsWith('NEXT_REDIRECT')) throw err;
+    // Stale bundle (or the action is otherwise unreachable) — reload to pull
+    // the current one. Go straight to /login so the reload doubles as the
+    // sign-out the user asked for.
+    window.location.href = '/login';
+  }
+}
+
 type AppUser = { email: string; permissions?: string[]; userType?: string };
 
 type Props = {
@@ -242,7 +269,7 @@ export function AppSidebar({
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => handleSignOut()}>
+            <DropdownMenuItem onClick={() => signOut()}>
               <LogOut className="mr-2 h-4 w-4" /><span>Log out</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
