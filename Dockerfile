@@ -29,6 +29,15 @@ COPY --from=builder /app/public ./public
 # runtime dependency is present regardless of what tracing missed.
 COPY --from=builder /app/node_modules ./node_modules
 
+# The release command runs `npm run migrate` before this image starts serving,
+# so the runtime stage needs the migration sources and the scripts that declare
+# them. Next's standalone output only contains the app bundle — it deliberately
+# excludes scripts/ — so copy them in explicitly. tsx resolves from the builder
+# node_modules overlaid above (it is a devDependency, but that stage installs
+# with npm install before NODE_ENV=production, so it is present).
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
+
 # Expose port
 EXPOSE 3000
 
