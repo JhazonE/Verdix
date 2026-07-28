@@ -9,6 +9,23 @@ RUN npm install
 # Copy source code
 COPY . .
 
+# Server Action ids are derived from this key AT BUILD TIME (next build calls
+# generateEncryptionKeyBase64, which returns process.env.NEXT_SERVER_ACTIONS_
+# ENCRYPTION_KEY when set and otherwise generates a random one). Railway only
+# injects service variables into the RUNTIME container, so without this ARG the
+# build never sees the key and every deploy mints a fresh set of action ids —
+# producing "Failed to find Server Action" on every already-loaded page, and
+# permanently across replicas that each built their own key.
+#
+# Railway passes service variables as build args, so declaring the ARG is
+# enough; ENV then exposes it to `npm run build` below.
+ARG NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
+ENV NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=$NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
+
+# Same reason: generateBuildId reads this to pin the build id.
+ARG RAILWAY_GIT_COMMIT_SHA
+ENV RAILWAY_GIT_COMMIT_SHA=$RAILWAY_GIT_COMMIT_SHA
+
 # Run Next.js build
 RUN npm run build
 
