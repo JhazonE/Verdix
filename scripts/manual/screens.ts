@@ -64,6 +64,10 @@ export const SCREENS: Screen[] = [
   { slug: 'customer-payment', route: '/customer/payment', title: 'Customer payment', auth: 'admin' },
   { slug: 'customer-balances', route: '/customer/balances', title: 'Customer balances', auth: 'admin' },
   { slug: 'customer-loyalty', route: '/customer/loyalty', title: 'Loyalty points', auth: 'admin' },
+  { slug: 'pos-membership-payment', route: '/pos', title: 'Membership payment', auth: 'pos', setup: 'posMembershipDialog' },
+  // Referenced from Ch.6 (Customers) but captured through the POS, since the
+  // membership dialog opens from the POS Customer panel rather than a back-
+  // office page.
 
   // Ch.7 Approvals
   { slug: 'approvals', route: '/approvals', title: 'Approvals board', auth: 'admin' },
@@ -73,6 +77,7 @@ export const SCREENS: Screen[] = [
   { slug: 'reports-hub', route: '/reports', title: 'The reports hub', auth: 'admin' },
   { slug: 'reports-sales-summary', route: '/reports/sales/summary', title: 'Sales summary report', auth: 'admin' },
   { slug: 'reports-low-stock', route: '/reports/low-stock', title: 'Low stock report', auth: 'admin' },
+  { slug: 'reports-membership', route: '/reports/membership', title: 'Membership report', auth: 'admin' },
 
   // Ch.9 Settings & Users
   { slug: 'settings', route: '/settings', title: 'Settings', auth: 'admin' },

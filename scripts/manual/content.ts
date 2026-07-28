@@ -657,6 +657,42 @@ export const CHAPTERS: Chapter[] = [
           { kind: 'figure', slug: 'customer-loyalty' },
         ],
       },
+      {
+        heading: 'Membership fees',
+        blocks: [
+          {
+            kind: 'para',
+            text: 'A membership fee is what the customer pays to activate a new loyalty card, or to renew one that has run out. It is separate from the points described in the previous section: points are earned and redeemed on purchases, while the membership fee is what keeps the card itself valid for a set number of months. The fee amount and how long a membership lasts are both configured in Settings — see Chapter 9, POS setup.',
+          },
+          {
+            kind: 'para',
+            text: 'Cashiers collect membership fees at the counter, through the customer panel rather than the cart. A membership payment is never rung up as a cart item.',
+          },
+          {
+            kind: 'steps',
+            items: [
+              'At the POS, click "Customer" along the bottom row of buttons.',
+              'Select the customer. The Membership panel on the right shows their current status — "Active", "Expired", or "No Card" — along with the RFID code and expiry date when a card already exists.',
+              'Click "Activate Membership" if the customer has no card yet, or "Renew Membership" if they already have one.',
+              'For a new activation, scan or type the card number into "RFID Card Code". This is required — the payment cannot be confirmed without it. "Point Setting" is optional and can be left blank.',
+              'Check the fee and the "Valid Until" date shown in the dialog. The validity is counted from today, not from the old expiry date.',
+              'Choose "Cash" or "Card". For cash, enter the "Amount Tendered" and the change is worked out for you.',
+              'Click "Confirm Payment". A membership receipt prints automatically.',
+            ],
+          },
+          { kind: 'figure', slug: 'pos-membership-payment' },
+          {
+            kind: 'note',
+            variant: 'warning',
+            text: 'A membership fee is not a sale. It is not rung up through the cart, it has no sales invoice (SI) number, and it will not appear in any of the sales reports. To see membership money collected, use Reports → Membership. The cash from membership fees is still real cash in your drawer, so it is counted as part of your expected cash when you end your shift.',
+          },
+          {
+            kind: 'note',
+            variant: 'tip',
+            text: 'If the dialog shows the fee as ₱0.00 and will not let you confirm, the membership fee has not been set up yet. An admin needs to set it in Settings → POS Setup → General before any membership can be sold.',
+          },
+        ],
+      },
     ],
   },
 
@@ -797,6 +833,7 @@ export const CHAPTERS: Chapter[] = [
               ['Fiscal Year', '/reports/fiscal-year', 'Summary figures aligned to your store\'s configured fiscal year.'],
             ],
           },
+          { kind: 'figure', slug: 'reports-membership' },
         ],
       },
     ],
