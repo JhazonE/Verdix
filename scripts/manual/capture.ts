@@ -101,13 +101,20 @@ const POS_SETUPS: Record<string, (page: Page) => Promise<void>> = {
     await POS_SETUPS.posShiftStarted(page);
 
     await page.getByRole('button', { name: /customer/i }).first().click();
+    await page.getByRole('heading', { name: /customer account/i }).waitFor({ timeout: 10_000 });
 
-    // The dialog's customer picker is a Radix Select (role=combobox), anchored
-    // by its "Select Customer" placeholder — there is also an RFID text input
-    // above it, so an unqualified role lookup would be ambiguous.
-    await page.getByRole('combobox').filter({ hasText: /select customer/i }).click();
+    // The dialog's customer picker is the only role=combobox in the sheet (the
+    // RFID field above it is a plain text input). It cannot be anchored by the
+    // "Select Customer" placeholder: the POS seeds selectedCustomer with
+    // WALK_IN_CUSTOMER, so the trigger always renders a value ("Walk-in
+    // Customer") and the placeholder never appears.
+    await page.getByRole('combobox').first().click();
     await page.getByRole('option', { name: 'SO Test Customer' }).click();
 
+    // Do NOT click "Confirm Selection" — that only assigns the customer to the
+    // cart and closes the sheet. The membership card panel (and its Activate
+    // button) renders inside this same open sheet once the selection is no
+    // longer walk-in.
     await page.getByRole('button', { name: /activate membership/i }).click();
     await page.getByRole('heading', { name: /membership payment/i }).waitFor({ timeout: 10_000 });
   },
