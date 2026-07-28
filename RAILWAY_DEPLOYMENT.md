@@ -30,7 +30,25 @@ Kini nga giya mag-tudlo kanimo kung unsaon pag-deploy sa verdix Central Server s
     *   `DB_USER`: `${{MySQL.MYSQLUSER}}`
     *   `DB_PASSWORD`: `${{MySQL.MYSQLPASSWORD}}`
     *   `DB_NAME`: `${{MySQL.MYSQLDATABASE}}`
+    *   `DB_SSL`: `true`  ← kinahanglan sa Railway MySQL proxy (TLS)
     *   `PORT`: `3000`
+4.  I-dugang usab kini — **importante kaayo**:
+    *   `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`: usa ka fixed nga 32-byte base64 nga key
+
+    Himua ang key gamit kini:
+    ```bash
+    node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+    ```
+
+    **Ngano kinahanglan ni:** ang Server Action IDs gikan mismo niini nga key.
+    Kung wala ni gi-set, random ang key kada build — lahi ang action IDs sa
+    matag deploy ug sa matag replica, mao nga motungha ang error nga
+    `Failed to find Server Action "..."` ug dili mo-load ang app. Na-verify ni:
+    duha ka build nga parehas ang key = parehas ang 84 ka action IDs; kung
+    walay key = walay bisan usa nga managsama.
+
+    I-set ni **kausa ra** ug ayaw na usba. Kung usbon nimo, mapakyas ang mga
+    page nga na-load na sa mga user hangtod mo-refresh sila.
 
 ### Lakang 4: Pag-import sa Database Schema
 1.  I-click ang **MySQL** service sa Railway dashboard.
