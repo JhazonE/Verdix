@@ -88,6 +88,29 @@ const POS_SETUPS: Record<string, (page: Page) => Promise<void>> = {
     await page.getByRole('button', { name: /no, skip/i }).click();
     await page.getByText(/cart is empty/i).waitFor({ timeout: 10_000 });
   },
+
+  /**
+   * Open the membership payment dialog from the POS customer panel.
+   *
+   * Uses SO_CUSTOMER, which is seeded with no customer_loyalty row, so the
+   * dialog opens in its activation state with the RFID Card Code field
+   * visible — the variant the Ch.6 steps describe in most detail. A customer
+   * that already had a card would render the shorter renewal panel instead.
+   */
+  async posMembershipDialog(page) {
+    await POS_SETUPS.posShiftStarted(page);
+
+    await page.getByRole('button', { name: /^customer$/i }).click();
+
+    // The dialog's customer picker is a Radix Select (role=combobox), anchored
+    // by its "Select Customer" placeholder — there is also an RFID text input
+    // above it, so an unqualified role lookup would be ambiguous.
+    await page.getByRole('combobox').filter({ hasText: /select customer/i }).click();
+    await page.getByRole('option', { name: 'SO Test Customer' }).click();
+
+    await page.getByRole('button', { name: /activate membership/i }).click();
+    await page.getByRole('heading', { name: /membership payment/i }).waitFor({ timeout: 10_000 });
+  },
 };
 
 /**
@@ -100,6 +123,13 @@ const SETUPS: Record<string, (page: Page) => Promise<void>> = {
   async activateOfflineTab(page) {
     await page.getByRole('button', { name: /^offline$/i }).click();
     await page.getByText('Your Machine ID').waitFor();
+  },
+
+  async posSetupGeneralTab(page) {
+    await page.getByRole('tab', { name: /^general$/i }).click();
+    // Anchor on the input id rather than the "Membership Fee (₱)" label text:
+    // the peso sign is a non-ASCII literal in a matcher, and the id is stable.
+    await page.locator('#membershipFee').waitFor({ state: 'visible', timeout: 10_000 });
   },
 };
 
