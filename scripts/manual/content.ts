@@ -263,7 +263,7 @@ export const CHAPTERS: Chapter[] = [
           { kind: 'figure', slug: 'pos-z-reading' },
           {
             kind: 'para',
-            text: 'When membership fees were collected in cash during the shift, the printed reading slip carries a "Membership (cash)" line with the number of activations and renewals beneath it. Note that this line is on the printed slip — the on-screen report does not show it, so print the reading if you need membership figures for your records.',
+            text: 'When membership fees were collected in cash during the shift, the printed reading slip carries a "Membership (cash)" line, followed by a line such as "3a / 1r" — meaning three activations and one renewal. This line also appears on the back-office X-Reading page (Sales → X-Reading); the reading shown on the POS screen itself does not include it.',
           },
           {
             kind: 'note',
