@@ -59,6 +59,11 @@ const migration: Migration = {
   },
 
   async down(): Promise<void> {
+    // Rolling back DECIMAL(15,4) → INT silently truncates fractional quantities
+    // (e.g., repacked-goods count of 2.5 becomes 2). Family-sync produces these
+    // fractional units; losing them corrupts stock records for repacked families.
+    console.warn('⚠️  Rolling back truncates fractional counts. Backup the DB before proceeding.');
+
     await query(`ALTER TABLE stock_count_items MODIFY COLUMN variance INT NULL`);
     await query(`ALTER TABLE stock_count_items MODIFY COLUMN counted_quantity INT NULL`);
     await query(`ALTER TABLE stock_count_items MODIFY COLUMN snapshot_quantity INT NOT NULL`);
