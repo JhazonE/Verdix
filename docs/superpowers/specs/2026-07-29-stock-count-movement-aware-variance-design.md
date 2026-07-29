@@ -161,14 +161,20 @@ must set `counted_at = NOW()`, but **only when the quantity actually changed**:
 
 ```sql
 UPDATE stock_count_items
-SET counted_quantity = ?,
-    variance = (? - snapshot_quantity),
-    counted_at = CASE
+SET counted_at = CASE
       WHEN counted_quantity IS NULL OR counted_quantity <> ? THEN NOW()
       ELSE counted_at
-    END
+    END,
+    counted_quantity = ?,
+    variance = (? - snapshot_quantity)
 WHERE id = ? AND stock_count_id = ?
 ```
+
+`counted_at` must be the FIRST `SET` clause. MySQL applies them left to right and
+each sees what the earlier ones wrote, so assigning `counted_quantity` first would
+make the `CASE` compare the new value against itself — never matching, never
+stamping, and inverting the behaviour: real edits unstamped, no-op re-saves
+preserved. Verified on MySQL 8.0.46.
 
 **This guard is what makes the fix work at all.** The client resends *every* counted
 item on each save, not just edited ones

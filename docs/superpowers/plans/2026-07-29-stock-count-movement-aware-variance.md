@@ -443,18 +443,24 @@ In `app/api/inventory/stock-counts/[id]/items/route.ts`, replace the `await quer
 ```ts
          await query(
            `UPDATE stock_count_items
-            SET counted_quantity = ?,
-                variance = (? - snapshot_quantity),
-                counted_at = CASE
+            SET counted_at = CASE
                   WHEN counted_quantity IS NULL OR counted_quantity <> ? THEN NOW()
                   ELSE counted_at
-                END
+                END,
+                counted_quantity = ?,
+                variance = (? - snapshot_quantity)
             WHERE id = ? AND stock_count_id = ?`,
            [item.counted_quantity, item.counted_quantity, item.counted_quantity, item.id, id]
          );
 ```
 
-Note the CASE reads the OLD `counted_quantity`: in MySQL, columns on the right-hand side of a single-table UPDATE see pre-update values, and `SET` clauses are applied left to right, so `counted_at` here still compares against the value before this statement.
+**The clause order is load-bearing — `counted_at` MUST come first.** MySQL applies
+`SET` clauses left to right, and each clause sees the values written by the clauses
+before it. If `counted_quantity = ?` ran first, the `CASE` would compare the new
+value against itself, never match, and never stamp — inverting the intended
+behaviour exactly: a real edit would go unstamped while a no-op re-save kept the
+old timestamp. Verified on MySQL 8.0.46; putting `counted_at` first makes the
+`CASE` read the pre-update value, which is what it must compare against.
 
 Add above the loop:
 
