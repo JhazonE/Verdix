@@ -92,14 +92,11 @@ export class CompleteStockCountUseCase {
           );
         }
 
-        const liveStock = m.liveStock;
-        const netMovementToNow = m.netMovementToNow;
-
         if (usedFallback) {
           console.warn(
             `[StockCount] Movement log incomplete for product ${item.productId} in count ${stockCountId}: ` +
-            `snapshot ${item.snapshotQuantity} + net movements ${netMovementToNow} since ${snapshotAt?.toISOString() ?? 'unknown'} ` +
-            `should equal live stock but got ${liveStock} (window checked through ${item.countedAt ?? 'unknown'}). ` +
+            `snapshot ${item.snapshotQuantity} + net movements ${m.netMovementToNow} since ${snapshotAt?.toISOString() ?? 'unknown'} ` +
+            `should equal live stock but got ${m.liveStock} (window checked through ${item.countedAt ?? 'unknown'}). ` +
             `Falling back to live stock as the baseline (${baseline}); counted ${item.countedQuantity} yields variance ${variance}. ` +
             `Check stock_movements for product ${item.productId} in that window for writes that bypassed recordStockMovement.`
           );

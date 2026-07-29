@@ -171,18 +171,23 @@ test.describe('Stock count variance', () => {
     const parentRow = rows.find((r: any) => r.product_id === PARENT);
     const childRow = rows.find((r: any) => r.product_id === CHILD);
 
-    // Ang CHILD kulang ug 12 Piece (= 1 Box) — tinuod ni nga variance, mao nga
-    // modagan gyud ang family-sync ug mo-cascade sa PARENT (-1 Box).
+    // Ang CHILD kulang ug 12 Piece — tinuod ni nga variance, mao nga modagan gyud
+    // ang family-sync ug mo-cascade sa PARENT (-1 Box).
     //
     // Ang PARENT giihap nga EKSAKTO sa iyang snapshot: sa panahon nga giihap siya,
-    // 10 gyud ang naa. Busa dili siya angay ug kaugalingong adjustment.
+    // 10 gyud ang naa, busa dili siya angay ug kaugalingong adjustment. Kung
+    // basahon ang live stock sulod sa mutation loop, makita niya ang 9 nga gisulat
+    // sa cascade samtang ang iyang movement sums mo-exclude niini (gi-tag man sa
+    // reference_id niining count) — motungha ang fallback ug mo-imbento ug +1 nga
+    // phantom variance, nga mo-cascade balik ug mo-undo sa tinuod nga adjustment.
     //
-    // Ang child mao ang UNA sa items array (walay ORDER BY ang itemsQuery, ug
-    // mao ni ang storage order), busa ang iyang cascade mo-igo sa parent nga wala
-    // pa ma-proseso. Kung basahon ang live stock sulod sa mutation loop, makita
-    // sa parent ang 9 nga gisulat sa cascade samtang ang iyang movement sums
-    // mo-exclude niini (gi-tag man sa reference_id niining count) — motungha ang
-    // fallback ug mo-imbento ug +1 nga phantom variance, nga mo-cascade balik.
+    // TIMAN-I ang order: ang itemsQuery walay ORDER BY, mao nga ang storage order
+    // ang mosunod, ug sa niining fixture ang CHILD mauna. Busa gibutang ang
+    // variance sa CHILD — aron ang cascade niini moigo sa PARENT nga wala pa
+    // ma-proseso. Kung mabalhin kanang order, kini nga test mahimong dili na
+    // mosulay sa gituyo nga direksyon (mopasar gihapon, apan walay pulos).
+    // Ayaw butangi ug variance ang DUHA: lahi na kana nga senaryo (duha ka
+    // bulag nga -1 Box, sakto nga resulta 8) ug dili na mosulay niini nga bug.
     const put = await request.put(`${BASE}/${data.id}/items`, {
       data: {
         items: [
