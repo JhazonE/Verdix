@@ -413,6 +413,11 @@ export const CHAPTERS: Chapter[] = [
               'Submit the count. Any variance between the counted quantity and the system quantity is recorded and, depending on your store\'s settings, may need approval before the stock is corrected (see Chapter 7 — Approvals).',
             ],
           },
+          {
+            kind: 'note',
+            variant: 'tip',
+            text: 'You can count while the store is open. The system records the moment each line is entered and ignores any sale, delivery, or transfer that happens between starting the count and entering that quantity — those movements are already accounted for and are not treated as missing stock. Enter each quantity at the shelf as you count it, rather than writing quantities on paper and encoding them hours later: the system times the count from when you type it, so a long delay makes the figures less accurate.',
+          },
           { kind: 'figure', slug: 'inventory-stock-counts' },
         ],
       },

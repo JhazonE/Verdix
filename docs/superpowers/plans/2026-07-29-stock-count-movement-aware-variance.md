@@ -1006,12 +1006,12 @@ In `scripts/manual/content.ts`, inside the `'Running a stock count'` section, af
 ```ts
           {
             kind: 'note',
-            variant: 'info',
-            text: 'You can count while the store is open. The system records when each line was counted and ignores any sales, deliveries, or transfers that happen between starting the count and entering the quantity — those are already accounted for and are not treated as missing stock. Enter each quantity at the shelf as you count it, rather than writing quantities down and encoding them hours later, so the timing stays accurate.',
+            variant: 'tip',
+            text: 'You can count while the store is open. The system records the moment each line is entered and ignores any sale, delivery, or transfer that happens between starting the count and entering that quantity — those movements are already accounted for and are not treated as missing stock. Enter each quantity at the shelf as you count it, rather than writing quantities on paper and encoding them hours later: the system times the count from when you type it, so a long delay makes the figures less accurate.',
           },
 ```
 
-Before adding, confirm `variant: 'info'` is supported: run `grep -n "variant:" scripts/manual/content.ts | sort -u`. If only `'warning'` appears, check the note renderer's type definition and use a supported variant.
+The only supported variants are `'tip' | 'warning'` ([`content.ts:18`](../../../scripts/manual/content.ts)) — there is no `'info'`. `'tip'` is right here: this tells staff something useful they can rely on, it is not a caution.
 
 - [ ] **Step 2: Add the same guidance to the user guide**
 
