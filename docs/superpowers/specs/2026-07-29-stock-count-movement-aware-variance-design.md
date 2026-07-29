@@ -91,8 +91,22 @@ export async function getNetMovementSince(
   productId: string,
   from: Date,
   to: Date,
+  excludeReferenceId: string,
   connection: PoolConnection
 ): Promise<number>
+```
+
+Paired with a pure companion that holds all the decision logic, so it can be
+tested without a database — this repo's unit tests never open a connection:
+
+```ts
+export function computeTrueVariance(input: {
+  snapshotQuantity: number;
+  countedQuantity: number;
+  liveStock: number;
+  netMovementToCount: number;
+  netMovementToNow: number;
+}): { variance: number; baseline: number; usedFallback: boolean }
 ```
 
 Sums `quantity_change` from `stock_movements` where `product_id = ?` and
@@ -166,6 +180,16 @@ collapse every baseline window to zero, and reproduce the original bug exactly.
 
 The `variance` column stays `counted − snapshot`. It is display-only; the *applied*
 variance is derived at completion. Keeping it avoids touching the review UI.
+
+### 5. Manual and user guide
+
+Neither [`scripts/manual/content.ts`](../../../scripts/manual/content.ts) (Chapter 4,
+"Running a stock count") nor [`docs/USER_GUIDE.md`](../../USER_GUIDE.md) says
+anything about counting while the POS is live — the gap that prompted this work.
+Both get a short note stating that counting during business hours is supported,
+that movements during the count are excluded from variance, and that quantities
+should be entered at the shelf rather than encoded from a paper tally hours later
+(which would make the timestamps inaccurate).
 
 ## Out of scope
 
