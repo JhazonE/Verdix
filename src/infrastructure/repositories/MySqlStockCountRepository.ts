@@ -84,7 +84,7 @@ export class MySqlStockCountRepository implements StockCountRepository {
      return await withTransaction(async (connection) => {
         const sql = `
             INSERT INTO stock_counts (id, name, warehouse_id, shelf_location_id, status, notes, created_by, snapshot_at, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())
+            VALUES (?, ?, ?, ?, ?, ?, ?, NOW(6), NOW(), NOW())
         `;
         await connection.query(sql, [
             stockCount.id,

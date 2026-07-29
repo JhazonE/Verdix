@@ -39,7 +39,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
          await query(
            `UPDATE stock_count_items
             SET counted_at = CASE
-                  WHEN counted_quantity IS NULL OR counted_quantity <> ? THEN NOW()
+                  WHEN counted_quantity IS NULL OR counted_quantity <> ? THEN NOW(6)
                   ELSE counted_at
                 END,
                 counted_quantity = ?,

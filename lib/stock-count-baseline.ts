@@ -43,7 +43,17 @@ export function computeTrueVariance(input: BaselineInput): BaselineResult {
   const reconstructedNow = snapshotQuantity + netMovementToNow;
   const usedFallback = Math.abs(reconstructedNow - liveStock) > EPSILON;
 
-  const baseline = usedFallback ? liveStock : snapshotQuantity + netMovementToCount;
+  // The baseline means "what the system believed was on hand WHEN THE LINE WAS
+  // COUNTED". On the happy path that is snapshot + movements up to the count.
+  //
+  // When the log is incomplete we cannot trust the sums, so we work backwards
+  // from live stock instead — but live stock is what is on hand NOW, so we must
+  // roll back anything that moved after the count. Using live stock directly
+  // would silently reverse a sale that happened after counting.
+  const movementAfterCount = netMovementToNow - netMovementToCount;
+  const baseline = usedFallback
+    ? liveStock - movementAfterCount
+    : snapshotQuantity + netMovementToCount;
   const rawVariance = countedQuantity - baseline;
   const variance = Math.abs(rawVariance) <= EPSILON ? 0 : rawVariance;
 

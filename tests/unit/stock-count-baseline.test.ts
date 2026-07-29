@@ -113,4 +113,32 @@ import { computeTrueVariance } from '../../lib/stock-count-baseline';
   assert.equal(r.usedFallback, false, 'sub-epsilon drift is not a log gap');
 }
 
+// A log gap AND a sale after the line was counted. The fallback must roll live
+// stock back over the post-count sale, not treat it as missing stock.
+{
+  const r = computeTrueVariance({
+    snapshotQuantity: 100,
+    countedQuantity: 90,
+    liveStock: 55,           // log only explains -15 of the -45
+    netMovementToCount: -10,
+    netMovementToNow: -15,   // 5 of it landed after the count
+  });
+  assert.equal(r.usedFallback, true, 'incomplete log detected');
+  assert.equal(r.baseline, 60, 'live stock rolled back over the post-count sale');
+  assert.equal(r.variance, 30, 'variance measured at count time');
+}
+
+// Fallback with nothing after the count: baseline is plain live stock.
+{
+  const r = computeTrueVariance({
+    snapshotQuantity: 100,
+    countedQuantity: 90,
+    liveStock: 60,
+    netMovementToCount: -10,
+    netMovementToNow: -10,
+  });
+  assert.equal(r.baseline, 60, 'no post-count movement to roll back');
+  assert.equal(r.variance, 30);
+}
+
 console.log('stock-count-baseline: all assertions passed');
