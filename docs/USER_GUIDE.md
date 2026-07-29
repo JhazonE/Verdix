@@ -102,6 +102,14 @@ The dashboard shows at a glance:
 5. Review the **variance** (your count minus expected stock).
 6. Click **Apply Variance** to update live stock (or submit for approval).
 
+> **Counting while the store is open:** You do not need to close the POS to run a
+> count. The system records the moment each line is entered and ignores any sale,
+> delivery, or transfer that happens between starting the count and entering that
+> quantity — those movements are already accounted for and are not treated as
+> missing stock. Enter each quantity at the shelf as you count it, rather than
+> writing quantities on paper and encoding them hours later: the system times the
+> count from when you type it, so a long delay makes the figures less accurate.
+
 #### Repack Stock (Break Pack)
 
 1. Go to **Inventory → Repackaging**.

@@ -6,8 +6,9 @@ import { PoolConnection } from 'mysql2/promise';
 export class MySqlStockCountRepository implements StockCountRepository {
   async findAll(): Promise<StockCountEntity[]> {
     const countsQuery = `
-      SELECT sc.id, sc.name, sc.status, sc.notes, sc.warehouse_id as warehouseId, sc.shelf_location_id as shelfLocationId, 
+      SELECT sc.id, sc.name, sc.status, sc.notes, sc.warehouse_id as warehouseId, sc.shelf_location_id as shelfLocationId,
              sc.created_by as createdBy, sc.completed_by as completedBy, sc.completed_at as completedAt,
+             sc.snapshot_at as snapshotAt,
              sc.created_at as createdAt, sc.updated_at as updatedAt,
              w.name as warehouseName, sl.name as shelfName
       FROM stock_counts sc
@@ -23,8 +24,9 @@ export class MySqlStockCountRepository implements StockCountRepository {
     const placeholders = countIds.map(() => '?').join(',');
     
     const itemsQuery = `
-      SELECT sci.id, sci.stock_count_id as stockCountId, sci.product_id as productId, 
-             sci.snapshot_quantity as snapshotQuantity, sci.counted_quantity as countedQuantity, 
+      SELECT sci.id, sci.stock_count_id as stockCountId, sci.product_id as productId,
+             sci.snapshot_quantity as snapshotQuantity, sci.counted_quantity as countedQuantity,
+             sci.counted_at as countedAt,
              sci.variance, sci.created_at as createdAt, sci.updated_at as updatedAt,
              p.name as productName, p.sku, p.barcode
       FROM stock_count_items sci
@@ -81,15 +83,15 @@ export class MySqlStockCountRepository implements StockCountRepository {
   async create(stockCount: StockCountEntity): Promise<string> {
      return await withTransaction(async (connection) => {
         const sql = `
-            INSERT INTO stock_counts (id, name, warehouse_id, shelf_location_id, status, notes, created_by, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            INSERT INTO stock_counts (id, name, warehouse_id, shelf_location_id, status, notes, created_by, snapshot_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NOW(6), NOW(), NOW())
         `;
         await connection.query(sql, [
-            stockCount.id, 
-            stockCount.name, 
-            stockCount.warehouseId || null, 
+            stockCount.id,
+            stockCount.name,
+            stockCount.warehouseId || null,
             stockCount.shelfLocationId || null,
-            stockCount.status, 
+            stockCount.status,
             stockCount.notes || null,
             stockCount.createdBy || 'Admin'
         ]);

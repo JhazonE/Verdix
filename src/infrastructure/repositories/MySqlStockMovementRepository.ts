@@ -80,9 +80,9 @@ export class MySqlStockMovementRepository implements StockMovementRepository {
   async create(movement: Partial<StockMovementEntity>): Promise<string> {
     const sql = `
       INSERT INTO stock_movements (
-        id, product_id, product_name, movement_type, quantity_change, previous_stock, new_stock, 
-        reference_id, reference_type, notes, user_name, warehouse_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+        id, product_id, product_name, movement_type, quantity_change, previous_stock, new_stock,
+        reference_id, reference_type, notes, user_name, warehouse_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const id = movement.id || `mov_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     

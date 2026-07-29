@@ -170,9 +170,9 @@ export class TransferStockService {
     const movementId = `mov_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     await connection.query(
       `INSERT INTO stock_movements (
-        id, product_id, product_name, movement_type, quantity_change, previous_stock, new_stock, 
-        reference_id, reference_type, notes, warehouse_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        id, product_id, product_name, movement_type, quantity_change, previous_stock, new_stock,
+        reference_id, reference_type, notes, warehouse_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [movementId, productId, productName, movementType, quantityChange, previousStock, newStock, referenceId, referenceType, notes, warehouseId]
     );
   }
