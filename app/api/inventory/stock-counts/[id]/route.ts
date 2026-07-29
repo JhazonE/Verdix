@@ -1,36 +1,23 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
+import { MySqlStockCountRepository } from '@/src/infrastructure/repositories/MySqlStockCountRepository';
+
+const stockCountRepository = new MySqlStockCountRepository();
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
     console.log("API ROUTE HIT GET /api/inventory/stock-counts/[id]. Received ID:", id);
 
-    // Fetch the main count details
-    const countSql = `SELECT * FROM stock_counts WHERE id = ?`;
-    const countResult: any = await query(countSql, [id]);
+    const stockCount = await stockCountRepository.findById(id);
 
-    if (!countResult || countResult.length === 0) {
+    if (!stockCount) {
       return NextResponse.json({ error: 'Stock count not found' }, { status: 404 });
     }
 
-    const count = countResult[0];
-
-    // Fetch the items associated with this count
-    const itemsSql = `
-      SELECT sci.*, p.name as product_name, p.sku as product_sku, p.barcode as product_barcode, p.cost as product_cost, p.price as product_retail
-      FROM stock_count_items sci
-      JOIN products p ON sci.product_id = p.id
-      WHERE sci.stock_count_id = ?
-    `;
-    const items = await query(itemsSql, [id]);
-
     return NextResponse.json({
       success: true,
-      data: {
-        ...count,
-        items
-      }
+      data: stockCount
     });
 
   } catch (error) {

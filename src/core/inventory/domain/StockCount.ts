@@ -11,6 +11,7 @@ export interface StockCountEntity {
   createdBy?: string;
   completedBy?: string;
   completedAt?: string;
+  snapshotAt?: string;
   items: StockCountItemEntity[];
   createdAt?: string;
   updatedAt?: string;
@@ -25,6 +26,7 @@ export interface StockCountItemEntity {
   barcode?: string;
   snapshotQuantity: number;
   countedQuantity?: number;
+  countedAt?: string;
   variance?: number;
   adjustmentReason?: string;
   createdAt?: string;
