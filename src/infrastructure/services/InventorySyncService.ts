@@ -56,10 +56,10 @@ export class InventorySyncService {
           const movementId = `mov_${Date.now()}_${member.id.substr(-4)}_${Math.random().toString(36).substr(2, 5)}`;
           const insertMovementSql = `
                     INSERT INTO stock_movements (
-                        id, product_id, product_name, movement_type, 
-                        quantity_change, previous_stock, new_stock, 
-                        reference_id, reference_type, notes, created_at, updated_at
-                    ) VALUES (?, ?, ?, 'sale', ?, ?, ?, ?, 'sale', ?, NOW(), NOW())
+                        id, product_id, product_name, movement_type,
+                        quantity_change, previous_stock, new_stock,
+                        reference_id, reference_type, notes
+                    ) VALUES (?, ?, ?, 'sale', ?, ?, ?, ?, 'sale', ?)
                 `;
 
           await connection.query(insertMovementSql, [

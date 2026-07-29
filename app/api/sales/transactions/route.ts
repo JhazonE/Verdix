@@ -391,8 +391,8 @@ export async function POST(request: NextRequest) {
                   INSERT INTO stock_movements (
                       id, product_id, product_name, movement_type,
                       quantity_change, previous_stock, new_stock,
-                      reference_id, reference_type, notes, created_at, updated_at
-                  ) VALUES (?, ?, ?, 'sale', ?, ?, ?, ?, 'sale', ?, NOW(), NOW())
+                      reference_id, reference_type, notes
+                  ) VALUES (?, ?, ?, 'sale', ?, ?, ?, ?, 'sale', ?)
               `, [movementId, item.id, item.name, -item.quantity, currentStock, newStock, saleId, 'API Sale']);
 
               // Update product

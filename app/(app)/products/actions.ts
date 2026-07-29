@@ -1516,9 +1516,9 @@ export async function updateProductShelfLocations(updates: {
 
         await connection.query(
           `INSERT INTO stock_movements (
-            id, product_id, product_name, movement_type, quantity_change, previous_stock, new_stock, 
-            reference_id, reference_type, notes, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+            id, product_id, product_name, movement_type, quantity_change, previous_stock, new_stock,
+            reference_id, reference_type, notes
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             movementId, productId, pName, 'transfer', 0, 0, 0, 
             productId, 'shelf_transfer', `Shelf Transfer: ${sourceName} -> ${targetName} (${quantity} units)`
