@@ -130,4 +130,73 @@ test.describe('Stock count variance', () => {
     // Kung i-set ang absolute 100, mabalik ang nabaligya. Delta lang dapat.
     expect(await getStock(), 'ang ulahi nga sale nagpabilin').toBe(95);
   });
+
+  /**
+   * Duha ka produkto sa PAREHONG PAMILYA sulod sa usa ka count.
+   *
+   * Kung ma-apply ang variance sa una, mo-cascade ang family-sync ngadto sa
+   * tanang sakop — apil ang ikaduha nga item nga wala pa ma-proseso. Kung
+   * basahon ang live stock sa sulod sa loop, makita sa ikaduha kanang bag-ong
+   * gisulat nga stock, samtang ang iyang movement sums mo-exclude niini (kay
+   * gi-tag man sa reference_id niining count). Mo-trigger dayon ang fallback
+   * bisan himsog ang log, ug mo-imbento ug variance sa linya nga husto man ang
+   * pagkaihap.
+   *
+   * Ang pag-ihap sa parent ug child nga magkauban kay MAO ang normal — walay
+   * family filter ang count query.
+   */
+  test('parehong pamilya sa usa ka count: walay phantom variance', async ({ request }) => {
+    const PARENT = 'test-perishable-family-parent';
+    const CHILD = 'test-perishable-family-child';
+    const FACTOR = 12; // 1 Box = 12 Piece
+
+    const stockOf = async (id: string) =>
+      Number((await testQuery('SELECT stock FROM products WHERE id = ?', [id]))[0].stock);
+
+    await testQuery('UPDATE products SET stock = 10 WHERE id = ?', [PARENT]);
+    await testQuery('UPDATE products SET stock = 120 WHERE id = ?', [CHILD]);
+
+    const res = await request.post(BASE, {
+      data: { name: `variance-family-${Date.now()}`, notes: 'e2e family', createdBy: 'e2e' },
+    });
+    expect(res.ok()).toBeTruthy();
+    const { data } = await res.json();
+
+    const rows = await testQuery(
+      'SELECT id, product_id, snapshot_quantity FROM stock_count_items WHERE stock_count_id = ? AND product_id IN (?, ?)',
+      [data.id, PARENT, CHILD]
+    );
+    expect(rows.length, 'apil ang parent ug child sa count').toBe(2);
+
+    const parentRow = rows.find((r: any) => r.product_id === PARENT);
+    const childRow = rows.find((r: any) => r.product_id === CHILD);
+
+    // Ang CHILD kulang ug 12 Piece (= 1 Box) — tinuod ni nga variance, mao nga
+    // modagan gyud ang family-sync ug mo-cascade sa PARENT (-1 Box).
+    //
+    // Ang PARENT giihap nga EKSAKTO sa iyang snapshot: sa panahon nga giihap siya,
+    // 10 gyud ang naa. Busa dili siya angay ug kaugalingong adjustment.
+    //
+    // Ang child mao ang UNA sa items array (walay ORDER BY ang itemsQuery, ug
+    // mao ni ang storage order), busa ang iyang cascade mo-igo sa parent nga wala
+    // pa ma-proseso. Kung basahon ang live stock sulod sa mutation loop, makita
+    // sa parent ang 9 nga gisulat sa cascade samtang ang iyang movement sums
+    // mo-exclude niini (gi-tag man sa reference_id niining count) — motungha ang
+    // fallback ug mo-imbento ug +1 nga phantom variance, nga mo-cascade balik.
+    const put = await request.put(`${BASE}/${data.id}/items`, {
+      data: {
+        items: [
+          { id: childRow.id, counted_quantity: Number(childRow.snapshot_quantity) - FACTOR },
+          { id: parentRow.id, counted_quantity: Number(parentRow.snapshot_quantity) },
+        ],
+      },
+    });
+    expect(put.ok()).toBeTruthy();
+
+    await complete(request, data.id);
+
+    // Ang -12 Piece ra ang angay ma-apply, ug ang cascade niini (-1 Box) sa parent.
+    expect(await stockOf(CHILD), 'ang -12 Piece ra').toBe(120 - FACTOR);
+    expect(await stockOf(PARENT), 'cascade ra sa -12 Piece, walay phantom').toBe(9);
+  });
 });

@@ -15,21 +15,36 @@ export class CompleteStockCountUseCase {
       const now = new Date();
       const snapshotAt = stockCount.snapshotAt ? new Date(stockCount.snapshotAt) : null;
 
-      // 1. Update each product's stock and record movement
-      for (const item of stockCount.items) {
-        // Skip uncounted items
-        if (item.countedQuantity === undefined || item.countedQuantity === null) continue;
+      const counted = stockCount.items.filter(
+        (i) => i.countedQuantity !== undefined && i.countedQuantity !== null
+      );
 
-        // Live stock is the arbiter of whether the movement log is complete, and
-        // the fallback baseline when it isn't.
+      // Read every baseline input BEFORE applying any adjustment.
+      //
+      // This must not move into the loop below. Applying one item's variance runs
+      // family-sync, which recursively updates the stock of every OTHER member of
+      // that product's family and writes movement rows tagged with this count's
+      // id. A later item in the same family would then read a live stock that
+      // already includes that write, while its movement sums exclude it (they
+      // filter out this count's own reference id) — the reconciliation check
+      // would trip on a perfectly healthy log and invent a phantom variance on a
+      // correctly counted line. An unfiltered count contains parents and children
+      // together, so this is the ordinary case, not an edge case.
+      const measured = new Map<string, {
+        liveStock: number;
+        netMovementToCount: number;
+        netMovementToNow: number;
+        hasWindow: boolean;
+      }>();
+
+      for (const item of counted) {
         const [stockRows]: any = await connection.query(
           'SELECT stock FROM products WHERE id = ?',
           [item.productId]
         );
         const liveStock = Number(stockRows?.[0]?.stock ?? 0);
 
-        // Without both anchors there is no window to measure, so fall back to the
-        // plain snapshot comparison — correct whenever nothing moved.
+        const hasWindow = Boolean(snapshotAt && item.countedAt);
         let netMovementToCount = 0;
         let netMovementToNow = 0;
         if (snapshotAt && item.countedAt) {
@@ -42,13 +57,43 @@ export class CompleteStockCountUseCase {
           );
         }
 
-        const { variance, baseline, usedFallback } = computeTrueVariance({
-          snapshotQuantity: item.snapshotQuantity,
-          countedQuantity: item.countedQuantity,
-          liveStock,
-          netMovementToCount,
-          netMovementToNow,
-        });
+        measured.set(item.id, { liveStock, netMovementToCount, netMovementToNow, hasWindow });
+      }
+
+      // 1. Update each product's stock and record movement
+      for (const item of counted) {
+        const m = measured.get(item.id)!;
+
+        // No window means no way to tell an intervening movement from a real
+        // discrepancy. Comparing against live stock here would silently reverse
+        // anything sold after the line was counted, so fall back to the original
+        // snapshot comparison instead: wrong only if stock moved during the
+        // count, which is the pre-existing behaviour rather than a new failure.
+        const { variance, baseline, usedFallback } = m.hasWindow
+          ? computeTrueVariance({
+              snapshotQuantity: item.snapshotQuantity,
+              countedQuantity: item.countedQuantity!,
+              liveStock: m.liveStock,
+              netMovementToCount: m.netMovementToCount,
+              netMovementToNow: m.netMovementToNow,
+            })
+          : {
+              variance: item.countedQuantity! - item.snapshotQuantity,
+              baseline: item.snapshotQuantity,
+              usedFallback: false,
+            };
+
+        if (!m.hasWindow) {
+          console.warn(
+            `[StockCount] Missing count window for product ${item.productId} in count ${stockCountId} ` +
+            `(snapshot_at=${stockCount.snapshotAt ?? 'null'}, counted_at=${item.countedAt ?? 'null'}). ` +
+            `Falling back to the plain snapshot comparison; any movement during the count will be ` +
+            `mistaken for variance.`
+          );
+        }
+
+        const liveStock = m.liveStock;
+        const netMovementToNow = m.netMovementToNow;
 
         if (usedFallback) {
           console.warn(
