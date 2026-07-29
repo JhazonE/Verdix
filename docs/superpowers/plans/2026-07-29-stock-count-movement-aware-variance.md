@@ -1039,14 +1039,227 @@ git commit -m "docs(inventory): document counting while the POS is live"
 
 ---
 
+### Task 8: Sub-second precision and a correct fallback baseline
+
+**Added after Task 6's E2E tests caught two real defects in Tasks 1-5.** Do not
+treat this as polish — without it, `tests/e2e/stock-count-variance.spec.ts`
+test 4 fails and stock comes out wrong.
+
+**Files:**
+- Create: `scripts/migrations/104_stock_count_subsecond_precision.ts`
+- Modify: `scripts/migrations/index.ts` (register 104)
+- Modify: `lib/stock-count-baseline.ts` (fallback baseline)
+- Modify: `tests/unit/stock-count-baseline.test.ts` (cover the new cases)
+
+**Interfaces:**
+- Consumes: everything from Tasks 1-5.
+- Produces: microsecond-precision window columns; a fallback baseline that
+  accounts for movements landing after the count.
+
+#### Defect 1 — same-second movements are invisible
+
+`snapshot_at`, `counted_at`, and `stock_movements.created_at` are all
+1-second-precision `TIMESTAMP`. `getNetMovementSince` filters `created_at >
+from`, so a sale committed in the **same second** as the snapshot is excluded
+from both movement sums while still being present in `products.stock`. At HTTP
+speed this is routine, not exotic.
+
+The reconciliation check then sees `snapshot + 0 != liveStock`, trips the
+fallback, and the fallback pins `baseline = liveStock` — which already contains
+that sale. The count's variance therefore **reverses a real sale**.
+
+#### Defect 2 — the fallback ignores post-count movements
+
+`baseline` means "what the system believed was on hand *when the line was
+counted*". The fallback sets it to `liveStock`, which is what is on hand *now*.
+Those differ whenever anything moved after the count, so the fallback
+over-corrects by exactly the post-count movement.
+
+Both fixes are required: the precision change alone leaves Defect 2, and the
+fallback change alone cannot fix the same-second case (when the movement is
+hidden, both sums read `0`, so there is nothing to roll back).
+
+- [ ] **Step 1: Write the migration**
+
+Create `scripts/migrations/104_stock_count_subsecond_precision.ts`:
+
+```ts
+import { registerMigration, Migration } from './runner';
+import { query } from '../../lib/mysql';
+
+/**
+ * Microsecond precision for the stock-count movement window.
+ *
+ * The window is [snapshot_at, counted_at] and is matched against
+ * stock_movements.created_at. All three were 1-second TIMESTAMPs, so a sale
+ * committed in the same second as the snapshot fell outside `created_at >
+ * from` while still being reflected in products.stock. That tripped the
+ * baseline's reconciliation check and made a stock count reverse a real sale.
+ *
+ * TIMESTAMP(6), not (3): six rapid inserts at millisecond precision were
+ * measured colliding on this server; at microsecond they were all distinct.
+ */
+const migration: Migration = {
+  name: '104_stock_count_subsecond_precision',
+  timestamp: '2026-07-29_12-00-00',
+
+  async up(): Promise<void> {
+    await query(`ALTER TABLE stock_counts MODIFY COLUMN snapshot_at TIMESTAMP(6) NULL`);
+    console.log('✅ stock_counts.snapshot_at -> TIMESTAMP(6)');
+
+    await query(`ALTER TABLE stock_count_items MODIFY COLUMN counted_at TIMESTAMP(6) NULL`);
+    console.log('✅ stock_count_items.counted_at -> TIMESTAMP(6)');
+
+    // The window is only as precise as the column it is compared against.
+    await query(`ALTER TABLE stock_movements MODIFY COLUMN created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)`);
+    console.log('✅ stock_movements.created_at -> TIMESTAMP(6)');
+  },
+
+  async down(): Promise<void> {
+    console.warn('⚠️  Reverting to 1-second precision reintroduces the same-second window bug.');
+    await query(`ALTER TABLE stock_movements MODIFY COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP`);
+    await query(`ALTER TABLE stock_count_items MODIFY COLUMN counted_at TIMESTAMP NULL`);
+    await query(`ALTER TABLE stock_counts MODIFY COLUMN snapshot_at TIMESTAMP NULL`);
+    console.log('✅ Reverted stock count window columns to second precision');
+  }
+};
+
+registerMigration(migration);
+```
+
+- [ ] **Step 2: Register it**
+
+In `scripts/migrations/index.ts`, after `import './103_stock_count_movement_aware_variance';`:
+
+```ts
+import './104_stock_count_subsecond_precision';
+```
+
+- [ ] **Step 3: Write `NOW(6)` where the window timestamps are set**
+
+`NOW()` truncates to seconds even in a `TIMESTAMP(6)` column, which would waste
+the migration. Three call sites:
+
+In `src/infrastructure/repositories/MySqlStockCountRepository.ts`, `create()` —
+change `snapshot_at` from `NOW()` to `NOW(6)` in the `stock_counts` INSERT.
+Leave `created_at`/`updated_at` as `NOW()`; they are not window bounds.
+
+In `app/api/inventory/stock-counts/[id]/items/route.ts`, the `CASE` — change
+`THEN NOW()` to `THEN NOW(6)`. **Do not disturb the SET clause order**;
+`counted_at` must stay first (see Task 3).
+
+In `lib/stock-movements.ts`, `recordStockMovement` — the INSERT does not list
+`created_at`, so it takes the column default, which the migration sets to
+`CURRENT_TIMESTAMP(6)`. Confirm no change is needed there and say so.
+
+- [ ] **Step 4: Fix the fallback baseline**
+
+In `lib/stock-count-baseline.ts`, replace the baseline computation inside
+`computeTrueVariance` (leave the `usedFallback` line above it unchanged):
+
+```ts
+  // The baseline means "what the system believed was on hand WHEN THE LINE WAS
+  // COUNTED". On the happy path that is snapshot + movements up to the count.
+  //
+  // When the log is incomplete we cannot trust the sums, so we work backwards
+  // from live stock instead — but live stock is what is on hand NOW, so we must
+  // roll back anything that moved after the count. Using live stock directly
+  // would silently reverse a sale that happened after counting.
+  const movementAfterCount = netMovementToNow - netMovementToCount;
+  const baseline = usedFallback
+    ? liveStock - movementAfterCount
+    : snapshotQuantity + netMovementToCount;
+```
+
+- [ ] **Step 5: Add unit tests for both defects**
+
+Append to `tests/unit/stock-count-baseline.test.ts`, before the final
+`console.log`:
+
+```ts
+// A log gap AND a sale after the line was counted. The fallback must roll live
+// stock back over the post-count sale, not treat it as missing stock.
+{
+  const r = computeTrueVariance({
+    snapshotQuantity: 100,
+    countedQuantity: 90,
+    liveStock: 55,           // log only explains -15 of the -45
+    netMovementToCount: -10,
+    netMovementToNow: -15,   // 5 of it landed after the count
+  });
+  assert.equal(r.usedFallback, true, 'incomplete log detected');
+  assert.equal(r.baseline, 60, 'live stock rolled back over the post-count sale');
+  assert.equal(r.variance, 30, 'variance measured at count time');
+}
+
+// Fallback with nothing after the count: baseline is plain live stock.
+{
+  const r = computeTrueVariance({
+    snapshotQuantity: 100,
+    countedQuantity: 90,
+    liveStock: 60,
+    netMovementToCount: -10,
+    netMovementToNow: -10,
+  });
+  assert.equal(r.baseline, 60, 'no post-count movement to roll back');
+  assert.equal(r.variance, 30);
+}
+```
+
+- [ ] **Step 6: Run the migration and the unit tests**
+
+Run: `npm run migrate`
+Expected: the three `TIMESTAMP(6)` lines.
+
+Verify precision actually changed:
+
+```bash
+node -e "require('dotenv').config();const m=require('mysql2/promise');(async()=>{const c=await m.createConnection({host:process.env.DB_HOST,port:+process.env.DB_PORT,user:process.env.DB_USER,password:process.env.DB_PASSWORD||'',database:process.env.DB_NAME});const [r]=await c.query(\"SELECT TABLE_NAME,COLUMN_NAME,DATETIME_PRECISION FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND ((TABLE_NAME='stock_counts' AND COLUMN_NAME='snapshot_at') OR (TABLE_NAME='stock_count_items' AND COLUMN_NAME='counted_at') OR (TABLE_NAME='stock_movements' AND COLUMN_NAME='created_at'))\");console.table(r);await c.end();})()"
+```
+
+Expected: `DATETIME_PRECISION` is `6` on all three rows.
+
+Run: `npm run test:unit`
+Expected: PASS, including the two new assertions.
+
+- [ ] **Step 7: Rebuild the test DB and run the E2E spec**
+
+The test DB clones its schema from `verdix`, so it needs rebuilding to pick up
+the new precision.
+
+Run: `npm run test:e2e:db`
+Then: `npx playwright test tests/e2e/stock-count-variance.spec.ts`
+Expected: **4 passed** — including test 4, which fails before this task.
+
+- [ ] **Step 8: Full E2E suite**
+
+Run: `npm run test:e2e`
+Expected: no NEW failures. `developer-page-toggles.spec.ts:35` is a known
+pre-existing flake — it passes in isolation. Do not fix unrelated failures.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add scripts/migrations/104_stock_count_subsecond_precision.ts scripts/migrations/index.ts lib/stock-count-baseline.ts tests/unit/stock-count-baseline.test.ts src/infrastructure/repositories/MySqlStockCountRepository.ts "app/api/inventory/stock-counts/[id]/items/route.ts"
+git commit -m "fix(inventory): use microsecond windows and roll back post-count movement"
+```
+
+---
+
 ## Final Verification
 
-- [ ] `npm run typecheck` — no errors
-- [ ] `npm run lint` — no new errors
+- [ ] `npm run typecheck` — no NEW errors beyond the pre-existing baseline
+- [ ] ~~`npm run lint`~~ — **unrunnable**: `next lint` was removed in Next 16, so
+      the script parses `lint` as a directory and fails identically on an
+      unmodified tree. Repo-wide, unrelated to this branch, out of scope here.
 - [ ] `npm run test:unit` — all pass, including `stock-count-baseline`
 - [ ] `npx playwright test tests/e2e/stock-count-variance.spec.ts` — 4 passed
-- [ ] `npm run test:e2e` — no regressions against the pre-branch baseline
+      (all 4 only pass once **Task 8** has landed; before it, test 4 fails)
+- [ ] `npm run test:e2e` — no NEW failures. `developer-page-toggles.spec.ts:35`
+      is a known pre-existing flake that passes in isolation.
 - [ ] Task 6 Step 4 was performed and the tests demonstrably failed without the fix
+- [ ] `DATETIME_PRECISION` is 6 on `stock_counts.snapshot_at`,
+      `stock_count_items.counted_at`, and `stock_movements.created_at`
 
 ## Notes for the implementer
 
