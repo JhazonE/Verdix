@@ -83,15 +83,15 @@ export class MySqlStockCountRepository implements StockCountRepository {
   async create(stockCount: StockCountEntity): Promise<string> {
      return await withTransaction(async (connection) => {
         const sql = `
-            INSERT INTO stock_counts (id, name, warehouse_id, shelf_location_id, status, notes, created_by, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            INSERT INTO stock_counts (id, name, warehouse_id, shelf_location_id, status, notes, created_by, snapshot_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())
         `;
         await connection.query(sql, [
-            stockCount.id, 
-            stockCount.name, 
-            stockCount.warehouseId || null, 
+            stockCount.id,
+            stockCount.name,
+            stockCount.warehouseId || null,
             stockCount.shelfLocationId || null,
-            stockCount.status, 
+            stockCount.status,
             stockCount.notes || null,
             stockCount.createdBy || 'Admin'
         ]);
