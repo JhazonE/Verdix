@@ -524,11 +524,37 @@ git commit -m "feat(inventory): stamp counted_at only when a count line changes"
 
 **Files:**
 - Modify: `src/core/inventory/domain/StockCount.ts:13,30`
-- Modify: `src/infrastructure/repositories/MySqlStockCountRepository.ts:10,27,62`
+- Modify: `src/infrastructure/repositories/MySqlStockCountRepository.ts:10,27,62,84-85`
 
 **Interfaces:**
 - Consumes: columns from Task 1.
-- Produces: `StockCountEntity.snapshotAt?: string`, `StockCountItemEntity.countedAt?: string`, both populated by `MySqlStockCountRepository.findAll()` / `findById()`.
+- Produces: `StockCountEntity.snapshotAt?: string`, `StockCountItemEntity.countedAt?: string`, both populated by `MySqlStockCountRepository.findAll()` / `findById()`, and `stock_counts.snapshot_at` populated on every newly created count.
+
+**Do NOT change the shape of any API response.** The stock count detail UI reads
+snake_case fields straight off the API (`item.counted_quantity`,
+`item.snapshot_quantity`, `item.product_cost`, `item.product_retail`,
+`item.product_name`, `item.product_sku`, `item.product_barcode`). The GET
+`[id]` route returns raw SQL rows to satisfy that contract. Switching it to
+return repository entities renames every field to camelCase and drops the
+joined product columns, which silently breaks the page. Leave that route alone.
+
+- [ ] **Step 0: Populate `snapshot_at` when a count is created**
+
+Migration 103 backfilled `snapshot_at` for existing rows, but `create()` never
+writes it, so every NEW count gets `NULL` — and a null lower bound means Task 5
+can compute no window at all and silently falls back to the buggy behaviour.
+
+In `src/infrastructure/repositories/MySqlStockCountRepository.ts`, in `create()`,
+change the `stock_counts` INSERT to set it:
+
+```sql
+            INSERT INTO stock_counts (id, name, warehouse_id, shelf_location_id, status, notes, created_by, snapshot_at, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())
+```
+
+The parameter array is unchanged — `snapshot_at` takes `NOW()` inline, matching
+`created_at`. They are equal at creation by definition; `snapshot_at` exists as a
+separate column so it keeps its meaning if `created_at` ever changes semantics.
 
 - [ ] **Step 1: Add the entity fields**
 
@@ -578,18 +604,49 @@ Expected: no errors.
 
 With `npm run dev` running:
 
+This probe **asserts** rather than printing — a null `snapshot_at` looks fine when
+merely logged, but it is the exact failure that disables the whole fix.
+
 ```bash
 node -e "
+require('dotenv').config();
+const m=require('mysql2/promise');
 (async()=>{
   const base='http://localhost:3000/api/inventory/stock-counts';
   const init=await (await fetch(base,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'field probe '+Date.now(),createdBy:'probe'})})).json();
-  const d=await (await fetch(base+'/'+init.data.id)).json();
-  console.log('snapshotAt:',d.data.snapshotAt);
-  console.log('item keys :',Object.keys(d.data.items[0]||{}).filter(k=>/counted|snapshot/i.test(k)));
+  const id=init.data.id;
+  const fail=[];
+
+  // 1. snapshot_at must be a real timestamp in the DB, not NULL.
+  const c=await m.createConnection({host:process.env.DB_HOST,port:+process.env.DB_PORT,user:process.env.DB_USER,password:process.env.DB_PASSWORD||'',database:process.env.DB_NAME});
+  const [rows]=await c.query('SELECT snapshot_at FROM stock_counts WHERE id=?',[id]);
+  console.log('DB snapshot_at   :',rows[0].snapshot_at);
+  if(!rows[0].snapshot_at) fail.push('snapshot_at is NULL in the DB — Task 5 can compute no window');
+
+  // 2. The entity layer must expose it.
+  const counts=await (await fetch(base)).json();
+  const mine=counts.data.find(x=>x.id===id);
+  console.log('entity snapshotAt:',mine&&mine.snapshotAt);
+  if(!mine||!mine.snapshotAt) fail.push('snapshotAt missing from the repository entity');
+
+  // 3. The detail route must KEEP its snake_case contract — the UI reads these.
+  const d=await (await fetch(base+'/'+id)).json();
+  const it=d.data.items[0]||{};
+  console.log('detail item keys :',Object.keys(it).sort().join(', '));
+  for(const k of ['counted_quantity','snapshot_quantity','product_cost','product_name'])
+    if(!(k in it)) fail.push('detail route no longer returns '+k+' — the UI depends on it');
+
+  await c.query('DELETE FROM stock_count_items WHERE stock_count_id=?',[id]);
+  await c.query('DELETE FROM stock_counts WHERE id=?',[id]);
+  await c.end();
+
+  if(fail.length){console.error('\nFAILED:');fail.forEach(f=>console.error('  - '+f));process.exit(1);}
+  console.log('\nAll assertions passed.');
 })()"
 ```
 
-Expected: `snapshotAt` is a timestamp (not `undefined`), and the item keys include `countedAt`, `countedQuantity`, `snapshotQuantity`.
+Expected: exits 0 printing `All assertions passed.` A non-zero exit means either
+`snapshot_at` is not being populated or the detail route's response shape changed.
 
 - [ ] **Step 6: Commit**
 
