@@ -37,6 +37,28 @@ function getCurrentUid(): string {
   }
 }
 
+/**
+ * Calculate the price for a price level override.
+ * Applies the price level's percentage adjustment to the selected base price (retail or cost).
+ */
+export function calculatePriceLevelPrice(
+  levelId: string,
+  calculationBase: 'retail' | 'cost',
+  priceLevels: any[],
+  formPrice: number,
+  formCost: number
+): number {
+  if (!levelId) return 0;
+
+  const level = priceLevels.find(l => l.id === levelId);
+  if (!level) return 0;
+
+  const basePrice = calculationBase === 'retail' ? formPrice : formCost;
+  if (basePrice === undefined || basePrice === null) return 0;
+
+  return basePrice * (1 + level.percentageAdjustment / 100);
+}
+
 export interface UseAddProductFormProps {
   onProductAdded?: () => void;
   productOptions?: any;
