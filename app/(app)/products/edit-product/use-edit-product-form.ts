@@ -168,6 +168,7 @@ export function useEditProductForm({
   const selectedUnitOfMeasure = form.watch('unitOfMeasure');
   const costValue = form.watch('cost');
   const watchedCost = form.watch('cost');
+  const watchedPrice = form.watch('price');
   const watchedCategoryName = form.watch('category');
   const watchedSubcategoryName = form.watch('subcategory');
   const watchedBrandName = form.watch('brand');
@@ -368,6 +369,25 @@ export function useEditProductForm({
       }
     }
   }, [selectedPriceLevelId, priceLevels, priceLevelFields, form, categories, subcategories, brands, systemSettings]);
+
+  // Recalculate all price level rows when base price or cost changes
+  useEffect(() => {
+    const allPriceLevels = form.getValues('priceLevels');
+    if (!allPriceLevels || allPriceLevels.length === 0) return;
+
+    allPriceLevels.forEach((pl, idx) => {
+      if (!pl.levelId) return; // Skip rows without a selected level
+
+      const newPrice = calculatePriceLevelPrice(
+        pl.levelId,
+        pl.calculationBase || 'retail',
+        priceLevels,
+        watchedPrice,
+        watchedCost
+      );
+      form.setValue(`priceLevels.${idx}.price`, newPrice);
+    });
+  }, [watchedPrice, watchedCost, priceLevels, form]);
 
   const generateBarcode = () => {
     // EAN-8: 7 random digits + 1 check digit
