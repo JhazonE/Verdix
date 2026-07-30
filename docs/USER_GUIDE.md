@@ -78,15 +78,14 @@ The dashboard shows at a glance:
 
 1. In the **Price Levels** tab, click **Add Level Price**
 2. Select a price level from the **Level** dropdown
-3. Choose the **Calculation Base**:
-   - **Retail Price** — The override price is calculated as: Retail Price × (1 + Level's percentage adjustment)
-   - **Cost Price** — The override price is calculated as: Cost Price × (1 + Level's percentage adjustment)
-4. The **Price** field auto-fills based on your selections
-5. (Optional) Set a **Min Qty** if this price level applies only for bulk orders
-6. Click **Delete** (X button) to remove a price level override
-7. Click **Save**
+3. The **Price** field auto-fills based on:
+   - The selected price level's percentage adjustment
+   - The calculation base configured in that price level (Retail or Cost price)
+4. (Optional) Set a **Min Qty** if this price level applies only for bulk orders
+5. Click **Delete** (X button) to remove a price level override
+6. Click **Save**
 
-**Note:** Price level overrides automatically recalculate whenever you change the base product price or cost price.
+**Note:** Price level overrides automatically recalculate whenever you change the base product price or cost price. The calculation base (Retail or Cost) is pre-configured for each price level in **Manage Price Levels**.
 
 ---
 

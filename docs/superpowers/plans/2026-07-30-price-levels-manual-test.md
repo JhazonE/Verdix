@@ -30,20 +30,8 @@
 
 ---
 
-### Scenario 2: Change Calculation Base
 
-**Steps:**
-1. Continue from Scenario 1 or start fresh add product flow
-2. Add a price level row as in Scenario 1
-3. In the same row, click the "Calculation Base" dropdown
-4. Change from "Retail Price" to "Cost Price"
-5. Verify Price field recalculates to ₱60 (50 × 1.20)
-
-**Expected Result:** ✓ Price recalculates when base changes
-
----
-
-### Scenario 3: Base Price Recalculation
+### Scenario 2: Base Price Recalculation
 
 **Steps:**
 1. Navigate to Products → Add Product
@@ -51,22 +39,24 @@
    - Name: "Test Product 2"
    - SKU: "TEST-002"
    - Price: ₱100
+   - Cost: ₱50
 3. Go to "Price Levels" tab
-4. Add two price levels:
-   - Level 1: Retail base, +20% → should show ₱120
-   - Level 2: Cost base, +15% → should show ₱57.50 (assuming cost=50)
-5. Go back to "Basic Info" tab
-6. Change Price to ₱200
-7. Go back to "Price Levels" tab
-8. Verify:
-   - Level 1 updated to ₱240 (200 × 1.20) ✓
-   - Level 2 unchanged at ₱57.50 (cost not changed) ✓
+4. Add a price level with Retail-base calculation (e.g., +20% markup):
+   - Verify price auto-fills to ₱120
+5. Add another price level with Cost-base calculation (e.g., +15% markup):
+   - Verify price auto-fills to ₱57.50 (50 × 1.15)
+6. Go back to "Basic Info" tab
+7. Change Price to ₱200
+8. Go back to "Price Levels" tab
+9. Verify:
+   - Retail-base level updated to ₱240 (200 × 1.20) ✓
+   - Cost-base level unchanged at ₱57.50 (cost not changed) ✓
 
-**Expected Result:** ✓ Retail-base levels recalculate; cost-base levels don't (unless cost changed)
+**Expected Result:** ✓ Retail-base levels recalculate when price changes; cost-base levels don't (unless cost changed)
 
 ---
 
-### Scenario 4: Edit Product with Existing Price Levels
+### Scenario 3: Edit Product with Existing Price Levels
 
 **Steps:**
 1. Navigate to Products list
@@ -81,7 +71,7 @@
 
 ---
 
-### Scenario 5: Edge Cases
+### Scenario 4: Edge Cases
 
 **Test 1 — Zero Markup:**
 - Add a level with 0% adjustment
@@ -104,7 +94,7 @@
 
 ---
 
-### Scenario 6 — Browser Console Check
+### Scenario 5 — Browser Console Check
 
 **During all tests:**
 - Open DevTools (F12)
@@ -137,8 +127,8 @@
 - [ ] Browser console is clean (no errors)
 - [ ] No regressions in existing features
 - [ ] Top "Select Price Level" dropdown is removed
-- [ ] Calculation Base dropdown appears in each row
-- [ ] Auto-calculation works on level and base selection
+- [ ] No Calculation Base dropdown in rows (uses level's pre-configured base)
+- [ ] Auto-calculation works on level selection (using configured calculation base)
 - [ ] Recalculation works when main price/cost changes
 - [ ] Documentation (USER_GUIDE.md) reflects the new workflow
 
