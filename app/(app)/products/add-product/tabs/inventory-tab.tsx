@@ -36,6 +36,110 @@ export function InventoryTab() {
     refreshUnits,
   } = useAddProductFormContext();
 
+  if (itemType === 'service') {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <FormField
+          control={form.control}
+          name="vatStatus"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>VAT Status</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select VAT status" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {taxRates.map((rate) => (
+                    <SelectItem key={rate.id} value={rate.name}>
+                      {rate.name} {rate.rate > 0 ? `(${rate.rate}%)` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="availability"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Availability</FormLabel>
+              <Select onValueChange={field.onChange} value={field.value} defaultValue="Available">
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select availability" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="Available">Available</SelectItem>
+                  <SelectItem value="Unavailable">Unavailable</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="unitOfMeasure"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Base Unit of Measure</FormLabel>
+              <InlineEditableSelect
+                items={unitsOfMeasure}
+                isLoading={isLoadingUnits}
+                value={field.value}
+                onChange={field.onChange}
+                open={selects.units}
+                onOpenChange={(o) => setSelects((p) => ({ ...p, units: o }))}
+                placeholder="Select a unit"
+                addLabel="Add Unit"
+                emptyLabel="No units found"
+                getId={(u: UnitOfMeasure) => u.id}
+                getValue={(u: UnitOfMeasure) => u.name}
+                getOptionLabel={(u: UnitOfMeasure) => `${u.name} (${u.abbreviation})`}
+                getName={(u: UnitOfMeasure) => u.name}
+                onAdd={async (name) => {
+                  const r = await addUnitOfMeasure(name, name);
+                  if (r.success) { await refreshUnits(); return name; }
+                  return undefined;
+                }}
+                onRename={async (id, name) => {
+                  const existing = unitsOfMeasure.find((u: UnitOfMeasure) => u.id === id);
+                  const r = await updateUnitOfMeasure(id, name, existing?.abbreviation ?? name);
+                  if (r.success) { await refreshUnits(); return name; }
+                  return undefined;
+                }}
+              />
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="cost"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Cost (required)</FormLabel>
+              <FormControl>
+                <Input type="number" step="0.01" placeholder="e.g., 50.00" value={field.value || ''} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

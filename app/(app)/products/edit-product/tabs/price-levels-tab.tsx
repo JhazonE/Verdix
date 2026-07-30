@@ -68,7 +68,7 @@ export function PriceLevelsTab() {
                               form.getValues('price') || 0,
                               form.getValues('cost') || 0
                             );
-                            form.setValue(`priceLevels.${index}.price`, newPrice);
+                            form.setValue(`priceLevels.${index}.price`, parseFloat(newPrice.toFixed(2)));
                           }}
                           value={field.value}
                         >

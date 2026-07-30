@@ -160,7 +160,7 @@ function createWindow() {
 
   win.setIcon(path.join(__dirname, 'public', 'verdix_logo.png'));
 
-  const startUrl = `http://localhost:3000${startRoute}`; 
+  const startUrl = `http://localhost:8888${startRoute}`; 
   win.loadURL(startUrl);
 
   // Retry loading if it fails (e.g. server not ready yet)
@@ -265,7 +265,7 @@ ipcMain.handle('window:open-customer-display', () => {
   });
 
   customerDisplayWindow.setIcon(path.join(__dirname, 'public', 'verdix_logo.png'));
-  customerDisplayWindow.loadURL('http://localhost:3000/pos/customer-display');
+  customerDisplayWindow.loadURL('http://localhost:8888/pos/customer-display');
   customerDisplayWindow.once('ready-to-show', () => customerDisplayWindow.show());
   customerDisplayWindow.on('closed', () => { customerDisplayWindow = null; });
 
@@ -353,7 +353,7 @@ app.whenReady().then(async () => {
 
   function checkServerRunning() {
     return new Promise((resolve) => {
-      const req = http.get('http://localhost:3000', (res) => {
+      const req = http.get('http://localhost:8888', (res) => {
         resolve(true);
       });
       req.on('error', () => {
@@ -367,8 +367,8 @@ app.whenReady().then(async () => {
     const isRunning = await checkServerRunning();
     
     if (isRunning) {
-      logStream.write('Server is already running on port 3000. Skipping spawn.\n');
-      console.log('Server is already running on port 3000. Skipping spawn.');
+      logStream.write('Server is already running on port 8888. Skipping spawn.\n');
+      console.log('Server is already running on port 8888. Skipping spawn.');
     } else {
       logStream.write('Server not detected. Spawning Next.js server...\n');
       console.log('Server not detected. Spawning Next.js server...');

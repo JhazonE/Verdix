@@ -192,7 +192,10 @@
       "PowerShell(Set-Location \"d:\\\\VERDIX_POS\\\\Verdix_POS\"; if \\(Test-Path \".next\\\\standalone\"\\) { try { Remove-Item \".next\\\\standalone\" -Recurse -Force -ErrorAction Stop; \"standalone removed\" } catch { \"still locked: $\\($_.Exception.Message\\)\" } } else { \"no standalone dir\" })",
       "PowerShell($f = Get-Item \"D:\\\\VERDIX_POS\\\\Verdix_POS\\\\Output\\\\VendixSetup_1.19.0.exe\"; \"{0}  {1:N1} MB  built {2}\" -f $f.Name, \\($f.Length/1MB\\), $f.LastWriteTime)",
       "Bash(npm run dev > /tmp/dev.log 2>&1 & *)",
-      "Bash(pkill -f \"next dev\")"
+      "Bash(pkill -f \"next dev\")",
+      "Bash(Start-Sleep -Seconds 5)",
+      "Bash(node \"C:\\\\Users\\\\Admin\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\d--VERDIX-POS-Verdix-POS\\\\18944de1-e24a-4d98-8d2a-d8d1881a09f6\\\\scratchpad\\\\test-price-fix.js\")",
+      "Bash(rm -r .next .next-test && npm run typecheck 2>&1 | head -100)"
     ],
     "additionalDirectories": [
       "D:\\VERDIX_POS\\Verdix_POS\\app\\api\\sales\\orders\\[id]\\deliver",
@@ -208,7 +211,8 @@
       "D:\\VERDIX_POS\\verdix-license-server\\src",
       "D:\\VERDIX_POS\\verdix-license-server\\public",
       "D:\\VERDIX_POS\\verdix-license-server\\tests",
-      "\\tmp"
+      "\\tmp",
+      "D:\\VERDIX_POS\\Verdix_POS\\.next"
     ]
   }
 }

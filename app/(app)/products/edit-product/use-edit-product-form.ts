@@ -388,7 +388,7 @@ export function useEditProductForm({
         watchedPrice || 0,
         watchedCost || 0
       );
-      form.setValue(`priceLevels.${idx}.price`, newPrice);
+      form.setValue(`priceLevels.${idx}.price`, parseFloat(newPrice.toFixed(2)));
     });
   }, [watchedPrice, watchedCost, priceLevels, form]);
 

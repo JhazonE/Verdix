@@ -45,11 +45,14 @@ function getCurrentUser(): { uid: string; name: string } | null {
 }
 
 export async function logActivity(options: LogActivityOptions): Promise<void> {
-  try {
-    const user = getCurrentUser();
-    if (!user) return;
+  const user = getCurrentUser();
+  if (!user) return;
 
+  try {
     const base = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000/api';
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
     const res = await fetch(`${base}/user-activity-logs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -61,13 +64,19 @@ export async function logActivity(options: LogActivityOptions): Promise<void> {
         description: options.description,
         referenceId: options.referenceId,
       }),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeout);
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       console.error('[ActivityLog] Failed to log:', err);
     }
-  } catch (err) {
-    console.error('[ActivityLog] Error:', err);
+  } catch (err: any) {
+    // Silently ignore network errors - activity logging should not block operations
+    if (err?.name !== 'AbortError') {
+      console.debug('[ActivityLog] Network error (ignored):', err?.message);
+    }
   }
 }

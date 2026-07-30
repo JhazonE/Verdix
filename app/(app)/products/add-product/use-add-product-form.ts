@@ -425,7 +425,7 @@ export function useAddProductForm({
         watchedPrice || 0,
         watchedCost || 0
       );
-      form.setValue(`priceLevels.${idx}.price`, newPrice);
+      form.setValue(`priceLevels.${idx}.price`, parseFloat(newPrice.toFixed(2)));
     });
   }, [watchedPrice, watchedCost, priceLevels, form]);
 
@@ -498,11 +498,14 @@ export function useAddProductForm({
           }
         }
 
-        await logActivity({
+        // Fire and forget - don't block form submission on activity logging
+        logActivity({
           action: 'CREATE',
           module: 'PRODUCTS',
           description: `Added product: ${values.name} (SKU: ${values.sku}) — Category: ${values.category || 'N/A'}`,
           referenceId: result.productId,
+        }).catch(() => {
+          // Silently ignore activity logging errors
         });
         toast({
           title: 'Product Added',
