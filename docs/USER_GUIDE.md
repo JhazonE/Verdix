@@ -74,12 +74,19 @@ The dashboard shows at a glance:
 3. On the child product's edit form, set **Parent Product** to the bulk product.
 4. Set the **Conversion Factor** (e.g., 50 = 50 retail from 1 sack).
 
-#### Assign Price Levels
+#### Add Price Level Overrides
 
-1. Open the product edit dialog.
-2. Scroll to **Price Levels**.
-3. Click **Add Price Level**, select a tier, and enter the price.
-4. Save.
+1. In the **Price Levels** tab, click **Add Level Price**
+2. Select a price level from the **Level** dropdown
+3. Choose the **Calculation Base**:
+   - **Retail Price** — The override price is calculated as: Retail Price × (1 + Level's percentage adjustment)
+   - **Cost Price** — The override price is calculated as: Cost Price × (1 + Level's percentage adjustment)
+4. The **Price** field auto-fills based on your selections
+5. (Optional) Set a **Min Qty** if this price level applies only for bulk orders
+6. Click **Delete** (X button) to remove a price level override
+7. Click **Save**
+
+**Note:** Price level overrides automatically recalculate whenever you change the base product price or cost price.
 
 ---
 
