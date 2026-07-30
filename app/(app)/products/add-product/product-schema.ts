@@ -22,6 +22,7 @@ const baseProductSchema = z.object({
   expenseAccount: z.string().optional(),
   priceLevels: z.array(z.object({
     levelId: z.string().min(1, 'Price level is required'),
+    calculationBase: z.enum(['retail', 'cost']).default('retail'),
     price: z.number().min(0, 'Price cannot be negative'),
     minQuantity: z.number().min(0).optional(),
   })).optional(),
