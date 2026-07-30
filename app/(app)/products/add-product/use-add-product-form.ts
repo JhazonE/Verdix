@@ -164,6 +164,7 @@ export function useAddProductForm({
   });
 
   const selectedUnitOfMeasure = form.watch('unitOfMeasure');
+  const watchedPrice = form.watch('price');
   const formErrors = form.formState.errors;
   const tabErrors = {
     basic: !!(formErrors.name || formErrors.brand || formErrors.sku || formErrors.description || formErrors.category),
@@ -197,7 +198,7 @@ export function useAddProductForm({
           // Find default level or take first
           const defaultLevel = systemPriceLevels.find((l:any) => l.isDefault) || systemPriceLevels[0];
           if (defaultLevel) {
-              appendPriceLevel({ levelId: defaultLevel.id, price: 0 });
+              appendPriceLevel({ levelId: defaultLevel.id, calculationBase: 'retail', price: 0 });
           }
       }
 
@@ -405,6 +406,25 @@ export function useAddProductForm({
       }
     }
   }, [selectedPriceLevelId, priceLevels, priceLevelFields, form, categories, subcategories, brands, systemSettings]);
+
+  // Recalculate all price level rows when base price or cost changes
+  useEffect(() => {
+    const allPriceLevels = form.getValues('priceLevels');
+    if (!allPriceLevels || allPriceLevels.length === 0) return;
+
+    allPriceLevels.forEach((pl, idx) => {
+      if (!pl.levelId) return; // Skip rows without a selected level
+
+      const newPrice = calculatePriceLevelPrice(
+        pl.levelId,
+        pl.calculationBase || 'retail',
+        priceLevels,
+        watchedPrice,
+        watchedCost
+      );
+      form.setValue(`priceLevels.${idx}.price`, newPrice);
+    });
+  }, [watchedPrice, watchedCost, priceLevels, form]);
 
   async function onSubmit(values: ProductFormValues) {
     setIsSubmitting(true);
