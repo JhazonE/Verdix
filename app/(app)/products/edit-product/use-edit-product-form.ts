@@ -382,8 +382,8 @@ export function useEditProductForm({
         pl.levelId,
         pl.calculationBase || 'retail',
         priceLevels,
-        watchedPrice,
-        watchedCost
+        watchedPrice || 0,
+        watchedCost || 0
       );
       form.setValue(`priceLevels.${idx}.price`, newPrice);
     });
