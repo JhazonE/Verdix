@@ -10,49 +10,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 import { CurrencyIcon } from '../currency-icon';
 import { useEditProductFormContext } from '../edit-product-form-context';
+import { calculatePriceLevelPrice } from '../use-edit-product-form';
 
 export function PriceLevelsTab() {
   const {
     form,
-    selectedPriceLevelId, setSelectedPriceLevelId,
     priceLevels, isLoadingPriceLevels,
     priceLevelFields, appendPriceLevel, removePriceLevel,
   } = useEditProductFormContext();
 
   return (
     <div className="space-y-4">
-      {/* Price Level Selector for Auto-Calculate */}
-      <div className="rounded-md border p-4 bg-muted/30">
-        <div className="flex items-center gap-4">
-          <div className="flex-1">
-            <Label htmlFor="price-level-selector" className="text-sm font-medium">
-              Select Price Level
-            </Label>
-            <p className="text-xs text-muted-foreground mt-1">
-              Choose a level to automatically calculate the main price
-            </p>
-          </div>
-          <div className="w-[200px]">
-            <Select value={selectedPriceLevelId} onValueChange={setSelectedPriceLevelId}>
-              <SelectTrigger id="price-level-selector">
-                <SelectValue placeholder="Select level" />
-              </SelectTrigger>
-              <SelectContent>
-                {isLoadingPriceLevels ? (
-                  <SelectItem value="loading" disabled>Loading...</SelectItem>
-                ) : (
-                  priceLevels?.map(level => (
-                    <SelectItem key={level.id} value={level.id}>
-                      {level.name} ({level.percentageAdjustment}%)
-                    </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </div>
-
       <div className="rounded-md border p-4">
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -65,7 +33,7 @@ export function PriceLevelsTab() {
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => appendPriceLevel({ levelId: '', price: form.getValues('price') || 0 })}
+            onClick={() => appendPriceLevel({ levelId: '', calculationBase: 'retail', price: 0 })}
           >
             <PlusCircle className="mr-2 h-4 w-4" />
             Add Level Price
@@ -88,7 +56,21 @@ export function PriceLevelsTab() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-xs">Level</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                        <Select
+                          onValueChange={(newLevelId) => {
+                            field.onChange(newLevelId);
+                            const currentBase = form.getValues(`priceLevels.${index}.calculationBase`) || 'retail';
+                            const newPrice = calculatePriceLevelPrice(
+                              newLevelId,
+                              currentBase,
+                              priceLevels,
+                              form.getValues('price') || 0,
+                              form.getValues('cost') || 0
+                            );
+                            form.setValue(`priceLevels.${index}.price`, newPrice);
+                          }}
+                          value={field.value}
+                        >
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select level" />
@@ -104,6 +86,44 @@ export function PriceLevelsTab() {
                                 </SelectItem>
                               ))
                             )}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <div className="flex-1">
+                  <FormField
+                    control={form.control}
+                    name={`priceLevels.${index}.calculationBase`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">Calculation Base</FormLabel>
+                        <Select
+                          onValueChange={(newBase) => {
+                            field.onChange(newBase);
+                            const currentLevelId = form.getValues(`priceLevels.${index}.levelId`);
+                            if (!currentLevelId) return;
+                            const newPrice = calculatePriceLevelPrice(
+                              currentLevelId,
+                              newBase as 'retail' | 'cost',
+                              priceLevels,
+                              form.getValues('price') || 0,
+                              form.getValues('cost') || 0
+                            );
+                            form.setValue(`priceLevels.${index}.price`, newPrice);
+                          }}
+                          value={field.value || 'retail'}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select base" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="retail">Retail Price</SelectItem>
+                            <SelectItem value="cost">Cost Price</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
