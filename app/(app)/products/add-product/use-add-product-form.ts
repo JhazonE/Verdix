@@ -198,7 +198,7 @@ export function useAddProductForm({
           // Find default level or take first
           const defaultLevel = systemPriceLevels.find((l:any) => l.isDefault) || systemPriceLevels[0];
           if (defaultLevel) {
-              appendPriceLevel({ levelId: defaultLevel.id, calculationBase: 'retail', price: 0 });
+              appendPriceLevel({ levelId: defaultLevel.id, price: 0 });
           }
       }
 
@@ -415,9 +415,12 @@ export function useAddProductForm({
     allPriceLevels.forEach((pl, idx) => {
       if (!pl.levelId) return; // Skip rows without a selected level
 
+      const level = priceLevels.find(l => l.id === pl.levelId);
+      if (!level) return;
+
       const newPrice = calculatePriceLevelPrice(
         pl.levelId,
-        pl.calculationBase || 'retail',
+        level.calculationBase || 'retail',
         priceLevels,
         watchedPrice || 0,
         watchedCost || 0

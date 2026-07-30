@@ -378,9 +378,12 @@ export function useEditProductForm({
     allPriceLevels.forEach((pl, idx) => {
       if (!pl.levelId) return; // Skip rows without a selected level
 
+      const level = priceLevels.find(l => l.id === pl.levelId);
+      if (!level) return;
+
       const newPrice = calculatePriceLevelPrice(
         pl.levelId,
-        pl.calculationBase || 'retail',
+        level.calculationBase || 'retail',
         priceLevels,
         watchedPrice || 0,
         watchedCost || 0

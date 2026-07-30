@@ -770,12 +770,20 @@ export async function reassignParent(
     return await withTransaction(async (connection) => {
       // Load the child.
       const [childRows]: any = await connection.query(
-        'SELECT id, name, unit_of_measure, parent_id FROM products WHERE id = ?',
+        'SELECT id, name, unit_of_measure, parent_id, stock, cost, price FROM products WHERE id = ?',
         [childId],
       );
       const child = childRows?.[0];
       if (!child) {
         return { success: false, message: 'Product not found.' };
+      }
+
+      // Prevent reassignment if product has existing inventory.
+      if (newParentId !== null && child.stock > 0) {
+        return {
+          success: false,
+          message: `Cannot assign "${child.name}" to a parent while it has ${child.stock} units in stock. Please adjust or clear the inventory first, then reassign.`,
+        };
       }
 
       if (newParentId !== null) {

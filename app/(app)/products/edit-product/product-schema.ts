@@ -27,7 +27,6 @@ export const productSchema = z.object({
   })).transform(arr => arr.filter(cf => cf.unit.trim() !== '')),
   priceLevels: z.array(z.object({
     levelId: z.string().min(1, 'Level is required'),
-    calculationBase: z.enum(['retail', 'cost']).default('retail'),
     price: z.coerce.number().positive('Price must be positive'),
     minQuantity: z.number().min(0).optional(),
   })).optional(),

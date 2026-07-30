@@ -33,7 +33,7 @@ export function PriceLevelsTab() {
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => appendPriceLevel({ levelId: '', calculationBase: 'retail', price: 0 })}
+            onClick={() => appendPriceLevel({ levelId: '', price: 0 })}
           >
             <PlusCircle className="mr-2 h-4 w-4" />
             Add Level Price
@@ -59,10 +59,11 @@ export function PriceLevelsTab() {
                         <Select
                           onValueChange={(newLevelId) => {
                             field.onChange(newLevelId);
-                            const currentBase = form.getValues(`priceLevels.${index}.calculationBase`) || 'retail';
+                            const selectedLevel = priceLevels.find(l => l.id === newLevelId);
+                            if (!selectedLevel) return;
                             const newPrice = calculatePriceLevelPrice(
                               newLevelId,
-                              currentBase,
+                              selectedLevel.calculationBase || 'retail',
                               priceLevels,
                               form.getValues('price') || 0,
                               form.getValues('cost') || 0
@@ -86,44 +87,6 @@ export function PriceLevelsTab() {
                                 </SelectItem>
                               ))
                             )}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div className="flex-1">
-                  <FormField
-                    control={form.control}
-                    name={`priceLevels.${index}.calculationBase`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs">Calculation Base</FormLabel>
-                        <Select
-                          onValueChange={(newBase) => {
-                            field.onChange(newBase);
-                            const currentLevelId = form.getValues(`priceLevels.${index}.levelId`);
-                            if (!currentLevelId) return;
-                            const newPrice = calculatePriceLevelPrice(
-                              currentLevelId,
-                              newBase as 'retail' | 'cost',
-                              priceLevels,
-                              form.getValues('price') || 0,
-                              form.getValues('cost') || 0
-                            );
-                            form.setValue(`priceLevels.${index}.price`, newPrice);
-                          }}
-                          value={field.value || 'retail'}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select base" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="retail">Retail Price</SelectItem>
-                            <SelectItem value="cost">Cost Price</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
