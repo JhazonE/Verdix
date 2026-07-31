@@ -231,17 +231,27 @@ export async function sendZReadingToStaLucia(
     return claim.result;
   }
 
+  // Captured the moment the send result is known, and checked in the catch
+  // below. This — not "did we reach the claim UPDATE/DELETE" — is what
+  // decides whether the claim may ever be released, because the UPDATE that
+  // persists `succeeded = 1` can itself throw (transient DB error, lock wait
+  // timeout, connection drop) after the mall has already accepted the sale.
+  let sendSucceeded = false;
+
   try {
     const payload = buildSalesPayload(rowToZReading(row));
     const endpoint = `${cfg.apiEndpoint.replace(/\/+$/, '')}/api/get-sales`;
     const result = await sendSales(cfg, payload);
+    sendSucceeded = result.success;
 
     // Resolve the claim's terminal state from the send result FIRST, before
     // touching external_api_logs. The send to the mall is the irreversible
     // step; once `sendSales` reports success the claim must never be
     // released again for this Z-reading, no matter what happens next — so
     // `succeeded = 1` lands before the log write gets any chance to fail and
-    // reach a catch block that deletes the claim.
+    // reach a catch block that deletes the claim. (This UPDATE can itself
+    // throw, which is exactly why `sendSucceeded` above — not "we got past
+    // this line" — is the thing the catch block trusts.)
     if (result.success) {
       await query(`UPDATE sta_lucia_submissions SET succeeded = 1 WHERE z_reading_id = ?`, [resolvedId]);
     } else {
@@ -272,14 +282,18 @@ export async function sendZReadingToStaLucia(
       response: result.response,
     };
   } catch (error) {
-    // Only reachable from buildSalesPayload throwing, sendSales throwing
+    // Only release the claim if the mall never accepted the sale. This is
+    // reachable from buildSalesPayload throwing, sendSales throwing
     // (client.ts catches internally so this shouldn't happen, but don't rely
-    // on that), or the claim UPDATE/DELETE query above throwing — never from
-    // writeLog, which has its own try/catch. In every case that reaches here
-    // the mall was never told the send succeeded, so releasing the claim is
-    // safe and lets a retry proceed instead of waiting out the staleness
-    // window.
-    await query(`DELETE FROM sta_lucia_submissions WHERE z_reading_id = ?`, [resolvedId]).catch(() => {});
+    // on that) — both cases where `sendSucceeded` is still false — but also
+    // from the `succeeded = 1` UPDATE above throwing AFTER a successful send.
+    // In that last case the mall already accepted the sale, so deleting the
+    // claim here would let a retry resend sales that are already recorded on
+    // their side — the exact double-report this table exists to prevent.
+    // `sendSucceeded` is what distinguishes the two, not "we reached here."
+    if (!sendSucceeded) {
+      await query(`DELETE FROM sta_lucia_submissions WHERE z_reading_id = ?`, [resolvedId]).catch(() => {});
+    }
     throw error;
   }
 }
