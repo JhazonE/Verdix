@@ -10,6 +10,7 @@ import {
   syncSalesTransaction,
   syncAccountsPayable
 } from './services/external-accounting-api';
+import { sendZReadingToStaLucia, loadStaLuciaConfig } from './integrations/sta-lucia/send-z-reading';
 
 export interface BackupSchedule {
   enabled: boolean;
@@ -90,13 +91,19 @@ export function startScheduledBackup(schedule: BackupSchedule): void {
   }
 }
 
+/** Types gated by the legacy external_api_settings config. */
+const LEGACY_SYNC_TYPES = ['PURCHASE_ORDER', 'SUPPLIER_PAYMENT', 'SALES_INVOICE', 'ACCOUNTS_PAYABLE'];
+
 /**
  * Sweeps the external_api_logs table and retries pending/failed syncs
  */
 export async function processSyncQueue(): Promise<void> {
   try {
+    // NOTE: no early return on `!apiConfig.enabled`. That flag comes from the
+    // legacy external_api_settings table and says nothing about external_apis
+    // rows; returning here would silently disable Sta Lucia retries. The gate
+    // is applied per-item below, to legacy types only.
     const apiConfig = await getExternalApiConfig();
-    if (!apiConfig.enabled) return;
 
     // Find items that are pending or failed and due for retry
     const pendingItems = await query(`
@@ -118,6 +125,8 @@ export async function processSyncQueue(): Promise<void> {
 
         console.log(`Retrying ${log.transaction_type} sync for ID: ${log.transaction_id}`);
 
+        if (LEGACY_SYNC_TYPES.includes(log.transaction_type) && !apiConfig.enabled) continue;
+
         switch (log.transaction_type) {
           case 'PURCHASE_ORDER':
             syncResult = await syncPurchaseTransaction(log.transaction_id, payload, apiConfig);
@@ -131,6 +140,21 @@ export async function processSyncQueue(): Promise<void> {
           case 'ACCOUNTS_PAYABLE':
             syncResult = await syncAccountsPayable(log.transaction_id, apiConfig);
             break;
+          case 'STA_LUCIA_SALES': {
+            // The log row does not carry an apiId; the sender resolves the
+            // enabled Sta Lucia config itself. Single-store deployment means
+            // there is exactly one.
+            //
+            // Only 'retry' opts into the automatic sweep. 'queue' means the
+            // operator retries by hand from the Sync Logs tab, and 'log_only'
+            // means never — auto-retrying either would ignore the setting.
+            const staCfg = await loadStaLuciaConfig();
+            if (staCfg?.onErrorAction !== 'retry') continue;
+
+            const r = await sendZReadingToStaLucia(log.transaction_id);
+            syncResult = { success: r.success, error: r.error };
+            break;
+          }
           default:
             console.warn(`Unsupported transaction type in sync queue: ${log.transaction_type}`);
             continue;
