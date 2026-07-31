@@ -7,9 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Globe, ShieldCheck, Loader2, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Globe, ShieldCheck, Loader2, ArrowUp, ArrowDown, ArrowUpDown, Building2 } from 'lucide-react';
 import type { ApiForm } from './use-external-api';
-import type { ExternalApi, AllowedMethods, ApiRole } from './external-api-types';
+import type { ExternalApi, AllowedMethods, ApiRole, ApiProvider } from './external-api-types';
 
 interface Props {
   open: boolean;
@@ -41,12 +41,15 @@ export function ApiFormDialog({ open, onOpenChange, editingApi, form, setForm, i
               <Input id="api-name" placeholder="e.g., Accounting System" value={form.name} onChange={e => set('name', e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>API Role</Label>
-              <Select value={form.role} onValueChange={v => set('role', v as ApiRole)}>
+              <Label>Provider</Label>
+              <Select value={form.provider} onValueChange={v => set('provider', v as ApiProvider)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="general">
-                    <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-muted-foreground" />General API</div>
+                  <SelectItem value="generic">
+                    <div className="flex items-center gap-2"><Globe className="h-4 w-4 text-muted-foreground" />Generic API</div>
+                  </SelectItem>
+                  <SelectItem value="sta_lucia">
+                    <div className="flex items-center gap-2"><Building2 className="h-4 w-4 text-muted-foreground" />Sta. Lucia Tenant System</div>
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -71,44 +74,88 @@ export function ApiFormDialog({ open, onOpenChange, editingApi, form, setForm, i
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="api-endpoint">API Endpoint URL <span className="text-destructive">*</span></Label>
+            <Label htmlFor="api-endpoint">
+              {form.provider === 'sta_lucia' ? 'Domain' : 'API Endpoint URL'} <span className="text-destructive">*</span>
+            </Label>
             <div className="relative">
               <Globe className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input id="api-endpoint" className="pl-9" placeholder="https://api.example.com" value={form.apiEndpoint} onChange={e => set('apiEndpoint', e.target.value)} />
+              <Input
+                id="api-endpoint" className="pl-9"
+                placeholder={form.provider === 'sta_lucia' ? 'https://sta-lucia-malls.com' : 'https://api.example.com'}
+                value={form.apiEndpoint} onChange={e => set('apiEndpoint', e.target.value)}
+              />
             </div>
+            {form.provider === 'sta_lucia' && (
+              <p className="text-xs text-muted-foreground">
+                Base domain only — <code>/api/login</code> and <code>/api/get-sales</code> are appended automatically.
+              </p>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Authentication Type</Label>
-              <Select value={form.authType} onValueChange={v => set('authType', v as any)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  <SelectItem value="api_key">API Key (X-API-Key)</SelectItem>
-                  <SelectItem value="bearer_token">Bearer Token</SelectItem>
-                </SelectContent>
-              </Select>
+          {form.provider === 'generic' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Authentication Type</Label>
+                <Select value={form.authType} onValueChange={v => set('authType', v as any)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="api_key">API Key (X-API-Key)</SelectItem>
+                    <SelectItem value="bearer_token">Bearer Token</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {form.authType === 'api_key' && (
+                <div className="space-y-2">
+                  <Label htmlFor="api-key">API Key</Label>
+                  <div className="relative">
+                    <ShieldCheck className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input id="api-key" type="password" className="pl-9" placeholder="Enter API key" value={form.apiKey} onChange={e => set('apiKey', e.target.value)} />
+                  </div>
+                </div>
+              )}
+              {form.authType === 'bearer_token' && (
+                <div className="space-y-2">
+                  <Label htmlFor="bearer-token">Bearer Token</Label>
+                  <div className="relative">
+                    <ShieldCheck className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input id="bearer-token" type="password" className="pl-9" placeholder="Enter bearer token" value={form.bearerToken} onChange={e => set('bearerToken', e.target.value)} />
+                  </div>
+                </div>
+              )}
             </div>
-            {form.authType === 'api_key' && (
-              <div className="space-y-2">
-                <Label htmlFor="api-key">API Key</Label>
-                <div className="relative">
-                  <ShieldCheck className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input id="api-key" type="password" className="pl-9" placeholder="Enter API key" value={form.apiKey} onChange={e => set('apiKey', e.target.value)} />
+          )}
+
+          {form.provider === 'sta_lucia' && (
+            <div className="space-y-3 rounded-lg border p-4">
+              <div className="space-y-1">
+                <Label className="text-base">Sta. Lucia Tenant Account</Label>
+                <p className="text-sm text-muted-foreground">
+                  Credentials issued by the Sta. Lucia mall for the Tenant Management System —
+                  <span className="font-medium text-foreground"> not your Verdix login.</span>
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="tenant-email">Tenant Email <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="tenant-email" type="email" placeholder="tenant@example.com"
+                    value={form.loginEmail ?? ''} onChange={e => set('loginEmail', e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="tenant-password">Tenant Password <span className="text-destructive">*</span></Label>
+                  <div className="relative">
+                    <ShieldCheck className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="tenant-password" type="password" className="pl-9" placeholder="Enter tenant password"
+                      value={form.loginPassword ?? ''} onChange={e => set('loginPassword', e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
-            )}
-            {form.authType === 'bearer_token' && (
-              <div className="space-y-2">
-                <Label htmlFor="bearer-token">Bearer Token</Label>
-                <div className="relative">
-                  <ShieldCheck className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input id="bearer-token" type="password" className="pl-9" placeholder="Enter bearer token" value={form.bearerToken} onChange={e => set('bearerToken', e.target.value)} />
-                </div>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-2">

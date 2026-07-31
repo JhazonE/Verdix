@@ -25,6 +25,7 @@ export function useExternalApi() {
   const [isSaving, setIsSaving] = useState(false);
 
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExternalApi | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -103,6 +104,10 @@ export function useExternalApi() {
   const handleSave = async () => {
     if (!form.name.trim()) { toast({ variant: 'destructive', title: 'Validation Error', description: 'Name is required.' }); return; }
     if (!form.apiEndpoint.trim()) { toast({ variant: 'destructive', title: 'Validation Error', description: 'API Endpoint is required.' }); return; }
+    if (form.provider === 'sta_lucia' && (!form.loginEmail?.trim() || !form.loginPassword?.trim())) {
+      toast({ variant: 'destructive', title: 'Validation Error', description: 'Tenant email and password are required for Sta. Lucia.' });
+      return;
+    }
     setIsSaving(true);
     try {
       const url = editingApi ? getApiUrl(`/settings/external-api/${editingApi.id}`) : getApiUrl('/settings/external-api');
@@ -144,6 +149,27 @@ export function useExternalApi() {
   const handleTestConnection = async (api: ExternalApi) => {
     setTestingId(api.id);
     try {
+      if (api.provider === 'sta_lucia') {
+        const res = await fetch(getApiUrl('/integrations/sta-lucia/test'), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiId: api.id }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          toast({
+            title: 'Sta Lucia Connection OK',
+            description: `Login, sales submission, and logout all succeeded against ${api.apiEndpoint}.`,
+          });
+          console.log('Sta Lucia test — payload sent:', data.payload);
+          // NOTE: the response is intentionally not logged — it carries the
+          // mall's owner_token, and dumping it to the console would leave a
+          // live session token sitting in browser console history.
+        } else {
+          toast({ variant: 'destructive', title: 'Sta Lucia Test Failed', description: data.error });
+        }
+        return;
+      }
+
       const res = await fetch(getApiUrl(`/settings/external-api/${api.id}`), {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'test', apiEndpoint: api.apiEndpoint, authType: api.authType, apiKey: api.apiKey, bearerToken: api.bearerToken, timeout: api.timeout, role: api.role }),
@@ -155,16 +181,43 @@ export function useExternalApi() {
     finally { setTestingId(null); }
   };
 
+  /**
+   * Submit the most recent Z-reading on demand. The server resolves "most
+   * recent" itself — the Z-reading GET route takes mode/startDate/endDate/
+   * terminalId and has no "latest" parameter, so asking it here would mean
+   * fetching the whole history just to read one row.
+   */
+  const handleSendZReading = async (api: ExternalApi) => {
+    setSendingId(api.id);
+    try {
+      const res = await fetch(getApiUrl('/integrations/sta-lucia/send'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiId: api.id }),
+      });
+      const data = await res.json();
+
+      if (data.skipped) {
+        toast({ title: 'Already Sent', description: `Z-reading ${data.zReadingId} was submitted previously.` });
+      } else if (data.success) {
+        toast({ title: 'Sales Submitted', description: `Z-reading ${data.zReadingId} sent to Sta Lucia.` });
+      } else {
+        toast({ variant: 'destructive', title: 'Submission Failed', description: data.error });
+      }
+      fetchLogs();
+    } catch { toast({ variant: 'destructive', title: 'Submission Failed', description: 'Network error.' }); }
+    finally { setSendingId(null); }
+  };
+
   useEffect(() => { fetchApis(); fetchLogs(); }, []);
 
   return {
     apis, logs, isLoadingApis, isLoadingLogs,
     retryingLogId, logStatusFilter, handleStatusFilterChange, handleRetryLog,
     dialogOpen, setDialogOpen, editingApi, form, setForm, isSaving,
-    testingId, deleteTarget, setDeleteTarget, isDeleting,
+    testingId, sendingId, deleteTarget, setDeleteTarget, isDeleting,
     pendingCount: logs.filter(l => l.status === 'pending').length,
     openAddDialog, openEditDialog,
-    handleSave, handleToggleEnabled, handleDelete, handleTestConnection,
+    handleSave, handleToggleEnabled, handleDelete, handleTestConnection, handleSendZReading,
     fetchLogs, clearLogs, isClearingLogs,
   };
 }
