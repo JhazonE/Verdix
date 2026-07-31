@@ -1589,7 +1589,12 @@ git commit -m "feat(sta-lucia): retry failed sales submissions in the sync queue
 - Consumes: `ExternalApi` with `provider`/`loginEmail`/`loginPassword` (Task 2); `POST /api/integrations/sta-lucia/{test,send}` (Task 5).
 - Produces: a Provider dropdown, tenant credential fields, and a Send Z-Reading action.
 
-- [ ] **Step 1: Extend the form defaults and re-export the provider type**
+> **Steps 1 and 2 were pulled forward into Task 2.** Making `provider` required
+> on `ExternalApi` broke these two files immediately, and leaving the tree
+> type-broken across Tasks 3–7 was not acceptable. Verify the edits are already
+> present, then move to Step 3.
+
+- [ ] **Step 1 (verify only — already applied in Task 2): Extend the form defaults and re-export the provider type**
 
 In `app/(app)/settings/external-api/external-api-types.ts`:
 
@@ -1609,7 +1614,7 @@ Add to `EMPTY_FORM`, after `role: 'general',`:
   loginPassword: '',
 ```
 
-- [ ] **Step 2: Carry the new fields through the edit dialog**
+- [ ] **Step 2 (verify only — already applied in Task 2): Carry the new fields through the edit dialog**
 
 In `app/(app)/settings/external-api/use-external-api.ts`, inside `openEditDialog`, add to the `setForm({...})` object after `role: api.role ?? 'general',`:
 
