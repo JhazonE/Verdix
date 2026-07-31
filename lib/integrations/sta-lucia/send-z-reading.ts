@@ -91,8 +91,13 @@ async function writeLog(entry: {
   return id;
 }
 
-/** A stale claim (older than this) is assumed to be from a dead process and may be retaken. */
-const CLAIM_STALE_MS = 15 * 60 * 1000;
+/**
+ * A stale claim (older than this) is assumed to be from a dead process and
+ * may be retaken. Kept as the one source of truth for the threshold — it is
+ * interpolated directly into the takeover SQL below, so the query and any
+ * message about it can never drift apart.
+ */
+const CLAIM_STALE_MINUTES = 15;
 
 /**
  * Defensive guard so existing installs self-heal without a migration run —
@@ -123,12 +128,23 @@ type ClaimOutcome =
 /**
  * Atomically claim a Z-reading for submission via the table's PRIMARY KEY.
  *
- * On a duplicate key the existing claim is inspected: a succeeded claim or a
- * fresh (< 15 min) in-flight claim is left alone and the caller is told to
- * skip. A claim older than 15 minutes is assumed abandoned by a crashed or
- * killed process and is taken over — without this escape hatch a crash
- * between claim and completion would permanently block that Z-reading from
- * ever being submitted again, with no way out but manual SQL.
+ * On a duplicate key, a succeeded claim or a fresh (< CLAIM_STALE_MINUTES)
+ * in-flight claim is left alone and the caller is told to skip. A claim
+ * older than that is assumed abandoned by a crashed or killed process and is
+ * taken over — without this escape hatch a crash between claim and
+ * completion would permanently block that Z-reading from ever being
+ * submitted again, with no way out but manual SQL.
+ *
+ * The takeover itself is a single conditional UPDATE, not a SELECT followed
+ * by a separate UPDATE. That matters: if two callers both read the same
+ * >15-minute-old abandoned claim and then each unconditionally UPDATE, both
+ * would believe they won and both would send — reintroducing the exact
+ * double-submission bug this table exists to prevent. Folding the staleness
+ * check into the UPDATE's WHERE clause means the database evaluates
+ * "is this row still eligible" and "claim it" as one atomic step; MySQL's
+ * row lock ensures only one of two concurrent UPDATEs against the same row
+ * can match, so the decision comes from `affectedRows`, never from a value
+ * read in a separate statement.
  */
 async function claimZReading(resolvedId: string): Promise<ClaimOutcome> {
   try {
@@ -137,27 +153,32 @@ async function claimZReading(resolvedId: string): Promise<ClaimOutcome> {
   } catch (err: any) {
     if (err?.code !== 'ER_DUP_ENTRY') throw err;
 
+    const takeover = await query(
+      `UPDATE sta_lucia_submissions
+          SET claimed_at = NOW()
+        WHERE z_reading_id = ?
+          AND succeeded = 0
+          AND claimed_at < NOW() - INTERVAL ${CLAIM_STALE_MINUTES} MINUTE`,
+      [resolvedId],
+    ) as any;
+    if (takeover?.affectedRows === 1) {
+      return { claimed: true };
+    }
+
+    // We did not win the takeover: either the claim is fresh, it already
+    // succeeded, or another caller's UPDATE won the race a moment ago. Read
+    // the row only to report why — this SELECT does not decide anything.
     const rows = await query(
-      `SELECT succeeded, claimed_at FROM sta_lucia_submissions WHERE z_reading_id = ?`,
+      `SELECT succeeded FROM sta_lucia_submissions WHERE z_reading_id = ?`,
       [resolvedId],
     ) as any[];
     const existing = rows?.[0];
 
     // The row that caused the duplicate-key error was removed (e.g. its
-    // failure-path DELETE ran) between our INSERT and this SELECT. Retake it.
+    // failure-path DELETE ran) between our INSERT and now. Retake it.
     if (!existing) return claimZReading(resolvedId);
 
-    if (existing.succeeded) {
-      return { claimed: false, result: { success: true, skipped: true, zReadingId: resolvedId } };
-    }
-
-    const ageMs = Date.now() - new Date(existing.claimed_at).getTime();
-    if (ageMs < CLAIM_STALE_MS) {
-      return { claimed: false, result: { success: true, skipped: true, zReadingId: resolvedId } };
-    }
-
-    await query(`UPDATE sta_lucia_submissions SET claimed_at = NOW() WHERE z_reading_id = ?`, [resolvedId]);
-    return { claimed: true };
+    return { claimed: false, result: { success: true, skipped: true, zReadingId: resolvedId } };
   }
 }
 
@@ -215,19 +236,32 @@ export async function sendZReadingToStaLucia(
     const endpoint = `${cfg.apiEndpoint.replace(/\/+$/, '')}/api/get-sales`;
     const result = await sendSales(cfg, payload);
 
-    await writeLog({
-      transactionId: resolvedId,
-      endpoint,
-      payload,
-      response: result.response ?? null,
-      status: result.success ? 'success' : 'failed',
-      errorMessage: result.success ? null : result.error,
-    });
-
+    // Resolve the claim's terminal state from the send result FIRST, before
+    // touching external_api_logs. The send to the mall is the irreversible
+    // step; once `sendSales` reports success the claim must never be
+    // released again for this Z-reading, no matter what happens next — so
+    // `succeeded = 1` lands before the log write gets any chance to fail and
+    // reach a catch block that deletes the claim.
     if (result.success) {
       await query(`UPDATE sta_lucia_submissions SET succeeded = 1 WHERE z_reading_id = ?`, [resolvedId]);
     } else {
       await query(`DELETE FROM sta_lucia_submissions WHERE z_reading_id = ?`, [resolvedId]);
+    }
+
+    // The log write is audit trail, not the source of truth for whether the
+    // send happened — its failure must not undo the claim decision just made
+    // above, nor turn an accepted mall submission into a 500 for the caller.
+    try {
+      await writeLog({
+        transactionId: resolvedId,
+        endpoint,
+        payload,
+        response: result.response ?? null,
+        status: result.success ? 'success' : 'failed',
+        errorMessage: result.success ? null : result.error,
+      });
+    } catch (logError) {
+      console.error('Sta Lucia: failed to write sync log for', resolvedId, logError);
     }
 
     return {
@@ -238,8 +272,13 @@ export async function sendZReadingToStaLucia(
       response: result.response,
     };
   } catch (error) {
-    // Release the claim on a thrown error too — otherwise the failure sits
-    // stranded behind the 15-minute staleness window before it can be retried.
+    // Only reachable from buildSalesPayload throwing, sendSales throwing
+    // (client.ts catches internally so this shouldn't happen, but don't rely
+    // on that), or the claim UPDATE/DELETE query above throwing — never from
+    // writeLog, which has its own try/catch. In every case that reaches here
+    // the mall was never told the send succeeded, so releasing the claim is
+    // safe and lets a retry proceed instead of waiting out the staleness
+    // window.
     await query(`DELETE FROM sta_lucia_submissions WHERE z_reading_id = ?`, [resolvedId]).catch(() => {});
     throw error;
   }
