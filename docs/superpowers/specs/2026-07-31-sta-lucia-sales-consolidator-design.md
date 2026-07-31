@@ -155,6 +155,23 @@ refresh. Config and runtime state stay separate.
 The source PDF gives no token TTL ("valid for the session"), so the token is
 cached indefinitely and refreshed reactively on a 401.
 
+### These are not Verdix credentials
+
+`login_email` and `login_password` hold the **Sta. Lucia tenant account** — the
+account the mall issues to the store alongside its lease. They are unrelated to
+Verdix POS user accounts, which authenticate with a `username`, not an email
+(see `app/api/auth/login/route.ts`).
+
+The two must not be confused, and a form labelled only "Email" and "Password"
+invites exactly that confusion: a store admin types their own Verdix login,
+every submission fails with a 401, and the cause is not obvious from the sync
+log. The UI therefore labels these fields **Tenant Email** and **Tenant
+Password** under a "Sta. Lucia Tenant Account" heading, with helper text stating
+plainly that these are not the Verdix login.
+
+The email format is fixed by the external API (page 6 of the source PDF: "Email
+linked to the tenant account") and cannot be substituted with a username.
+
 ### Credential storage
 
 `login_password` is stored in the local MySQL database in plaintext, matching
@@ -284,8 +301,13 @@ manual testing and the E2E suite.
 No new page. Three edits inside `app/(app)/settings/external-api/`:
 
 - **`ApiFormDialog.tsx`** — a **Provider** dropdown at the top. When
-  `sta_lucia` is selected, show Domain / Email / Password and hide the API Key
-  and Bearer Token fields.
+  `sta_lucia` is selected, hide the API Key and Bearer Token fields and show:
+
+  - **Domain** — base URL, e.g. `https://sta-lucia-malls.com`
+  - A **"Sta. Lucia Tenant Account"** section heading, with helper text:
+    *"Credentials issued by the Sta. Lucia mall for the Tenant Management
+    System — not your Verdix login."*
+  - **Tenant Email** and **Tenant Password** (masked) beneath it.
 - **`ApiCard.tsx`** — a **Send Z-Reading** action on Sta Lucia cards.
 - **`external-api-types.ts`** / **`lib/external-api-config.ts`** — add `provider`,
   `loginEmail`, and `loginPassword` to the `ExternalApi` type and the empty-form
