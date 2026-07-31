@@ -241,10 +241,26 @@ All responses return `{ success: boolean, data?: any, error?: string }`.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/integrations/sta-lucia/send` | Submit one Z-reading to the mall's Sale Consolidator API. Body `{ apiId?, zReadingId? }`; omitting `zReadingId` sends the latest. Idempotent — an atomic claim row in `sta_lucia_submissions` stops concurrent or retried sends from double-submitting. |
-| POST | `/api/integrations/sta-lucia/test` | Dry run: login → sample sales → get-transactions → logout. Returns the exact payload sent plus each raw response. |
-| POST/GET | `/api/dev/mock-sta-lucia/*` | Local mock of the external API for development and E2E tests; 404s when `NODE_ENV=production`. |
+| POST | `/api/integrations/sta-lucia/test` | **Read-only connection check — writes nothing to the mall.** Runs login → get-transactions → logout, proving the credentials, both required headers, and reachability. Also builds and returns the sample sales payload for inspection, but deliberately does **not** POST it: an earlier version did, and every click recorded a ₱0 sales entry dated today in the mall's system. |
+
+### Local mock endpoints
+
+Stand-ins for the mall's API, for development and E2E only; all four 404 when `NODE_ENV=production`.
+
+> **Note the doubled `api/` segment.** The configured `api_endpoint` is the mall's *domain base* and the client appends `/api/<name>` to it. For the mock, the base is `/api/dev/mock-sta-lucia`, so the real route paths carry `api/` twice. Writing them as `/api/dev/mock-sta-lucia/*` hides this and is the single most common way to mis-wire the integration.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/dev/mock-sta-lucia/api/login` | Returns a fixed `token` + `owner_token`. |
+| POST | `/api/dev/mock-sta-lucia/api/get-sales` | Rejects with 401 if `Authorization` or `X-CUSTOM-TOKEN` is missing; otherwise echoes the received body. |
+| GET | `/api/dev/mock-sta-lucia/api/get-transactions` | Returns a fixed `{ success, data }` shape. |
+| POST | `/api/dev/mock-sta-lucia/api/logout` | Requires a Bearer token; returns success. |
+
+Set the config's endpoint to `http://127.0.0.1:3000/api/dev/mock-sta-lucia` (the base, with **no** trailing `/api`) and the client resolves e.g. `http://127.0.0.1:3000/api/dev/mock-sta-lucia/api/get-sales`.
 
 Configured at Settings → External API Integrations with Provider set to "Sta. Lucia Tenant System". The credentials are the mall-issued tenant account (an email), not a Verdix login (a username).
+
+Submission is **at least once, not exactly once** — see the Error handling section of `docs/superpowers/specs/2026-07-31-sta-lucia-sales-consolidator-design.md`.
 
 ---
 

@@ -13,7 +13,7 @@ const API_ID = 'sta_lucia_e2e_api';
 const Z_NUMBER = 'Z-E2E-0001';
 const MOCK_BASE = 'http://127.0.0.1:3100/api/dev/mock-sta-lucia';
 
-async function seedApi(endpoint: string) {
+async function seedApi(endpoint: string, onErrorAction: 'log_only' | 'retry' | 'queue' = 'log_only') {
   await testQuery('DELETE FROM external_apis WHERE id = ?', [API_ID]);
   await testQuery(
     `INSERT INTO external_apis
@@ -21,9 +21,34 @@ async function seedApi(endpoint: string) {
         timeout, retry_attempts, retry_delay, sync_mode, on_error_action, role,
         provider, login_email, login_password)
      VALUES (?, 'Sta Lucia E2E', '', 1, ?, 'none', 'send_only',
-             10000, 1, 500, 'realtime', 'log_only', 'general',
+             10000, 1, 500, 'realtime', ?, 'general',
              'sta_lucia', 'tenant@example.com', 'secret')`,
-    [API_ID, endpoint],
+    [API_ID, endpoint, onErrorAction],
+  );
+}
+
+/**
+ * Insert the kind of row a failed submission leaves behind, so the sweep has
+ * something to pick up. `next_retry_at` is NULL on purpose — that is what the
+ * sweep's `next_retry_at IS NULL OR next_retry_at <= NOW()` reads as "due now",
+ * and it is the exact condition that made the pre-fix logger clone the row.
+ */
+async function seedFailedLog(id: string, endpoint: string) {
+  await testQuery(
+    `INSERT INTO external_api_logs
+       (id, transaction_type, transaction_id, endpoint, payload, response,
+        status, error_message, retry_count, next_retry_at)
+     VALUES (?, 'STA_LUCIA_SALES', ?, ?, '{}', NULL, 'failed', 'seeded failure', 0, NULL)`,
+    [id, Z_NUMBER, `${endpoint}/api/get-sales`],
+  );
+}
+
+async function staLuciaLogs() {
+  return await testQuery(
+    `SELECT id, status, retry_count, next_retry_at FROM external_api_logs
+      WHERE transaction_type = 'STA_LUCIA_SALES' AND transaction_id = ?
+      ORDER BY created_at ASC`,
+    [Z_NUMBER],
   );
 }
 
@@ -170,5 +195,100 @@ test.describe('Sta Lucia sales submission', () => {
       [API_ID],
     );
     expect(sessions).toHaveLength(0);
+  });
+
+  test('the retry sweep resends a failed row to success without cloning it', async ({ request }) => {
+    // on_error_action='retry' is what opts a config into the automatic sweep.
+    // The seeded E2E config is 'log_only', so before this test the entire
+    // sweep path had no coverage at all.
+    await seedApi(MOCK_BASE, 'retry');
+    await seedFailedLog('log_e2e_sweep_ok', MOCK_BASE);
+
+    const sweep = await request.post('/api/dev/run-sync-queue');
+    expect(sweep.ok()).toBe(true);
+
+    const logs = await staLuciaLogs();
+
+    // The row must have been REUSED, not appended to. This is the assertion
+    // that catches the clone bug: the pre-fix logger always INSERTed, so a
+    // successful sweep left the original row flipped to success PLUS a second
+    // freshly inserted success row for the same Z-reading.
+    expect(logs).toHaveLength(1);
+    expect(logs[0].id).toBe('log_e2e_sweep_ok');
+    expect(logs[0].status).toBe('success');
+    expect(logs[0].next_retry_at).toBeNull();
+  });
+
+  test('repeated failing sweeps update one row instead of cloning it', async ({ request }) => {
+    // Port 9 (discard) is closed, so every attempt fails fast. Left unfixed,
+    // each pass would insert a NEW row with next_retry_at = NULL — immediately
+    // due — so the due-set grows without bound and the sweep saturates its
+    // LIMIT 10 with live HTTP attempts at the mall.
+    await seedApi('http://127.0.0.1:9', 'retry');
+    await seedFailedLog('log_e2e_sweep_fail', 'http://127.0.0.1:9');
+
+    const retryCounts: number[] = [];
+
+    for (let pass = 0; pass < 3; pass++) {
+      // Re-arm the row as due. The sweep pushes next_retry_at 15 minutes out
+      // after each failure, which is the correct backoff but would otherwise
+      // make passes 2 and 3 no-ops and hide the regression this guards.
+      await testQuery(
+        `UPDATE external_api_logs SET next_retry_at = NULL
+          WHERE transaction_type = 'STA_LUCIA_SALES' AND transaction_id = ?`,
+        [Z_NUMBER],
+      );
+
+      const sweep = await request.post('/api/dev/run-sync-queue');
+      expect(sweep.ok()).toBe(true);
+
+      const logs = await staLuciaLogs();
+      expect(logs).toHaveLength(1);
+      expect(logs[0].id).toBe('log_e2e_sweep_fail');
+      expect(logs[0].status).toBe('failed');
+      retryCounts.push(Number(logs[0].retry_count));
+    }
+
+    // One row throughout, but the attempt counter genuinely advances — proving
+    // the row is being updated rather than left alone.
+    expect(retryCounts).toEqual([1, 2, 3]);
+  });
+
+  test('the Sync Logs retry button resubmits a failed Sta Lucia row', async ({ request }) => {
+    // 'queue' means "a human retries this from the Sync Logs tab", so the
+    // automatic sweep must NOT touch it — the button is the only recovery
+    // path, and it returned 400 "Unsupported transaction type" before this fix.
+    await seedApi(MOCK_BASE, 'queue');
+    await seedFailedLog('log_e2e_button', MOCK_BASE);
+
+    const swept = await request.post('/api/dev/run-sync-queue');
+    expect(swept.ok()).toBe(true);
+    expect((await staLuciaLogs())[0].status).toBe('failed');
+
+    const res = await request.post('/api/external-api/logs/log_e2e_button/retry');
+    expect(res.ok()).toBe(true);
+    expect((await res.json()).success).toBe(true);
+
+    const logs = await staLuciaLogs();
+    expect(logs).toHaveLength(1);
+    expect(logs[0].status).toBe('success');
+  });
+
+  test('a deleted Z-reading is abandoned instead of retried forever', async ({ request }) => {
+    await seedApi(MOCK_BASE, 'retry');
+    await seedFailedLog('log_e2e_orphan', MOCK_BASE);
+    await testQuery('DELETE FROM z_readings WHERE reading_number = ?', [Z_NUMBER]);
+
+    await request.post('/api/dev/run-sync-queue');
+
+    const logs = await staLuciaLogs();
+    expect(logs).toHaveLength(1);
+    expect(logs[0].status).toBe('abandoned');
+    expect(logs[0].next_retry_at).toBeNull();
+
+    // 'abandoned' is outside the sweep's (pending|failed) WHERE clause, so a
+    // later pass leaves it alone rather than re-resolving the dead reference.
+    await request.post('/api/dev/run-sync-queue');
+    expect((await staLuciaLogs())[0].status).toBe('abandoned');
   });
 });

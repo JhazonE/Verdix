@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Globe, ShieldCheck, Loader2, ArrowUp, ArrowDown, ArrowUpDown, Building2 } from 'lucide-react';
 import type { ApiForm } from './use-external-api';
-import type { ExternalApi, AllowedMethods, ApiRole, ApiProvider } from './external-api-types';
+import type { ExternalApi, AllowedMethods, ApiProvider } from './external-api-types';
 
 interface Props {
   open: boolean;

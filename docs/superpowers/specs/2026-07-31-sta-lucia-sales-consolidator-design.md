@@ -252,10 +252,16 @@ toast and a sync-log row, and is picked up by the retry queue.
 |---|---|
 | `POST /api/integrations/sta-lucia/send` | Body `{ apiId, zReadingId }`. Build, send, log. |
 | `POST /api/integrations/sta-lucia/test` | Dry run; returns sent payload + raw response. |
-| `app/api/dev/mock-sta-lucia/login/route.ts` | Mock: validates email/password present, returns a fixed token + owner_token. |
-| `app/api/dev/mock-sta-lucia/get-sales/route.ts` | Mock: **rejects with 401 if `Authorization` or `X-CUSTOM-TOKEN` is missing**; echoes the received body. |
-| `app/api/dev/mock-sta-lucia/get-transactions/route.ts` | Mock: returns a fixed `{ success, data }` shape. |
-| `app/api/dev/mock-sta-lucia/logout/route.ts` | Mock: requires Bearer token; returns success. |
+| `app/api/dev/mock-sta-lucia/api/login/route.ts` | Mock: validates email/password present, returns a fixed token + owner_token. |
+| `app/api/dev/mock-sta-lucia/api/get-sales/route.ts` | Mock: **rejects with 401 if `Authorization` or `X-CUSTOM-TOKEN` is missing**; echoes the received body. |
+| `app/api/dev/mock-sta-lucia/api/get-transactions/route.ts` | Mock: returns a fixed `{ success, data }` shape. |
+| `app/api/dev/mock-sta-lucia/api/logout/route.ts` | Mock: requires Bearer token; returns success. |
+
+**The `api/` segment is doubled on purpose.** The configured endpoint is a
+*domain base* and the client appends `/api/<name>`, so with a base of
+`/api/dev/mock-sta-lucia` the actual route is
+`/api/dev/mock-sta-lucia/api/get-sales`. Point a test config at the base only —
+never at a path already ending in `/api`.
 
 The mock endpoints are what makes the integration testable with no internet, no
 credentials, and no data leaving the machine. They are the target for both
@@ -291,6 +297,40 @@ manual testing and the E2E suite.
   than 15 minutes still holding `succeeded = 0` is treated as abandoned and taken
   over — without that escape, a crash between claim and completion would block
   that Z-reading permanently, recoverable only by manual SQL.
+- **Delivery is at-least-once, not exactly-once (accepted, documented risk).**
+  The claim row removes concurrent double-sends and routine resends after a
+  recorded success. It does not make double submission impossible. Two windows
+  remain. (1) *Crash after send, before `succeeded = 1`:* `sendSales` returns
+  success and the process dies before the UPDATE persists; the claim goes stale
+  after 15 minutes and the next sweep re-sends. (2) *Timeout on a request the
+  mall actually processed:* the POST is recorded by MediaOne but no response
+  arrives within the configured timeout, so the claim is deleted, the attempt is
+  logged `failed`, and a later retry submits the day again. The `sendSucceeded`
+  guard in `send-z-reading.ts` prevents the *immediate* release in case (1) but
+  not the *later* stale takeover. Closing either properly requires an
+  idempotency key that MediaOne de-duplicates against, which is outside our
+  control. Neither window is reachable without a crash or a >30 s timeout, so
+  this is documented rather than engineered around; if a day's figures ever
+  double at the mall, this is the cause, and the remedy is a manual correction
+  with MediaOne plus the `sta_lucia_submissions` row for that Z-reading.
+- **A failed attempt updates its existing log row rather than inserting a new
+  one** (`writeLog` in `send-z-reading.ts`). `next_retry_at` defaults to NULL
+  and the sweep reads NULL as "due now", so an always-INSERT logger would clone
+  the row on every pass — saturating the sweep's `LIMIT 10` with live HTTP
+  attempts and growing the table by thousands of rows a day during an outage.
+  This mirrors the dedupe in `lib/services/api-sync-logger.ts`.
+- **A terminal failure is parked, not retried.** If the `z_readings` row a log
+  points at has been deleted, the send returns `permanent: true` and the row is
+  moved to `status = 'abandoned'`, which the sweep's `WHERE` clause does not
+  select. Otherwise it would re-resolve the same dead reference every 15 minutes
+  forever.
+- **The connection Test button is read-only.** It runs login →
+  get-transactions → logout and never POSTs to `get-sales`. This overrides the
+  "login → submit → read back → logout" flow described earlier in this
+  document: the project owner ruled that a test must not write, because each
+  run recorded a ₱0 sales entry dated today in the mall's system against a
+  tenant billed on a percentage of reported sales, with no way to retract it.
+  The sample payload is still built and returned for inspection.
 - Network timeout uses the per-API configured `timeout` (default 30000 ms).
 
 ---
