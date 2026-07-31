@@ -586,6 +586,7 @@ git commit -m "feat(sta-lucia): add provider discriminator and session table"
 These come before the client so the client has something real to talk to. They are the reason this integration is testable without credentials or internet.
 
 **Files:**
+- Create: `app/api/dev/mock-sta-lucia/guard.ts`
 - Create: `app/api/dev/mock-sta-lucia/api/login/route.ts`
 - Create: `app/api/dev/mock-sta-lucia/api/get-sales/route.ts`
 - Create: `app/api/dev/mock-sta-lucia/api/get-transactions/route.ts`
@@ -593,7 +594,7 @@ These come before the client so the client has something real to talk to. They a
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: four HTTP endpoints under `/api/dev/mock-sta-lucia/api/`. `login` returns the fixed values `token: 'MOCK_TOKEN_ehywdhysgcydsjhcdsjhj1jdsd'` and `owner_token: 'MOCK_OWNER_xclkvbnjaoshjfasd'`. `get-sales` echoes the received body at `received`.
+- Produces: `blockedInProduction(): NextResponse | null`, plus four HTTP endpoints under `/api/dev/mock-sta-lucia/api/`. `login` returns the fixed values `token: 'MOCK_TOKEN_ehywdhysgcydsjhcdsjhj1jdsd'` and `owner_token: 'MOCK_OWNER_xclkvbnjaoshjfasd'`. `get-sales` echoes the received body at `received`.
 
 > **The nested `api/` segment is mandatory.** The configured domain is a base
 > (`http://localhost:3000/api/dev/mock-sta-lucia`) and the client appends
@@ -601,12 +602,37 @@ These come before the client so the client has something real to talk to. They a
 > `https://sta-lucia-malls.com`. Placing the handlers one level up would make
 > every mock call 404.
 
+- [ ] **Step 0: Write the production guard**
+
+Every mock route calls this first. Without it, an installed POS terminal would
+expose an unauthenticated endpoint that mints tokens and accepts sales.
+
+Create `app/api/dev/mock-sta-lucia/guard.ts`:
+
+```ts
+import { NextResponse } from 'next/server';
+
+/**
+ * Mock endpoints exist for development and E2E only. In a production build they
+ * must not exist at all — returning 404 rather than 403 keeps them invisible.
+ *
+ * The E2E suite runs with NODE_ENV=test on port 3100, so it is unaffected.
+ */
+export function blockedInProduction(): NextResponse | null {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+  return null;
+}
+```
+
 - [ ] **Step 1: Write the login mock**
 
 Create `app/api/dev/mock-sta-lucia/api/login/route.ts`:
 
 ```ts
 import { NextRequest, NextResponse } from 'next/server';
+import { blockedInProduction } from '../../guard';
 
 /**
  * Local stand-in for POST {domain}/api/login on the Sta. Lucia Tenant
@@ -617,6 +643,9 @@ export const MOCK_TOKEN = 'MOCK_TOKEN_ehywdhysgcydsjhcdsjhj1jdsd';
 export const MOCK_OWNER_TOKEN = 'MOCK_OWNER_xclkvbnjaoshjfasd';
 
 export async function POST(request: NextRequest) {
+  const blocked = blockedInProduction();
+  if (blocked) return blocked;
+
   const body = await request.json().catch(() => ({}));
   const { email, password } = body ?? {};
 
@@ -648,6 +677,7 @@ Create `app/api/dev/mock-sta-lucia/api/get-sales/route.ts`:
 
 ```ts
 import { NextRequest, NextResponse } from 'next/server';
+import { blockedInProduction } from '../../guard';
 
 /**
  * Local stand-in for POST {domain}/api/get-sales.
@@ -657,6 +687,9 @@ import { NextRequest, NextResponse } from 'next/server';
  * which no amount of reading the client code can prove.
  */
 export async function POST(request: NextRequest) {
+  const blocked = blockedInProduction();
+  if (blocked) return blocked;
+
   const auth = request.headers.get('authorization');
   const custom = request.headers.get('x-custom-token');
 
@@ -705,9 +738,13 @@ Create `app/api/dev/mock-sta-lucia/api/get-transactions/route.ts`:
 
 ```ts
 import { NextRequest, NextResponse } from 'next/server';
+import { blockedInProduction } from '../../guard';
 
 /** Local stand-in for GET {domain}/api/get-transactions. */
 export async function GET(request: NextRequest) {
+  const blocked = blockedInProduction();
+  if (blocked) return blocked;
+
   const auth = request.headers.get('authorization');
   const custom = request.headers.get('x-custom-token');
 
@@ -738,9 +775,13 @@ Create `app/api/dev/mock-sta-lucia/api/logout/route.ts`:
 
 ```ts
 import { NextRequest, NextResponse } from 'next/server';
+import { blockedInProduction } from '../../guard';
 
 /** Local stand-in for POST {domain}/api/logout. */
 export async function POST(request: NextRequest) {
+  const blocked = blockedInProduction();
+  if (blocked) return blocked;
+
   const auth = request.headers.get('authorization');
   if (!auth?.startsWith('Bearer ')) {
     return NextResponse.json(
@@ -778,7 +819,12 @@ curl -s -X POST http://localhost:3000/api/dev/mock-sta-lucia/api/get-sales \
 ```
 Expected: `"success":true` with the body echoed back under `received`.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Verify the production guard**
+
+Run: `NODE_ENV=production npx tsx -e "process.env.NODE_ENV='production'; import('./app/api/dev/mock-sta-lucia/guard').then(m => console.log('blocked in prod:', m.blockedInProduction()?.status === 404))"`
+Expected: `blocked in prod: true`
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add app/api/dev/mock-sta-lucia
