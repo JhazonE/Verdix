@@ -103,6 +103,7 @@ import './102_unique_sales_order_reference';
 import './103_stock_count_movement_aware_variance';
 import './104_stock_count_subsecond_precision';
 import './105_sta_lucia_integration';
+import './106_sta_lucia_submission_claims';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';

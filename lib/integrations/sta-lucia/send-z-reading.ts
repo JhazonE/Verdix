@@ -91,12 +91,86 @@ async function writeLog(entry: {
   return id;
 }
 
+/** A stale claim (older than this) is assumed to be from a dead process and may be retaken. */
+const CLAIM_STALE_MS = 15 * 60 * 1000;
+
+/**
+ * Defensive guard so existing installs self-heal without a migration run —
+ * same pattern used by the external-api routes (see e.g.
+ * app/api/external-api/logs/route.ts's ensureTables()).
+ *
+ * `external_api_logs` deliberately allows duplicate success rows (see
+ * 095_dedupe_external_api_logs), so it cannot be a concurrency guard on its
+ * own: a SELECT-then-INSERT check against that table is check-then-act and
+ * two concurrent sends for the same Z-reading can both pass it before either
+ * writes its row. This table's PRIMARY KEY on z_reading_id makes the claim
+ * below atomic — only one concurrent INSERT can win.
+ */
+async function ensureClaimsTable() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS sta_lucia_submissions (
+      z_reading_id VARCHAR(50) PRIMARY KEY,
+      claimed_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      succeeded    TINYINT(1) NOT NULL DEFAULT 0
+    )
+  `);
+}
+
+type ClaimOutcome =
+  | { claimed: true }
+  | { claimed: false; result: SendZReadingResult };
+
+/**
+ * Atomically claim a Z-reading for submission via the table's PRIMARY KEY.
+ *
+ * On a duplicate key the existing claim is inspected: a succeeded claim or a
+ * fresh (< 15 min) in-flight claim is left alone and the caller is told to
+ * skip. A claim older than 15 minutes is assumed abandoned by a crashed or
+ * killed process and is taken over — without this escape hatch a crash
+ * between claim and completion would permanently block that Z-reading from
+ * ever being submitted again, with no way out but manual SQL.
+ */
+async function claimZReading(resolvedId: string): Promise<ClaimOutcome> {
+  try {
+    await query(`INSERT INTO sta_lucia_submissions (z_reading_id) VALUES (?)`, [resolvedId]);
+    return { claimed: true };
+  } catch (err: any) {
+    if (err?.code !== 'ER_DUP_ENTRY') throw err;
+
+    const rows = await query(
+      `SELECT succeeded, claimed_at FROM sta_lucia_submissions WHERE z_reading_id = ?`,
+      [resolvedId],
+    ) as any[];
+    const existing = rows?.[0];
+
+    // The row that caused the duplicate-key error was removed (e.g. its
+    // failure-path DELETE ran) between our INSERT and this SELECT. Retake it.
+    if (!existing) return claimZReading(resolvedId);
+
+    if (existing.succeeded) {
+      return { claimed: false, result: { success: true, skipped: true, zReadingId: resolvedId } };
+    }
+
+    const ageMs = Date.now() - new Date(existing.claimed_at).getTime();
+    if (ageMs < CLAIM_STALE_MS) {
+      return { claimed: false, result: { success: true, skipped: true, zReadingId: resolvedId } };
+    }
+
+    await query(`UPDATE sta_lucia_submissions SET claimed_at = NOW() WHERE z_reading_id = ?`, [resolvedId]);
+    return { claimed: true };
+  }
+}
+
 /**
  * Build and submit one Z-reading. Omit `zReadingId` to submit the latest.
  *
- * Idempotent: a Z-reading that already has a successful log for this
- * transaction type is skipped, so a retry sweep, a double-click, or a
- * re-finalize can never submit the same day's sales twice.
+ * Idempotent under concurrency: a Z-reading that already has a successful log
+ * for this transaction type is skipped (fast path), and beyond that an
+ * atomic claim in `sta_lucia_submissions` ensures only one of two concurrent
+ * callers (e.g. the finalize hook and a manual "Send Z-Reading" click landing
+ * in the same window) actually sends — the other gets `skipped: true`. A
+ * failed send releases the claim so a retry sweep or another manual click can
+ * try again.
  */
 export async function sendZReadingToStaLucia(
   zReadingId?: string,
@@ -119,6 +193,8 @@ export async function sendZReadingToStaLucia(
   const row = rows[0];
   const resolvedId = String(row.reading_number);
 
+  // Fast path: kept even with the claim table below in case that table is
+  // ever lost or reset — the log survives and still prevents a resend.
   const done = await query(
     `SELECT id FROM external_api_logs
      WHERE transaction_type = ? AND transaction_id = ? AND status = 'success' LIMIT 1`,
@@ -128,24 +204,43 @@ export async function sendZReadingToStaLucia(
     return { success: true, skipped: true, zReadingId: resolvedId };
   }
 
-  const payload = buildSalesPayload(rowToZReading(row));
-  const endpoint = `${cfg.apiEndpoint.replace(/\/+$/, '')}/api/get-sales`;
-  const result = await sendSales(cfg, payload);
+  await ensureClaimsTable();
+  const claim = await claimZReading(resolvedId);
+  if (!claim.claimed) {
+    return claim.result;
+  }
 
-  await writeLog({
-    transactionId: resolvedId,
-    endpoint,
-    payload,
-    response: result.response ?? null,
-    status: result.success ? 'success' : 'failed',
-    errorMessage: result.success ? null : result.error,
-  });
+  try {
+    const payload = buildSalesPayload(rowToZReading(row));
+    const endpoint = `${cfg.apiEndpoint.replace(/\/+$/, '')}/api/get-sales`;
+    const result = await sendSales(cfg, payload);
 
-  return {
-    success: result.success,
-    error: result.error,
-    zReadingId: resolvedId,
-    payload,
-    response: result.response,
-  };
+    await writeLog({
+      transactionId: resolvedId,
+      endpoint,
+      payload,
+      response: result.response ?? null,
+      status: result.success ? 'success' : 'failed',
+      errorMessage: result.success ? null : result.error,
+    });
+
+    if (result.success) {
+      await query(`UPDATE sta_lucia_submissions SET succeeded = 1 WHERE z_reading_id = ?`, [resolvedId]);
+    } else {
+      await query(`DELETE FROM sta_lucia_submissions WHERE z_reading_id = ?`, [resolvedId]);
+    }
+
+    return {
+      success: result.success,
+      error: result.error,
+      zReadingId: resolvedId,
+      payload,
+      response: result.response,
+    };
+  } catch (error) {
+    // Release the claim on a thrown error too — otherwise the failure sits
+    // stranded behind the 15-minute staleness window before it can be retried.
+    await query(`DELETE FROM sta_lucia_submissions WHERE z_reading_id = ?`, [resolvedId]).catch(() => {});
+    throw error;
+  }
 }
