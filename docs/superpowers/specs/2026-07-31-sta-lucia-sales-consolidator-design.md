@@ -273,10 +273,24 @@ manual testing and the E2E suite.
   a failure. No further automatic re-login within a single attempt.
 - Every attempt writes an `external_api_logs` row containing the full request
   payload and the response body.
-- **Idempotency:** `transaction_id` is the Z-reading ID. Before sending, the send
-  route checks for an existing `success` log for that
-  `(transaction_type, transaction_id)` pair and skips if one exists, so a
-  Z-reading is never submitted twice.
+- **Idempotency (revised during Task 5 review):** `transaction_id` is the
+  Z-reading ID, and an existing-`success`-log check runs first as a fast path.
+  That check alone is not sufficient: it is check-then-act, and
+  `external_api_logs` deliberately permits duplicate success rows (see
+  `scripts/migrations/095_dedupe_external_api_logs.ts`), so two concurrent sends
+  — the finalize hook firing automatically and a manual click landing in the same
+  window — could both pass it and submit the same day's sales twice. Philippine
+  mall rent is commonly a percentage of reported sales, so a double submission
+  double-reports revenue.
+
+  The actual guard is an atomic claim in `sta_lucia_submissions`
+  (`z_reading_id` PRIMARY KEY, `claimed_at`, `succeeded`), created by migration
+  `104_sta_lucia_submission_claims.ts`. The sender INSERTs a claim row; a
+  duplicate-key error means another send owns it. On success the claim is marked
+  `succeeded = 1`; on failure it is deleted so retries can proceed. A claim older
+  than 15 minutes still holding `succeeded = 0` is treated as abandoned and taken
+  over — without that escape, a crash between claim and completion would block
+  that Z-reading permanently, recoverable only by manual SQL.
 - Network timeout uses the per-API configured `timeout` (default 30000 ms).
 
 ---

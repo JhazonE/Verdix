@@ -1950,12 +1950,17 @@ test.describe('Sta Lucia sales submission', () => {
       [Z_NUMBER],
     );
     await testQuery('DELETE FROM external_api_sessions WHERE api_id = ?', [API_ID]);
+    // The atomic claim row MUST be cleared too. A successful send in one test
+    // leaves succeeded=1, which would make every later test skip its send and
+    // fail for the wrong reason.
+    await testQuery('DELETE FROM sta_lucia_submissions WHERE z_reading_id = ?', [Z_NUMBER]);
     await seedZReading();
   });
 
   test.afterAll(async () => {
     await testQuery('DELETE FROM external_apis WHERE id = ?', [API_ID]);
     await testQuery('DELETE FROM z_readings WHERE reading_number = ?', [Z_NUMBER]);
+    await testQuery('DELETE FROM sta_lucia_submissions WHERE z_reading_id = ?', [Z_NUMBER]);
   });
 
   test('sends a correctly mapped payload and logs success', async ({ request }) => {
@@ -2114,7 +2119,7 @@ Add to `docs/API_ENDPOINTS.md`, following the formatting of the surrounding entr
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/api/integrations/sta-lucia/send` | POST | Submit one Z-reading. Body `{ zReadingId, apiId? }`. Idempotent — a Z-reading already logged as `success` is skipped. |
+| `/api/integrations/sta-lucia/send` | POST | Submit one Z-reading. Body `{ zReadingId?, apiId? }`; omitting `zReadingId` sends the latest. Idempotent — guarded by an atomic claim row in `sta_lucia_submissions`, so concurrent sends cannot double-submit. |
 | `/api/integrations/sta-lucia/test` | POST | Dry run: login → sample sales → get-transactions → logout. Returns the exact payload sent plus each raw response. |
 | `/api/dev/mock-sta-lucia/*` | POST/GET | Local mock of the external API for development and E2E tests. |
 
