@@ -12,7 +12,13 @@ export type ApiSyncLog = {
   endpoint: string;
   payload: string;
   response: string | null;
-  status: 'success' | 'failed' | 'pending';
+  /**
+   * 'abandoned' is terminal: the sweep in lib/scheduler.ts selects only
+   * pending/failed, so a row parked here is never retried again (used when a
+   * retry provably cannot ever succeed, e.g. the record it references was
+   * deleted). Nothing writes it through logApiSync — see applySyncResult.
+   */
+  status: 'success' | 'failed' | 'pending' | 'abandoned';
   errorMessage?: string;
   retryCount: number;
   nextRetryAt?: string | null;

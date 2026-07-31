@@ -60,7 +60,16 @@ export function ApiCard({ api, testingId, sendingId, onToggle, onEdit, onDelete,
 
           <div className="flex items-center gap-2 shrink-0">
             {api.provider === 'sta_lucia' && (
-              <Button variant="outline" size="sm" onClick={() => onSendZReading(api)} disabled={sendingId === api.id}>
+              // Disabled while the card is off: the send path refuses disabled
+              // configs server-side, so an enabled-looking button would only
+              // ever produce "No enabled Sta Lucia API is configured".
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onSendZReading(api)}
+                disabled={!api.enabled || sendingId === api.id}
+                title={!api.enabled ? 'Enable this integration to submit Z-readings' : undefined}
+              >
                 {sendingId === api.id
                   ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                   : <Upload className="mr-1.5 h-3.5 w-3.5" />}

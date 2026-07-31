@@ -96,18 +96,34 @@ const LEGACY_SYNC_TYPES = ['PURCHASE_ORDER', 'SUPPLIER_PAYMENT', 'SALES_INVOICE'
 
 /**
  * Shared success/failure bookkeeping for one external_api_logs row, used by
- * both the legacy sweep and the Sta Lucia sweep below. Kept as one function
- * so the two paths can't drift apart (e.g. one path forgetting to clear
- * next_retry_at on success, or using a different retry backoff).
+ * the legacy sweep, the Sta Lucia sweep below, and the Sync Logs Retry button
+ * (app/api/external-api/logs/[id]/retry/route.ts). Kept as one function so
+ * those paths can't drift apart (e.g. one forgetting to clear next_retry_at
+ * on success, or using a different retry backoff).
  */
-async function applySyncResult(
+export async function applySyncResult(
   log: { id: string; transaction_type: string; transaction_id: string },
-  syncResult: { success: boolean; error?: string },
+  syncResult: { success: boolean; error?: string; permanent?: boolean },
 ): Promise<void> {
   if (syncResult.success) {
     // Success: Mark as success
     await query('UPDATE external_api_logs SET status = "success", error_message = NULL, next_retry_at = NULL WHERE id = ?', [log.id]);
     console.log(`✅ Success: Synced ${log.transaction_type} (${log.transaction_id})`);
+  } else if (syncResult.permanent) {
+    // Terminal failure: retrying can never change the outcome (e.g. the
+    // z_readings row this log points at was deleted). Park it in a status the
+    // sweep's WHERE clause does not select, so it stops consuming a retry slot
+    // instead of re-resolving the same dead reference every 15 minutes
+    // forever. The error message is kept so the Sync Logs tab explains why.
+    await query(`
+      UPDATE external_api_logs
+      SET status = 'abandoned',
+          error_message = ?,
+          last_retry_at = NOW(),
+          next_retry_at = NULL
+      WHERE id = ?
+    `, [syncResult.error || 'Permanently failed', log.id]);
+    console.warn(`⛔ Abandoned: ${log.transaction_type} (${log.transaction_id}) — ${syncResult.error || 'permanent failure'}`);
   } else {
     // Failure: Log but keep in queue (system will retry next sweep)
     const nextRetry = new Date();
@@ -145,7 +161,18 @@ async function processStaLuciaRetries(): Promise<void> {
      LIMIT 10
   `);
 
+  // Nothing due — return before spending a query on the config.
   if (staItems.length === 0) return;
+
+  // Read once, outside the loop: the config cannot change mid-sweep, and the
+  // log rows do not carry an apiId anyway (the sender resolves the enabled
+  // Sta Lucia config itself — a single-store deployment has exactly one).
+  //
+  // Only 'retry' opts into the automatic sweep. 'queue' means the operator
+  // retries by hand from the Sync Logs tab, and 'log_only' means never —
+  // auto-retrying either would ignore the setting.
+  const staCfg = await loadStaLuciaConfig();
+  if (staCfg?.onErrorAction !== 'retry') return;
 
   console.log(`--- Sync Queue: Processing ${staItems.length} Sta Lucia item(s) ---`);
 
@@ -153,18 +180,8 @@ async function processStaLuciaRetries(): Promise<void> {
     try {
       console.log(`Retrying ${log.transaction_type} sync for ID: ${log.transaction_id}`);
 
-      // The log row does not carry an apiId; the sender resolves the
-      // enabled Sta Lucia config itself. Single-store deployment means
-      // there is exactly one.
-      //
-      // Only 'retry' opts into the automatic sweep. 'queue' means the
-      // operator retries by hand from the Sync Logs tab, and 'log_only'
-      // means never — auto-retrying either would ignore the setting.
-      const staCfg = await loadStaLuciaConfig();
-      if (staCfg?.onErrorAction !== 'retry') continue;
-
       const r = await sendZReadingToStaLucia(log.transaction_id);
-      await applySyncResult(log, { success: r.success, error: r.error });
+      await applySyncResult(log, { success: r.success, error: r.error, permanent: r.permanent });
     } catch (itemError) {
       console.error(`Error processing Sta Lucia sync queue item ${log.id}:`, itemError);
     }

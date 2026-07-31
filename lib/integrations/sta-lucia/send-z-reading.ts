@@ -9,15 +9,36 @@ export interface SendZReadingResult {
   success: boolean;
   error?: string;
   skipped?: boolean;
+  /**
+   * The failure can never succeed however many times it is retried (e.g. the
+   * Z-reading row is gone). Callers that own an `external_api_logs` row must
+   * park it in a terminal state instead of scheduling another attempt —
+   * otherwise the sweep retries the same dead reference every 15 minutes for
+   * the life of the install.
+   */
+  permanent?: boolean;
   zReadingId?: string;
   payload?: unknown;
   response?: unknown;
 }
 
-/** Load a specific Sta Lucia config by id, or the single enabled one. */
-export async function loadStaLuciaConfig(apiId?: string): Promise<StaLuciaApiConfig | null> {
+/**
+ * Load a specific Sta Lucia config by id, or the single enabled one.
+ *
+ * Disabled configs are excluded by default: toggling the integration off in
+ * Settings must actually stop submissions to the mall. `includeDisabled` is
+ * for the connection test only — verifying credentials before switching a
+ * config on is legitimate, and a test writes nothing to the mall.
+ */
+export async function loadStaLuciaConfig(
+  apiId?: string,
+  opts?: { includeDisabled?: boolean },
+): Promise<StaLuciaApiConfig | null> {
   const rows = apiId
-    ? await query(`SELECT * FROM external_apis WHERE id = ? AND provider = 'sta_lucia'`, [apiId]) as any[]
+    ? await query(
+        `SELECT * FROM external_apis
+          WHERE id = ? AND provider = 'sta_lucia'${opts?.includeDisabled ? '' : ' AND enabled = 1'}`,
+        [apiId]) as any[]
     : await query(
         `SELECT * FROM external_apis WHERE provider = 'sta_lucia' AND enabled = 1
          ORDER BY created_at ASC LIMIT 1`, []) as any[];
@@ -50,7 +71,10 @@ function rowToZReading(row: any): ZReadingLike {
       ? JSON.parse(row.payment_methods)
       : row.payment_methods;
     if (Array.isArray(parsed)) paymentMethods = parsed;
-  } catch {
+  } catch (e) {
+    // Falling back to [] zeroes `credit` while `debit` still reports correctly,
+    // and the send is then logged as a success — so this must never be silent.
+    console.warn(`Sta Lucia: unparseable payment_methods on Z-reading ${row.reading_number}; credit will be reported as 0`, e);
     paymentMethods = [];
   }
 
@@ -72,10 +96,82 @@ function rowToZReading(row: any): ZReadingLike {
   };
 }
 
+/**
+ * Backoff applied when an attempt is recorded against an existing row. Must
+ * match the sweep's own backoff in lib/scheduler.ts's applySyncResult() —
+ * it cannot be imported from there because scheduler.ts imports this module.
+ */
+const RETRY_BACKOFF_MINUTES = 15;
+
+/**
+ * Record one submission attempt for a Z-reading, folding it into the row that
+ * already exists for that Z-reading rather than appending a new one.
+ *
+ * This dedupe is load-bearing, not tidiness. `next_retry_at` defaults to NULL
+ * and the sweep's WHERE clause treats NULL as "due now", so an always-INSERT
+ * logger makes every failed sweep pass leave behind a NEW immediately-due row
+ * while deferring only the row it just processed. Over a weekend outage the
+ * due-set saturates the sweep's LIMIT 10 — roughly ten live HTTP attempts at
+ * the mall every two minutes — and the table grows by thousands of rows a day.
+ *
+ * The same reasoning already lives in lib/services/api-sync-logger.ts's
+ * logApiSync(), which is deliberately NOT reused here: its dedupe fires only
+ * for rows it writes as `pending`, and Sta Lucia failures are recorded as
+ * `failed` so the Sync Logs tab shows them in red rather than disguising a
+ * dead submission as queued work. Reusing it would mean changing that status,
+ * so the dedupe is mirrored instead.
+ *
+ * Success folds into the same row too, so a Z-reading ends with exactly ONE
+ * log row instead of a failed row plus a success row.
+ */
 async function writeLog(entry: {
   transactionId: string; endpoint: string; payload: unknown;
   response: unknown; status: string; errorMessage?: string | null;
 }) {
+  const payloadJson = JSON.stringify(entry.payload);
+  const responseJson = entry.response == null ? null : JSON.stringify(entry.response);
+
+  // A `success` row is never reopened — the fast path in
+  // sendZReadingToStaLucia() already refuses to resend once one exists.
+  const existing = await query(
+    `SELECT id FROM external_api_logs
+      WHERE transaction_type = ? AND transaction_id = ? AND status <> 'success'
+      ORDER BY created_at DESC LIMIT 1`,
+    [TRANSACTION_TYPE, entry.transactionId],
+  ) as any[];
+
+  const existingId = existing?.[0]?.id as string | undefined;
+
+  if (existingId) {
+    if (entry.status === 'success') {
+      await query(
+        `UPDATE external_api_logs
+            SET endpoint = ?, payload = ?, response = ?, status = 'success',
+                error_message = NULL, last_retry_at = NOW(), next_retry_at = NULL
+          WHERE id = ?`,
+        [entry.endpoint, payloadJson, responseJson, existingId],
+      );
+    } else {
+      // The backoff is set here and not only in the sweep's applySyncResult()
+      // so that a repeat failure from ANY caller — the Z-reading finalize
+      // hook, a manual Send Z-Reading click, the Sync Logs Retry button —
+      // can never leave an immediately-due row behind.
+      await query(
+        `UPDATE external_api_logs
+            SET endpoint = ?, payload = ?, response = ?, status = ?,
+                error_message = ?, retry_count = retry_count + 1,
+                last_retry_at = NOW(),
+                next_retry_at = NOW() + INTERVAL ${RETRY_BACKOFF_MINUTES} MINUTE
+          WHERE id = ?`,
+        [
+          entry.endpoint, payloadJson, responseJson, entry.status,
+          entry.errorMessage ?? null, existingId,
+        ],
+      );
+    }
+    return existingId;
+  }
+
   const id = `log_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   await query(
     `INSERT INTO external_api_logs
@@ -83,13 +179,46 @@ async function writeLog(entry: {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
     [
       id, TRANSACTION_TYPE, entry.transactionId, entry.endpoint,
-      JSON.stringify(entry.payload),
-      entry.response == null ? null : JSON.stringify(entry.response),
+      payloadJson, responseJson,
       entry.status, entry.errorMessage ?? null,
     ],
   );
   return id;
 }
+
+/**
+ * DELIVERY GUARANTEE: AT LEAST ONCE, NOT EXACTLY ONCE.
+ * ---------------------------------------------------
+ * Read this before trusting any comment below that talks about preventing
+ * double submission. The claim row in `sta_lucia_submissions` removes the
+ * CONCURRENT double-send (two callers in the same window) and the routine
+ * repeat-send (a retry after a recorded success). It does NOT make double
+ * submission impossible. Two windows remain, and both are real:
+ *
+ *  1. **Crash after send, before `succeeded = 1`.** `sendSales` returns
+ *     success, then the process dies (Electron killed, machine powered off,
+ *     Next.js worker recycled) before the UPDATE that persists `succeeded = 1`
+ *     lands. The claim stays `succeeded = 0`, goes stale after
+ *     CLAIM_STALE_MINUTES, and the next sweep takes it over and re-sends.
+ *
+ *  2. **Timeout on a request the mall actually processed.** The POST reaches
+ *     MediaOne and is recorded, but no response gets back within the
+ *     configured timeout (default 30s). `sendSales` reports failure, the claim
+ *     is deleted, the row is logged `failed`, and a later retry submits the
+ *     same day again.
+ *
+ * `sendSucceeded` in the send path below closes neither of these — it only
+ * stops the catch block from releasing a claim whose send already succeeded,
+ * i.e. it prevents an *immediate* re-release, not a *later* stale takeover.
+ *
+ * Closing these properly needs an idempotency key honoured on the MediaOne
+ * side (a client-supplied submission id that their API de-duplicates against),
+ * which is outside our control. Neither window is reachable without a crash or
+ * a >30s timeout, so this is an accepted, documented risk rather than a defect:
+ * if the mall's figures ever double for a day, this is where to look, and the
+ * fix is a manual correction with the mall plus the `sta_lucia_submissions`
+ * row for that Z-reading.
+ */
 
 /**
  * A stale claim (older than this) is assumed to be from a dead process and
@@ -135,11 +264,18 @@ type ClaimOutcome =
  * completion would permanently block that Z-reading from ever being
  * submitted again, with no way out but manual SQL.
  *
+ * That takeover is itself window (1) of the at-least-once note above: a
+ * process that sent successfully and then died before writing `succeeded = 1`
+ * leaves a claim that looks abandoned, and the takeover re-sends the day. The
+ * escape hatch is still worth having — the alternative is a Z-reading that can
+ * never be submitted again without manual SQL — but it is a trade, not a
+ * guarantee.
+ *
  * The takeover itself is a single conditional UPDATE, not a SELECT followed
  * by a separate UPDATE. That matters: if two callers both read the same
  * >15-minute-old abandoned claim and then each unconditionally UPDATE, both
- * would believe they won and both would send — reintroducing the exact
- * double-submission bug this table exists to prevent. Folding the staleness
+ * would believe they won and both would send — turning one re-send into two
+ * simultaneous ones. Folding the staleness
  * check into the UPDATE's WHERE clause means the database evaluates
  * "is this row still eligible" and "claim it" as one atomic step; MySQL's
  * row lock ensures only one of two concurrent UPDATEs against the same row
@@ -185,13 +321,16 @@ async function claimZReading(resolvedId: string): Promise<ClaimOutcome> {
 /**
  * Build and submit one Z-reading. Omit `zReadingId` to submit the latest.
  *
- * Idempotent under concurrency: a Z-reading that already has a successful log
- * for this transaction type is skipped (fast path), and beyond that an
- * atomic claim in `sta_lucia_submissions` ensures only one of two concurrent
- * callers (e.g. the finalize hook and a manual "Send Z-Reading" click landing
- * in the same window) actually sends — the other gets `skipped: true`. A
- * failed send releases the claim so a retry sweep or another manual click can
- * try again.
+ * A Z-reading that already has a successful log for this transaction type is
+ * skipped (fast path), and beyond that an atomic claim in
+ * `sta_lucia_submissions` ensures only one of two concurrent callers (e.g. the
+ * finalize hook and a manual "Send Z-Reading" click landing in the same
+ * window) actually sends — the other gets `skipped: true`. A failed send
+ * releases the claim so a retry sweep or another manual click can try again.
+ *
+ * Delivery is AT LEAST ONCE, not exactly once — see the guarantee note above
+ * CLAIM_STALE_MINUTES for the two windows in which a day can still be
+ * submitted twice.
  */
 export async function sendZReadingToStaLucia(
   zReadingId?: string,
@@ -205,10 +344,17 @@ export async function sendZReadingToStaLucia(
     : await query('SELECT * FROM z_readings ORDER BY id DESC LIMIT 1', []) as any[];
 
   if (!rows?.length) {
-    return {
-      success: false,
-      error: zReadingId ? `Z-reading ${zReadingId} not found` : 'No Z-readings have been saved yet',
-    };
+    // A named Z-reading that is gone can never come back on its own, so this
+    // is terminal: without `permanent` the sweep would defer the row 15
+    // minutes and re-resolve the same dead reference forever.
+    if (zReadingId) {
+      return {
+        success: false,
+        permanent: true,
+        error: `Z-reading ${zReadingId} not found — the reading no longer exists, so this submission can never succeed and will not be retried`,
+      };
+    }
+    return { success: false, error: 'No Z-readings have been saved yet' };
   }
 
   const row = rows[0];
@@ -288,9 +434,12 @@ export async function sendZReadingToStaLucia(
     // on that) — both cases where `sendSucceeded` is still false — but also
     // from the `succeeded = 1` UPDATE above throwing AFTER a successful send.
     // In that last case the mall already accepted the sale, so deleting the
-    // claim here would let a retry resend sales that are already recorded on
-    // their side — the exact double-report this table exists to prevent.
-    // `sendSucceeded` is what distinguishes the two, not "we reached here."
+    // claim here would let the very next sweep resend sales that are already
+    // recorded on their side. `sendSucceeded` is what distinguishes the two,
+    // not "we reached here." Note this narrows the window rather than closing
+    // it: the claim is left in place but still `succeeded = 0`, so the stale
+    // takeover will re-send it after CLAIM_STALE_MINUTES — window (1) of the
+    // at-least-once note above.
     if (!sendSucceeded) {
       await query(`DELETE FROM sta_lucia_submissions WHERE z_reading_id = ?`, [resolvedId]).catch(() => {});
     }

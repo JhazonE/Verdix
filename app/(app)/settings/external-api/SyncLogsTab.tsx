@@ -11,7 +11,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertCircle, Ban, CheckCircle2, Loader2, RefreshCw, Trash2 } from 'lucide-react';
 import type { ApiSyncLog } from '@/lib/services/api-sync-logger';
 
 interface Props {
@@ -106,6 +106,11 @@ export function SyncLogsTab({ logs, isLoading, logStatusFilter, onStatusFilterCh
                       <Badge className="bg-emerald-500 hover:bg-emerald-600"><CheckCircle2 className="mr-1 h-3 w-3" /> Success</Badge>
                     ) : log.status === 'failed' ? (
                       <Badge variant="destructive"><AlertCircle className="mr-1 h-3 w-3" /> Failed</Badge>
+                    ) : log.status === 'abandoned' ? (
+                      // Terminal: retrying can never succeed (e.g. the record the
+                      // log points at was deleted), so the sweep skips it and no
+                      // Retry button is offered below. The Error column says why.
+                      <Badge variant="outline" className="text-muted-foreground"><Ban className="mr-1 h-3 w-3" /> Abandoned</Badge>
                     ) : (
                       <Badge variant="secondary">Pending</Badge>
                     )}
