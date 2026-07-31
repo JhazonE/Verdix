@@ -158,9 +158,12 @@ export function useExternalApi() {
         if (data.success) {
           toast({
             title: 'Sta Lucia Connection OK',
-            description: `Login, sales submission, and logout all succeeded against ${api.apiEndpoint}.`,
+            description: `Login, read-back, and logout all succeeded against ${api.apiEndpoint}. No sales were submitted — the test never writes to the mall.`,
           });
-          console.log('Sta Lucia test — payload sent:', data.payload);
+          // The payload is built but NOT sent (see the test route's doc). It is
+          // logged so the operator can inspect the exact bytes a real
+          // submission would transmit.
+          console.log('Sta Lucia test — sample payload (built, NOT sent):', data.payload);
           // NOTE: the response is intentionally not logged — it carries the
           // mall's owner_token, and dumping it to the console would leave a
           // live session token sitting in browser console history.

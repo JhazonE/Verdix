@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { getExternalApiConfig } from '@/lib/external-api-config';
-import { 
-  syncPurchaseTransaction, 
-  syncPaymentTransaction, 
-  syncAccountsPayable 
+import {
+  syncPurchaseTransaction,
+  syncPaymentTransaction,
+  syncAccountsPayable
 } from '@/lib/services/external-accounting-api';
+import { applySyncResult } from '@/lib/scheduler';
+import { sendZReadingToStaLucia, TRANSACTION_TYPE as STA_LUCIA_TYPE } from '@/lib/integrations/sta-lucia/send-z-reading';
 
 /**
  * POST /api/external-api/logs/[id]/retry
@@ -28,8 +30,37 @@ export async function POST(
     }
 
     const log = logResult[0];
+
+    // Sta Lucia is handled BEFORE the legacy gate below, on purpose. That gate
+    // reads external_api_settings.enabled, which describes the legacy
+    // accounting integration and says nothing about the `external_apis` row
+    // that configures Sta Lucia — letting it block this branch would make the
+    // Retry button permanently dead on every install that never enabled the
+    // legacy sync. The gate is applied per-type instead, exactly as
+    // processSyncQueue() in lib/scheduler.ts now does.
+    //
+    // This branch also runs before the JSON.parse below: the sender rebuilds
+    // the payload from the z_readings row rather than replaying the logged
+    // bytes, so a row with a null or truncated payload must still be
+    // retryable. Sta Lucia enablement is enforced inside the sender, which
+    // resolves only enabled provider='sta_lucia' configs.
+    if (log.transaction_type === STA_LUCIA_TYPE) {
+      const r = await sendZReadingToStaLucia(log.transaction_id);
+      await applySyncResult(log, { success: r.success, error: r.error, permanent: r.permanent });
+
+      if (r.success) {
+        return NextResponse.json({
+          success: true,
+          message: r.skipped
+            ? `Z-reading ${r.zReadingId} was already submitted; the log entry has been reconciled.`
+            : 'Retry successful',
+        });
+      }
+      return NextResponse.json({ success: false, error: r.error || 'Retry failed again' });
+    }
+
     const apiConfig = await getExternalApiConfig();
-    
+
     if (!apiConfig.enabled) {
       return NextResponse.json(
         { success: false, error: 'External API integration is currently disabled' },
