@@ -102,6 +102,7 @@ import './101_add_product_type';
 import './102_unique_sales_order_reference';
 import './103_stock_count_movement_aware_variance';
 import './104_stock_count_subsecond_precision';
+import './105_sta_lucia_integration';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';

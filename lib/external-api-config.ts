@@ -30,6 +30,7 @@ export const DEFAULT_EXTERNAL_API_CONFIG: ExternalApiConfig = {
 // Multi-API types
 export type AllowedMethods = 'send_only' | 'receive_only' | 'full_access';
 export type ApiRole = 'general' | 'cloud_sync';
+export type ApiProvider = 'generic' | 'sta_lucia';
 
 export type ExternalApi = {
   id: string;
@@ -47,6 +48,10 @@ export type ExternalApi = {
   syncMode: 'realtime' | 'batch';
   onErrorAction: 'retry' | 'queue' | 'log_only';
   role: ApiRole;
+  provider: ApiProvider;
+  /** Sta. Lucia tenant-account email. Not a Verdix login. */
+  loginEmail?: string;
+  loginPassword?: string;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -62,6 +67,9 @@ export const DEFAULT_EXTERNAL_API: Omit<ExternalApi, 'id' | 'name'> = {
   syncMode: 'realtime',
   onErrorAction: 'log_only',
   role: 'general',
+  provider: 'generic',
+  loginEmail: '',
+  loginPassword: '',
 };
 
 /**

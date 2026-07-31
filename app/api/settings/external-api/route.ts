@@ -19,26 +19,48 @@ const INIT_TABLE = `
     retry_delay INT NOT NULL DEFAULT 2000,
     sync_mode ENUM('realtime','batch') NOT NULL DEFAULT 'realtime',
     on_error_action ENUM('retry','queue','log_only') NOT NULL DEFAULT 'log_only',
+    provider ENUM('generic','sta_lucia') NOT NULL DEFAULT 'generic',
+    login_email VARCHAR(255),
+    login_password VARCHAR(500),
     role ENUM('general','cloud_sync') NOT NULL DEFAULT 'general',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )
 `;
 
+const ADDITIVE_COLUMNS: Array<[string, string]> = [
+  ['role',           `ENUM('general','cloud_sync') NOT NULL DEFAULT 'general'`],
+  ['provider',       `ENUM('generic','sta_lucia') NOT NULL DEFAULT 'generic'`],
+  ['login_email',    `VARCHAR(255) NULL`],
+  ['login_password', `VARCHAR(500) NULL`],
+];
+
 async function ensureTable() {
   await query(INIT_TABLE, []);
-  // Add `role` column only if it doesn't already exist (avoids ER_DUP_FIELDNAME on repeated calls)
+
   const cols = await query(
     `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'external_apis' AND COLUMN_NAME = 'role'`,
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'external_apis'`,
     []
   ) as any[];
-  if (!cols.length) {
-    await query(
-      `ALTER TABLE external_apis ADD COLUMN role ENUM('general','cloud_sync') NOT NULL DEFAULT 'general'`,
-      []
-    );
+  const have = new Set(cols.map((c: any) => c.COLUMN_NAME));
+
+  for (const [name, ddl] of ADDITIVE_COLUMNS) {
+    if (!have.has(name)) {
+      await query(`ALTER TABLE external_apis ADD COLUMN ${name} ${ddl}`, []);
+    }
   }
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS external_api_sessions (
+      api_id      VARCHAR(36) PRIMARY KEY,
+      token       TEXT,
+      owner_token VARCHAR(500),
+      obtained_at TIMESTAMP NULL DEFAULT NULL,
+      CONSTRAINT fk_eas_api FOREIGN KEY (api_id)
+        REFERENCES external_apis(id) ON DELETE CASCADE
+    )
+  `, []);
 }
 
 function rowToApi(row: any) {
@@ -58,6 +80,9 @@ function rowToApi(row: any) {
     syncMode: row.sync_mode,
     onErrorAction: row.on_error_action,
     role: row.role ?? 'general',
+    provider: row.provider ?? 'generic',
+    loginEmail: row.login_email ?? '',
+    loginPassword: row.login_password ?? '',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -90,6 +115,7 @@ export async function POST(request: NextRequest) {
       name, description, enabled, apiEndpoint, authType,
       apiKey, bearerToken, allowedMethods,
       timeout, retryAttempts, retryDelay, syncMode, onErrorAction, role,
+      provider, loginEmail, loginPassword,
     } = body;
 
     if (!name?.trim()) {
@@ -103,8 +129,9 @@ export async function POST(request: NextRequest) {
     await query(
       `INSERT INTO external_apis
         (id, name, description, enabled, api_endpoint, auth_type, api_key, bearer_token,
-         allowed_methods, timeout, retry_attempts, retry_delay, sync_mode, on_error_action, role)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         allowed_methods, timeout, retry_attempts, retry_delay, sync_mode, on_error_action, role,
+         provider, login_email, login_password)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         id, name.trim(), description ?? '', enabled ? 1 : 0, apiEndpoint.trim(),
         authType ?? 'none', apiKey ?? '', bearerToken ?? '',
@@ -112,6 +139,8 @@ export async function POST(request: NextRequest) {
         timeout ?? 30000, retryAttempts ?? 3, retryDelay ?? 2000,
         syncMode ?? 'realtime', onErrorAction ?? 'log_only',
         role === 'cloud_sync' ? 'cloud_sync' : 'general',
+        provider === 'sta_lucia' ? 'sta_lucia' : 'generic',
+        loginEmail ?? '', loginPassword ?? '',
       ]
     );
 

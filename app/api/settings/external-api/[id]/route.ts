@@ -18,6 +18,9 @@ function rowToApi(row: any) {
     syncMode: row.sync_mode,
     onErrorAction: row.on_error_action,
     role: row.role ?? 'general',
+    provider: row.provider ?? 'generic',
+    loginEmail: row.login_email ?? '',
+    loginPassword: row.login_password ?? '',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -68,6 +71,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       name, description, enabled, apiEndpoint, authType,
       apiKey, bearerToken, allowedMethods,
       timeout, retryAttempts, retryDelay, syncMode, onErrorAction, role,
+      provider, loginEmail, loginPassword,
     } = body;
 
     if (!name?.trim()) {
@@ -82,7 +86,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         name = ?, description = ?, enabled = ?, api_endpoint = ?, auth_type = ?,
         api_key = ?, bearer_token = ?, allowed_methods = ?,
         timeout = ?, retry_attempts = ?, retry_delay = ?, sync_mode = ?, on_error_action = ?,
-        role = ?
+        role = ?, provider = ?, login_email = ?, login_password = ?
        WHERE id = ?`,
       [
         name.trim(), description ?? '', enabled ? 1 : 0, apiEndpoint.trim(),
@@ -91,6 +95,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         timeout ?? 30000, retryAttempts ?? 3, retryDelay ?? 2000,
         syncMode ?? 'realtime', onErrorAction ?? 'log_only',
         role === 'cloud_sync' ? 'cloud_sync' : 'general',
+        provider === 'sta_lucia' ? 'sta_lucia' : 'generic',
+        loginEmail ?? '', loginPassword ?? '',
         id,
       ]
     );
