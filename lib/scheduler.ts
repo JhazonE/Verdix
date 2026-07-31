@@ -95,6 +95,83 @@ export function startScheduledBackup(schedule: BackupSchedule): void {
 const LEGACY_SYNC_TYPES = ['PURCHASE_ORDER', 'SUPPLIER_PAYMENT', 'SALES_INVOICE', 'ACCOUNTS_PAYABLE'];
 
 /**
+ * Shared success/failure bookkeeping for one external_api_logs row, used by
+ * both the legacy sweep and the Sta Lucia sweep below. Kept as one function
+ * so the two paths can't drift apart (e.g. one path forgetting to clear
+ * next_retry_at on success, or using a different retry backoff).
+ */
+async function applySyncResult(
+  log: { id: string; transaction_type: string; transaction_id: string },
+  syncResult: { success: boolean; error?: string },
+): Promise<void> {
+  if (syncResult.success) {
+    // Success: Mark as success
+    await query('UPDATE external_api_logs SET status = "success", error_message = NULL, next_retry_at = NULL WHERE id = ?', [log.id]);
+    console.log(`✅ Success: Synced ${log.transaction_type} (${log.transaction_id})`);
+  } else {
+    // Failure: Log but keep in queue (system will retry next sweep)
+    const nextRetry = new Date();
+    nextRetry.setMinutes(nextRetry.getMinutes() + 15); // Wait longer between sweeps
+    const nextRetryStr = nextRetry.toISOString().slice(0, 19).replace('T', ' ');
+
+    await query(`
+      UPDATE external_api_logs
+      SET error_message = ?,
+          last_retry_at = NOW(),
+          next_retry_at = ?
+      WHERE id = ?
+    `, [syncResult.error || 'Sync failed', nextRetryStr, log.id]);
+    console.log(`❌ Failed: Could not sync ${log.transaction_type} (${log.transaction_id}). Next retry at ${nextRetryStr}`);
+  }
+}
+
+/**
+ * Sta Lucia gets its own query and its own LIMIT, run after the legacy
+ * sweep below. The legacy sweep takes a single fixed-size batch (LIMIT 10)
+ * across all transaction types ordered by created_at — on an install that
+ * accumulates 10+ simultaneously-due legacy rows (exactly what happened in
+ * this dev DB: 14 legacy rows, some with thousands of retries), Sta Lucia
+ * rows sitting behind that backlog would never be reached and the retry
+ * this task exists to add would silently never run. A dedicated pass with
+ * its own LIMIT means a legacy backlog can never starve Sta Lucia retries.
+ */
+async function processStaLuciaRetries(): Promise<void> {
+  const staItems = await query(`
+    SELECT * FROM external_api_logs
+     WHERE transaction_type = 'STA_LUCIA_SALES'
+       AND (status = 'pending' OR status = 'failed')
+       AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+     ORDER BY created_at ASC
+     LIMIT 10
+  `);
+
+  if (staItems.length === 0) return;
+
+  console.log(`--- Sync Queue: Processing ${staItems.length} Sta Lucia item(s) ---`);
+
+  for (const log of staItems) {
+    try {
+      console.log(`Retrying ${log.transaction_type} sync for ID: ${log.transaction_id}`);
+
+      // The log row does not carry an apiId; the sender resolves the
+      // enabled Sta Lucia config itself. Single-store deployment means
+      // there is exactly one.
+      //
+      // Only 'retry' opts into the automatic sweep. 'queue' means the
+      // operator retries by hand from the Sync Logs tab, and 'log_only'
+      // means never — auto-retrying either would ignore the setting.
+      const staCfg = await loadStaLuciaConfig();
+      if (staCfg?.onErrorAction !== 'retry') continue;
+
+      const r = await sendZReadingToStaLucia(log.transaction_id);
+      await applySyncResult(log, { success: r.success, error: r.error });
+    } catch (itemError) {
+      console.error(`Error processing Sta Lucia sync queue item ${log.id}:`, itemError);
+    }
+  }
+}
+
+/**
  * Sweeps the external_api_logs table and retries pending/failed syncs
  */
 export async function processSyncQueue(): Promise<void> {
@@ -105,84 +182,57 @@ export async function processSyncQueue(): Promise<void> {
     // is applied per-item below, to legacy types only.
     const apiConfig = await getExternalApiConfig();
 
-    // Find items that are pending or failed and due for retry
+    // Find items that are pending or failed and due for retry. Sta Lucia is
+    // excluded here and swept separately in processStaLuciaRetries() below —
+    // see that function's comment for why — so nothing is ever processed
+    // twice.
     const pendingItems = await query(`
-      SELECT * FROM external_api_logs 
+      SELECT * FROM external_api_logs
       WHERE (status = 'pending' OR status = 'failed')
       AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+      AND transaction_type <> 'STA_LUCIA_SALES'
       ORDER BY created_at ASC
       LIMIT 10
     `);
 
-    if (pendingItems.length === 0) return;
+    if (pendingItems.length > 0) {
+      console.log(`--- Sync Queue: Processing ${pendingItems.length} items ---`);
 
-    console.log(`--- Sync Queue: Processing ${pendingItems.length} items ---`);
+      for (const log of pendingItems) {
+        try {
+          let syncResult: { success: boolean; error?: string };
+          const payload = JSON.parse(log.payload);
 
-    for (const log of pendingItems) {
-      try {
-        let syncResult: { success: boolean; error?: string };
-        const payload = JSON.parse(log.payload);
+          console.log(`Retrying ${log.transaction_type} sync for ID: ${log.transaction_id}`);
 
-        console.log(`Retrying ${log.transaction_type} sync for ID: ${log.transaction_id}`);
+          if (LEGACY_SYNC_TYPES.includes(log.transaction_type) && !apiConfig.enabled) continue;
 
-        if (LEGACY_SYNC_TYPES.includes(log.transaction_type) && !apiConfig.enabled) continue;
-
-        switch (log.transaction_type) {
-          case 'PURCHASE_ORDER':
-            syncResult = await syncPurchaseTransaction(log.transaction_id, payload, apiConfig);
-            break;
-          case 'SUPPLIER_PAYMENT':
-            syncResult = await syncPaymentTransaction(log.transaction_id, payload, apiConfig);
-            break;
-          case 'SALES_INVOICE':
-            syncResult = await syncSalesTransaction(log.transaction_id, payload, apiConfig);
-            break;
-          case 'ACCOUNTS_PAYABLE':
-            syncResult = await syncAccountsPayable(log.transaction_id, apiConfig);
-            break;
-          case 'STA_LUCIA_SALES': {
-            // The log row does not carry an apiId; the sender resolves the
-            // enabled Sta Lucia config itself. Single-store deployment means
-            // there is exactly one.
-            //
-            // Only 'retry' opts into the automatic sweep. 'queue' means the
-            // operator retries by hand from the Sync Logs tab, and 'log_only'
-            // means never — auto-retrying either would ignore the setting.
-            const staCfg = await loadStaLuciaConfig();
-            if (staCfg?.onErrorAction !== 'retry') continue;
-
-            const r = await sendZReadingToStaLucia(log.transaction_id);
-            syncResult = { success: r.success, error: r.error };
-            break;
+          switch (log.transaction_type) {
+            case 'PURCHASE_ORDER':
+              syncResult = await syncPurchaseTransaction(log.transaction_id, payload, apiConfig);
+              break;
+            case 'SUPPLIER_PAYMENT':
+              syncResult = await syncPaymentTransaction(log.transaction_id, payload, apiConfig);
+              break;
+            case 'SALES_INVOICE':
+              syncResult = await syncSalesTransaction(log.transaction_id, payload, apiConfig);
+              break;
+            case 'ACCOUNTS_PAYABLE':
+              syncResult = await syncAccountsPayable(log.transaction_id, apiConfig);
+              break;
+            default:
+              console.warn(`Unsupported transaction type in sync queue: ${log.transaction_type}`);
+              continue;
           }
-          default:
-            console.warn(`Unsupported transaction type in sync queue: ${log.transaction_type}`);
-            continue;
-        }
 
-        if (syncResult.success) {
-          // Success: Mark as success
-          await query('UPDATE external_api_logs SET status = "success", error_message = NULL, next_retry_at = NULL WHERE id = ?', [log.id]);
-          console.log(`✅ Success: Synced ${log.transaction_type} (${log.transaction_id})`);
-        } else {
-          // Failure: Log but keep in queue (system will retry next sweep)
-          const nextRetry = new Date();
-          nextRetry.setMinutes(nextRetry.getMinutes() + 15); // Wait longer between sweeps
-          const nextRetryStr = nextRetry.toISOString().slice(0, 19).replace('T', ' ');
-          
-          await query(`
-            UPDATE external_api_logs 
-            SET error_message = ?, 
-                last_retry_at = NOW(), 
-                next_retry_at = ? 
-            WHERE id = ?
-          `, [syncResult.error || 'Sync failed', nextRetryStr, log.id]);
-          console.log(`❌ Failed: Could not sync ${log.transaction_type} (${log.transaction_id}). Next retry at ${nextRetryStr}`);
+          await applySyncResult(log, syncResult);
+        } catch (itemError) {
+          console.error(`Error processing sync queue item ${log.id}:`, itemError);
         }
-      } catch (itemError) {
-        console.error(`Error processing sync queue item ${log.id}:`, itemError);
       }
     }
+
+    await processStaLuciaRetries();
   } catch (error) {
     console.error('Failed to process sync queue:', error);
   }
