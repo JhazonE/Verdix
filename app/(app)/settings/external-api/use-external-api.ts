@@ -93,6 +93,9 @@ export function useExternalApi() {
       allowedMethods: api.allowedMethods, timeout: api.timeout,
       retryAttempts: api.retryAttempts, retryDelay: api.retryDelay,
       syncMode: api.syncMode, onErrorAction: api.onErrorAction, role: api.role ?? 'general',
+      provider: api.provider ?? 'generic',
+      loginEmail: api.loginEmail ?? '',
+      loginPassword: api.loginPassword ?? '',
     });
     setDialogOpen(true);
   };

@@ -1,6 +1,6 @@
-import type { ExternalApi, AllowedMethods, ApiRole } from '@/lib/external-api-config';
+import type { ExternalApi, AllowedMethods, ApiRole, ApiProvider } from '@/lib/external-api-config';
 
-export type { ExternalApi, AllowedMethods, ApiRole };
+export type { ExternalApi, AllowedMethods, ApiRole, ApiProvider };
 
 export const METHODS_LABEL: Record<AllowedMethods, string> = {
   send_only:    'Send Only (POST)',
@@ -29,4 +29,7 @@ export const EMPTY_FORM: Omit<ExternalApi, 'id' | 'createdAt' | 'updatedAt'> = {
   syncMode: 'realtime',
   onErrorAction: 'log_only',
   role: 'general',
+  provider: 'generic',
+  loginEmail: '',
+  loginPassword: '',
 };
