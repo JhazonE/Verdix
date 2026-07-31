@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, getNextZReadingNumber } from '@/lib/mysql';
 import { format } from 'date-fns';
 import { saveEJournalFiles } from '@/lib/ejournal/ejournal-writer';
+import { sendZReadingToStaLucia } from '@/lib/integrations/sta-lucia/send-z-reading';
 
 const safeParseFloat = (val: any): number => {
     if (val === null || val === undefined) return 0;
@@ -685,6 +686,15 @@ export async function POST(request: NextRequest) {
 
         const ejDate = format(new Date(endDate), 'yyyy-MM-dd');   // `format` from date-fns is already imported here
         saveEJournalFiles(ejDate, ejTerminal).catch((e) => console.error('e-journal auto-save failed:', e));
+
+        // Sta. Lucia tenant-system submission. Detached on purpose: the Z-reading
+        // row is already committed and its BIR sequence is already consumed, so a
+        // third-party HTTP failure must not be able to fail, delay, or roll back
+        // this response. Failures land in external_api_logs and are picked up by
+        // the sync-queue sweep in lib/scheduler.ts.
+        sendZReadingToStaLucia(String(readingNumber)).catch((e) =>
+          console.error('Sta Lucia sales submission failed:', e),
+        );
 
         return NextResponse.json({ success: true, data: [generatedReading] });
     } catch (error: any) {
