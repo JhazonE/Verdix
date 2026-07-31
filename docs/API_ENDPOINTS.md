@@ -236,6 +236,18 @@ All responses return `{ success: boolean, data?: any, error?: string }`.
 
 ---
 
+## Sta. Lucia Tenant System Integration
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/integrations/sta-lucia/send` | Submit one Z-reading to the mall's Sale Consolidator API. Body `{ apiId?, zReadingId? }`; omitting `zReadingId` sends the latest. Idempotent — an atomic claim row in `sta_lucia_submissions` stops concurrent or retried sends from double-submitting. |
+| POST | `/api/integrations/sta-lucia/test` | Dry run: login → sample sales → get-transactions → logout. Returns the exact payload sent plus each raw response. |
+| POST/GET | `/api/dev/mock-sta-lucia/*` | Local mock of the external API for development and E2E tests; 404s when `NODE_ENV=production`. |
+
+Configured at Settings → External API Integrations with Provider set to "Sta. Lucia Tenant System". The credentials are the mall-issued tenant account (an email), not a Verdix login (a username).
+
+---
+
 ## Stock
 
 | Method | Endpoint | Description |
