@@ -104,6 +104,7 @@ import './103_stock_count_movement_aware_variance';
 import './104_stock_count_subsecond_precision';
 import './105_sta_lucia_integration';
 import './106_sta_lucia_submission_claims';
+import './107_add_price_update_approval_setting';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';
