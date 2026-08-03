@@ -182,7 +182,60 @@ store keeps operating without internet.
 
 ---
 
-## 7. Troubleshooting
+## 7. Sta. Lucia Sale Consolidator go-live checklist
+
+Per-store, one-time. Local mocks (`/api/dev/mock-sta-lucia/*`) are used for
+development and testing only — they return `404` automatically in a production
+build (`NODE_ENV` is inlined at build time), so there is nothing to disable.
+
+1. **Get the tenant account from the mall.** The Sta. Lucia mall (via MediaOne)
+   issues the store a login **email + password** for the Tenant Management
+   System, alongside the lease. This is *not* a Verdix POS login.
+
+2. **In Verdix, go to Settings → External API Integrations → edit the Sta.
+   Lucia entry** (or add one if none exists, Provider = "Sta. Lucia Tenant
+   System") and set:
+
+   | Field | Value |
+   |---|---|
+   | Domain | The real Sta. Lucia domain (e.g. `https://sta-lucia-malls.com`) — **not** `localhost` |
+   | Tenant Email | The real tenant account email from step 1 |
+   | Tenant Password | The real tenant account password from step 1 |
+   | Enabled | On |
+
+3. **Click Test.** This runs login → read-back → logout against the real
+   domain and writes nothing to the mall — safe to run as many times as
+   needed. A failure here (bad credentials, unreachable domain, wrong header
+   names) means nothing has been submitted yet; fix and retry before step 4.
+
+4. **Let one real Z-reading go through**, then check **Sync Logs** for a
+   `STA_LUCIA_SALES` row with `status = success`. This is the first real
+   submission — there is no dry-run for the sales payload itself.
+
+5. **Confirm the credit/debit interpretation with MediaOne before relying on
+   it for reconciliation.** Verdix sends `credit` (non-cash tender) and
+   `debit` (cash tender) as the true amounts collected, which sum to **net**
+   sales. The source PDF's own example has them summing to **gross**. If
+   MediaOne expects gross reconciliation, the fix is one line in
+   `lib/integrations/sta-lucia/payload.ts` (`buildSalesPayload`).
+
+**Known limitation — at-least-once, not exactly-once delivery.** A crash
+between the mall accepting a submission and Verdix recording that success, or
+a timeout on a request the mall actually processed, can cause a Z-reading to
+be resubmitted once by the automatic recovery logic. This requires either a
+crash or a >30s timeout to trigger, and is documented in
+`docs/superpowers/specs/2026-07-31-sta-lucia-sales-consolidator-design.md`.
+There is no way to close it without a MediaOne-side idempotency key on their
+API, which does not currently exist.
+
+**To pause submissions without disabling the integration:** set the API's
+*On Error Action* to `Log Only` and *toggle it off* — a disabled config never
+submits (checked on every send). Toggling back on resumes automatic sends
+from the next Z-reading; nothing is submitted retroactively.
+
+---
+
+## 8. Troubleshooting
 
 | Symptom | Cause / Fix |
 |---|---|
@@ -193,11 +246,16 @@ store keeps operating without internet.
 | Scoped user can read another customer's DB | Provisioning bug — re-run `cloud:provision`; verify `GRANT` is scoped to `verdix_c_<id>.*` only. |
 | Desktop stuck on "wrong computer" | Key was issued for a different machine — re-issue for this machine's Machine ID. |
 | Revoked customer still working | Revocation applies on the next heartbeat; ensure the machine has reached the license server since revocation. |
+| Sta. Lucia Test fails with a connection error | Domain is wrong or unreachable — confirm it's the real mall domain, not `localhost`, and that the store has internet access. |
+| Sta. Lucia Test fails with `401`/inactive account | Tenant credentials are wrong, or the mall has deactivated the account (`status: 0` in their login response) — contact MediaOne. |
+| Sta. Lucia Z-reading has no Sync Logs row at all | The API config is disabled, or no `provider='sta_lucia'` config is enabled — check Settings → External API Integrations. |
+| Sta. Lucia Sync Logs row stuck on `failed` | Click **Retry** on that row, or check *On Error Action* is `Automatic Retry` for it to self-heal every 2 minutes. |
 
 ---
 
-## 8. Related design docs
+## 9. Related design docs
 
 - Multi-tenant cloud sync: `docs/superpowers/specs/2026-07-06-multi-tenant-cloud-sync-design.md`
 - Web/hosted license mode: `docs/superpowers/specs/2026-07-06-web-hosted-license-design.md`
+- Sta. Lucia Sale Consolidator integration: `docs/superpowers/specs/2026-07-31-sta-lucia-sales-consolidator-design.md`
 - Architecture overview: `CLAUDE.md`
