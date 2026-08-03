@@ -80,7 +80,7 @@ async function applyPriceUpdateBatch(items: PriceUpdateItem[]): Promise<PriceUpd
       // Percentage/fixed/exact changes are not cost-dependent, so they apply
       // the value that was already previewed.
       let newValue = item.newValue;
-      if (item.adjustmentType === 'markup' && item.field === 'price') {
+      if (item.adjustmentType === 'markup') {
         const liveCost = parseFloat(rows[0].cost ?? 0);
         newValue = applyAdjustment('markup', 0, item.adjustmentValue, liveCost);
       }
@@ -90,7 +90,7 @@ async function applyPriceUpdateBatch(items: PriceUpdateItem[]): Promise<PriceUpd
       } else if (item.field === 'cost') {
         await connection.query('UPDATE products SET cost = ? WHERE id = ?', [newValue, item.productId]);
       } else if (item.field === 'priceLevel' && item.priceLevelId) {
-        const existing: any = await connection.query(
+        const [existing]: any = await connection.query(
           'SELECT product_id FROM product_price_levels WHERE product_id = ? AND price_level_id = ? AND (min_quantity IS NULL OR min_quantity = 0)',
           [item.productId, item.priceLevelId],
         );
