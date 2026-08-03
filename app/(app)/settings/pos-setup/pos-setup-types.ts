@@ -56,6 +56,7 @@ export interface PosSettings {
   requireRepackagingConfirmation?: boolean;
   requireShelfTransferApproval?: boolean;
   requireProductConfirmation?: boolean;
+  requirePriceUpdateConfirmation?: boolean;
   batchCostingRepackInherit?: boolean;
   batchCostingOversellBlock?: boolean;
   enableOverallReadingAuth?: boolean;
@@ -131,6 +132,7 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   requireRepackagingConfirmation: false,
   requireShelfTransferApproval: false,
   requireProductConfirmation: false,
+  requirePriceUpdateConfirmation: false,
   batchCostingRepackInherit: true,
   batchCostingOversellBlock: false,
   enableOverallReadingAuth: false,
