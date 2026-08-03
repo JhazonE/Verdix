@@ -25,7 +25,6 @@ export function useExternalApi() {
   const [isSaving, setIsSaving] = useState(false);
 
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [sendingId, setSendingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExternalApi | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -184,43 +183,16 @@ export function useExternalApi() {
     finally { setTestingId(null); }
   };
 
-  /**
-   * Submit the most recent Z-reading on demand. The server resolves "most
-   * recent" itself — the Z-reading GET route takes mode/startDate/endDate/
-   * terminalId and has no "latest" parameter, so asking it here would mean
-   * fetching the whole history just to read one row.
-   */
-  const handleSendZReading = async (api: ExternalApi) => {
-    setSendingId(api.id);
-    try {
-      const res = await fetch(getApiUrl('/integrations/sta-lucia/send'), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiId: api.id }),
-      });
-      const data = await res.json();
-
-      if (data.skipped) {
-        toast({ title: 'Already Sent', description: `Z-reading ${data.zReadingId} was submitted previously.` });
-      } else if (data.success) {
-        toast({ title: 'Sales Submitted', description: `Z-reading ${data.zReadingId} sent to Sta Lucia.` });
-      } else {
-        toast({ variant: 'destructive', title: 'Submission Failed', description: data.error });
-      }
-      fetchLogs();
-    } catch { toast({ variant: 'destructive', title: 'Submission Failed', description: 'Network error.' }); }
-    finally { setSendingId(null); }
-  };
-
   useEffect(() => { fetchApis(); fetchLogs(); }, []);
 
   return {
     apis, logs, isLoadingApis, isLoadingLogs,
     retryingLogId, logStatusFilter, handleStatusFilterChange, handleRetryLog,
     dialogOpen, setDialogOpen, editingApi, form, setForm, isSaving,
-    testingId, sendingId, deleteTarget, setDeleteTarget, isDeleting,
+    testingId, deleteTarget, setDeleteTarget, isDeleting,
     pendingCount: logs.filter(l => l.status === 'pending').length,
     openAddDialog, openEditDialog,
-    handleSave, handleToggleEnabled, handleDelete, handleTestConnection, handleSendZReading,
+    handleSave, handleToggleEnabled, handleDelete, handleTestConnection,
     fetchLogs, clearLogs, isClearingLogs,
   };
 }

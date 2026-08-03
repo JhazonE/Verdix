@@ -10,16 +10,14 @@ interface Props {
   apis: ExternalApi[];
   isLoading: boolean;
   testingId: string | null;
-  sendingId: string | null;
   onAddApi: () => void;
   onToggle: (api: ExternalApi) => void;
   onEdit: (api: ExternalApi) => void;
   onDelete: (api: ExternalApi) => void;
   onTest: (api: ExternalApi) => void;
-  onSendZReading: (api: ExternalApi) => void;
 }
 
-export function ApiConnectionsTab({ apis, isLoading, testingId, sendingId, onAddApi, onToggle, onEdit, onDelete, onTest, onSendZReading }: Props) {
+export function ApiConnectionsTab({ apis, isLoading, testingId, onAddApi, onToggle, onEdit, onDelete, onTest }: Props) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -44,7 +42,7 @@ export function ApiConnectionsTab({ apis, isLoading, testingId, sendingId, onAdd
   return (
     <div className="grid gap-4">
       {apis.map(api => (
-        <ApiCard key={api.id} api={api} testingId={testingId} sendingId={sendingId} onToggle={onToggle} onEdit={onEdit} onDelete={onDelete} onTest={onTest} onSendZReading={onSendZReading} />
+        <ApiCard key={api.id} api={api} testingId={testingId} onToggle={onToggle} onEdit={onEdit} onDelete={onDelete} onTest={onTest} />
       ))}
     </div>
   );

@@ -4,21 +4,19 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Pencil, Send, Trash2, ArrowUp, ArrowDown, ArrowUpDown, Upload } from 'lucide-react';
+import { Loader2, Pencil, Send, Trash2, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { METHODS_BADGE, type ExternalApi } from './external-api-types';
 
 interface Props {
   api: ExternalApi;
   testingId: string | null;
-  sendingId: string | null;
   onToggle: (api: ExternalApi) => void;
   onEdit: (api: ExternalApi) => void;
   onDelete: (api: ExternalApi) => void;
   onTest: (api: ExternalApi) => void;
-  onSendZReading: (api: ExternalApi) => void;
 }
 
-export function ApiCard({ api, testingId, sendingId, onToggle, onEdit, onDelete, onTest, onSendZReading }: Props) {
+export function ApiCard({ api, testingId, onToggle, onEdit, onDelete, onTest }: Props) {
   const methods = METHODS_BADGE[api.allowedMethods];
   return (
     <Card className={!api.enabled ? 'opacity-60' : ''}>
@@ -59,23 +57,6 @@ export function ApiCard({ api, testingId, sendingId, onToggle, onEdit, onDelete,
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {api.provider === 'sta_lucia' && (
-              // Disabled while the card is off: the send path refuses disabled
-              // configs server-side, so an enabled-looking button would only
-              // ever produce "No enabled Sta Lucia API is configured".
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onSendZReading(api)}
-                disabled={!api.enabled || sendingId === api.id}
-                title={!api.enabled ? 'Enable this integration to submit Z-readings' : undefined}
-              >
-                {sendingId === api.id
-                  ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                  : <Upload className="mr-1.5 h-3.5 w-3.5" />}
-                Send Z-Reading
-              </Button>
-            )}
             <Button variant="outline" size="sm" onClick={() => onTest(api)} disabled={testingId === api.id}>
               {testingId === api.id
                 ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />

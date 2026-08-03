@@ -49,10 +49,9 @@ export default function ExternalApiSettingsPage() {
 
         <TabsContent value="apis" className="space-y-4">
           <ApiConnectionsTab
-            apis={m.apis} isLoading={m.isLoadingApis} testingId={m.testingId} sendingId={m.sendingId}
+            apis={m.apis} isLoading={m.isLoadingApis} testingId={m.testingId}
             onAddApi={m.openAddDialog} onToggle={m.handleToggleEnabled}
             onEdit={m.openEditDialog} onDelete={m.setDeleteTarget} onTest={m.handleTestConnection}
-            onSendZReading={m.handleSendZReading}
           />
         </TabsContent>
 
