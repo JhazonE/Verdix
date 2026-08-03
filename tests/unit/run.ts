@@ -25,3 +25,4 @@ import './manual-content.test';
 import './manual-build.test';
 import './stock-count-baseline.test';
 import './sta-lucia-payload.test';
+import './price-update-math.test';
