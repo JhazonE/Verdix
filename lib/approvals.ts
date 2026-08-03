@@ -13,7 +13,8 @@ export async function checkApprovalRequired(txType: string): Promise<boolean> {
       'STOCK_COUNT': 'require_stock_count_approval',
       'REPACKAGING': 'require_repackaging_confirmation',
       'SHELF_TRANSFER': 'require_shelf_transfer_confirmation',
-      'PRODUCT_CREATE': 'require_product_confirmation'
+      'PRODUCT_CREATE': 'require_product_confirmation',
+      'PRICE_UPDATE': 'require_price_update_confirmation',
     };
 
     const settingColumn = settingsMap[txType];
