@@ -186,6 +186,10 @@ export async function POST(request: NextRequest) {
           const { addProduct } = await import('@/app/(app)/products/actions');
           const apResult = await addProduct(txData, item.created_by, true);
           result = { success: apResult.success, error: (apResult as any).message || '' };
+        } else if (item.transaction_type === 'PRICE_UPDATE') {
+          const { submitPriceUpdateBatch } = await import('@/app/(app)/products/bulk-price-update/actions');
+          const puResult = await submitPriceUpdateBatch(txData.warehouseId, txData.items, item.created_by, true);
+          result = { success: puResult.success, error: (puResult as any).message || '' };
         }
 
         if (!result.success) {
