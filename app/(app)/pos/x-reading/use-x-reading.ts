@@ -3,12 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
-import type { XReadingData } from './x-reading-types';
+import type { XReadingData } from '../../sales/x-reading/x-reading-preview';
+import type { BusinessSettings } from '../../sales/z-reading/z-reading-preview';
 
 export function useXReading() {
   const [isAuthDialogOpen, setIsAuthDialogOpen] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [xReadingData, setXReadingData] = useState<XReadingData | null>(null);
+  const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
@@ -22,22 +24,23 @@ export function useXReading() {
       const settingsResponse = await fetch(getApiUrl('/pos-settings'));
       if (!settingsResponse.ok) throw new Error(`API error ${settingsResponse.status}`);
       const settingsResult = await settingsResponse.json();
-      const settings = settingsResult.success ? settingsResult.data : {};
+      if (settingsResult.success) setBusinessSettings(settingsResult.data);
 
-      const response = await fetch(getApiUrl('/sales/x-reading?shiftStatus=active&limit=1'));
+      // Prefer the current POS session's own shift (mirrors the in-POS
+      // X-Reading dialog at pos/x-reading-report/use-x-reading-report.tsx).
+      // Falling back to "most recently started active shift, system-wide"
+      // is wrong whenever more than one shift is active at once — it can
+      // silently report on a different terminal's empty shift instead.
+      const storedShiftId = localStorage.getItem('pos_current_shift_id');
+      const url = storedShiftId
+        ? `/sales/x-reading?shiftId=${storedShiftId}&limit=1`
+        : '/sales/x-reading?shiftStatus=active&limit=1';
+      const response = await fetch(getApiUrl(url));
       if (!response.ok) throw new Error(`API error ${response.status}`);
       const result = await response.json();
 
       if (result.success && result.data.length > 0) {
-        setXReadingData({
-          ...result.data[0],
-          businessName: settings.businessName,
-          operatedBy: settings.operatedBy,
-          address: settings.address,
-          tin: settings.tin,
-          contactNumber: settings.contactNumber,
-          email: settings.email,
-        });
+        setXReadingData(result.data[0]);
       } else {
         toast({ title: 'No Active Shift', description: 'There is no active cashier shift to report on.', variant: 'destructive' });
       }
@@ -85,7 +88,7 @@ export function useXReading() {
   return {
     isAuthDialogOpen, setIsAuthDialogOpen,
     showReport, setShowReport,
-    xReadingData, loading,
+    xReadingData, businessSettings, loading,
     handleAdminAuthSuccess,
     loadXReadingData,
     handlePrint,

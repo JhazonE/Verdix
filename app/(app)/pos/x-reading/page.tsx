@@ -10,7 +10,7 @@ import { useXReading } from './use-x-reading';
 export default function XReadingPage() {
   const {
     isAuthDialogOpen, setIsAuthDialogOpen,
-    showReport, xReadingData, loading,
+    showReport, xReadingData, businessSettings, loading,
     handleAdminAuthSuccess,
     loadXReadingData,
     handlePrint,
@@ -38,7 +38,7 @@ export default function XReadingPage() {
           </div>
         </div>
       ) : xReadingData ? (
-        <XReadingReportView data={xReadingData} onPrint={handlePrint} />
+        <XReadingReportView data={xReadingData} businessSettings={businessSettings} onPrint={handlePrint} />
       ) : (
         <div className="min-h-screen bg-background flex items-center justify-center">
           <div className="text-center space-y-4">
