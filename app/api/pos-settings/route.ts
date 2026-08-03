@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
       { name: 'require_repackaging_confirmation', type: 'BOOLEAN DEFAULT FALSE' },
       { name: 'require_shelf_transfer_confirmation', type: 'BOOLEAN DEFAULT FALSE' },
       { name: 'require_product_confirmation', type: 'BOOLEAN DEFAULT FALSE' },
+      { name: 'require_price_update_confirmation', type: 'BOOLEAN DEFAULT FALSE' },
       { name: 'batch_costing_repack_inherit', type: 'TINYINT(1) DEFAULT 1' },
       { name: 'batch_costing_oversell_block', type: 'TINYINT(1) DEFAULT 0' },
       { name: 'enable_overall_reading_auth', type: 'BOOLEAN DEFAULT FALSE' },
@@ -144,6 +145,7 @@ export async function GET(request: NextRequest) {
         require_repackaging_confirmation AS requireRepackagingConfirmation,
         require_shelf_transfer_confirmation AS requireShelfTransferApproval,
         require_product_confirmation AS requireProductConfirmation,
+        require_price_update_confirmation AS requirePriceUpdateConfirmation,
         batch_costing_repack_inherit AS batchCostingRepackInherit,
         batch_costing_oversell_block AS batchCostingOversellBlock,
         enable_overall_reading_auth AS enableOverallReadingAuth,
@@ -249,9 +251,10 @@ export async function POST(request: NextRequest) {
           require_bad_order_confirmation, require_stock_count_approval,
           require_repackaging_confirmation, require_shelf_transfer_confirmation,
           require_product_confirmation,
+          require_price_update_confirmation,
           enable_overall_reading_auth, overall_reading_auth_username, overall_reading_auth_password
         )
-        VALUES ('pos_settings_1', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES ('pos_settings_1', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       await query(insertSQL, [
         businessName || 'My Business',
@@ -305,6 +308,7 @@ export async function POST(request: NextRequest) {
         body.requireRepackagingConfirmation ?? false,
         body.requireShelfTransferApproval ?? false,
         body.requireProductConfirmation ?? false,
+        body.requirePriceUpdateConfirmation ?? false,
         enableOverallReadingAuth ?? false,
         overallReadingAuthUsername || null,
         overallReadingAuthPassword || null
@@ -380,6 +384,7 @@ export async function POST(request: NextRequest) {
         requireRepackagingConfirmation: 'require_repackaging_confirmation',
         requireShelfTransferApproval: 'require_shelf_transfer_confirmation',
         requireProductConfirmation: 'require_product_confirmation',
+        requirePriceUpdateConfirmation: 'require_price_update_confirmation',
         batchCostingRepackInherit: 'batch_costing_repack_inherit',
         batchCostingOversellBlock: 'batch_costing_oversell_block',
         enableOverallReadingAuth: 'enable_overall_reading_auth',
