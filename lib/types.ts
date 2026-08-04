@@ -72,7 +72,8 @@ export interface PriceLevel {
   description?: string;
   isDefault: boolean;
   calculationBase?: 'retail' | 'cost';
-  percentageAdjustment?: number; // 100 = 100% (No change), 90 = 10% discount
+  adjustmentType?: 'percentage' | 'fixed'; // 'percentage' (default) or 'fixed' peso amount
+  percentageAdjustment?: number; // a percent when adjustmentType is 'percentage', a peso amount when 'fixed'
   minQuantity?: number;
   createdAt?: string;
   updatedAt?: string;
