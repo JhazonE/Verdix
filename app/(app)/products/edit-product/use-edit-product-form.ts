@@ -270,20 +270,6 @@ export function useEditProductForm({
           const suggestedMainPrice = calculateSuggestedPrice(watchedCost, markup, 0, defaultLevel);
 
           form.setValue('price', parseFloat(suggestedMainPrice.toFixed(2)));
-
-          // Apply to all price levels
-          if (priceLevels.length > 0) {
-              const currentFields = form.getValues('priceLevels') || [];
-              const getFieldIndex = (levelId: string) => currentFields.findIndex((f: any) => f.levelId === levelId);
-
-              priceLevels.forEach((level: any) => {
-                  const levelPrice = calculateSuggestedPrice(watchedCost, markup, 0, level);
-                  const index = getFieldIndex(level.id);
-                  if (index >= 0) {
-                      form.setValue(`priceLevels.${index}.price`, parseFloat(levelPrice.toFixed(2)));
-                  }
-              });
-          }
       }
     } else {
       setMarkupSource(null);
