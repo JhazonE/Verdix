@@ -44,6 +44,9 @@ export function useUploadPriceList(warehouseId: string, onUpdated?: () => void) 
         toast({ variant: 'destructive', title: 'Error', description: result.message || 'Failed to submit price update.' });
       }
       return result;
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Error', description: error.message || 'Failed to submit price update.' });
+      return null;
     } finally {
       setIsSubmitting(false);
     }
