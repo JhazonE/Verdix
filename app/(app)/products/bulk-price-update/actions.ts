@@ -217,6 +217,12 @@ export async function previewPriceListUpload(
       // `newPrice` as the initial price — a to-create row has no "old"
       // value to update from.
       const missing: string[] = [];
+      // sku is required to create a product even though it's optional for a
+      // plain update-by-barcode row — products.sku has a UNIQUE(sku,
+      // warehouse_id) constraint, so a blank sku would either land as bad
+      // data (the first such row) or fail on a duplicate-key collision
+      // (any row after it in the same warehouse).
+      if (!sku) missing.push('sku');
       if (!row.name) missing.push('name');
       if (!row.brand) missing.push('brand');
       if (!row.category) missing.push('category');
