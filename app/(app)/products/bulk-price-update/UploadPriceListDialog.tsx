@@ -41,6 +41,7 @@ export function UploadPriceListDialog({ open, onOpenChange, warehouseId, onUpdat
           className="block w-full text-sm"
           onChange={(e) => {
             const file = e.target.files?.[0];
+            e.target.value = '';
             if (file) up.handleFile(file);
           }}
         />
