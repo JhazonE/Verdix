@@ -394,28 +394,6 @@ export function useAddProductForm({
     }
   }, [selectedPriceLevelId, priceLevels, priceLevelFields, form, categories, subcategories, brands, systemSettings]);
 
-  // Recalculate all price level rows when base price or cost changes
-  useEffect(() => {
-    const allPriceLevels = form.getValues('priceLevels');
-    if (!allPriceLevels || allPriceLevels.length === 0) return;
-
-    allPriceLevels.forEach((pl, idx) => {
-      if (!pl.levelId) return; // Skip rows without a selected level
-
-      const level = priceLevels.find(l => l.id === pl.levelId);
-      if (!level) return;
-
-      const newPrice = calculatePriceLevelPrice(
-        pl.levelId,
-        level.calculationBase || 'retail',
-        priceLevels,
-        watchedPrice || 0,
-        watchedCost || 0
-      );
-      form.setValue(`priceLevels.${idx}.price`, parseFloat(newPrice.toFixed(2)));
-    });
-  }, [watchedPrice, watchedCost, priceLevels, form]);
-
   async function onSubmit(values: ProductFormValues) {
     setIsSubmitting(true);
 
