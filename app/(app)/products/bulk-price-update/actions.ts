@@ -4,6 +4,7 @@ import { query, withTransaction } from '@/lib/mysql';
 import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
 import { applyAdjustment, isValidPriceValue, type AdjustmentType } from '@/lib/price-update-math';
 import { addProduct } from '@/app/(app)/products/actions';
+import { generateSku } from '@/lib/sku';
 
 export interface PriceUpdateItem {
   productId: string;
@@ -217,12 +218,6 @@ export async function previewPriceListUpload(
       // `newPrice` as the initial price — a to-create row has no "old"
       // value to update from.
       const missing: string[] = [];
-      // sku is required to create a product even though it's optional for a
-      // plain update-by-barcode row — products.sku has a UNIQUE(sku,
-      // warehouse_id) constraint, so a blank sku would either land as bad
-      // data (the first such row) or fail on a duplicate-key collision
-      // (any row after it in the same warehouse).
-      if (!sku) missing.push('sku');
       if (!row.name) missing.push('name');
       if (!row.brand) missing.push('brand');
       if (!row.category) missing.push('category');
@@ -241,9 +236,18 @@ export async function previewPriceListUpload(
         skipped.push({ row, reason: 'new_cost must be a non-negative number' });
         continue;
       }
-      if (sku) seenSkus.add(sku);
+      // A blank sku is common for a genuinely new product the uploader
+      // doesn't have a code for yet — auto-generate one instead of skipping,
+      // using the same generator (brand/name prefix + random suffix) the
+      // Add Product dialog's own "Generate SKU" button uses.
+      const newSku = sku || generateSku(row.brand, row.name);
+      if (seenSkus.has(newSku)) {
+        skipped.push({ row, reason: `Duplicate SKU "${newSku}" (earlier row in this file superseded)` });
+        continue;
+      }
+      seenSkus.add(newSku);
       toCreate.push({
-        sku, barcode, name: row.name!, brand: row.brand!, category: row.category!, unitOfMeasure: row.unitOfMeasure!,
+        sku: newSku, barcode, name: row.name!, brand: row.brand!, category: row.category!, unitOfMeasure: row.unitOfMeasure!,
         price: row.newPrice!, cost: row.newCost,
       });
       continue;
