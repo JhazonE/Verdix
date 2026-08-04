@@ -4,6 +4,7 @@ import React, { useMemo, useCallback } from 'react';
 import { format } from 'date-fns';
 import type { SaleItem } from '../pos-content/pos-types';
 import { mapVatStatusToTaxType } from '../pos-content/pos-types';
+import { resolveEffectiveTaxType } from '@/lib/tax-utils';
 import type { SystemSettings } from '@/lib/types';
 
 type Options = {
@@ -38,7 +39,8 @@ export function useReceipt({ items, totalDue, saleDetails, settings }: Options) 
   const computedTax = useMemo(() => {
     const vatableGross = items.reduce((acc, item) => {
       const netItemTotal = item.price * item.quantity * (1 - (item.discount || 0) / 100);
-      const taxType = item.taxType || mapVatStatusToTaxType(item.vatStatus);
+      const baseTaxType = item.taxType || mapVatStatusToTaxType(item.vatStatus);
+      const taxType = resolveEffectiveTaxType(baseTaxType, item.discountType, item.discount);
       return taxType === 'VAT' ? acc + netItemTotal : acc;
     }, 0);
 
@@ -47,7 +49,8 @@ export function useReceipt({ items, totalDue, saleDetails, settings }: Options) 
 
     const vatExemptSales = items.reduce((acc, item) => {
       const netItemTotal = item.price * item.quantity * (1 - (item.discount || 0) / 100);
-      const taxType = item.taxType || mapVatStatusToTaxType(item.vatStatus);
+      const baseTaxType = item.taxType || mapVatStatusToTaxType(item.vatStatus);
+      const taxType = resolveEffectiveTaxType(baseTaxType, item.discountType, item.discount);
       return taxType === 'VAT_EXEMPT' ? acc + netItemTotal : acc;
     }, 0);
 

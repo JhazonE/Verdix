@@ -40,6 +40,8 @@ export class VoidSlipGenerator {
         const address = settings?.address?.trim() || 'General Merchandise';
         const minNumber = sale.terminalMin || settings?.minNumber || '1234567890';
         const serialNumber = sale.terminalSerialNumber || settings?.serialNumber || '0987654321-11';
+        const accreditationNo = sale.terminalAccreditationNo;
+        const permitNo = sale.terminalPermitNo;
         const dateStr = format(new Date(), 'PP p');
 
         // ─── HEADER (centered) ───────────────────────────────────────────
@@ -50,6 +52,8 @@ export class VoidSlipGenerator {
         if (settings?.tin)           enc.line(`VAT REG TIN: ${settings.tin}`);
         enc.line(`MIN: ${minNumber}`);
         enc.line(`S/N: ${serialNumber}`);
+        if (accreditationNo) enc.line(`ACCR NO: ${accreditationNo}`);
+        if (permitNo)        enc.line(`PTU NO: ${permitNo}`);
         enc.line(dateStr);
         enc.raw([0x1b, 0x61, 0x30]); // Native Left
         enc.newline();

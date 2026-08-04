@@ -154,6 +154,9 @@ export interface Sale {
   cashierName?: string;
   terminalMin?: string;
   terminalSerialNumber?: string;
+  terminalPermitNo?: string;
+  terminalAccreditationNo?: string;
+  terminalPermitDateIssued?: string;
   pointsUsedCount?: number;
   pointsBalance?: number;
   paymentReference?: string;
@@ -560,6 +563,9 @@ export interface ZReadingData {
   terminalId?: string;
   terminalMin?: string;
   terminalSerialNumber?: string;
+  terminalPermitNo?: string;
+  terminalAccreditationNo?: string;
+  terminalPermitDateIssued?: string;
   minSaleId?: string;
   maxSaleId?: string;
   minVoidId?: string;
@@ -624,6 +630,8 @@ export interface XReadingData {
   refundAmount?: number;
   min?: string;
   sn?: string;
+  permitNo?: string;
+  accreditationNo?: string;
   businessName?: string;
   operatedBy?: string | null;
   address?: string;

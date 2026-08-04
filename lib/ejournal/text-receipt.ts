@@ -58,7 +58,7 @@ export function renderSalesReceiptText(sale: EJSale, settings: EJSettings): stri
   const out: string[] = [];
   out.push(...renderReceiptHeader(settings, sale.dateTime));
   out.push('');
-  const title = sale.paymentMethod?.toUpperCase() === 'CHARGE' ? 'CHARGE SLIP' : 'CASH SALE';
+  const title = sale.paymentMethod?.toUpperCase() === 'CHARGE' ? 'CHARGE INVOICE' : 'CASH INVOICE';
   out.push(center(title, cols));
   out.push(`SI NO.: ${formatSINumber(sale.siNumber)}`);
   out.push(`Cust: ${sale.customerName || 'Walk-in'}`);

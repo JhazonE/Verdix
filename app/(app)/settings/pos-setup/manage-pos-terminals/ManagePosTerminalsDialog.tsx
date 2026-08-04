@@ -41,6 +41,7 @@ export function ManagePosTerminalsDialog() {
                 { name: 'serialNumber',        label: 'Serial Number' },
                 { name: 'min',                 label: 'MIN' },
                 { name: 'permitNo',            label: 'Permit No.' },
+                { name: 'accreditationNo',     label: 'Accreditation No.' },
                 { name: 'orNextReference',     label: 'OR Next Reference' },
               ].map(({ name, label }) => (
                 <FormField key={name} control={form.control} name={name as any} render={({ field }) => (
@@ -51,6 +52,14 @@ export function ManagePosTerminalsDialog() {
                   </FormItem>
                 )} />
               ))}
+
+              <FormField control={form.control} name="permitDateIssued" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>PTU Date Issued</FormLabel>
+                  <FormControl><Input type="date" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
 
               <FormField control={form.control} name="printOfficialReceipt" render={({ field }) => (
                 <FormItem>

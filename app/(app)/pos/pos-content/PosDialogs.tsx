@@ -39,6 +39,9 @@ export function PosDialogs(pos: Props) {
         terminalId={pos.selectedTerminalId}
         terminalMin={pos.terminals?.find((t: any) => t.id === pos.selectedTerminalId)?.min}
         terminalSerialNumber={pos.terminals?.find((t: any) => t.id === pos.selectedTerminalId)?.serialNumber}
+        terminalPermitNo={pos.terminals?.find((t: any) => t.id === pos.selectedTerminalId)?.permitNo}
+        terminalAccreditationNo={pos.terminals?.find((t: any) => t.id === pos.selectedTerminalId)?.accreditationNo}
+        terminalPermitDateIssued={pos.terminals?.find((t: any) => t.id === pos.selectedTerminalId)?.permitDateIssued}
         terminalName={pos.currentTerminalName}
         isTrainingMode={pos.isTrainingMode}
         paymentMethods={pos.paymentMethods}

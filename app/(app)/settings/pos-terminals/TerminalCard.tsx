@@ -81,6 +81,8 @@ export function TerminalCard({ terminal, currentTerminalId, warehouses, isOnline
               { label: 'Serial Number', value: terminal.serialNumber },
               { label: 'MIN',           value: terminal.min },
               { label: 'Permit No',     value: terminal.permitNo },
+              { label: 'Accreditation No', value: terminal.accreditationNo },
+              { label: 'PTU Date Issued', value: terminal.permitDateIssued ? String(terminal.permitDateIssued).split('T')[0] : null },
               { label: 'Receipt',       value: terminal.printOfficialReceipt === 'Yes' ? 'Official' : 'Registry' },
             ].map(({ label, value }) => (
               <div key={label} className="flex flex-col">

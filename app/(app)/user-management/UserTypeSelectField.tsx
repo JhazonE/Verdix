@@ -27,7 +27,7 @@ export function UserTypeSelectField({ form, userTypes, onCreateNew }: Props) {
             value={field.value}
           >
             <FormControl>
-              <SelectTrigger className="bg-white">
+              <SelectTrigger>
                 <SelectValue placeholder="Select a user type" />
               </SelectTrigger>
             </FormControl>

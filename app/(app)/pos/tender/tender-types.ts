@@ -14,6 +14,9 @@ export interface TenderDialogProps {
   terminalId: string;
   terminalMin?: string;
   terminalSerialNumber?: string;
+  terminalPermitNo?: string;
+  terminalAccreditationNo?: string;
+  terminalPermitDateIssued?: string;
   terminalName?: string;
   isTrainingMode?: boolean;
   paymentMethods: { id: string; name: string; isReferenceRequired?: boolean; pointsAmount?: number; currencyEquivalent?: number }[];
@@ -50,6 +53,9 @@ export interface CompletedSale {
   pointsBalance: number;
   terminalMin?: string;
   terminalSerialNumber?: string;
+  terminalPermitNo?: string;
+  terminalAccreditationNo?: string;
+  terminalPermitDateIssued?: string;
   terminalName?: string;
   isTrainingMode?: boolean;
   taxBreakdown: {

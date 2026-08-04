@@ -21,6 +21,9 @@ export interface ReceiptViewProps {
     pointsUsed?: number;
     terminalMin?: string;
     terminalSerialNumber?: string;
+    terminalPermitNo?: string;
+    terminalAccreditationNo?: string;
+    terminalPermitDateIssued?: string;
     terminalName?: string;
     isTrainingMode?: boolean;
     paymentReference?: string;

@@ -7,6 +7,7 @@ import { useProducts } from '@/hooks/use-api';
 import { useCustomerDisplay } from '@/hooks/use-customer-display';
 import { useLiveRefresh, dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { calculateEffectivePrice } from '@/lib/pricing';
+import { resolveEffectiveTaxType } from '@/lib/tax-utils';
 import { getApiUrl } from '@/lib/api-config';
 import { formatStockQuantity } from '@/lib/utils';
 import { WALK_IN_CUSTOMER } from '../customer-account/customer-account-types';
@@ -1083,7 +1084,8 @@ export function usePOS() {
       const itemTotal = item.price * item.quantity;
       const net = itemTotal - (itemTotal * item.discount) / 100;
       subTotal += net;
-      const taxType = item.taxType || mapVatStatusToTaxType(item.vatStatus);
+      const baseTaxType = item.taxType || mapVatStatusToTaxType(item.vatStatus);
+      const taxType = resolveEffectiveTaxType(baseTaxType, item.discountType, item.discount);
       if (taxType === 'VAT') { const vatable = net / 1.12; vatSales += vatable; vatAmount += net - vatable; }
       else if (taxType === 'NON_VAT') nonVatSales += net;
       else if (taxType === 'ZERO_RATED') zeroRatedSales += net;

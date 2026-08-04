@@ -14,6 +14,8 @@ function toFormValues(t: PosTerminal): TerminalFormValues {
     serialNumber:         t.serialNumber         || '',
     min:                  t.min                  || '',
     permitNo:             t.permitNo             || '',
+    accreditationNo:      t.accreditationNo      || '',
+    permitDateIssued:     t.permitDateIssued ? String(t.permitDateIssued).split('T')[0] : '',
     printOfficialReceipt: t.printOfficialReceipt || 'No',
     orNextReference:      t.orNextReference      || '',
     inventoryLocation:    t.inventoryLocation    || 'Store',

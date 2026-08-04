@@ -52,6 +52,14 @@ export function AddPosTerminalDialog({ onTerminalAdded }: Props) {
                 )} />
               ))}
 
+              <FormField control={form.control} name="permitDateIssued" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>PTU DATE ISSUED</FormLabel>
+                  <FormControl><Input type="date" {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+
               <FormField control={form.control} name="printOfficialReceipt" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Print Official Receipt</FormLabel>

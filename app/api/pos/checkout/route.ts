@@ -5,6 +5,7 @@ import { deductFromBatches, getBatchCostingSettings } from '@/lib/batch-deductio
 import { ensureCustomerCreditColumn } from '@/lib/ensure-customer-credit';
 import { query } from '@/lib/mysql';
 import { isService } from '@/lib/product-type';
+import { resolveEffectiveTaxType } from '@/lib/tax-utils';
 
 // Cached per process — the columns can't disappear once ensured, so don't pay
 // an INFORMATION_SCHEMA round trip on every checkout.
@@ -112,8 +113,10 @@ export async function POST(request: NextRequest) {
       // Get terminal specific receipt (OR)
       const receiptNo = await getNextReceiptNumber(terminalId, connection);
 
-      // Get next SI Number (consolidated sequence number)
-      const siNumber = await getNextSINumber(connection);
+      // Get next SI Number (consolidated sequence number). Training-mode sales are
+      // excluded from official BIR totals, so they must not burn a real SI number —
+      // doing so would create unexplained jumps in the filed sequence.
+      const siNumber = isTrainingMode ? null : await getNextSINumber(connection);
 
       const isCharge = typeof paymentMethod === 'string' && paymentMethod.toUpperCase() === 'CHARGE';
       const invoiceStatus = isCharge ? 'Pending' : 'Paid';
@@ -398,13 +401,15 @@ export async function POST(request: NextRequest) {
         const discAmount = (originalPrice * item.quantity) * (discountPercent / 100);
         const lTotal = (originalPrice * item.quantity) - discAmount;
 
+        const effectiveTaxType = resolveEffectiveTaxType(item.taxType || 'VAT', item.discountType, discountPercent);
+
         posItemRows.push([
           posItemId, posTransId, itemId, item.id, item.name,
           item.quantity, originalPrice, discountPercent, discAmount,
           item.discountType || 'percent',
           item.discountIdNumber || null,
           item.discountHolderName || null,
-          item.taxType || 'VAT',
+          effectiveTaxType,
           lTotal
         ]);
       }

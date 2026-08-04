@@ -54,7 +54,7 @@ export function EditUserDialog({ user, onUserUpdated, open, onOpenChange }: Prop
                       <FormItem>
                         <FormLabel>Full Name</FormLabel>
                         <FormControl>
-                          <Input placeholder="Full name" {...field} value={field.value ?? ''} className="bg-white" />
+                          <Input placeholder="Full name" {...field} value={field.value ?? ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -67,7 +67,7 @@ export function EditUserDialog({ user, onUserUpdated, open, onOpenChange }: Prop
                       <FormItem>
                         <FormLabel>Username</FormLabel>
                         <FormControl>
-                          <Input placeholder="username" {...field} value={field.value ?? ''} className="bg-white" />
+                          <Input placeholder="username" {...field} value={field.value ?? ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -81,7 +81,7 @@ export function EditUserDialog({ user, onUserUpdated, open, onOpenChange }: Prop
                       <FormItem>
                         <FormLabel>Password (leave blank to keep current)</FormLabel>
                         <FormControl>
-                          <Input type="password" {...field} value={field.value ?? ''} placeholder="New password" className="bg-white h-11" />
+                          <Input type="password" {...field} value={field.value ?? ''} placeholder="New password" className="h-11" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

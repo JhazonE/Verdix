@@ -44,7 +44,12 @@ export function BirComplianceCard({ settings, set }: Props) {
         <CardDescription>Features required for BIR Cashering / POS System compliance</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex items-center justify-between">
+        <p className="text-xs text-blue-700/70 dark:text-blue-300/70">
+          MIN, Serial Number, BIR Accreditation No., and Permit to Use (PTU) No. + Date Issued are configured
+          per machine under Settings → POS Terminals, since each accredited unit has its own.
+        </p>
+
+        <div className="flex items-center justify-between pt-4 border-t border-blue-100 dark:border-blue-500/20">
           <div className="space-y-0.5">
             <Label htmlFor="isTrainingMode" className="text-blue-900 dark:text-blue-200 font-semibold">Training Mode</Label>
             <p className="text-sm text-blue-700/70 dark:text-blue-300/70">

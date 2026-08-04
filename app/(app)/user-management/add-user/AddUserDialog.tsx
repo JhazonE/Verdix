@@ -51,7 +51,7 @@ export function AddUserDialog({ onUserAdded }: { onUserAdded: () => void }) {
                       <FormItem>
                         <FormLabel>Full Name</FormLabel>
                         <FormControl>
-                          <Input placeholder="John Doe" {...field} value={field.value ?? ''} className="bg-white" />
+                          <Input placeholder="John Doe" {...field} value={field.value ?? ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -64,7 +64,7 @@ export function AddUserDialog({ onUserAdded }: { onUserAdded: () => void }) {
                       <FormItem>
                         <FormLabel>Username</FormLabel>
                         <FormControl>
-                          <Input placeholder="username" {...field} value={field.value ?? ''} className="bg-white" />
+                          <Input placeholder="username" {...field} value={field.value ?? ''} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -78,7 +78,7 @@ export function AddUserDialog({ onUserAdded }: { onUserAdded: () => void }) {
                       <FormItem>
                         <FormLabel>Password</FormLabel>
                         <FormControl>
-                          <Input type="password" placeholder="••••••••" {...field} value={field.value ?? ''} className="bg-white h-11" />
+                          <Input type="password" placeholder="••••••••" {...field} value={field.value ?? ''} className="h-11" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

@@ -130,8 +130,8 @@ export async function GET(request: NextRequest) {
             SELECT 
                 SUM(st.total) as gross_sales,
                 COUNT(*) as transaction_count,
-                MIN(st.receipt_number) as min_sale_id,
-                MAX(st.receipt_number) as max_sale_id,
+                MIN(st.si_number) as min_sale_id,
+                MAX(st.si_number) as max_sale_id,
                 SUM(pt.discount_amount) as total_discounts
             ${salesBaseSql}
         `;
@@ -150,8 +150,8 @@ export async function GET(request: NextRequest) {
 
         const voidSeqSql = `
             SELECT 
-                MIN(st.receipt_number) as min_void_id,
-                MAX(st.receipt_number) as max_void_id,
+                MIN(st.si_number) as min_void_id,
+                MAX(st.si_number) as max_void_id,
                 SUM(st.total) as void_amount
             FROM sales_transactions st
             JOIN pos_transactions pt ON st.id = pt.sale_id
@@ -165,8 +165,8 @@ export async function GET(request: NextRequest) {
 
         const returnSequenceSql = `
            SELECT 
-                MIN(st.receipt_number) as min_return_id,
-                MAX(st.receipt_number) as max_return_id
+                MIN(st.si_number) as min_return_id,
+                MAX(st.si_number) as max_return_id
            FROM pos_transactions pt
            LEFT JOIN sales_transactions st ON pt.sale_id = st.id
            WHERE pt.transaction_type = 'return'
@@ -307,15 +307,21 @@ export async function GET(request: NextRequest) {
 
         let terminalMin = '';
         let terminalSn = '';
+        let terminalPermitNo = '';
+        let terminalAccreditationNo = '';
+        let terminalPermitDateIssued = '';
         let terminalZCounter = 0;
         let terminalResetCounter = 0;
-        
+
         if (terminalId && terminalId !== 'all') {
-            const termSql = `SELECT terminal_min, terminal_serial_number, z_counter, reset_counter FROM pos_terminals WHERE id = ?`;
+            const termSql = `SELECT min_number, serial_number, permit_no, accreditation_no, permit_date_issued, z_counter, reset_counter FROM pos_terminals WHERE id = ?`;
             const [termResult] = await query(termSql, [terminalId]) as any[];
             if (termResult) {
-                terminalMin = termResult.terminal_min;
-                terminalSn = termResult.terminal_serial_number;
+                terminalMin = termResult.min_number;
+                terminalSn = termResult.serial_number;
+                terminalPermitNo = termResult.permit_no;
+                terminalAccreditationNo = termResult.accreditation_no;
+                terminalPermitDateIssued = termResult.permit_date_issued;
                 terminalZCounter = safeInt(termResult.z_counter);
                 terminalResetCounter = safeInt(termResult.reset_counter);
             }
@@ -356,6 +362,9 @@ export async function GET(request: NextRequest) {
             terminalId: terminalId,
             terminalMin: terminalMin || '',
             terminalSerialNumber: terminalSn || '',
+            terminalPermitNo: terminalPermitNo || '',
+            terminalAccreditationNo: terminalAccreditationNo || '',
+            terminalPermitDateIssued: terminalPermitDateIssued || '',
             minSaleId: salesResult?.min_sale_id ? String(salesResult.min_sale_id).padStart(6, '0') : '000000',
             maxSaleId: salesResult?.max_sale_id ? String(salesResult.max_sale_id).padStart(6, '0') : '000000',
             minVoidId: voidSeqResult?.min_void_id ? String(voidSeqResult.min_void_id).padStart(6, '0') : '000000',
@@ -394,7 +403,9 @@ export async function GET(request: NextRequest) {
 
     } else {
         let querySql = `
-            SELECT z.*, pt.terminal_min, pt.terminal_serial_number AS terminal_sn
+            SELECT z.*, pt.min_number AS terminal_min, pt.serial_number AS terminal_sn,
+                   pt.permit_no AS terminal_permit_no, pt.accreditation_no AS terminal_accreditation_no,
+                   pt.permit_date_issued AS terminal_permit_date_issued
             FROM z_readings z
             LEFT JOIN pos_terminals pt ON z.terminal_id = pt.id
             WHERE 1=1
@@ -464,6 +475,9 @@ export async function GET(request: NextRequest) {
                 terminalId: row.terminal_id,
                 terminalMin: row.terminal_min || '',
                 terminalSerialNumber: row.terminal_sn || '',
+                terminalPermitNo: row.terminal_permit_no || '',
+                terminalAccreditationNo: row.terminal_accreditation_no || '',
+                terminalPermitDateIssued: row.terminal_permit_date_issued || '',
                 minSaleId: row.min_sale_id || '',
                 maxSaleId: row.max_sale_id || '',
                 minVoidId: row.min_void_id || '',
@@ -529,7 +543,7 @@ export async function POST(request: NextRequest) {
         `;
         const salesParams = [...dateParams, terminalId];
 
-        const salesSql = `SELECT SUM(st.total) as gross_sales, COUNT(*) as transaction_count, MIN(st.receipt_number) as min_sale_id, MAX(st.receipt_number) as max_sale_id, SUM(pt.discount_amount) as total_discounts ${salesBaseSql}`;
+        const salesSql = `SELECT SUM(st.total) as gross_sales, COUNT(*) as transaction_count, MIN(st.si_number) as min_sale_id, MAX(st.si_number) as max_sale_id, SUM(pt.discount_amount) as total_discounts ${salesBaseSql}`;
         const [salesResult] = await query(salesSql, salesParams) as any[];
 
         const returnsSql = `SELECT SUM(st.total) as total_returns FROM sales_transactions st JOIN pos_transactions pt ON st.id = pt.sale_id WHERE st.status = 'Returned' AND pt.is_training = 0 ${dateCondition} AND pt.terminal_id = ?`;
@@ -538,11 +552,11 @@ export async function POST(request: NextRequest) {
         const paymentSql = `SELECT st.payment_method, SUM(st.total) as amount FROM sales_transactions st JOIN pos_transactions pt ON st.id = pt.sale_id WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned') AND pt.is_training = 0 ${dateCondition} AND pt.terminal_id = ? GROUP BY st.payment_method`;
         const paymentResults = await query(paymentSql, salesParams) as any[];
 
-        const voidSeqSql = `SELECT MIN(st.receipt_number) as min_void_id, MAX(st.receipt_number) as max_void_id, SUM(st.total) as void_amount FROM sales_transactions st JOIN pos_transactions pt ON st.id = pt.sale_id WHERE st.status IN ('Void', 'Voided', 'Cancelled') AND pt.is_training = 0 ${dateCondition} AND pt.terminal_id = ?`;
+        const voidSeqSql = `SELECT MIN(st.si_number) as min_void_id, MAX(st.si_number) as max_void_id, SUM(st.total) as void_amount FROM sales_transactions st JOIN pos_transactions pt ON st.id = pt.sale_id WHERE st.status IN ('Void', 'Voided', 'Cancelled') AND pt.is_training = 0 ${dateCondition} AND pt.terminal_id = ?`;
         const [voidSeqResult] = await query(voidSeqSql, salesParams) as any[];
         const voidAmount = parseFloat(voidSeqResult?.void_amount || 0);
 
-        const returnSeqSql = `SELECT MIN(st.receipt_number) as min_return_id, MAX(st.receipt_number) as max_return_id FROM pos_transactions pt LEFT JOIN sales_transactions st ON pt.sale_id = st.id WHERE pt.transaction_type = 'return' AND pt.is_training = 0 ${dateCondition.replace(/st\.created_at/g, 'pt.created_at')} AND pt.terminal_id = ?`;
+        const returnSeqSql = `SELECT MIN(st.si_number) as min_return_id, MAX(st.si_number) as max_return_id FROM pos_transactions pt LEFT JOIN sales_transactions st ON pt.sale_id = st.id WHERE pt.transaction_type = 'return' AND pt.is_training = 0 ${dateCondition.replace(/st\.created_at/g, 'pt.created_at')} AND pt.terminal_id = ?`;
         const [returnSeqResult] = await query(returnSeqSql, salesParams) as any[];
 
         // Detailed Summaries for POST
@@ -610,7 +624,7 @@ export async function POST(request: NextRequest) {
         const cashInDrawer = startingCash + cashSales; 
 
         const paymentMethods = paymentResults.map((p: any) => ({ name: p.payment_method || 'Unknown', amount: parseFloat(p.amount) }));
-        const [termResult] = await query(`SELECT terminal_min, terminal_serial_number, z_counter, reset_counter FROM pos_terminals WHERE id = ?`, [terminalId]) as any[];
+        const [termResult] = await query(`SELECT min_number, serial_number, permit_no, accreditation_no, permit_date_issued, z_counter, reset_counter FROM pos_terminals WHERE id = ?`, [terminalId]) as any[];
         const [prevResult] = await query(`SELECT SUM(net_sales) as previous_total FROM z_readings WHERE report_date <= ? AND terminal_id = ?`, [startDate || '2000-01-01', terminalId]) as any[];
         
 
@@ -668,7 +682,9 @@ export async function POST(request: NextRequest) {
             returns: parseFloat(returnsResult?.total_returns || 0), discounts: parseFloat(salesResult?.total_discounts || 0),
             netSales: finalNetSales, vatSales: vatableSales, vatAmount, paymentMethods,
             transactionCount: parseInt(salesResult?.transaction_count || 0), startingCash, cashSales, cashInDrawer, cashierName, terminalId,
-            terminalMin: termResult?.terminal_min || '', terminalSerialNumber: termResult?.terminal_serial_number || '',
+            terminalMin: termResult?.min_number || '', terminalSerialNumber: termResult?.serial_number || '',
+            terminalPermitNo: termResult?.permit_no || '', terminalAccreditationNo: termResult?.accreditation_no || '',
+            terminalPermitDateIssued: termResult?.permit_date_issued || '',
             minSaleId: salesResult?.min_sale_id || '000000', maxSaleId: salesResult?.max_sale_id || '000000',
             minVoidId: voidSeqResult?.min_void_id || '000000', maxVoidId: voidSeqResult?.max_void_id || '000000',
             minReturnId: returnSeqResult?.min_return_id || '000000', maxReturnId: returnSeqResult?.max_return_id || '000000',

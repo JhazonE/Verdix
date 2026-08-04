@@ -16,26 +16,38 @@ async function ensureVoidReasonColumn() {
         await query("ALTER TABLE sales_transactions ADD COLUMN void_reason VARCHAR(255) DEFAULT NULL");
         console.log('✅ Added void_reason column to sales_transactions');
     }
+    if (!cols.some((c: any) => c.COLUMN_NAME === 'voided_by_user_id')) {
+        await query("ALTER TABLE sales_transactions ADD COLUMN voided_by_user_id VARCHAR(100) DEFAULT NULL");
+        console.log('✅ Added voided_by_user_id column to sales_transactions');
+    }
+    if (!cols.some((c: any) => c.COLUMN_NAME === 'voided_by_name')) {
+        await query("ALTER TABLE sales_transactions ADD COLUMN voided_by_name VARCHAR(255) DEFAULT NULL");
+        console.log('✅ Added voided_by_name column to sales_transactions');
+    }
     voidReasonColumnEnsured = true;
 }
 
 export async function POST(request: NextRequest) {
     try {
-        const { saleId, voidReason } = await request.json();
+        const { saleId, voidReason, voidedByUserId, voidedByName } = await request.json();
         console.log('void-transaction: Received saleId:', saleId);
 
         if (!saleId) {
             return NextResponse.json({ success: false, error: 'Sale ID is required' }, { status: 400 });
+        }
+        if (!voidReason || !String(voidReason).trim()) {
+            return NextResponse.json({ success: false, error: 'A void reason is required' }, { status: 400 });
         }
 
         await ensureVoidReasonColumn();
 
         let notFound = false;
         let alreadyVoided = false;
+        let periodLocked = false;
 
         const result = await withTransaction(async (connection: any) => {
             // 1. Fetch sales transaction to check status
-            const [sale]: any = await connection.query('SELECT id, status FROM sales_transactions WHERE id = ?', [saleId]);
+            const [sale]: any = await connection.query('SELECT id, status, created_at FROM sales_transactions WHERE id = ?', [saleId]);
             console.log('void-transaction: Found sale:', sale);
 
             if (!sale || sale.length === 0) {
@@ -46,6 +58,25 @@ export async function POST(request: NextRequest) {
             if (String(sale[0].status || '').toLowerCase() === 'voided') {
                 alreadyVoided = true;
                 return null;
+            }
+
+            // 1b. BIR immutability: a transaction already swept into a Z-reading for its
+            // terminal can no longer be voided — the Z-reading's totals are a locked
+            // report, so silently voiding after the fact would make it disagree with
+            // what was actually filed.
+            const [termRow]: any = await connection.query(
+                'SELECT terminal_id FROM pos_transactions WHERE sale_id = ? LIMIT 1', [saleId]
+            );
+            const terminalId = termRow?.[0]?.terminal_id;
+            if (terminalId) {
+                const [zRow]: any = await connection.query(
+                    'SELECT report_date FROM z_readings WHERE terminal_id = ? AND report_date >= ? ORDER BY report_date DESC LIMIT 1',
+                    [terminalId, sale[0].created_at]
+                );
+                if (zRow && zRow.length > 0) {
+                    periodLocked = true;
+                    return null;
+                }
             }
 
             // 2. Fetch items to reverse stock
@@ -71,8 +102,8 @@ export async function POST(request: NextRequest) {
 
             // 3. Update sales_transactions status to 'voided'
             await connection.query(
-                'UPDATE sales_transactions SET status = "Voided", void_reason = ?, updated_at = NOW() WHERE id = ?',
-                [voidReason?.trim() || null, saleId]
+                'UPDATE sales_transactions SET status = "Voided", void_reason = ?, voided_by_user_id = ?, voided_by_name = ?, updated_at = NOW() WHERE id = ?',
+                [voidReason.trim(), voidedByUserId || null, voidedByName || null, saleId]
             );
             console.log('void-transaction: Transaction marked as voided');
 
@@ -92,6 +123,9 @@ export async function POST(request: NextRequest) {
         }
         if (alreadyVoided) {
             return NextResponse.json({ success: false, error: 'Transaction is already voided' }, { status: 400 });
+        }
+        if (periodLocked) {
+            return NextResponse.json({ success: false, error: 'This transaction was already included in a Z-Reading and can no longer be voided' }, { status: 409 });
         }
 
         if (result?.d) {

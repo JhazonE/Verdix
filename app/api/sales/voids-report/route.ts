@@ -2,8 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { formatSINumber } from '@/lib/si-number';
 
+// voided_by_name is added lazily by /api/pos/void-transaction — this report can be
+// the first thing to run against a fresh DB, so it can't assume the column exists.
+let voidedByColumnChecked = false;
+let hasVoidedByColumn = false;
+async function checkVoidedByColumn() {
+  if (voidedByColumnChecked) return hasVoidedByColumn;
+  const cols = await query(
+    "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'sales_transactions' AND COLUMN_NAME = 'voided_by_name' AND TABLE_SCHEMA = DATABASE()"
+  ) as any[];
+  hasVoidedByColumn = cols.length > 0;
+  voidedByColumnChecked = true;
+  return hasVoidedByColumn;
+}
+
 export async function GET(request: NextRequest) {
   try {
+    const hasVoidedBy = await checkVoidedByColumn();
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('startDate'); // yyyy-MM-dd
     const endDate = searchParams.get('endDate');     // yyyy-MM-dd
@@ -18,8 +33,8 @@ export async function GET(request: NextRequest) {
         COALESCE(c.name, 'Walk-in Customer') as customer_name,
         u_cashier.display_name as cashier_name,
         st.updated_at as void_date,
-        u_cashier.display_name as voided_by,
-        u_cashier.display_name as override_by,
+        ${hasVoidedBy ? 'COALESCE(st.voided_by_name, u_cashier.display_name)' : 'u_cashier.display_name'} as voided_by,
+        ${hasVoidedBy ? 'COALESCE(st.voided_by_name, u_cashier.display_name)' : 'u_cashier.display_name'} as override_by,
         st.total as sales_amount,
         COALESCE(pt.tax_amount, 0) as vat_amount,
         st.notes as note,

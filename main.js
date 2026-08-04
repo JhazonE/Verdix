@@ -15,6 +15,20 @@ if (!app.requestSingleInstanceLock()) {
   process.exit(0);
 }
 
+// Port for the bundled Next.js server. Deliberately high and uncommon: 3000 is
+// taken by the dev server and 8888 by the Apache in UniServer/WAMP stacks (e.g.
+// Cashier V3.0), which the POS would otherwise mistake for its own server.
+// Must stay in sync with PORT in start_server.bat and NEXT_PUBLIC_API_BASE_URL.
+//
+// Unpackaged runs (electron-only/electron-dev) never spawn their own server —
+// `appRoot` below is derived from process.resourcesPath, which only points at
+// the project root once packaged, and server.js doesn't exist pre-`next build`
+// anyway. So in dev we just connect to the `npm run dev` server on port 3000
+// instead, and skip the spawn/health-poll-to-47821 path entirely.
+const isDev = !app.isPackaged;
+const SERVER_PORT = isDev ? 3000 : 47821;
+const SERVER_ORIGIN = `http://localhost:${SERVER_PORT}`;
+
 let serverProcess;
 let splashWindow;
 let logStream;
@@ -160,7 +174,7 @@ function createWindow() {
 
   win.setIcon(path.join(__dirname, 'public', 'verdix_logo.png'));
 
-  const startUrl = `http://localhost:8888${startRoute}`; 
+  const startUrl = `${SERVER_ORIGIN}${startRoute}`;
   win.loadURL(startUrl);
 
   // Retry loading if it fails (e.g. server not ready yet)
@@ -265,7 +279,7 @@ ipcMain.handle('window:open-customer-display', () => {
   });
 
   customerDisplayWindow.setIcon(path.join(__dirname, 'public', 'verdix_logo.png'));
-  customerDisplayWindow.loadURL('http://localhost:8888/pos/customer-display');
+  customerDisplayWindow.loadURL(`${SERVER_ORIGIN}/pos/customer-display`);
   customerDisplayWindow.once('ready-to-show', () => customerDisplayWindow.show());
   customerDisplayWindow.on('closed', () => { customerDisplayWindow = null; });
 
@@ -351,12 +365,34 @@ app.whenReady().then(async () => {
   
   logStream.write(`\n\n--- App started at ${new Date().toISOString()} ---\n`);
 
+  // Resolves true only when OUR server answers. Any HTTP 200 used to count,
+  // which meant an unrelated web server on the port (Apache from a UniServer/WAMP
+  // install) looked like a healthy POS: we skipped spawning and then loaded the
+  // wrong app. Checking the /api/health signature makes the answer unambiguous.
   function checkServerRunning() {
     return new Promise((resolve) => {
-      const req = http.get('http://localhost:8888', (res) => {
-        resolve(true);
+      const req = http.get(`${SERVER_ORIGIN}/api/health`, (res) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          resolve(false);
+          return;
+        }
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(body).service === 'verdix-pos');
+          } catch {
+            resolve(false);
+          }
+        });
       });
       req.on('error', () => {
+        resolve(false);
+      });
+      req.setTimeout(2000, () => {
+        req.destroy();
         resolve(false);
       });
       req.end();
@@ -367,12 +403,18 @@ app.whenReady().then(async () => {
     const isRunning = await checkServerRunning();
     
     if (isRunning) {
-      logStream.write('Server is already running on port 8888. Skipping spawn.\n');
-      console.log('Server is already running on port 8888. Skipping spawn.');
+      logStream.write(`Server is already running on port ${SERVER_PORT}. Skipping spawn.\n`);
+      console.log(`Server is already running on port ${SERVER_PORT}. Skipping spawn.`);
+    } else if (isDev) {
+      // Nothing to spawn: server.js only exists after `next build`. The dev
+      // server has to already be running (run `npm run dev` first, or use
+      // `npm run electron-dev` which starts it for you).
+      logStream.write('Dev server not detected on port 3000. Waiting for `npm run dev`...\n');
+      console.log('Dev server not detected on port 3000. Waiting for `npm run dev`...');
     } else {
       logStream.write('Server not detected. Spawning Next.js server...\n');
       console.log('Server not detected. Spawning Next.js server...');
-      
+
       const { spawn } = require('child_process');
       const dotenv = require('dotenv');
       const appRoot = path.join(process.resourcesPath, '..');
@@ -404,6 +446,10 @@ app.whenReady().then(async () => {
         env: {
           ...process.env,
           ...envConfig,
+          // server.js binds process.env.PORT || 3000. Everything on this side
+          // talks to SERVER_PORT, so without this the server listens on 3000 and
+          // the poll below times out at 30s even though startup succeeded.
+          PORT: String(SERVER_PORT),
           // Where the Next.js server writes BIR e-journal .txt files (per date/terminal).
           VERDIX_EJOURNAL_DIR: path.join(app.getPath('userData'), 'EJournals'),
         },
@@ -438,7 +484,12 @@ app.whenReady().then(async () => {
     } else {
       logStream.write('Server failed to respond within timeout.\n');
       if (splashWindow) splashWindow.close();
-      dialog.showErrorBox('Server Error', 'Next.js server failed to respond within 30 seconds. Please check server.log.');
+      dialog.showErrorBox(
+        'Server Error',
+        isDev
+          ? 'No dev server responded on http://localhost:3000 within 30 seconds. Run `npm run dev` in another terminal first, or use `npm run electron-dev`.'
+          : 'Next.js server failed to respond within 30 seconds. Please check server.log.'
+      );
     }
   } catch (serverErr) {
     dialog.showErrorBox('Server Error', 'Exception while checking/starting server: ' + serverErr.message);

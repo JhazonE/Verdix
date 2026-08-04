@@ -141,10 +141,18 @@ export function useVoidSales({ isOpen, onOpenChange }: Options) {
 
     try {
       const trimmedReason = voidReason.trim();
+      let voidedByUserId: string | undefined;
+      let voidedByName: string | undefined;
+      try {
+        const storedUser = JSON.parse(localStorage.getItem('pos_current_user') || 'null');
+        voidedByUserId = storedUser?.uid || storedUser?.id;
+        voidedByName = storedUser?.displayName;
+      } catch {}
+
       const response = await fetch(getApiUrl('/pos/void-transaction'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ saleId: selectedSale.id, voidReason: trimmedReason }),
+        body: JSON.stringify({ saleId: selectedSale.id, voidReason: trimmedReason, voidedByUserId, voidedByName }),
       });
       const result = await response.json();
 

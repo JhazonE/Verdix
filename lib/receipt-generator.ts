@@ -1,8 +1,9 @@
 import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder';
-import { format } from 'date-fns';
+import { format, addYears } from 'date-fns';
 import type { POSSaleItem, Customer } from './types';
 import { SystemSettings } from './types';
 import { formatSINumber } from './si-number';
+import { resolveEffectiveTaxType } from './tax-utils';
 
 // Default for 58mm
 const DEFAULT_COLS = 32;
@@ -69,6 +70,9 @@ export class ReceiptGenerator {
         cashierName?: string;
         terminalMin?: string;
         terminalSerialNumber?: string;
+        terminalPermitNo?: string;
+        terminalAccreditationNo?: string;
+        terminalPermitDateIssued?: string;
         isTrainingMode?: boolean;
         pointsUsedValue?: number;
         pointsBalance?: number;
@@ -101,7 +105,8 @@ export class ReceiptGenerator {
 
             items.forEach(item => {
                 const lineTotal = (item.price * item.quantity) - (item.discount || 0);
-                const taxType = (item as any).taxType || item.taxType || (item as any).product?.taxType || 'VAT';
+                const baseTaxType = (item as any).taxType || item.taxType || (item as any).product?.taxType || 'VAT';
+                const taxType = resolveEffectiveTaxType(baseTaxType, (item as any).discountType, item.discount);
 
                 if (taxType === 'VAT') {
                     const vatable = lineTotal / 1.12;
@@ -161,12 +166,16 @@ export class ReceiptGenerator {
         if (settings?.tin)           enc.line(`${tinLabel}: ${settings.tin}`);
         enc.line(`MIN: ${minNumber}`);
         enc.line(`S/N: ${serialNumber}`);
+        const accreditationNo = sale.terminalAccreditationNo;
+        const permitNo        = sale.terminalPermitNo;
+        if (accreditationNo) enc.line(`ACCR NO: ${accreditationNo}`);
+        if (permitNo)         enc.line(`PTU NO: ${permitNo}`);
         enc.line(dateStr);
         enc.raw([0x1b, 0x61, 0x30]); // Native Left
         enc.newline();
 
         // ─── SALE HEADER ───────────────────────────────────────────
-        const title = paymentMethod?.toUpperCase() === 'CHARGE' ? 'CHARGE SLIP' : 'CASH SALE';
+        const title = paymentMethod?.toUpperCase() === 'CHARGE' ? 'CHARGE INVOICE' : 'CASH INVOICE';
         enc.raw([0x1b, 0x61, 0x31]).line(title).raw([0x1b, 0x61, 0x30]);
         // orderNumber is a per-terminal counter, not a BIR series — only a fallback
         // for rows written before si_number existed.
@@ -338,6 +347,20 @@ export class ReceiptGenerator {
         // Matches: text-center mt-6
         enc.newline();
         enc.align('center');
+        if (!sale.isTrainingMode) {
+            if (permitNo) {
+                const validUntil = sale.terminalPermitDateIssued
+                    ? format(addYears(new Date(sale.terminalPermitDateIssued), 5), 'MM/dd/yyyy')
+                    : null;
+                enc.line(validUntil
+                    ? `This invoice/receipt shall be valid for five (5) years from the date of the permit to use (until ${validUntil}).`
+                    : 'This invoice/receipt shall be valid for five (5) years from the date of the permit to use.');
+            }
+            if (settings?.vatRegistration === 'NON_VAT') {
+                enc.line('THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX.');
+            }
+            enc.line('ASK FOR RECEIPT!');
+        }
         enc.line(`Shop smart, save more! Thank you for visiting ${bizName}.`);
         if (sale.isTrainingMode) {
             enc.newline();

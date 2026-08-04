@@ -12,6 +12,8 @@ async function ensurePosTerminalsTable() {
         serial_number VARCHAR(100),
         min_number VARCHAR(100),
         permit_no VARCHAR(100),
+        accreditation_no VARCHAR(100),
+        permit_date_issued DATE,
         print_official_receipt VARCHAR(10) DEFAULT 'No',
         or_next_reference VARCHAR(100),
         location VARCHAR(100),
@@ -31,6 +33,8 @@ async function ensurePosTerminalsTable() {
       { name: 'serial_number', type: 'VARCHAR(100)' },
       { name: 'min_number', type: 'VARCHAR(100)' },
       { name: 'permit_no', type: 'VARCHAR(100)' },
+      { name: 'accreditation_no', type: 'VARCHAR(100)' },
+      { name: 'permit_date_issued', type: 'DATE' },
       { name: 'print_official_receipt', type: 'VARCHAR(10) DEFAULT "No"' },
       { name: 'or_next_reference', type: 'VARCHAR(100)' },
       { name: 'last_active', type: 'TIMESTAMP NULL' },
@@ -103,6 +107,8 @@ export async function GET(request: NextRequest) {
         serial_number AS serialNumber,
         min_number AS min,
         permit_no AS permitNo,
+        accreditation_no AS accreditationNo,
+        permit_date_issued AS permitDateIssued,
         print_official_receipt AS printOfficialReceipt,
         or_next_reference AS orNextReference,
         location AS inventoryLocation,
@@ -187,6 +193,8 @@ export async function POST(request: NextRequest) {
       serialNumber,
       min,
       permitNo,
+      accreditationNo,
+      permitDateIssued,
       printOfficialReceipt,
       orNextReference,
       inventoryLocation,
@@ -201,10 +209,10 @@ export async function POST(request: NextRequest) {
     const sql = `
       INSERT INTO pos_terminals (
         id, ip_address, name, serial_number, min_number,
-        permit_no, print_official_receipt, or_next_reference,
+        permit_no, accreditation_no, permit_date_issued, print_official_receipt, or_next_reference,
         location, is_active, z_counter, reset_counter
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     await query(sql, [
@@ -214,6 +222,8 @@ export async function POST(request: NextRequest) {
       serialNumber?.trim() || null,
       min?.trim() || null,
       permitNo?.trim() || null,
+      accreditationNo?.trim() || null,
+      permitDateIssued?.trim() || null,
       printOfficialReceipt || 'No',
       orNextReference?.trim() || null,
       inventoryLocation || 'Store',
@@ -232,6 +242,8 @@ export async function POST(request: NextRequest) {
         serialNumber: serialNumber?.trim() || null,
         min: min?.trim() || null,
         permitNo: permitNo?.trim() || null,
+        accreditationNo: accreditationNo?.trim() || null,
+        permitDateIssued: permitDateIssued?.trim() || null,
         printOfficialReceipt: printOfficialReceipt || 'No',
         orNextReference: orNextReference?.trim() || null,
         inventoryLocation: inventoryLocation || 'Store',
@@ -276,6 +288,8 @@ export async function PUT(request: NextRequest) {
       serialNumber: 'serial_number',
       min: 'min_number',
       permitNo: 'permit_no',
+      accreditationNo: 'accreditation_no',
+      permitDateIssued: 'permit_date_issued',
       printOfficialReceipt: 'print_official_receipt',
       orNextReference: 'or_next_reference',
       inventoryLocation: 'location',

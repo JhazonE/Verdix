@@ -32,6 +32,9 @@ export async function GET(request: NextRequest) {
         pt.terminal_id,
         t.min_number as terminal_min,
         t.serial_number as terminal_sn,
+        t.permit_no as terminal_permit_no,
+        t.accreditation_no as terminal_accreditation_no,
+        t.permit_date_issued as terminal_permit_date_issued,
         pt.order_number,
         COALESCE(pt.si_number, st.si_number) as si_number,
         u.display_name as cashier_name,
@@ -170,6 +173,9 @@ export async function GET(request: NextRequest) {
           cashierName: sale.cashier_name || 'Admin',
           terminalMin: sale.terminal_min,
           terminalSerialNumber: sale.terminal_sn,
+          terminalPermitNo: sale.terminal_permit_no,
+          terminalAccreditationNo: sale.terminal_accreditation_no,
+          terminalPermitDateIssued: sale.terminal_permit_date_issued,
           items: items.map((item: any) => ({
             product: {
               id: item.product_id,

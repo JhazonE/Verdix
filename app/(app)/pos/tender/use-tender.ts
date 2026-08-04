@@ -21,6 +21,9 @@ type Options = {
   terminalId: string;
   terminalMin?: string;
   terminalSerialNumber?: string;
+  terminalPermitNo?: string;
+  terminalAccreditationNo?: string;
+  terminalPermitDateIssued?: string;
   terminalName?: string;
   isTrainingMode?: boolean;
   paymentMethods: { id: string; name: string; isReferenceRequired?: boolean; pointsAmount?: number; currencyEquivalent?: number }[];
@@ -43,6 +46,9 @@ export function useTender({
   terminalId,
   terminalMin,
   terminalSerialNumber,
+  terminalPermitNo,
+  terminalAccreditationNo,
+  terminalPermitDateIssued,
   terminalName,
   isTrainingMode,
   paymentMethods = [],
@@ -327,6 +333,9 @@ export function useTender({
         pointsBalance: result.data.pointsRemaining,
         terminalMin: terminalMin ?? settings?.minNumber ?? undefined,
         terminalSerialNumber: terminalSerialNumber ?? settings?.serialNumber ?? undefined,
+        terminalPermitNo: terminalPermitNo ?? undefined,
+        terminalAccreditationNo: terminalAccreditationNo ?? undefined,
+        terminalPermitDateIssued: terminalPermitDateIssued ?? undefined,
         terminalName: terminalName,
         isTrainingMode: isTrainingMode,
         taxBreakdown: {
@@ -369,7 +378,7 @@ export function useTender({
       setIsProcessing(false);
       isSubmittingRef.current = false;
     }
-  }, [pointsToRedeemValue, customer, pointsRate, referenceInput, isReferenceRequired, amountTenderedNum, isChargePayment, payments, selectedMethod, balanceRemaining, totalDue, items, change, pointsToRedeemCount, terminalMin, terminalSerialNumber, terminalName, isTrainingMode, settings, currentUser, shiftId, terminalId, toast, onCheckoutComplete]);
+  }, [pointsToRedeemValue, customer, pointsRate, referenceInput, isReferenceRequired, amountTenderedNum, isChargePayment, payments, selectedMethod, balanceRemaining, totalDue, items, change, pointsToRedeemCount, terminalMin, terminalSerialNumber, terminalPermitNo, terminalAccreditationNo, terminalPermitDateIssued, terminalName, isTrainingMode, settings, currentUser, shiftId, terminalId, toast, onCheckoutComplete]);
 
   const getQuickAmounts = useCallback((total: number) => {
     const amounts = new Set<number>();

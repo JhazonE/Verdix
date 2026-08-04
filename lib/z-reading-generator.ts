@@ -1,6 +1,6 @@
 
 import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder';
-import { format } from 'date-fns';
+import { format, addYears } from 'date-fns';
 import { ZReadingData } from './types';
 
 // 58mm thermal paper = 32 characters per line
@@ -48,6 +48,8 @@ export class ZReadingGenerator {
         const operatedBy = settings?.operatedBy || "";
         const minNumber = data.terminalMin || settings?.minNumber || "1234567890";
         const serialNumber = data.terminalSerialNumber || settings?.serialNumber || "0987654321-11";
+        const accreditationNo = data.terminalAccreditationNo || "";
+        const permitNo = data.terminalPermitNo || "";
 
         // ── HEADER ──────────────────────────────────────────────────────────
         enc.raw([0x1b, 0x61, 0x31]); // Native Center
@@ -57,6 +59,8 @@ export class ZReadingGenerator {
         enc.line(`${settings?.vatRegistration === 'NON_VAT' ? 'NON-VAT REG TIN' : 'VAT REG TIN'}: ${tin}`);
         enc.line(`MIN: ${minNumber}`);
         enc.line(`S/N: ${serialNumber}`);
+        if (accreditationNo) enc.line(`ACCR NO: ${accreditationNo}`);
+        if (permitNo)        enc.line(`PTU NO: ${permitNo}`);
         if (data.terminalName) enc.line(`Terminal: ${data.terminalName}`);
         
         // ── TITLE ────────────────────────────────────────────────────────────
@@ -167,9 +171,14 @@ export class ZReadingGenerator {
         // ── FOOTER ───────────────────────────────────────────────────────────
         enc.newline();
         enc.align('center');
-        enc.line('This Receipt shall be valid for');
-        enc.line('five (5) years from the date of');
-        enc.line('the permit to use.');
+        if (permitNo) {
+            enc.line('This Receipt shall be valid for');
+            enc.line('five (5) years from the date of');
+            const validUntil = data.terminalPermitDateIssued
+                ? format(addYears(new Date(data.terminalPermitDateIssued), 5), 'MM/dd/yyyy')
+                : null;
+            enc.line(validUntil ? `the permit to use (until ${validUntil}).` : 'the permit to use.');
+        }
         enc.newline();
         enc.bold(true).line('THIS IS NOT AN OFFICIAL RECEIPT').bold(false);
 

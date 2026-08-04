@@ -42,8 +42,10 @@ export async function GET(request: NextRequest) {
         sales.max_sale_id,
         COALESCE(sales.void_amount, 0) as void_amount,
         COALESCE(sales.refund_amount, 0) as refund_amount,
-        pt_term.terminal_min as terminal_min,
-        pt_term.terminal_serial_number as terminal_sn
+        pt_term.min_number as terminal_min,
+        pt_term.serial_number as terminal_sn,
+        pt_term.permit_no as terminal_permit_no,
+        pt_term.accreditation_no as terminal_accreditation_no
       FROM shifts s
       LEFT JOIN users u ON s.user_id = u.uid
       LEFT JOIN pos_terminals pt_term ON s.terminal_id = pt_term.id
@@ -57,8 +59,8 @@ export async function GET(request: NextRequest) {
               SUM(CASE WHEN pt.transaction_type = 'return' THEN pt.total_amount ELSE 0 END) as returns_amount,
               COUNT(CASE WHEN pt.transaction_type = 'sale' THEN 1 END) as transaction_count,
               SUM(CASE WHEN pt.transaction_type = 'sale' AND pt.payment_method = 'CASH' THEN pt.total_amount ELSE 0 END) as cash_sales,
-              MIN(CASE WHEN pt.transaction_type = 'sale' THEN st.receipt_number END) as min_sale_id,
-              MAX(CASE WHEN pt.transaction_type = 'sale' THEN st.receipt_number END) as max_sale_id,
+              MIN(CASE WHEN pt.transaction_type = 'sale' THEN st.si_number END) as min_sale_id,
+              MAX(CASE WHEN pt.transaction_type = 'sale' THEN st.si_number END) as max_sale_id,
               SUM(CASE WHEN pt.transaction_type = 'void' THEN pt.total_amount ELSE 0 END) as void_amount,
               SUM(CASE WHEN pt.transaction_type = 'refund' THEN pt.total_amount ELSE 0 END) as refund_amount
           FROM pos_transactions pt
@@ -179,6 +181,8 @@ export async function GET(request: NextRequest) {
         refundAmount: parseFloat(shift.refund_amount || 0),
         min: shift.terminal_min || '',
         sn: shift.terminal_sn || '',
+        permitNo: shift.terminal_permit_no || '',
+        accreditationNo: shift.terminal_accreditation_no || '',
       };
     }));
 

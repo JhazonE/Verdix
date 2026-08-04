@@ -43,6 +43,8 @@ export class OverallReadingGenerator {
         if (businessSettings.tin) enc.line(`${businessSettings.vatRegistration === 'NON_VAT' ? 'NON-VAT REG TIN' : 'VAT REG TIN'}: ${businessSettings.tin}`);
         if (terminalInfo.min) enc.line(`MIN: ${terminalInfo.min}`);
         if (terminalInfo.sn) enc.line(`S/N: ${terminalInfo.sn}`);
+        if (terminalInfo.permitNo) enc.line(`PTU NO: ${terminalInfo.permitNo}`);
+        if (terminalInfo.accreditationNo) enc.line(`ACCR NO: ${terminalInfo.accreditationNo}`);
         enc.line(`Terminal: ${terminalId}`);
         enc.newline()
            .line('OVERALL TERMINAL READING')

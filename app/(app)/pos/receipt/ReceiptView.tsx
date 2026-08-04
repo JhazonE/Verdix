@@ -1,7 +1,7 @@
 'use client';
 
 import React, { forwardRef } from 'react';
-import { format } from 'date-fns';
+import { format, addYears } from 'date-fns';
 import { formatQuantity } from '@/lib/utils';
 import { formatSINumber } from '@/lib/si-number';
 import { useReceipt } from './use-receipt';
@@ -33,12 +33,14 @@ export const ReceiptView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ saleD
                 {settings?.tin && <div>{settings?.vatRegistration === 'NON_VAT' ? 'NON-VAT REG TIN' : 'VAT REG TIN'}: {settings.tin}</div>}
                 <div>MIN: {saleDetails.terminalMin || settings?.minNumber || '1234567890'}</div>
                 <div>S/N: {saleDetails.terminalSerialNumber || settings?.serialNumber || '0987654321-11'}</div>
+                {saleDetails.terminalAccreditationNo && <div>ACCR NO: {saleDetails.terminalAccreditationNo}</div>}
+                {saleDetails.terminalPermitNo && <div>PTU NO: {saleDetails.terminalPermitNo}</div>}
                 <div className="text-[10px]">{format(currentDate, 'PP p')}</div>
             </div>
 
             <div className="mb-2 border-b border-dashed border-black pb-2">
                 <div className="font-bold text-center border-y border-black py-1 mb-1 uppercase">
-                    {paymentMethod?.toUpperCase() === 'CHARGE' ? 'CHARGE SLIP' : 'CASH SALE'}
+                    {paymentMethod?.toUpperCase() === 'CHARGE' ? 'CHARGE INVOICE' : 'CASH INVOICE'}
                 </div>
                 <div className="font-bold">SI NO.: {formatSINumber(saleDetails.siNumber || saleDetails.orderNumber)}</div>
                 <div>Cust: {customer?.name || 'Walk-in'}</div>
@@ -219,6 +221,20 @@ export const ReceiptView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ saleD
                 </div>
             ) : null}
             <div className="text-center mt-6">
+                {!saleDetails.isTrainingMode && (
+                    <div className="text-[9px] leading-tight mb-2 space-y-0.5">
+                        {saleDetails.terminalPermitNo && (
+                            <div>
+                                This invoice/receipt shall be valid for five (5) years from the date of the permit to use
+                                {saleDetails.terminalPermitDateIssued ? ` (until ${format(addYears(new Date(saleDetails.terminalPermitDateIssued), 5), 'MM/dd/yyyy')}).` : '.'}
+                            </div>
+                        )}
+                        {settings?.vatRegistration === 'NON_VAT' && (
+                            <div>THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX.</div>
+                        )}
+                        <div>ASK FOR RECEIPT!</div>
+                    </div>
+                )}
                 <div>Shop smart, save more! Thank you for visiting {settings?.businessName?.trim() || 'VENDIX'}.</div>
                 {saleDetails.isTrainingMode && (
                     <div className="mt-4 border-2 border-black p-2 bg-gray-100 text-center font-bold text-[10px] leading-tight flex flex-col gap-1">

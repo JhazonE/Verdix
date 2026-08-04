@@ -50,6 +50,8 @@ export type OverallReadingData = {
   terminalInfo: {
     min: string;
     sn: string;
+    permitNo?: string;
+    accreditationNo?: string;
   };
 };
 

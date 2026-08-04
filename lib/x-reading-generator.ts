@@ -36,6 +36,8 @@ export class XReadingGenerator {
             refundAmount,
             min,
             sn,
+            permitNo,
+            accreditationNo,
             cashDenominations,
             businessName,
             operatedBy,
@@ -71,6 +73,8 @@ export class XReadingGenerator {
         
         enc.line(`MIN: ${min || '0987654321'}`)
            .line(`S/N: ${sn || '1234567890-01'}`);
+        if (permitNo)        enc.line(`PTU NO: ${permitNo}`);
+        if (accreditationNo) enc.line(`ACCR NO: ${accreditationNo}`);
         if (data.terminalName) enc.line(`Terminal: ${data.terminalName}`);
         enc.newline()
            .line('X-READING REPORT');
