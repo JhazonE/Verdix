@@ -7,6 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Search } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useBulkPriceUpdate } from './use-bulk-price-update';
 import { downloadPriceListTemplate } from './price-list-template';
@@ -131,6 +132,17 @@ export function BulkPriceUpdateDrawer({ open, onOpenChange, productOptions, onUp
                   type="number"
                   value={bp.adjustmentValue}
                   onChange={(e) => bp.setAdjustmentValue(parseFloat(e.target.value) || 0)}
+                />
+              </div>
+
+              <div className="relative">
+                <Search className="absolute left-3 top-[0.65rem] h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="Search products by SKU, barcode, or name..."
+                  className="pl-9"
+                  value={bp.searchTerm}
+                  onChange={(e) => bp.setSearchTerm(e.target.value)}
                 />
               </div>
 

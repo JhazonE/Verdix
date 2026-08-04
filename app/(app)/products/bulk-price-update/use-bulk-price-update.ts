@@ -6,11 +6,21 @@ import { getProducts } from '../actions';
 import { submitPriceUpdateBatch, type PriceUpdateItem } from './actions';
 import { applyAdjustment, type AdjustmentType } from '@/lib/price-update-math';
 import { useToast } from '@/hooks/use-toast';
+import { useDebounce } from '@/hooks/use-debounce';
 
 export type TargetField = 'price' | 'cost' | 'markup' | 'priceLevel';
 
 export function useBulkPriceUpdate(onUpdated?: () => void) {
-  const [warehouseId, setWarehouseId] = useState<string>('');
+  const [warehouseId, setWarehouseIdState] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
+
+  // Switching warehouses starts a fresh product list — a stale search term
+  // from the previous warehouse would otherwise silently filter it.
+  const setWarehouseId = (id: string) => {
+    setWarehouseIdState(id);
+    setSearchTerm('');
+  };
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [targetField, setTargetField] = useState<TargetField>('price');
   const [priceLevelId, setPriceLevelId] = useState<string>('');
@@ -21,8 +31,8 @@ export function useBulkPriceUpdate(onUpdated?: () => void) {
   const { toast } = useToast();
 
   const { data: products, isLoading } = useQuery({
-    queryKey: ['bulk-price-update-products', warehouseId],
-    queryFn: () => getProducts(500, 0, { warehouse: warehouseId || undefined }),
+    queryKey: ['bulk-price-update-products', warehouseId, debouncedSearchTerm],
+    queryFn: () => getProducts(500, 0, { warehouse: warehouseId || undefined, search: debouncedSearchTerm || undefined }),
     enabled: !!warehouseId,
   });
 
@@ -90,6 +100,7 @@ export function useBulkPriceUpdate(onUpdated?: () => void) {
 
   return {
     warehouseId, setWarehouseId,
+    searchTerm, setSearchTerm,
     products: products || [], isLoading,
     selectedIds, toggleSelected, selectAll, clearSelection,
     targetField, setTargetField,
