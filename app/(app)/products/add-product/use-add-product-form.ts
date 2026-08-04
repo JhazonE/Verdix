@@ -5,6 +5,7 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 import { calculateMarkupPercentage, calculateSuggestedPrice } from '@/lib/purchase-utils';
+import { applyPriceLevelAdjustment } from '@/lib/price-level-calc';
 import { dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { logActivity } from '@/lib/client-activity-logger';
 import { useToast } from '@/hooks/use-toast';
@@ -56,7 +57,7 @@ export function calculatePriceLevelPrice(
   const basePrice = calculationBase === 'retail' ? formPrice : formCost;
   if (basePrice === undefined || basePrice === null) return 0;
 
-  return basePrice * (1 + level.percentageAdjustment / 100);
+  return applyPriceLevelAdjustment(level.adjustmentType, level.percentageAdjustment, basePrice);
 }
 
 export interface UseAddProductFormProps {

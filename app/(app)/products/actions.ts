@@ -2085,6 +2085,7 @@ export async function getPriceLevels(): Promise<PriceLevel[]> {
       description: level.description,
       isDefault: level.is_default === 1,
       calculationBase: level.calculation_base,
+      adjustmentType: level.adjustment_type === 'fixed' ? 'fixed' : 'percentage',
       percentageAdjustment: parseFloat(level.percentage_adjustment),
       minQuantity: level.min_quantity,
       createdAt: level.created_at,
@@ -2096,13 +2097,13 @@ export async function getPriceLevels(): Promise<PriceLevel[]> {
   }
 }
 
-export async function addPriceLevel(name: string, description: string, isDefault: boolean, percentageAdjustment: number, minQuantity: number = 0, calculationBase: 'retail' | 'cost' = 'retail') {
+export async function addPriceLevel(name: string, description: string, isDefault: boolean, percentageAdjustment: number, minQuantity: number = 0, calculationBase: 'retail' | 'cost' = 'retail', adjustmentType: 'percentage' | 'fixed' = 'percentage') {
   try {
     const id = `pl_${Date.now()}`;
     if (isDefault) {
       await query('UPDATE price_levels SET is_default = 0', []);
     }
-    await query('INSERT INTO price_levels (id, name, description, is_default, percentage_adjustment, min_quantity, calculation_base) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, name, description || null, isDefault ? 1 : 0, percentageAdjustment, minQuantity, calculationBase]);
+    await query('INSERT INTO price_levels (id, name, description, is_default, percentage_adjustment, min_quantity, calculation_base, adjustment_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [id, name, description || null, isDefault ? 1 : 0, percentageAdjustment, minQuantity, calculationBase, adjustmentType]);
     return { success: true, message: 'Price level added successfully.' };
   } catch (error) {
     console.error('Error adding price level:', error);
@@ -2110,12 +2111,12 @@ export async function addPriceLevel(name: string, description: string, isDefault
   }
 }
 
-export async function updatePriceLevel(id: string, name: string, description: string, isDefault: boolean, percentageAdjustment: number, minQuantity: number = 0, calculationBase: 'retail' | 'cost' = 'retail') {
+export async function updatePriceLevel(id: string, name: string, description: string, isDefault: boolean, percentageAdjustment: number, minQuantity: number = 0, calculationBase: 'retail' | 'cost' = 'retail', adjustmentType: 'percentage' | 'fixed' = 'percentage') {
   try {
     if (isDefault) {
       await query('UPDATE price_levels SET is_default = 0', []);
     }
-    await query('UPDATE price_levels SET name = ?, description = ?, is_default = ?, percentage_adjustment = ?, min_quantity = ?, calculation_base = ? WHERE id = ?', [name, description || null, isDefault ? 1 : 0, percentageAdjustment, minQuantity, calculationBase, id]);
+    await query('UPDATE price_levels SET name = ?, description = ?, is_default = ?, percentage_adjustment = ?, min_quantity = ?, calculation_base = ?, adjustment_type = ? WHERE id = ?', [name, description || null, isDefault ? 1 : 0, percentageAdjustment, minQuantity, calculationBase, adjustmentType, id]);
     return { success: true, message: 'Price level updated successfully.' };
   } catch (error) {
     console.error('Error updating price level:', error);

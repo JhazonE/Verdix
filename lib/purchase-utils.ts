@@ -3,6 +3,7 @@
  * including Landed Cost distribution.
  */
 import { toSafeNumber } from './utils';
+import { applyPriceLevelAdjustment } from './price-level-calc';
 
 export interface PurchaseItem {
   productId: string;
@@ -218,19 +219,18 @@ export function calculateSuggestedPrice(
   const landedCost = toSafeNumber(unitCost) + toSafeNumber(shippingPerUnit);
   
   if (priceLevel) {
-    const adjustment = toSafeNumber(priceLevel.percentageAdjustment);
+    const adjustmentType = priceLevel.adjustmentType === 'fixed' ? 'fixed' : 'percentage';
+    const value = toSafeNumber(priceLevel.percentageAdjustment);
     const base = priceLevel.calculationBase || 'retail';
-    
-    if (adjustment !== 0) {
-      if (base === 'cost') {
-        // Option A: Adjust directly on top of Landed Cost (Cost + Shipping)
-        return landedCost * (1 + adjustment / 100);
-      } else {
-        // Option B: Adjust on top of the calculated Retail Price
-        return baseRetailPrice * (1 + adjustment / 100);
-      }
+    const resolvedBase = base === 'cost' ? landedCost : baseRetailPrice;
+
+    if (adjustmentType === 'fixed') {
+      return applyPriceLevelAdjustment('fixed', value, resolvedBase);
+    }
+    if (value !== 0) {
+      return applyPriceLevelAdjustment('percentage', value, resolvedBase);
     }
   }
-  
+
   return baseRetailPrice;
 }
