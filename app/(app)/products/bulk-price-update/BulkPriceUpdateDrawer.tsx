@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -8,6 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useBulkPriceUpdate } from './use-bulk-price-update';
+import { downloadPriceListTemplate } from './price-list-template';
+import { UploadPriceListDialog } from './UploadPriceListDialog';
 
 interface Props {
   open: boolean;
@@ -27,6 +30,7 @@ function getCurrentUserId(): string {
 
 export function BulkPriceUpdateDrawer({ open, onOpenChange, productOptions, onUpdated }: Props) {
   const bp = useBulkPriceUpdate(onUpdated);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -51,6 +55,28 @@ export function BulkPriceUpdateDrawer({ open, onOpenChange, productOptions, onUp
 
           {bp.warehouseId && (
             <>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => downloadPriceListTemplate(
+                    bp.products.map((p: any) => ({ sku: p.sku, barcode: p.barcode || '', name: p.name, price: Number(p.price), cost: Number(p.cost || 0) })),
+                    productOptions.warehouses?.find(w => w.id === bp.warehouseId)?.name || 'warehouse',
+                  )}
+                >
+                  Download Template
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={() => setIsUploadOpen(true)}>
+                  Upload Excel
+                </Button>
+              </div>
+              <UploadPriceListDialog
+                open={isUploadOpen}
+                onOpenChange={setIsUploadOpen}
+                warehouseId={bp.warehouseId}
+                onUpdated={onUpdated}
+              />
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label>Target Field</Label>
