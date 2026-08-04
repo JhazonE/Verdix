@@ -147,13 +147,29 @@ async function applyPriceUpdateBatch(items: PriceUpdateItem[]): Promise<PriceUpd
 export interface PriceListRow {
   sku: string;
   barcode: string;
+  name?: string;
+  brand?: string;
+  category?: string;
+  unitOfMeasure?: string;
   newPrice?: number;
   newCost?: number;
   newMarkupPct?: number;
 }
 
+export interface NewProductFromExcel {
+  sku: string;
+  barcode: string;
+  name: string;
+  brand: string;
+  category: string;
+  unitOfMeasure: string;
+  price: number;
+  cost?: number;
+}
+
 export interface PriceListPreviewResult {
   matched: PriceUpdateItem[];
+  toCreate: NewProductFromExcel[];
   skipped: { row: PriceListRow; reason: string }[];
 }
 
@@ -162,6 +178,7 @@ export async function previewPriceListUpload(
   rows: PriceListRow[],
 ): Promise<PriceListPreviewResult> {
   const matched: PriceUpdateItem[] = [];
+  const toCreate: NewProductFromExcel[] = [];
   const skipped: PriceListPreviewResult['skipped'] = [];
   const seenSkus = new Set<string>();
 
@@ -194,7 +211,34 @@ export async function previewPriceListUpload(
       product = byBarcode?.[0];
     }
     if (!product) {
-      skipped.push({ row, reason: `No product found for SKU "${sku || '—'}" / barcode "${barcode || '—'}" in this warehouse` });
+      // Unmatched: with enough identity data + a price, treat this as a new
+      // product to create rather than an unconditional skip. Reusing
+      // `newPrice` as the initial price — a to-create row has no "old"
+      // value to update from.
+      const missing: string[] = [];
+      if (!row.name) missing.push('name');
+      if (!row.brand) missing.push('brand');
+      if (!row.category) missing.push('category');
+      if (!row.unitOfMeasure) missing.push('unit_of_measure');
+      if (row.newPrice == null) missing.push('new_price');
+
+      if (missing.length > 0) {
+        skipped.push({ row, reason: `Product not found and missing required fields to create it: ${missing.join(', ')}` });
+        continue;
+      }
+      if (!isValidPriceValue(row.newPrice!)) {
+        skipped.push({ row, reason: 'new_price must be a non-negative number' });
+        continue;
+      }
+      if (row.newCost != null && !isValidPriceValue(row.newCost)) {
+        skipped.push({ row, reason: 'new_cost must be a non-negative number' });
+        continue;
+      }
+      if (sku) seenSkus.add(sku);
+      toCreate.push({
+        sku, barcode, name: row.name!, brand: row.brand!, category: row.category!, unitOfMeasure: row.unitOfMeasure!,
+        price: row.newPrice!, cost: row.newCost,
+      });
       continue;
     }
     if (sku) seenSkus.add(sku);
@@ -246,5 +290,5 @@ export async function previewPriceListUpload(
     }
   }
 
-  return { matched, skipped };
+  return { matched, toCreate, skipped };
 }

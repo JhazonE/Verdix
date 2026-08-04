@@ -6,15 +6,18 @@ interface TemplateProduct {
   sku: string;
   barcode: string;
   name: string;
+  brand: string;
+  category: string;
+  unitOfMeasure: string;
   price: number;
   cost: number;
 }
 
 export function downloadPriceListTemplate(products: TemplateProduct[], warehouseName: string) {
-  const header = ['sku', 'barcode', 'name', 'current_price', 'current_cost', 'current_markup_pct', 'new_price', 'new_cost', 'new_markup_pct'];
+  const header = ['sku', 'barcode', 'name', 'brand', 'category', 'unit_of_measure', 'current_price', 'current_cost', 'current_markup_pct', 'new_price', 'new_cost', 'new_markup_pct'];
   const rows = products.map(p => {
     const markup = p.cost > 0 ? Math.round(((p.price / p.cost) - 1) * 10000) / 100 : 0;
-    return [p.sku, p.barcode, p.name, p.price, p.cost, markup, '', '', ''];
+    return [p.sku, p.barcode, p.name, p.brand, p.category, p.unitOfMeasure, p.price, p.cost, markup, '', '', ''];
   });
   const sheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
   const wb = XLSX.utils.book_new();
@@ -30,9 +33,17 @@ export function mapParsedRowsToPriceListRows(parsed: ParsedFile): PriceListRow[]
     const n = Number(v);
     return Number.isFinite(n) ? n : NaN; // NaN signals "present but invalid" to the caller
   };
+  const str = (v: string | undefined): string | undefined => {
+    const t = (v || '').trim();
+    return t === '' ? undefined : t;
+  };
   return parsed.rows.map(row => ({
     sku: row.sku || '',
     barcode: row.barcode || '',
+    name: str(row.name),
+    brand: str(row.brand),
+    category: str(row.category),
+    unitOfMeasure: str(row.unit_of_measure),
     newPrice: num(row.new_price),
     newCost: num(row.new_cost),
     newMarkupPct: num(row.new_markup_pct),

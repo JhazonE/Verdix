@@ -62,7 +62,11 @@ export function BulkPriceUpdateDrawer({ open, onOpenChange, productOptions, onUp
                   variant="outline"
                   size="sm"
                   onClick={() => downloadPriceListTemplate(
-                    bp.products.map((p: any) => ({ sku: p.sku, barcode: p.barcode || '', name: p.name, price: Number(p.price), cost: Number(p.cost || 0) })),
+                    bp.products.slice(0, 3).map((p: any) => ({
+                      sku: p.sku, barcode: p.barcode || '', name: p.name,
+                      brand: p.brand || '', category: p.category || '', unitOfMeasure: p.unitOfMeasure || '',
+                      price: Number(p.price), cost: Number(p.cost || 0),
+                    })),
                     productOptions.warehouses?.find(w => w.id === bp.warehouseId)?.name || 'warehouse',
                   )}
                 >
