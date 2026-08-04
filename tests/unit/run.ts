@@ -27,3 +27,4 @@ import './stock-count-baseline.test';
 import './sta-lucia-payload.test';
 import './price-update-math.test';
 import './price-list-template.test';
+import './seed-default-price-level.test';
