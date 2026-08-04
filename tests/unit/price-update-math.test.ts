@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { applyAdjustment } from '../../lib/price-update-math';
+import { applyAdjustment, isValidPriceValue } from '../../lib/price-update-math';
 
 // percentage
 assert.equal(applyAdjustment('percentage', 100, 10), 110, '+10% of 100 = 110');
@@ -24,6 +24,42 @@ assert.throws(
   () => applyAdjustment('markup', 0, 25),
   /cost is required/,
   'markup adjustment without cost throws',
+);
+
+// isValidPriceValue — the gate that keeps NaN/negative bulk-price-update
+// values (Excel non-numeric cells, corrupt-cost markup computations) out of
+// the DB. See app/(app)/products/bulk-price-update/actions.ts.
+assert.equal(isValidPriceValue(0), true, '0 is a valid price');
+assert.equal(isValidPriceValue(19.99), true, 'a normal positive price is valid');
+assert.equal(isValidPriceValue(-1), false, 'a negative price is invalid');
+assert.equal(isValidPriceValue(NaN), false, 'NaN is invalid (e.g. a non-numeric Excel cell)');
+assert.equal(isValidPriceValue(Infinity), false, 'Infinity is invalid');
+assert.equal(isValidPriceValue(-Infinity), false, '-Infinity is invalid');
+
+// A markup computed over a corrupt/NaN product cost must also be caught —
+// this is exactly the case applyPriceUpdateBatch and previewPriceListUpload
+// guard against before writing/matching.
+assert.equal(
+  Number.isNaN(applyAdjustment('markup', 0, 25, NaN)),
+  true,
+  'markup adjustment over a NaN cost produces NaN',
+);
+assert.equal(
+  isValidPriceValue(applyAdjustment('markup', 0, 25, NaN)),
+  false,
+  'isValidPriceValue rejects the NaN result of a markup-over-NaN-cost computation',
+);
+
+// Markup percentages may legitimately be negative (a markdown) — only
+// non-finite values should be rejected for them, which is why the bulk
+// price update markup branch checks Number.isFinite rather than
+// isValidPriceValue on the *raw* pct input (isValidPriceValue is applied to
+// the *computed price*, not the pct itself).
+assert.equal(Number.isFinite(-10), true, 'a negative markup pct (markdown) is a valid finite number');
+assert.equal(
+  isValidPriceValue(applyAdjustment('markup', 0, -10, 100)),
+  true,
+  'a markdown markup pct over a valid cost still produces a valid non-negative price when it does not undercut cost below 0',
 );
 
 console.log('price-update-math: all assertions passed');

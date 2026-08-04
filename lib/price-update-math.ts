@@ -33,3 +33,14 @@ export function applyAdjustment(
   }
   return Math.round(result * 100) / 100;
 }
+
+/**
+ * Whether a numeric value is safe to persist as a price or cost: finite and
+ * non-negative. Rejects NaN (e.g. a non-numeric Excel cell, or a markup
+ * computation over a corrupt/NaN product cost) and negative numbers alike —
+ * any comparison against NaN is false, so `Number.isFinite` must be checked
+ * explicitly rather than relying on `value >= 0` alone.
+ */
+export function isValidPriceValue(value: number): boolean {
+  return Number.isFinite(value) && value >= 0;
+}

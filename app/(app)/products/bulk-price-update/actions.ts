@@ -2,7 +2,7 @@
 
 import { query, withTransaction } from '@/lib/mysql';
 import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
-import { applyAdjustment, type AdjustmentType } from '@/lib/price-update-math';
+import { applyAdjustment, isValidPriceValue, type AdjustmentType } from '@/lib/price-update-math';
 
 export interface PriceUpdateItem {
   productId: string;
@@ -83,6 +83,16 @@ async function applyPriceUpdateBatch(items: PriceUpdateItem[]): Promise<PriceUpd
       if (item.adjustmentType === 'markup') {
         const liveCost = parseFloat(rows[0].cost ?? 0);
         newValue = applyAdjustment('markup', 0, item.adjustmentValue, liveCost);
+      }
+
+      // Defense in depth: no matter which caller produced this item (drawer or
+      // Excel path), and no matter whether it was valid at preview-time — cost
+      // can drift between preview and apply for markup-based items — a NaN or
+      // negative value must never reach the DB. Skip just this one item rather
+      // than throwing and aborting the whole transaction.
+      if (!isValidPriceValue(newValue)) {
+        skipped.push({ productId: item.productId, productName: item.productName, reason: 'Computed price is invalid' });
+        continue;
       }
 
       if (item.field === 'price') {
@@ -174,7 +184,7 @@ export async function previewPriceListUpload(
     if (sku) seenSkus.add(sku);
 
     if (row.newPrice != null) {
-      if (!(row.newPrice >= 0)) {
+      if (!isValidPriceValue(row.newPrice)) {
         skipped.push({ row, reason: 'new_price must be a non-negative number' });
       } else {
         matched.push({
@@ -185,7 +195,7 @@ export async function previewPriceListUpload(
       }
     }
     if (row.newCost != null) {
-      if (!(row.newCost >= 0)) {
+      if (!isValidPriceValue(row.newCost)) {
         skipped.push({ row, reason: 'new_cost must be a non-negative number' });
       } else {
         matched.push({
@@ -196,13 +206,27 @@ export async function previewPriceListUpload(
       }
     }
     if (row.newMarkupPct != null) {
-      const liveCost = parseFloat(product.cost || 0);
-      const newPrice = applyAdjustment('markup', 0, row.newMarkupPct, liveCost);
-      matched.push({
-        productId: product.id, sku: product.sku, barcode: product.barcode || '', productName: product.name,
-        field: 'price', oldValue: parseFloat(product.price), newValue: newPrice,
-        adjustmentType: 'markup', adjustmentValue: row.newMarkupPct,
-      });
+      // Unlike price/cost, a markup % can legitimately be negative (a
+      // markdown), so the bar here is "is it a real number" rather than
+      // "is it non-negative" — but NaN (a non-numeric Excel cell) must never
+      // reach `matched`.
+      if (!Number.isFinite(row.newMarkupPct)) {
+        skipped.push({ row, reason: 'new_markup_pct must be a number' });
+      } else {
+        const liveCost = parseFloat(product.cost || 0);
+        const newPrice = applyAdjustment('markup', 0, row.newMarkupPct, liveCost);
+        // Guards a corrupt/NaN product.cost (or any other non-finite/negative
+        // result of the markup computation) from ever reaching `matched`.
+        if (!isValidPriceValue(newPrice)) {
+          skipped.push({ row, reason: 'Computed price from new_markup_pct is invalid (check product cost)' });
+        } else {
+          matched.push({
+            productId: product.id, sku: product.sku, barcode: product.barcode || '', productName: product.name,
+            field: 'price', oldValue: parseFloat(product.price), newValue: newPrice,
+            adjustmentType: 'markup', adjustmentValue: row.newMarkupPct,
+          });
+        }
+      }
     }
   }
 
