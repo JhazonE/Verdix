@@ -157,7 +157,7 @@ export function BulkPriceUpdateDrawer({ open, onOpenChange, productOptions, onUp
                         />
                       </TableHead>
                       <TableHead>Product</TableHead>
-                      <TableHead>SKU</TableHead>
+                      <TableHead>Barcode</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -165,7 +165,7 @@ export function BulkPriceUpdateDrawer({ open, onOpenChange, productOptions, onUp
                       <TableRow key={p.id}>
                         <TableCell><Checkbox checked={bp.selectedIds.has(p.id)} onCheckedChange={() => bp.toggleSelected(p.id)} /></TableCell>
                         <TableCell>{p.name}</TableCell>
-                        <TableCell>{p.sku}</TableCell>
+                        <TableCell>{p.barcode || '—'}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
