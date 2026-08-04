@@ -400,6 +400,28 @@ export function useAddProductForm({
     try {
       const uid = getCurrentUid();
 
+      // The default price level is auto-appended (on productOptions load, well
+      // before the user has entered a cost) with a hardcoded price: 0 as a
+      // placeholder — there is no meaningful value to compute at that point.
+      // Now that price-level rows are no longer continuously auto-recalculated
+      // (see the removed "Apply to all price levels" effects), that
+      // placeholder would otherwise reach the DB untouched, and getProducts'
+      // effectivePrice prefers a default-level product_price_levels row over
+      // the raw products.price column — so every new product would display
+      // ₱0.00 in the Products table despite a correct products.price. Fix up
+      // only rows still sitting at that untouched 0 placeholder; a row the
+      // user edited to any nonzero value is left alone. (A deliberate,
+      // genuine ₱0 price level is indistinguishable from "untouched" with
+      // the current data model and would also get corrected here — an
+      // accepted, narrow edge case, not the scenario this fix targets.)
+      values.priceLevels = (values.priceLevels || []).map((pl) => {
+        if (pl.price !== 0) return pl;
+        const level = priceLevels.find((l: any) => l.id === pl.levelId);
+        if (!level) return pl;
+        const basePrice = (level.calculationBase || 'retail') === 'cost' ? (values.cost || 0) : values.price;
+        return { ...pl, price: applyPriceLevelAdjustment(level.adjustmentType, level.percentageAdjustment, basePrice) };
+      });
+
       // Build the auto-child intent (if applicable) so a single approval covers parent + child.
       let childProduct: any = undefined;
       const willAutoChild =
