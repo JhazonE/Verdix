@@ -3,6 +3,7 @@
 import { query, withTransaction } from '@/lib/mysql';
 import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
 import { applyAdjustment, isValidPriceValue, type AdjustmentType } from '@/lib/price-update-math';
+import { addProduct } from '@/app/(app)/products/actions';
 
 export interface PriceUpdateItem {
   productId: string;
@@ -291,4 +292,51 @@ export async function previewPriceListUpload(
   }
 
   return { matched, toCreate, skipped };
+}
+
+export interface CreateProductsResult {
+  created: number;
+  pendingApproval: number;
+  failed: { row: NewProductFromExcel; reason: string }[];
+}
+
+export async function createProductsFromExcel(
+  warehouseId: string,
+  rows: NewProductFromExcel[],
+  userId: string,
+): Promise<CreateProductsResult> {
+  let created = 0;
+  let pendingApproval = 0;
+  const failed: CreateProductsResult['failed'] = [];
+
+  for (const row of rows) {
+    try {
+      const result = await addProduct({
+        name: row.name,
+        brand: row.brand,
+        sku: row.sku,
+        barcode: row.barcode || undefined,
+        description: row.name,
+        category: row.category,
+        warehouse: warehouseId,
+        unitOfMeasure: row.unitOfMeasure,
+        stock: 0,
+        reorderPoint: 0,
+        price: row.price,
+        cost: row.cost,
+      } as any, userId);
+
+      if (!result.success) {
+        failed.push({ row, reason: (result as any).message || 'Failed to create product' });
+      } else if ((result as any).pendingApproval) {
+        pendingApproval++;
+      } else {
+        created++;
+      }
+    } catch (error: any) {
+      failed.push({ row, reason: error.message || 'Failed to create product' });
+    }
+  }
+
+  return { created, pendingApproval, failed };
 }
