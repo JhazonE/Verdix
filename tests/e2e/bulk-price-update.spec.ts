@@ -135,34 +135,66 @@ test.describe('Bulk Price Update', () => {
     await testQuery('DELETE FROM approval_workflows WHERE id=?', [WORKFLOW_ID]);
   });
 
-  test('excel upload: invalid row is skipped and reported', async ({ page, request }) => {
+  test('excel upload: valid + invalid rows in one file', async ({ page, request }) => {
     await request.post('/api/pos-settings', { data: { requirePriceUpdateConfirmation: false } });
 
-    const drawer = await openDrawerAndSelectWarehouse(page);
+    // Baseline price straight from the DB, same discipline as the drawer tests —
+    // don't assume the seeded value, and revert to it afterward.
+    const before = await request.get(`/api/products?search=${BULK_PRICE_PRODUCT.sku}&limit=50`);
+    const beforeBody = await before.json();
+    const beforeProduct = (beforeBody.data ?? []).find((p: any) => p.sku === BULK_PRICE_PRODUCT.sku);
+    expect(beforeProduct, 'seeded bulk-price product should exist').toBeTruthy();
+    const priceBefore = parseFloat(beforeProduct.price);
+    const newPrice = 123.45;
 
-    await drawer.getByRole('button', { name: 'Upload Excel' }).click();
+    try {
+      const drawer = await openDrawerAndSelectWarehouse(page);
 
-    const uploadDialog = page.getByRole('dialog').filter({ hasText: 'Upload Price List' });
-    await expect(uploadDialog).toBeVisible();
+      await drawer.getByRole('button', { name: 'Upload Excel' }).click();
 
-    // Build a minimal xlsx in-memory with one row referencing a SKU that doesn't
-    // exist in this warehouse, so the whole file's only row is skipped.
-    const XLSX = require('xlsx');
-    const wb = XLSX.utils.book_new();
-    const sheet = XLSX.utils.aoa_to_sheet([
-      ['sku', 'barcode', 'new_price', 'new_cost', 'new_markup_pct'],
-      ['BAD-SKU-DOES-NOT-EXIST', '', '99', '', ''],
-    ]);
-    XLSX.utils.book_append_sheet(wb, sheet, 'Price List');
-    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      const uploadDialog = page.getByRole('dialog').filter({ hasText: 'Upload Price List' });
+      await expect(uploadDialog).toBeVisible();
 
-    await uploadDialog.locator('input[type="file"]').setInputFiles({
-      name: 'price-list.xlsx',
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      buffer: buf,
-    });
+      // Build a minimal xlsx in-memory with TWO rows: one valid row (real SKU,
+      // matched via previewPriceListUpload's `new_price` branch — exercises the
+      // apply path) and one row referencing a SKU that doesn't exist in this
+      // warehouse (the skip path). Exercising both in one file matches the
+      // brief's "valid + invalid rows in one file".
+      const XLSX = require('xlsx');
+      const wb = XLSX.utils.book_new();
+      const sheet = XLSX.utils.aoa_to_sheet([
+        ['sku', 'barcode', 'new_price', 'new_cost', 'new_markup_pct'],
+        [BULK_PRICE_PRODUCT.sku, '', String(newPrice), '', ''],
+        ['BAD-SKU-DOES-NOT-EXIST', '', '99', '', ''],
+      ]);
+      XLSX.utils.book_append_sheet(wb, sheet, 'Price List');
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
-    await expect(uploadDialog.getByText(/1 row\(s\) skipped/)).toBeVisible();
-    await expect(uploadDialog.getByRole('button', { name: /Submit 0 Change/ })).toBeDisabled();
+      await uploadDialog.locator('input[type="file"]').setInputFiles({
+        name: 'price-list.xlsx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        buffer: buf,
+      });
+
+      await expect(uploadDialog.getByText(/1 row\(s\) skipped/)).toBeVisible();
+      const submitButton = uploadDialog.getByRole('button', { name: /Submit 1 Change/ });
+      await expect(submitButton).toBeEnabled();
+      await submitButton.click();
+
+      await expect(page.getByText('Prices updated')).toBeVisible();
+
+      // Verify the valid row actually persisted to the DB — not just previewed.
+      await expect(async () => {
+        const after = await request.get(`/api/products?search=${BULK_PRICE_PRODUCT.sku}&limit=50`);
+        const afterBody = await after.json();
+        const afterProduct = (afterBody.data ?? []).find((p: any) => p.sku === BULK_PRICE_PRODUCT.sku);
+        expect(afterProduct, 'product still findable after update').toBeTruthy();
+        expect(parseFloat(afterProduct.price)).toBeCloseTo(newPrice, 2);
+      }).toPass({ timeout: 10_000 });
+    } finally {
+      // Revert so this test's mutation doesn't bleed into a re-run of this spec
+      // file, same discipline as the drawer tests.
+      await testQuery('UPDATE products SET price = ? WHERE id = ?', [priceBefore, BULK_PRICE_PRODUCT.id]);
+    }
   });
 });
