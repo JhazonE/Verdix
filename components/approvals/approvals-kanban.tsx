@@ -62,6 +62,7 @@ const TYPE_FILTERS = [
   { val: 'REPACKAGING',      lab: 'Repack' },
   { val: 'SHELF_TRANSFER',   lab: 'Shelf' },
   { val: 'PRODUCT_CREATE',   lab: 'Add Product' },
+  { val: 'PRICE_UPDATE',     lab: 'Price Update' },
 ];
 
 function typeStyle(type: string, reason?: string) {
@@ -77,6 +78,7 @@ function typeStyle(type: string, reason?: string) {
     case 'REPACKAGING':      return 'bg-teal-100 text-teal-800 border-teal-200';
     case 'SHELF_TRANSFER':   return 'bg-orange-100 text-orange-800 border-orange-200';
     case 'PRODUCT_CREATE':   return 'bg-green-100 text-green-800 border-green-200';
+    case 'PRICE_UPDATE':     return 'bg-pink-100 text-pink-800 border-pink-200';
     default:                 return 'bg-secondary/50 text-muted-foreground';
   }
 }
@@ -100,6 +102,12 @@ function cardTitle(item: ApprovalItem): string {
     case 'STOCK_COUNT':      return `Stock Count: ${d.warehouseName || '—'}`;
     case 'REPACKAGING':      return `Repackaging: ${d.sourceProductName || d.productName || '—'}`;
     case 'PRODUCT_CREATE':   return `Add Product: ${d.name || d.productName || '—'}`;
+    case 'PRICE_UPDATE':
+      if (d.items && d.items.length > 0) {
+        const first = d.items[0].productName || 'Unknown';
+        return `Price Update: ${first}${d.items.length > 1 ? ` (+${d.items.length - 1} more)` : ''}`;
+      }
+      return 'Price Update: Batch';
     case 'SHELF_TRANSFER':
       if (d.productName && d.productName !== 'Unknown') return `Shelf Transfer: ${d.productName}`;
       if (d.items && d.items.length > 0) {
@@ -449,8 +457,32 @@ function TransactionDetails({ item }: { item: ApprovalItem }) {
           )}
         </>
       )}
+      {/* PRICE_UPDATE */}
+      {type === 'PRICE_UPDATE' && (
+        <>
+          <div className="bg-secondary/10 rounded-2xl p-4 space-y-0">
+            <Row label="Products Affected" value={(d.items || []).length} />
+            <Row label="Warehouse" value={d.warehouseName || d.warehouseId || '—'} />
+          </div>
+          <ItemsTable
+            items={(d.items || []).map((it: any) => ({
+              ...it,
+              fieldLabel: it.field === 'priceLevel' ? (it.priceLevelName || 'Price Level') : it.field === 'cost' ? 'Cost' : 'Selling Price',
+              oldValueFmt: `₱${toSafeNumber(it.oldValue).toFixed(2)}`,
+              newValueFmt: `₱${toSafeNumber(it.newValue).toFixed(2)}`,
+            }))}
+            cols={[
+              { key: 'productName', label: 'Product' },
+              { key: 'sku', label: 'SKU' },
+              { key: 'fieldLabel', label: 'Field' },
+              { key: 'oldValueFmt', label: 'Old', right: true },
+              { key: 'newValueFmt', label: 'New', right: true },
+            ]}
+          />
+        </>
+      )}
       {/* Generic fallback for anything else that has .items */}
-      {!['PURCHASE_ORDER','RECEIVE_PO','STOCK_ADJUSTMENT','STOCK_TRANSFER','STOCK_COUNT','BAD_ORDER','REPACKAGING','SHELF_TRANSFER'].includes(type) && d.items && (
+      {!['PURCHASE_ORDER','RECEIVE_PO','STOCK_ADJUSTMENT','STOCK_TRANSFER','STOCK_COUNT','BAD_ORDER','REPACKAGING','SHELF_TRANSFER','PRICE_UPDATE'].includes(type) && d.items && (
         <ItemsTable
           items={d.items}
           cols={[
