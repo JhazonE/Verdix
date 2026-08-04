@@ -65,6 +65,11 @@ async function applyPriceUpdateBatch(items: PriceUpdateItem[]): Promise<PriceUpd
   let applied = 0;
 
   await withTransaction(async (connection) => {
+    const [defaultLevelRows]: any = await connection.query(
+      'SELECT id FROM price_levels WHERE is_default = 1 LIMIT 1',
+    );
+    const defaultLevelId: string | undefined = defaultLevelRows?.[0]?.id;
+
     for (const item of items) {
       const [rows]: any = await connection.query(
         'SELECT id, cost FROM products WHERE id = ?',
@@ -97,6 +102,19 @@ async function applyPriceUpdateBatch(items: PriceUpdateItem[]): Promise<PriceUpd
 
       if (item.field === 'price') {
         await connection.query('UPDATE products SET price = ? WHERE id = ?', [newValue, item.productId]);
+        // Keep an existing default-level price-level row in sync with the base
+        // price it's meant to mirror — otherwise the Edit Product dialog's
+        // Price Levels tab (and any other reader of product_price_levels)
+        // shows a stale value after this update. A no-op if no such row
+        // exists yet; this never creates one — that's the drawer's explicit
+        // Price Level target field, not an implicit side effect of updating
+        // the base price.
+        if (defaultLevelId) {
+          await connection.query(
+            'UPDATE product_price_levels SET price = ? WHERE product_id = ? AND price_level_id = ?',
+            [newValue, item.productId, defaultLevelId],
+          );
+        }
       } else if (item.field === 'cost') {
         await connection.query('UPDATE products SET cost = ? WHERE id = ?', [newValue, item.productId]);
       } else if (item.field === 'priceLevel' && item.priceLevelId) {
