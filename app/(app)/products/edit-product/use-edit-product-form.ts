@@ -279,6 +279,35 @@ export function useEditProductForm({
     }
   }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, selectedSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, isInitialized]);
 
+  // Products created without any price-level override row (the common case —
+  // most products only ever get a base `price`, never an explicit
+  // product_price_levels row) show an empty Price Levels tab with no way to
+  // see or edit the retail price there. Auto-seed one row for the default
+  // level, once per product-open, using the same appendPriceLevel path the
+  // "Add Level Price" button already uses. `hasAutoSeededPriceLevel` stops
+  // this from re-adding a row the user deliberately removed.
+  const [hasAutoSeededPriceLevel, setHasAutoSeededPriceLevel] = useState(false);
+
+  useEffect(() => {
+    setHasAutoSeededPriceLevel(false);
+  }, [product.id, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !isInitialized || hasAutoSeededPriceLevel) return;
+    if (priceLevelFields.length > 0) {
+      setHasAutoSeededPriceLevel(true);
+      return;
+    }
+    if (priceLevels.length === 0) return; // level definitions still loading
+
+    const defaultLevel = priceLevels.find((l: any) => l.isDefault);
+    const currentPrice = form.getValues('price');
+    if (defaultLevel && currentPrice != null) {
+      appendPriceLevel({ levelId: defaultLevel.id, price: parseFloat(Number(currentPrice).toFixed(2)), minQuantity: 0 });
+    }
+    setHasAutoSeededPriceLevel(true);
+  }, [isOpen, isInitialized, hasAutoSeededPriceLevel, priceLevelFields.length, priceLevels, form, appendPriceLevel]);
+
   // Auto-update main price when a price level is selected
   useEffect(() => {
     if (selectedPriceLevelId) {
