@@ -10,7 +10,8 @@ export type PriceLevelSaveHandler = (
   description: string,
   isDefault: boolean,
   percentageAdjustment: number,
-  calculationBase: 'retail' | 'cost'
+  calculationBase: 'retail' | 'cost',
+  adjustmentType: 'percentage' | 'fixed'
 ) => Promise<boolean>;
 
 export interface UsePriceLevelFormProps {
@@ -27,6 +28,7 @@ export function usePriceLevelForm({ initialData, onSave }: UsePriceLevelFormProp
   const [description, setDescription] = useState(initialData?.description || '');
   const [isDefault, setIsDefault] = useState(initialData?.isDefault || false);
   const [calculationBase, setCalculationBase] = useState<'retail' | 'cost'>(initialData?.calculationBase || 'retail');
+  const [adjustmentType, setAdjustmentType] = useState<'percentage' | 'fixed'>(initialData?.adjustmentType || 'percentage');
   const [percentageAdjustment, setPercentageAdjustment] = useState(initialData?.percentageAdjustment?.toString() || '0');
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
@@ -46,14 +48,16 @@ export function usePriceLevelForm({ initialData, onSave }: UsePriceLevelFormProp
       toast({
         variant: 'destructive',
         title: 'Validation Error',
-        description: 'Markup percentage must be a valid positive number.',
+        description: adjustmentType === 'fixed'
+          ? 'Fixed amount must be a valid positive number.'
+          : 'Markup percentage must be a valid positive number.',
       });
       return;
     }
 
     setIsSaving(true);
     try {
-      const success = await onSave(name, description, isDefault, adjustment, calculationBase);
+      const success = await onSave(name, description, isDefault, adjustment, calculationBase, adjustmentType);
       if (success) {
         toast({
           title: initialData ? 'Price Level Updated' : 'Price Level Added',
@@ -64,6 +68,7 @@ export function usePriceLevelForm({ initialData, onSave }: UsePriceLevelFormProp
           setDescription('');
           setIsDefault(false);
           setCalculationBase('retail');
+          setAdjustmentType('percentage');
           setPercentageAdjustment('0');
         }
       }
@@ -88,6 +93,8 @@ export function usePriceLevelForm({ initialData, onSave }: UsePriceLevelFormProp
     setIsDefault,
     calculationBase,
     setCalculationBase,
+    adjustmentType,
+    setAdjustmentType,
     percentageAdjustment,
     setPercentageAdjustment,
     isSaving,

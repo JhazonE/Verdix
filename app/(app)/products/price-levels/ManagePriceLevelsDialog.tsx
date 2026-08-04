@@ -35,17 +35,17 @@ export function ManagePriceLevelsDialog({ trigger, onLevelAdded, open, onOpenCha
   const [editingLevel, setEditingLevel] = useState<PriceLevel | undefined>(undefined);
   const { levels, isLoading, addLevel, updateLevel, deleteLevel } = useManagePriceLevels({ onLevelAdded });
 
-  const handleAddLevel = async (name: string, description: string, isDefault: boolean, percentageAdjustment: number, calculationBase: 'retail' | 'cost') => {
-    const success = await addLevel(name, description, isDefault, percentageAdjustment, calculationBase);
+  const handleAddLevel = async (name: string, description: string, isDefault: boolean, percentageAdjustment: number, calculationBase: 'retail' | 'cost', adjustmentType: 'percentage' | 'fixed') => {
+    const success = await addLevel(name, description, isDefault, percentageAdjustment, calculationBase, adjustmentType);
     if (success) {
       setView('list');
     }
     return success;
   };
 
-  const handleUpdateLevel = async (name: string, description: string, isDefault: boolean, percentageAdjustment: number, calculationBase: 'retail' | 'cost') => {
+  const handleUpdateLevel = async (name: string, description: string, isDefault: boolean, percentageAdjustment: number, calculationBase: 'retail' | 'cost', adjustmentType: 'percentage' | 'fixed') => {
     if (!editingLevel) return false;
-    const success = await updateLevel(editingLevel.id, name, description, isDefault, percentageAdjustment, calculationBase);
+    const success = await updateLevel(editingLevel.id, name, description, isDefault, percentageAdjustment, calculationBase, adjustmentType);
     if (success) {
       setView('list');
       setEditingLevel(undefined);

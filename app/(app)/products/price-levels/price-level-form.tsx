@@ -29,6 +29,8 @@ export function PriceLevelForm({
     setIsDefault,
     calculationBase,
     setCalculationBase,
+    adjustmentType,
+    setAdjustmentType,
     percentageAdjustment,
     setPercentageAdjustment,
     isSaving,
@@ -62,8 +64,24 @@ export function PriceLevelForm({
         />
       </div>
       <div className="grid grid-cols-4 items-center gap-4">
+        <Label htmlFor="adjustmentType" className="text-right">
+          Adjustment Type
+        </Label>
+        <div className="col-span-3">
+          <Select value={adjustmentType} onValueChange={(val: 'percentage' | 'fixed') => setAdjustmentType(val)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="percentage">Percentage</SelectItem>
+              <SelectItem value="fixed">Fixed Amount</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="grid grid-cols-4 items-center gap-4">
         <Label htmlFor="adjustment" className="text-right">
-          Markup %
+          {adjustmentType === 'fixed' ? 'Fixed Amount (₱)' : 'Markup %'}
         </Label>
         <Input
           id="adjustment"
@@ -71,7 +89,7 @@ export function PriceLevelForm({
           value={percentageAdjustment}
           onChange={(e) => setPercentageAdjustment(e.target.value)}
           className="col-span-3"
-          placeholder="e.g., 20 for 20% markup"
+          placeholder={adjustmentType === 'fixed' ? 'e.g., 20 for ₱20 added' : 'e.g., 20 for 20% markup'}
         />
       </div>
       <div className="grid grid-cols-4 items-center gap-4">
@@ -90,8 +108,8 @@ export function PriceLevelForm({
           </Select>
           <p className="text-xs text-muted-foreground mt-1 text-right">
             {calculationBase === 'retail'
-              ? 'Applies markup/discount on top of the calculated Retail price.'
-              : 'Applies markup/discount on top of the base Cost.'}
+              ? (adjustmentType === 'fixed' ? 'Adds a fixed amount on top of the calculated Retail price.' : 'Applies markup/discount on top of the calculated Retail price.')
+              : (adjustmentType === 'fixed' ? 'Adds a fixed amount on top of the base Cost.' : 'Applies markup/discount on top of the base Cost.')}
           </p>
         </div>
       </div>

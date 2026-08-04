@@ -32,7 +32,10 @@ export function PriceLevelRow({
         </div>
       </TableCell>
       <TableCell className="text-muted-foreground">{level.description}</TableCell>
-      <TableCell className="text-center">{level.percentageAdjustment}% <br /> <span className="text-xs text-muted-foreground">on {level.calculationBase === 'cost' ? 'Cost' : 'Retail'}</span></TableCell>
+      <TableCell className="text-center">
+        {level.adjustmentType === 'fixed' ? `₱${level.percentageAdjustment}` : `${level.percentageAdjustment}%`}
+        <br /> <span className="text-xs text-muted-foreground">on {level.calculationBase === 'cost' ? 'Cost' : 'Retail'}</span>
+      </TableCell>
       <TableCell className="text-right">
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
