@@ -30,6 +30,7 @@ import { ManageSuppliersDialog } from './suppliers/ManageSuppliersDialog';
 import { ManageShelfLocationsDialog } from './shelf-locations/ManageShelfLocationsDialog';
 import { ManageUnitOfMeasureDialog } from './units-of-measure/ManageUnitOfMeasureDialog';
 import { ManageWarehousesDialog } from '../sales/manage-warehouses/ManageWarehousesDialog';
+import { BulkPriceUpdateDrawer } from './bulk-price-update/BulkPriceUpdateDrawer';
 
 import { Search, ChevronDown, Trash2, PlusCircle, Settings, ShoppingCart, MoreVertical, Edit, Eye, Copy, AlertTriangle, Printer } from 'lucide-react';
 import { PrintBarcodeDialog } from './print-barcode/print-barcode-dialog';
@@ -367,6 +368,7 @@ function ProductsContent() {
   const [isDepartmentsOpen, setIsDepartmentsOpen] = useState(false);
   const [isUnitOfMeasureOpen, setIsUnitOfMeasureOpen] = useState(false);
   const [isWarehousesOpen, setIsWarehousesOpen] = useState(false);
+  const [isBulkPriceUpdateOpen, setIsBulkPriceUpdateOpen] = useState(false);
 
   const filters = {
     search: debouncedSearchTerm || undefined,
@@ -571,6 +573,12 @@ function ProductsContent() {
                 }}
                 trigger={<span className="sr-only">Open Warehouses</span>}
             />
+            <BulkPriceUpdateDrawer
+              open={isBulkPriceUpdateOpen}
+              onOpenChange={setIsBulkPriceUpdateOpen}
+              productOptions={productOptions || {}}
+              onUpdated={() => loadProducts(currentPage, pageSize)}
+            />
             <Dialog open={isFilterDialogOpen} onOpenChange={setIsFilterDialogOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" className="gap-2" onClick={() => {
@@ -742,8 +750,11 @@ function ProductsContent() {
                 </DialogFooter>
               </DialogContent>
            </Dialog>
-            <AddProductDialog 
-              onProductAdded={() => loadProducts(currentPage, pageSize)} 
+            <Button variant="outline" className="bg-background/50 backdrop-blur-sm" onClick={() => setIsBulkPriceUpdateOpen(true)}>
+              Bulk Update Price
+            </Button>
+            <AddProductDialog
+              onProductAdded={() => loadProducts(currentPage, pageSize)}
               productOptions={productOptions}
               onOptionsRefresh={loadProductOptions}
             />
