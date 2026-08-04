@@ -461,10 +461,7 @@ function ProductsContent() {
     <div className="flex flex-col h-full gap-6 pt-2 overflow-hidden">
       <div className="flex flex-col sm:flex-row items-start justify-between gap-4 flex-shrink-0">
         <div>
-           <h1 className="text-3xl font-bold tracking-tight text-foreground">Products</h1>
-             <div className="text-muted-foreground mt-1">
-               Manage your inventory, pricing, and suppliers.
-             </div>
+           <h1 className="text-2xl font-bold tracking-tight text-foreground">Products</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
             <div className="relative group">
