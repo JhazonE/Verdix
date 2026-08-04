@@ -30,8 +30,10 @@ async function openDrawerAndSelectWarehouse(page: import('@playwright/test').Pag
   await drawer.getByText('Select a warehouse').click();
   await page.getByRole('option', { name: 'Test Warehouse' }).click();
 
-  // Product table only renders once a warehouse is selected.
-  await expect(drawer.getByText(BULK_PRICE_PRODUCT.sku)).toBeVisible();
+  // Product table only renders once a warehouse is selected. The table
+  // shows Barcode, not SKU (changed after this spec was first written —
+  // see commit cf83d36).
+  await expect(drawer.getByText(BULK_PRICE_PRODUCT.barcode)).toBeVisible();
   return drawer;
 }
 
@@ -219,7 +221,7 @@ test.describe('Bulk Price Update', () => {
       await expect(submitButton).toBeEnabled();
       await submitButton.click();
 
-      await expect(page.getByText('Prices updated')).toBeVisible();
+      await expect(page.getByText('Price list processed')).toBeVisible();
 
       // Verify the valid row actually persisted to the DB — not just previewed.
       await expect(async () => {
@@ -233,6 +235,77 @@ test.describe('Bulk Price Update', () => {
       // Revert so this test's mutation doesn't bleed into a re-run of this spec
       // file, same discipline as the drawer tests.
       await testQuery('UPDATE products SET price = ? WHERE id = ?', [priceBefore, BULK_PRICE_PRODUCT.id]);
+    }
+  });
+
+  test('excel upload: creates a new product alongside an existing-product update', async ({ page, request }) => {
+    await request.post('/api/pos-settings', { data: { requirePriceUpdateConfirmation: false } });
+
+    const before = await request.get(`/api/products?search=${BULK_PRICE_PRODUCT.sku}&limit=50`);
+    const beforeBody = await before.json();
+    const beforeProduct = (beforeBody.data ?? []).find((p: any) => p.sku === BULK_PRICE_PRODUCT.sku);
+    expect(beforeProduct, 'seeded bulk-price product should exist').toBeTruthy();
+    const priceBefore = parseFloat(beforeProduct.price);
+    const updatedPrice = 999;
+    const newSku = 'E2E-NEW-PRODUCT-' + Date.now();
+
+    try {
+      const drawer = await openDrawerAndSelectWarehouse(page);
+
+      await drawer.getByRole('button', { name: 'Upload Excel' }).click();
+
+      const uploadDialog = page.getByRole('dialog').filter({ hasText: 'Upload Price List' });
+      await expect(uploadDialog).toBeVisible();
+
+      const XLSX = require('xlsx');
+      const wb = XLSX.utils.book_new();
+      const sheet = XLSX.utils.aoa_to_sheet([
+        ['sku', 'barcode', 'name', 'brand', 'category', 'unit_of_measure', 'new_price', 'new_cost', 'new_markup_pct'],
+        [BULK_PRICE_PRODUCT.sku, '', '', '', '', '', String(updatedPrice), '', ''],
+        [newSku, '', 'E2E New Product', 'E2E Brand', 'E2E Category', 'pcs', '75', '', ''],
+      ]);
+      XLSX.utils.book_append_sheet(wb, sheet, 'Price List');
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+      await uploadDialog.locator('input[type="file"]').setInputFiles({
+        name: 'price-list.xlsx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        buffer: buf,
+      });
+
+      await expect(uploadDialog.getByText('1 new product(s) will be created', { exact: true })).toBeVisible();
+
+      const submitButton = uploadDialog.getByRole('button', { name: /Submit \d+ Change/ });
+      await expect(submitButton).toBeDisabled();
+
+      await uploadDialog.getByRole('checkbox', { name: /I understand 1 new product/ }).check();
+      await expect(submitButton).toBeEnabled();
+      await submitButton.click();
+
+      await expect(page.getByText('Price list processed')).toBeVisible();
+
+      // The existing-product update actually persisted.
+      await expect(async () => {
+        const after = await request.get(`/api/products?search=${BULK_PRICE_PRODUCT.sku}&limit=50`);
+        const afterBody = await after.json();
+        const afterProduct = (afterBody.data ?? []).find((p: any) => p.sku === BULK_PRICE_PRODUCT.sku);
+        expect(afterProduct, 'product still findable after update').toBeTruthy();
+        expect(parseFloat(afterProduct.price)).toBeCloseTo(updatedPrice, 2);
+      }).toPass({ timeout: 10_000 });
+
+      // The new product was actually created.
+      await expect(async () => {
+        const created = await request.get(`/api/products?search=${newSku}&limit=50`);
+        const createdBody = await created.json();
+        const createdProduct = (createdBody.data ?? []).find((p: any) => p.sku === newSku);
+        expect(createdProduct, 'new product should exist after upload').toBeTruthy();
+        expect(parseFloat(createdProduct.price)).toBeCloseTo(75, 2);
+      }).toPass({ timeout: 10_000 });
+    } finally {
+      // Revert the update and remove the created product so this test's
+      // mutations don't bleed into a re-run of this spec file.
+      await testQuery('UPDATE products SET price = ? WHERE id = ?', [priceBefore, BULK_PRICE_PRODUCT.id]);
+      await testQuery('DELETE FROM products WHERE sku = ?', [newSku]);
     }
   });
 });
