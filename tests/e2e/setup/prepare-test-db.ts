@@ -45,6 +45,7 @@ import {
   REASSIGN_AUTO_NOMATCH,
   TEST_SUPPLIER,
   TEST_WAREHOUSE,
+  BULK_PRICE_PRODUCT,
   PO_PRODUCT,
   SO_CUSTOMER,
   SO_PRODUCT,
@@ -292,6 +293,17 @@ async function seedFixtures(): Promise<void> {
   // --- supplier + warehouse (para sa purchase-order test) ---
   await conn.query('INSERT INTO suppliers (id, name) VALUES (?, ?)', [TEST_SUPPLIER.id, TEST_SUPPLIER.name]);
   await conn.query('INSERT INTO warehouses (id, name) VALUES (?, ?)', [TEST_WAREHOUSE.id, TEST_WAREHOUSE.name]);
+
+  // Product assigned to TEST_WAREHOUSE — the Bulk Update Price drawer's product
+  // picker filters by warehouse_id, and TEST_PRODUCTS all have NULL warehouse_id.
+  await conn.query(
+    `INSERT INTO products (id, name, price, cost, stock, sku, barcode, warehouse_id, availability)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Available')`,
+    [
+      BULK_PRICE_PRODUCT.id, BULK_PRICE_PRODUCT.name, BULK_PRICE_PRODUCT.price, BULK_PRICE_PRODUCT.cost,
+      BULK_PRICE_PRODUCT.stock, BULK_PRICE_PRODUCT.sku, BULK_PRICE_PRODUCT.barcode, BULK_PRICE_PRODUCT.warehouseId,
+    ],
+  );
 
   // Product nga naka-link sa supplier (ang PO product selector mo-filter by supplier).
   await conn.query(

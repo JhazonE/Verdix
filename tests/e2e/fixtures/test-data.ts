@@ -327,6 +327,23 @@ export const TEST_SUPPLIER = { id: 'sup-test', name: 'Test Supplier Co.' };
 export const TEST_WAREHOUSE = { id: 'wh-test', name: 'Test Warehouse' };
 
 /**
+ * Product nga naka-assign sa TEST_WAREHOUSE — gikinahanglan sa bulk-price-update
+ * e2e test kay ang Bulk Update Price drawer's product picker mo-filter pinaagi
+ * sa warehouse_id, ug ang TEST_PRODUCTS naa'y NULL warehouse_id (dili sila
+ * motungha bisan unsang warehouse ang piliin).
+ */
+export const BULK_PRICE_PRODUCT = {
+  id: 'test-bulk-price-product-1',
+  name: 'Bulk Price Update Product',
+  sku: 'BULK-PRC-001',
+  barcode: '4800000099999',
+  price: 100,
+  cost: 60,
+  stock: 20,
+  warehouseId: TEST_WAREHOUSE.id,
+};
+
+/**
  * Product nga naka-link sa TEST_SUPPLIER — gikinahanglan kay ang PO ProductSelector
  * mo-filter sa products pinaagi sa gipili nga supplier (products nga walay maong
  * supplier dili motungha).
