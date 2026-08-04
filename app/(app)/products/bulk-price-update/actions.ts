@@ -100,21 +100,19 @@ async function applyPriceUpdateBatch(items: PriceUpdateItem[]): Promise<PriceUpd
       } else if (item.field === 'cost') {
         await connection.query('UPDATE products SET cost = ? WHERE id = ?', [newValue, item.productId]);
       } else if (item.field === 'priceLevel' && item.priceLevelId) {
-        const [existing]: any = await connection.query(
-          'SELECT product_id FROM product_price_levels WHERE product_id = ? AND price_level_id = ? AND (min_quantity IS NULL OR min_quantity = 0)',
-          [item.productId, item.priceLevelId],
+        // product_price_levels' primary key is (product_id, price_level_id) —
+        // min_quantity is NOT part of it. A SELECT-then-branch existence check
+        // filtered on min_quantity can miss an existing row (e.g. one with a
+        // non-zero min_quantity set via the product's Price Levels tab), take
+        // the INSERT branch, and hit a duplicate-PK error that aborts the
+        // whole batch. Upsert on the real PK instead; only touch `price` on
+        // conflict so an existing row's min_quantity is never silently reset.
+        await connection.query(
+          `INSERT INTO product_price_levels (product_id, price_level_id, price, min_quantity)
+           VALUES (?, ?, ?, 0)
+           ON DUPLICATE KEY UPDATE price = VALUES(price)`,
+          [item.productId, item.priceLevelId, newValue],
         );
-        if (existing && existing.length > 0) {
-          await connection.query(
-            'UPDATE product_price_levels SET price = ? WHERE product_id = ? AND price_level_id = ? AND (min_quantity IS NULL OR min_quantity = 0)',
-            [newValue, item.productId, item.priceLevelId],
-          );
-        } else {
-          await connection.query(
-            'INSERT INTO product_price_levels (product_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, 0)',
-            [item.productId, item.priceLevelId, newValue],
-          );
-        }
       }
       applied++;
     }
