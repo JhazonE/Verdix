@@ -124,10 +124,48 @@ test.describe('Bulk Price Update', () => {
     const afterProduct = (afterBody.data ?? []).find((p: any) => p.sku === BULK_PRICE_PRODUCT.sku);
     expect(parseFloat(afterProduct.price)).toBeCloseTo(priceBefore, 2);
 
+    // Grab the queued row now, before approving, so we can assert its final
+    // status independent of the UI flow below.
+    const queueRows = await testQuery(
+      "SELECT id FROM approval_queue WHERE transaction_type='PRICE_UPDATE' AND status='Pending' ORDER BY created_at DESC LIMIT 1",
+    );
+    expect(queueRows.length, 'a pending PRICE_UPDATE queue row should exist').toBe(1);
+    const queueId = queueRows[0].id;
+
     await page.goto('/approvals');
     await page.getByText('Price Update', { exact: true }).click();
     await page.getByText(/Price Update:/).first().click();
     await expect(page.getByText(/Price Update:/).first()).toBeVisible();
+
+    try {
+      // Drives the full finalize->apply chain end to end:
+      // app/api/approvals/process/route.ts's PRICE_UPDATE branch calls
+      // submitPriceUpdateBatch(..., true) -> applyPriceUpdateBatch, which must
+      // actually write to the DB. Before this, that chain had zero automated
+      // coverage anywhere in the suite (see whole-branch review Finding 4).
+      // The seeded admin session (userType 'Admin') satisfies the DetailView's
+      // isAdmin bypass regardless of which role the workflow step targets, so
+      // the Approve button is enabled here.
+      const approveButton = page.getByRole('button', { name: 'Approve' });
+      await expect(approveButton).toBeEnabled();
+      await approveButton.click();
+
+      const expectedApprovedPrice = Math.round(priceBefore * 1.05 * 100) / 100;
+      await expect(async () => {
+        const afterApproval = await request.get(`/api/products?search=${BULK_PRICE_PRODUCT.sku}&limit=50`);
+        const afterApprovalBody = await afterApproval.json();
+        const afterApprovalProduct = (afterApprovalBody.data ?? []).find((p: any) => p.sku === BULK_PRICE_PRODUCT.sku);
+        expect(afterApprovalProduct, 'product still findable after approval').toBeTruthy();
+        expect(parseFloat(afterApprovalProduct.price)).toBeCloseTo(expectedApprovedPrice, 2);
+      }).toPass({ timeout: 10_000 });
+
+      const finalRows = await testQuery('SELECT status FROM approval_queue WHERE id=?', [queueId]);
+      expect(finalRows[0].status).toBe('Approved');
+    } finally {
+      // Revert the price so this mutation doesn't bleed into a re-run of this
+      // spec file, same discipline as the other tests below.
+      await testQuery('UPDATE products SET price = ? WHERE id = ?', [priceBefore, BULK_PRICE_PRODUCT.id]);
+    }
 
     // Reset the setting AND remove the workflow row so neither bleeds into other
     // specs that share the DB.
