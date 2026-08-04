@@ -43,6 +43,10 @@ export function useBulkPriceUpdate(onUpdated?: () => void) {
 
   const preview: PriceUpdateItem[] = useMemo(() => {
     if (!products) return [];
+    // A priceLevel target with no level chosen has no valid field to write to —
+    // the backend would silently skip these rows while still reporting them as
+    // "applied", so exclude them here rather than preview/submit garbage values.
+    if (effectiveField === 'priceLevel' && !priceLevelId) return [];
     return products
       .filter((p: any) => selectedIds.has(p.id))
       .map((p: any) => {
@@ -76,6 +80,9 @@ export function useBulkPriceUpdate(onUpdated?: () => void) {
         toast({ variant: 'destructive', title: 'Error', description: result.message || 'Failed to submit price update.' });
       }
       return result;
+    } catch (error: any) {
+      toast({ variant: 'destructive', title: 'Error', description: error.message || 'Failed to submit price update.' });
+      return null;
     } finally {
       setIsSubmitting(false);
     }
