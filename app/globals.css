@@ -5,7 +5,7 @@
 @layer base {
   :root {
     /* Premium Slate/Indigo Palette - Light Mode */
-    --background: 210 40% 98%;      /* Soft white/blue-grey tint */
+    --background: 210 35% 94%;      /* Soft white/blue-grey tint */
     --foreground: 222 47% 11%;      /* Deep Slate for text */
 
     --card: 0 0% 100%;
@@ -17,20 +17,20 @@
     --primary: 221 83% 53%;         /* Modern Bright Blue/Indigo */
     --primary-foreground: 210 40% 98%;
 
-    --secondary: 210 40% 96.1%;
+    --secondary: 210 35% 92%;
     --secondary-foreground: 222 47% 11.2%;
 
-    --muted: 210 40% 96.1%;
+    --muted: 210 35% 92%;
     --muted-foreground: 215.4 16.3% 46.9%;
 
-    --accent: 210 40% 96.1%;
+    --accent: 210 35% 92%;
     --accent-foreground: 222 47% 11.2%;
 
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
+    --border: 214.3 28% 86%;
+    --input: 214.3 28% 86%;
     --ring: 221 83% 53%;
 
     --radius: 0.75rem;              /* Increased radius for modern feel */

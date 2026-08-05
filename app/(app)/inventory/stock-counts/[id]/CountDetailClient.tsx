@@ -215,16 +215,7 @@ export function CountDetailClient({ countId }: { countId: string }) {
 
         {/* ── Desktop table (hidden on mobile) ───────────────────────────── */}
         <div className="hidden md:block rounded-md border bg-card text-card-foreground shadow-sm">
-          <div className="p-4 border-b flex items-center justify-between bg-muted/20">
-            <div className="flex items-center px-3 pl-0">
-              <Search className="h-4 w-4 text-muted-foreground ml-3 absolute" />
-              <Input
-                placeholder="Scan barcode or search name/SKU..."
-                className="pl-9 w-full sm:w-96"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
+          <div className="p-4 border-b flex items-center justify-end bg-muted/20">
             <div className="text-sm text-muted-foreground flex gap-4">
               <span>Total: {items.length}</span>
               <span>Counted: {countedCount}</span>

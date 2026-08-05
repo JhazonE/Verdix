@@ -459,22 +459,18 @@ function ProductsContent() {
 
   return (
     <div className="flex flex-col h-full gap-6 pt-2 overflow-hidden">
-      <div className="flex flex-col sm:flex-row items-start justify-between gap-4 flex-shrink-0">
-        <div>
-           <h1 className="text-2xl font-bold tracking-tight text-foreground">Products</h1>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 p-2.5 rounded-2xl border border-border/50 bg-gradient-to-r from-muted/40 via-background to-muted/40 shadow-sm flex-shrink-0">
             <div className="relative group">
               <Search className="absolute left-3 top-[0.65rem] h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
               <Input
                 type="search"
                 placeholder="Search products..."
-                className="pl-9 w-full sm:w-[250px] bg-background/50 border-input/50 focus:bg-background transition-all shadow-sm"
+                className="pl-9 w-full sm:w-[320px] bg-background/70 border-input/50 focus:bg-background transition-all shadow-sm"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-          
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="bg-background/50 backdrop-blur-sm">
@@ -755,7 +751,6 @@ function ProductsContent() {
               productOptions={productOptions}
               onOptionsRefresh={loadProductOptions}
             />
-        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 flex-shrink-0">
