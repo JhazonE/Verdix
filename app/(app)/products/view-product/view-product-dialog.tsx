@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -49,6 +50,17 @@ export function ViewProductDialog({
     const [internalOpen, setInternalOpen] = useState(false);
     const isOpen = externalOpen !== undefined ? externalOpen : internalOpen;
     const setIsOpen = externalOnOpenChange !== undefined ? externalOnOpenChange : setInternalOpen;
+
+    const { data: posSettings } = useQuery({
+        queryKey: ['posSettings'],
+        queryFn: async () => {
+            const response = await fetch('/api/pos-settings');
+            if (!response.ok) throw new Error('Failed to fetch POS settings');
+            return response.json();
+        }
+    });
+    const lowStockThreshold = posSettings?.data?.lowStockThreshold || 0;
+    const effectiveReorderPoint = Math.max(product.reorderPoint || 0, lowStockThreshold);
 
 
     return (
@@ -124,7 +136,7 @@ export function ViewProductDialog({
                                             <div className="flex items-baseline gap-2">
                                                 <span className={cn(
                                                     "text-2xl font-bold tracking-tight",
-                                                    product.stock <= (product.reorderPoint || 0) ? "text-destructive" : "text-foreground"
+                                                    product.stock <= effectiveReorderPoint ? "text-destructive" : "text-foreground"
                                                 )}>
                                                     {formatQuantity(product.stock, product.unitOfMeasure)}
                                                 </span>

@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
          ib.id,
          ib.product_id,
          p.name as product_name,
-         p.sku as product_sku,
+         p.barcode as product_barcode,
          ib.purchase_order_id,
          po.reference_number as po_reference,
          ib.received_date,

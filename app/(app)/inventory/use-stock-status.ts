@@ -19,11 +19,19 @@ interface StockStatusResult {
  *
  * `type` is optional — omitting it falls back to the stock ladder, which is the
  * safe direction for a row that was fetched without the column.
+ *
+ * `globalLowStockThreshold` is the store-wide "Low Stock Threshold" setting
+ * (Settings > Notifications). The low-stock filter, report, and notification
+ * bell all flag a product as low stock once it drops under either its own
+ * reorder point OR this global floor — the badge must use the same effective
+ * threshold or it disagrees with those other views for products whose
+ * reorder point is set lower than the global floor.
  */
 export function getStockStatus(
   stock: number,
   reorderPoint: number,
   type?: string | null,
+  globalLowStockThreshold?: number,
 ): StockStatusResult {
   if (type === 'service') {
     return {
@@ -34,8 +42,9 @@ export function getStockStatus(
     };
   }
 
+  const effectiveThreshold = Math.max(reorderPoint, globalLowStockThreshold || 0);
   const stockStatus: StockStatus =
-    stock === 0 ? 'out-of-stock' : stock < reorderPoint ? 'low-stock' : 'in-stock';
+    stock === 0 ? 'out-of-stock' : stock < effectiveThreshold ? 'low-stock' : 'in-stock';
 
   const badgeVariant: BadgeVariant =
     stockStatus === 'out-of-stock' ? 'destructive' :

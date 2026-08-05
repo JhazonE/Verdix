@@ -198,6 +198,7 @@ export default function InventoryPage() {
               onSuccess={loadProducts}
               requireAdjustmentConfirmation={posSettings?.requireAdjustmentConfirmation}
               requireTransferConfirmation={posSettings?.requireTransferConfirmation}
+              lowStockThreshold={posSettings?.data?.lowStockThreshold}
             />
           ))}
         </div>
@@ -223,6 +224,7 @@ export default function InventoryPage() {
                   onSuccess={loadProducts}
                   requireAdjustmentConfirmation={posSettings?.requireAdjustmentConfirmation}
                   requireTransferConfirmation={posSettings?.requireTransferConfirmation}
+                  lowStockThreshold={posSettings?.data?.lowStockThreshold}
                 />
               ))}
             </TableBody>

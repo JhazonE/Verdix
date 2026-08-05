@@ -20,7 +20,7 @@ const SAMPLE_PAYLOAD: StaLuciaSalesPayload = {
   vat_amount: 0,
   other_taxes: 0,
   net_sales: 0,
-  number_of_transactions: 0,
+  sale_type: false,
 };
 
 /**

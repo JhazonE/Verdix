@@ -15,7 +15,7 @@ import type { ProductWithChildren } from './product-list-types';
 import { ProductRowActions } from './ProductRowActions';
 import { getStockStatus, useStockStatus } from './use-stock-status';
 
-export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmentConfirmation, requireTransferConfirmation }: { productGroup: ProductWithChildren, onSuccess?: () => void, requireAdjustmentConfirmation?: boolean, requireTransferConfirmation?: boolean }) {
+export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmentConfirmation, requireTransferConfirmation, lowStockThreshold }: { productGroup: ProductWithChildren, onSuccess?: () => void, requireAdjustmentConfirmation?: boolean, requireTransferConfirmation?: boolean, lowStockThreshold?: number }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const hasChildren = productGroup.children && productGroup.children.length > 0;
 
@@ -24,6 +24,7 @@ export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmen
     displayStock,
     productGroup.reorderPoint,
     productGroup.type,
+    lowStockThreshold,
   );
 
   return (
@@ -80,7 +81,7 @@ export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmen
       </TableRow>
       {isExpanded && hasChildren && productGroup.children!.map((child) => {
           const { badgeVariant: childBadgeVariant, badgeTextFull: childBadgeText } =
-            getStockStatus(child.stock, child.reorderPoint, child.type);
+            getStockStatus(child.stock, child.reorderPoint, child.type, lowStockThreshold);
 
           return (
             <TableRow key={child.id} className="bg-muted/30">

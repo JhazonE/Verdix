@@ -6,7 +6,7 @@ export interface InventoryBatch {
   id: string;
   product_id: string;
   product_name: string;
-  product_sku: string;
+  product_barcode: string | null;
   purchase_order_id: string | null;
   po_reference: string | null;
   received_date: string;

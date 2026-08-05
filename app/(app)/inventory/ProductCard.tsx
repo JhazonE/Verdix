@@ -22,7 +22,7 @@ import { StockAdjustmentDialog } from './stock-adjustment-dialog/StockAdjustment
 import { StockTransferDialog } from './stock-transfer-dialog/StockTransferDialog';
 import { useStockStatus } from './use-stock-status';
 
-export function ProductCard({ product, hasChildren = false, onSuccess, requireAdjustmentConfirmation, requireTransferConfirmation }: { product: Product, hasChildren?: boolean, onSuccess?: () => void, requireAdjustmentConfirmation?: boolean, requireTransferConfirmation?: boolean }) {
+export function ProductCard({ product, hasChildren = false, onSuccess, requireAdjustmentConfirmation, requireTransferConfirmation, lowStockThreshold }: { product: Product, hasChildren?: boolean, onSuccess?: () => void, requireAdjustmentConfirmation?: boolean, requireTransferConfirmation?: boolean, lowStockThreshold?: number }) {
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const [isCountOpen, setIsCountOpen] = useState(false);
   const [isTransferOpen, setIsTransferOpen] = useState(false);
@@ -37,6 +37,7 @@ export function ProductCard({ product, hasChildren = false, onSuccess, requireAd
     displayStock,
     product.reorderPoint,
     product.type,
+    lowStockThreshold,
   );
 
   return (

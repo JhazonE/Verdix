@@ -288,7 +288,7 @@ export default function InventoryReportPage() {
                       <TableRow key={product.id}>
                         <TableCell className="font-medium">
                             {product.name}
-                            {product.stock <= product.reorder_point && (
+                            {product.stock <= Math.max(product.reorder_point, settings?.lowStockThreshold || 0) && (
                                 <Badge variant="destructive" className="ml-2 print:hidden">Low Stock</Badge>
                             )}
                         </TableCell>

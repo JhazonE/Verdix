@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
   const required = [
     'credit', 'gross_sales', 'date_time', 'total_discounts', 'vat_exempt_sales',
     'vat_sales', 'non_vat_sales', 'vat_amount', 'other_taxes', 'net_sales',
-    'number_of_transactions',
+    'sale_type',
   ];
   const missing = required.filter(k => received[k] === undefined || received[k] === null);
   if (missing.length) {

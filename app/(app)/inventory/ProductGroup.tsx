@@ -10,7 +10,7 @@ import type { ProductWithChildren } from './product-list-types';
 import { ProductCard } from './ProductCard';
 import { CondensedProductRow } from './condensed-product-row/CondensedProductRow';
 
-export function ProductGroup({ productGroup, onSuccess, requireAdjustmentConfirmation, requireTransferConfirmation }: { productGroup: ProductWithChildren, onSuccess?: () => void, requireAdjustmentConfirmation?: boolean, requireTransferConfirmation?: boolean }) {
+export function ProductGroup({ productGroup, onSuccess, requireAdjustmentConfirmation, requireTransferConfirmation, lowStockThreshold }: { productGroup: ProductWithChildren, onSuccess?: () => void, requireAdjustmentConfirmation?: boolean, requireTransferConfirmation?: boolean, lowStockThreshold?: number }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const hasChildren = productGroup.children && productGroup.children.length > 0;
 
@@ -26,6 +26,7 @@ export function ProductGroup({ productGroup, onSuccess, requireAdjustmentConfirm
           onSuccess={onSuccess}
           requireAdjustmentConfirmation={requireAdjustmentConfirmation}
           requireTransferConfirmation={requireTransferConfirmation}
+          lowStockThreshold={lowStockThreshold}
         />
         {hasChildren && (
           <Button
@@ -53,6 +54,7 @@ export function ProductGroup({ productGroup, onSuccess, requireAdjustmentConfirm
                   onSuccess={onSuccess}
                   requireAdjustmentConfirmation={requireAdjustmentConfirmation}
                   requireTransferConfirmation={requireTransferConfirmation}
+                  lowStockThreshold={lowStockThreshold}
                 />
               ))}
           </div>

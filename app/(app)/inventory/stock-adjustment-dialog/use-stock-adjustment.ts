@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { logActivity } from '@/lib/client-activity-logger';
 import { useToast } from '@/hooks/use-toast';
+import { toSafeNumber } from '@/lib/utils';
 import type { Product } from '@/lib/types';
 
 import { getProducts } from '../../products/actions';
@@ -69,17 +70,22 @@ export function useStockAdjustment({
 
   const dialogTitle = isPhysicalCountMode ? `Physical Count` : `Adjust Stock`;
 
+  // product.stock comes back from MySQL as a DECIMAL, which mysql2 returns as a
+  // string — `+`/`-` against it silently does string concatenation instead of
+  // arithmetic, so every consumer here works off a coerced number.
+  const currentStock = toSafeNumber(product.stock);
+
   const variance = useMemo(() => {
     if (isPhysicalCountMode && physicalCount !== null) {
-      return physicalCount - product.stock;
+      return physicalCount - currentStock;
     }
     return 0;
-  }, [isPhysicalCountMode, physicalCount, product.stock]);
+  }, [isPhysicalCountMode, physicalCount, currentStock]);
 
   const projectedStock = useMemo(() => {
     const adj = adjustmentType === 'add' ? quantity : -quantity;
-    return Math.max(0, product.stock + adj);
-  }, [product.stock, quantity, adjustmentType]);
+    return Math.max(0, currentStock + adj);
+  }, [currentStock, quantity, adjustmentType]);
 
   const reasons = {
     add: ['New Shipment', 'Customer Return', 'Stock Correction', 'Found in Warehouse', 'Other'],
@@ -163,7 +169,7 @@ export function useStockAdjustment({
       finalReason = effectiveReason;
     }
 
-    const newStock = product.stock + adjustment;
+    const newStock = currentStock + adjustment;
 
     if (newStock < 0) {
       toast({

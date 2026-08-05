@@ -154,7 +154,7 @@ export function BatchInventoryDrawer({ open, onOpenChange }: BatchInventoryDrawe
                           <p className="font-medium leading-tight truncate" title={batch.product_name}>
                             {batch.product_name || '-'}
                           </p>
-                          <p className="text-[10px] text-muted-foreground font-mono">{batch.product_sku || ''}</p>
+                          <p className="text-[10px] text-muted-foreground font-mono">{batch.product_barcode || ''}</p>
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-[10px] text-muted-foreground uppercase font-bold">

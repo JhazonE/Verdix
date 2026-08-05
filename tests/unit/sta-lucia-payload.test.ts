@@ -29,8 +29,8 @@ assert.equal(p.vat_sales, 900, 'vat_sales from vatSales');
 assert.equal(p.vat_amount, 108, 'vat_amount from vatAmount');
 assert.equal(p.vat_exempt_sales, 100, 'vat_exempt_sales from vatExempt');
 assert.equal(p.non_vat_sales, 200, 'non_vat_sales from nonVat');
-assert.equal(p.number_of_transactions, 42, 'transaction count maps');
 assert.equal(p.other_taxes, 0, 'other_taxes is always 0 — Verdix models no tax beyond VAT');
+assert.equal(p.sale_type, false, 'sale_type is always false — Verdix only submits full-day Z-readings, never hourly');
 
 // --- credit/debit split: credit = non-cash tender, debit = cash tender ---
 assert.equal(p.debit, 200, 'debit is cash tender');

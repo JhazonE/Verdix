@@ -31,7 +31,8 @@ export interface StaLuciaSalesPayload {
   vat_amount: number;
   other_taxes: number;
   net_sales: number;
-  number_of_transactions: number;
+  /** true = hourly sale, false = end-of-day. Verdix only ever submits full-day Z-readings, so always false. */
+  sale_type: boolean;
 }
 
 /**

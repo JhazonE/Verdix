@@ -54,14 +54,15 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { addChildProduct } from './actions';
 import { useLiveRefresh, dispatchStockUpdate } from '@/hooks/use-live-refresh';
 
-function ProductRow({ product, onProductDeleted, onProductUpdated, products, productOptions, onOptionsRefresh, depth = 0 }: { 
-  product: ProductWithChildren; 
-  onProductDeleted?: () => void; 
-  onProductUpdated?: () => void; 
-  products: Product[]; 
+function ProductRow({ product, onProductDeleted, onProductUpdated, products, productOptions, onOptionsRefresh, depth = 0, lowStockThreshold }: {
+  product: ProductWithChildren;
+  onProductDeleted?: () => void;
+  onProductUpdated?: () => void;
+  products: Product[];
   productOptions?: any;
   onOptionsRefresh?: () => void;
   depth?: number;
+  lowStockThreshold?: number;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -76,12 +77,16 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
   // "Out of Stock" reads as a problem to fix when it is simply how they work.
   const isServiceProduct = product.type === 'service';
 
+  // Effective threshold matches the Low Stock filter/report/notification bell:
+  // a product is low stock once it drops under its own reorder point OR the
+  // store-wide Low Stock Threshold, whichever is higher.
+  const effectiveReorderPoint = Math.max(product.reorderPoint, lowStockThreshold || 0);
   const stockStatus =
     isServiceProduct
       ? 'service'
       : product.stock <= 0
       ? 'out-of-stock'
-      : product.stock < product.reorderPoint
+      : product.stock < effectiveReorderPoint
         ? 'low-stock'
         : 'in-stock';
 
@@ -279,6 +284,7 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
           productOptions={productOptions}
           onOptionsRefresh={onOptionsRefresh}
           depth={depth + 1}
+          lowStockThreshold={lowStockThreshold}
         />
       ))}
 
@@ -402,6 +408,16 @@ function ProductsContent() {
       return getProductOptions();
     }
   });
+
+  const { data: posSettings } = useQuery({
+    queryKey: ['posSettings'],
+    queryFn: async () => {
+      const response = await fetch('/api/pos-settings');
+      if (!response.ok) throw new Error('Failed to fetch POS settings');
+      return response.json();
+    }
+  });
+  const lowStockThreshold = posSettings?.data?.lowStockThreshold;
 
   const loadProducts = useCallback((page?: number, size?: number) => {
     refetch();
@@ -883,6 +899,7 @@ function ProductsContent() {
                     products={products}
                     productOptions={productOptions}
                     onOptionsRefresh={loadProductOptions}
+                    lowStockThreshold={lowStockThreshold}
                   />
                 ))
               )}

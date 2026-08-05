@@ -117,7 +117,7 @@ test.describe('Sta Lucia sales submission', () => {
       vat_exempt_sales: 100,
       non_vat_sales: 200,
       other_taxes: 0,
-      number_of_transactions: 42,
+      sale_type: false,
       date_time: '2026-07-31 18:30:00',
     });
 

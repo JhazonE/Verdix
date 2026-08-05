@@ -69,14 +69,35 @@ does not branch on role. A login returning `status: 0` is treated as a failure.
   "non_vat_sales": 200.00,
   "vat_amount": 108.00,
   "other_taxes": 20.00,
-  "net_sales": 1070.00
+  "net_sales": 1070.00,
+  "sale_type": false
 }
 ```
 
-Plus `number_of_transactions` (int, required) per the parameter table on page 17
-of the source PDF. Every field is required except `debit`. `total_discounts` is
-a **string percentage** (`"10%"`), not an amount — this is the one field whose
+Every field is required except `debit` (defaults to 0), `company_id`
+(required only for multi-store owners — out of scope here, see below), and
+`sale_type`-dependent `is_reprocessed`/`remarks`. `total_discounts` is a
+**string percentage** (`"10%"`), not an amount — this is the one field whose
 type does not match its name.
+
+**Updated 2026-08-05 per "Sales Submission API Documentation v2" (MediaOne,
+June 23 2026):**
+
+- `number_of_transactions` no longer exists in the contract. It was required
+  in v1; the v2 field table and every v2 request/response example omit it
+  entirely. `payload.ts` no longer sends it.
+- `sale_type` (boolean, required) is new: `true` = hourly sale, `false` =
+  end-of-day. Verdix only ever submits full-day Z-readings (see "Out of
+  scope" below), so `buildSalesPayload()` always sets `sale_type: false`.
+- `is_reprocessed` (boolean, optional, default `false`) and conditional
+  `remarks` (required when `is_reprocessed` is `true`, max 1000 chars) are
+  also new — they let the mall accept a one-time correction to an
+  already-submitted EOD, within 24h of the original submission. **Not wired
+  up in this codebase**: nothing here ever resends an already-succeeded
+  Z-reading (see the fast-path skip in `sendZReadingToStaLucia()`), so there
+  is no caller that would ever need to set these. If a future feature adds a
+  manual "resend as correction" action, this is the field pair to use, and it
+  needs a required remarks prompt in the UI per the mall's validation rule.
 
 ---
 
@@ -201,7 +222,7 @@ Source is the Z-reading object produced by `app/api/sales/z-reading/route.ts`.
 | `vat_amount` | `vatAmount` | |
 | `other_taxes` | `0.00` | Verdix models no taxes beyond VAT |
 | `net_sales` | `netSales` | |
-| `number_of_transactions` | `transactionCount` | |
+| `sale_type` | always `false` | Verdix only submits full-day Z-readings, never hourly |
 
 `zeroRated` has no counterpart in the Sta Lucia schema and is not sent.
 

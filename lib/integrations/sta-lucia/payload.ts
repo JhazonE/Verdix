@@ -46,6 +46,6 @@ export function buildSalesPayload(z: ZReadingLike): StaLuciaSalesPayload {
     vat_amount: round2(z.vatAmount),
     other_taxes: 0,
     net_sales: round2(z.netSales),
-    number_of_transactions: Math.trunc(z.transactionCount) || 0,
+    sale_type: false,
   };
 }

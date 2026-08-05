@@ -7,9 +7,9 @@ import type { Product } from '@/lib/types';
 import { ProductRowActions } from '../ProductRowActions';
 import { useStockStatus } from '../use-stock-status';
 
-export function CondensedProductRow({ product, isLast = false, onSuccess, requireAdjustmentConfirmation, requireTransferConfirmation }: { product: Product, isLast?: boolean, onSuccess?: () => void, requireAdjustmentConfirmation?: boolean, requireTransferConfirmation?: boolean }) {
+export function CondensedProductRow({ product, isLast = false, onSuccess, requireAdjustmentConfirmation, requireTransferConfirmation, lowStockThreshold }: { product: Product, isLast?: boolean, onSuccess?: () => void, requireAdjustmentConfirmation?: boolean, requireTransferConfirmation?: boolean, lowStockThreshold?: number }) {
   const displayStock = product.stock;
-  const { badgeVariant, badgeTextShort } = useStockStatus(product.stock, product.reorderPoint, product.type);
+  const { badgeVariant, badgeTextShort } = useStockStatus(product.stock, product.reorderPoint, product.type, lowStockThreshold);
 
   return (
     <div className="relative flex items-center gap-3 pl-10 py-1.5 pr-2 hover:bg-muted/30 transition-colors rounded-lg group mx-1">
