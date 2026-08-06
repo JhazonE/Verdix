@@ -28,9 +28,9 @@ export function useByProductQuery({
   const [totalItems, setTotalItems] = useState(0);
 
   const { data: attributesData } = useQuery({
-    queryKey: ['productAttributes'],
+    queryKey: ['salesByProductAttributes'],
     queryFn: async () => {
-      const res = await fetch(getApiUrl('/products/attributes'));
+      const res = await fetch(getApiUrl('/sales/by-product/attributes'));
       return res.json();
     },
     staleTime: 5 * 60 * 1000,
