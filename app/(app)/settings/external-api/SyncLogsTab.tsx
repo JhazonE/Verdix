@@ -11,8 +11,21 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { AlertCircle, Ban, CheckCircle2, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from '@/components/ui/dialog';
+import { AlertCircle, Ban, CheckCircle2, Eye, Loader2, RefreshCw, Trash2 } from 'lucide-react';
 import type { ApiSyncLog } from '@/lib/services/api-sync-logger';
+
+/** Payload/response are stored as raw text; pretty-print when they're JSON, show as-is otherwise. */
+function formatLogBody(raw: string | null | undefined): string {
+  if (!raw) return '(empty)';
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
+}
 
 interface Props {
   logs: ApiSyncLog[];
@@ -28,6 +41,7 @@ interface Props {
 
 export function SyncLogsTab({ logs, isLoading, logStatusFilter, onStatusFilterChange, onRefresh, retryingLogId, onRetry, onClearLogs, isClearingLogs }: Props) {
   const [confirmText, setConfirmText] = useState('');
+  const [viewLog, setViewLog] = useState<ApiSyncLog | null>(null);
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
@@ -119,11 +133,16 @@ export function SyncLogsTab({ logs, isLoading, logStatusFilter, onStatusFilterCh
                   <td className="p-4 text-xs">{log.nextRetryAt ? new Date(log.nextRetryAt).toLocaleTimeString() : '-'}</td>
                   <td className="p-4 max-w-[200px] truncate text-xs text-destructive">{log.errorMessage || '-'}</td>
                   <td className="p-4">
-                    {(log.status === 'failed' || log.status === 'pending') && (
-                      <Button variant="outline" size="sm" onClick={() => onRetry(log)} disabled={retryingLogId === log.id}>
-                        {retryingLogId === log.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setViewLog(log)} title="View sent data">
+                        <Eye className="h-3.5 w-3.5" />
                       </Button>
-                    )}
+                      {(log.status === 'failed' || log.status === 'pending') && (
+                        <Button variant="outline" size="sm" onClick={() => onRetry(log)} disabled={retryingLogId === log.id}>
+                          {retryingLogId === log.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -131,6 +150,39 @@ export function SyncLogsTab({ logs, isLoading, logStatusFilter, onStatusFilterCh
           </table>
         </div>
       </CardContent>
+
+      <Dialog open={!!viewLog} onOpenChange={(open) => { if (!open) setViewLog(null); }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{viewLog?.transactionId}</DialogTitle>
+            <DialogDescription>
+              {viewLog?.transactionType} · {viewLog?.endpoint}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <p className="mb-1 text-sm font-medium">Payload sent</p>
+              <pre className="max-h-64 overflow-auto rounded-lg bg-muted p-3 text-xs">
+                {formatLogBody(viewLog?.payload)}
+              </pre>
+            </div>
+            <div>
+              <p className="mb-1 text-sm font-medium">Response received</p>
+              <pre className="max-h-64 overflow-auto rounded-lg bg-muted p-3 text-xs">
+                {formatLogBody(viewLog?.response)}
+              </pre>
+            </div>
+            {viewLog?.errorMessage && (
+              <div>
+                <p className="mb-1 text-sm font-medium text-destructive">Error</p>
+                <pre className="max-h-32 overflow-auto rounded-lg bg-destructive/10 p-3 text-xs text-destructive">
+                  {viewLog.errorMessage}
+                </pre>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
