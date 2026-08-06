@@ -10,26 +10,22 @@ export const formatAmount = (val: any) =>
 type UtilParams = {
   sales: any[];
   searchTerm: string;
-  paymentTypeFilter: string;
-  salesStatusFilter: string;
   dateRange: DateRange | undefined;
   terminalId: string;
+  paymentTypeFilter: string;
 };
 
-export function useDetailsUtils({ sales, searchTerm, paymentTypeFilter, salesStatusFilter, dateRange, terminalId }: UtilParams) {
+export function useDetailsUtils({ sales, searchTerm, dateRange, terminalId, paymentTypeFilter }: UtilParams) {
+  // Payment type is applied server-side by /api/sales/transactions — `sales`
+  // already reflects it. Search remains client-side (free text over the loaded page).
   const filteredSales = useMemo(() => sales.filter(sale => {
     if (searchTerm) {
       const t = searchTerm.toLowerCase();
       if (!String(sale.id || sale.posTransactionId).toLowerCase().includes(t) &&
           !sale.customer?.name?.toLowerCase().includes(t)) return false;
     }
-    if (paymentTypeFilter !== 'all' && sale.paymentMethod !== paymentTypeFilter) return false;
-    if (salesStatusFilter !== 'all') {
-      const st = sale.status || (sale.paymentStatus === 'completed' ? 'Paid' : 'Pending');
-      if (st !== salesStatusFilter) return false;
-    }
     return true;
-  }), [sales, searchTerm, paymentTypeFilter, salesStatusFilter]);
+  }), [sales, searchTerm]);
 
   const summaryTotals = sales.reduce((acc, sale) => {
     const totalAmount = Number(sale.total || 0);
@@ -54,6 +50,7 @@ export function useDetailsUtils({ sales, searchTerm, paymentTypeFilter, salesSta
     if (dateRange?.from) params.append('startDate', format(dateRange.from, 'yyyy-MM-dd'));
     if (dateRange?.to) params.append('endDate', format(dateRange.to, 'yyyy-MM-dd'));
     if (terminalId && terminalId !== 'all') params.append('terminalId', terminalId);
+    if (paymentTypeFilter && paymentTypeFilter !== 'all') params.append('paymentMethod', paymentTypeFilter);
     params.append('limit', '1000000');
     try {
       const res = await fetch(`/api/sales/transactions?${params.toString()}`);

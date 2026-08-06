@@ -20,9 +20,7 @@ interface Props {
   salesStatusFilter: string;
   customerFilter: string;
   cashierFilter: string;
-  salesGroupFilter: string;
   referenceNumberFilter: string;
-  transactionFromFilter: string;
   // dialog openers
   onOpenPaymentType: () => void;
   onOpenTerminal: () => void;
@@ -30,9 +28,7 @@ interface Props {
   onOpenSalesStatus: () => void;
   onOpenCustomer: () => void;
   onOpenCashier: () => void;
-  onOpenSalesGroup: () => void;
   onOpenReferenceNumber: () => void;
-  onOpenTransactionFrom: () => void;
   onClearFilterValues: () => void;
   // export
   onExportCSV: () => void;
@@ -45,15 +41,15 @@ interface Props {
 export function SalesFilterToolbar({
   searchTerm, onSearchChange, table,
   paymentTypeFilter, terminalId, dateRange, salesStatusFilter,
-  customerFilter, cashierFilter, salesGroupFilter, referenceNumberFilter, transactionFromFilter,
+  customerFilter, cashierFilter, referenceNumberFilter,
   onOpenPaymentType, onOpenTerminal, onOpenDateRange, onOpenSalesStatus,
-  onOpenCustomer, onOpenCashier, onOpenSalesGroup, onOpenReferenceNumber, onOpenTransactionFrom,
+  onOpenCustomer, onOpenCashier, onOpenReferenceNumber,
   onClearFilterValues, onExportCSV, onExportPDF, hasActiveFilters, onResetFilters,
 }: Props) {
   const activeFilterCount = [
     paymentTypeFilter !== 'all', terminalId !== 'all', !!dateRange,
     salesStatusFilter !== 'all', !!customerFilter, (cashierFilter && cashierFilter !== 'all'),
-    salesGroupFilter !== 'all', !!referenceNumberFilter, transactionFromFilter !== 'all',
+    !!referenceNumberFilter,
   ].filter(Boolean).length;
 
   return (
@@ -79,9 +75,7 @@ export function SalesFilterToolbar({
             <DropdownMenuItem onSelect={onOpenSalesStatus}>Sales Status{salesStatusFilter !== 'all' && <Badge variant="secondary" className="ml-auto text-xs">{salesStatusFilter}</Badge>}</DropdownMenuItem>
             <DropdownMenuItem onSelect={onOpenCustomer}>Customer{customerFilter && <Badge variant="secondary" className="ml-auto text-xs">Set</Badge>}</DropdownMenuItem>
             <DropdownMenuItem onSelect={onOpenCashier}>Cashier{cashierFilter && cashierFilter !== 'all' && <Badge variant="secondary" className="ml-auto text-xs">Set</Badge>}</DropdownMenuItem>
-            <DropdownMenuItem onSelect={onOpenSalesGroup}>Sales Group{salesGroupFilter !== 'all' && <Badge variant="secondary" className="ml-auto text-xs">{salesGroupFilter}</Badge>}</DropdownMenuItem>
             <DropdownMenuItem onSelect={onOpenReferenceNumber}>Reference Number{referenceNumberFilter && <Badge variant="secondary" className="ml-auto text-xs">Set</Badge>}</DropdownMenuItem>
-            <DropdownMenuItem onSelect={onOpenTransactionFrom}>Transaction From{transactionFromFilter !== 'all' && <Badge variant="secondary" className="ml-auto text-xs">{transactionFromFilter}</Badge>}</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={onClearFilterValues} className="text-destructive">Clear All Filters</DropdownMenuItem>
           </DropdownMenuContent>

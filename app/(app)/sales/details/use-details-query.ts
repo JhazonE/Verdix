@@ -7,18 +7,20 @@ import { useQuery } from '@tanstack/react-query';
 type QueryParams = {
   dateRange: DateRange | undefined;
   terminalId: string;
+  paymentTypeFilter: string;
   currentPage: number;
   limit: number;
 };
 
-export function useDetailsQuery({ dateRange, terminalId, currentPage, limit }: QueryParams) {
+export function useDetailsQuery({ dateRange, terminalId, paymentTypeFilter, currentPage, limit }: QueryParams) {
   const { data: salesResult, isLoading } = useQuery({
-    queryKey: ['salesDetails', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), terminalId, currentPage, limit],
+    queryKey: ['salesDetails', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), terminalId, paymentTypeFilter, currentPage, limit],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (dateRange?.from) params.append('startDate', format(dateRange.from, 'yyyy-MM-dd'));
       if (dateRange?.to) params.append('endDate', format(dateRange.to, 'yyyy-MM-dd'));
       if (terminalId && terminalId !== 'all') params.append('terminalId', terminalId);
+      if (paymentTypeFilter && paymentTypeFilter !== 'all') params.append('paymentMethod', paymentTypeFilter);
       params.append('page', currentPage.toString());
       params.append('limit', limit.toString());
       const res = await fetch(`/api/sales/transactions?${params.toString()}`);

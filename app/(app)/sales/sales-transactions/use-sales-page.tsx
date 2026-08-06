@@ -40,9 +40,7 @@ export function useSalesPage() {
   const [salesStatusFilter, setSalesStatusFilter] = useState('all');
   const [customerFilter, setCustomerFilter] = useState('');
   const [cashierFilter, setCashierFilter] = useState('all');
-  const [salesGroupFilter, setSalesGroupFilter] = useState('all');
   const [referenceNumberFilter, setReferenceNumberFilter] = useState('');
-  const [transactionFromFilter, setTransactionFromFilter] = useState('all');
 
   // dialog open states
   const [paymentTypeDialogOpen, setPaymentTypeDialogOpen] = useState(false);
@@ -51,9 +49,7 @@ export function useSalesPage() {
   const [salesStatusDialogOpen, setSalesStatusDialogOpen] = useState(false);
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [cashierDialogOpen, setCashierDialogOpen] = useState(false);
-  const [salesGroupDialogOpen, setSalesGroupDialogOpen] = useState(false);
   const [referenceNumberDialogOpen, setReferenceNumberDialogOpen] = useState(false);
-  const [transactionFromDialogOpen, setTransactionFromDialogOpen] = useState(false);
 
   // temp filter values
   const [tempPaymentType, setTempPaymentType] = useState('all');
@@ -62,17 +58,30 @@ export function useSalesPage() {
   const [tempSalesStatus, setTempSalesStatus] = useState('all');
   const [tempCustomer, setTempCustomer] = useState('');
   const [tempCashier, setTempCashier] = useState('');
-  const [tempSalesGroup, setTempSalesGroup] = useState('all');
   const [tempReferenceNumber, setTempReferenceNumber] = useState('');
-  const [tempTransactionFrom, setTempTransactionFrom] = useState('all');
+
+  const buildSalesParams = () => {
+    const params = new URLSearchParams();
+    if (dateRange?.from) params.append('startDate', format(dateRange.from, 'yyyy-MM-dd'));
+    if (dateRange?.to) params.append('endDate', format(dateRange.to, 'yyyy-MM-dd'));
+    if (terminalId && terminalId !== 'all') params.append('terminalId', terminalId);
+    if (paymentTypeFilter !== 'all') params.append('paymentMethod', paymentTypeFilter);
+    if (salesStatusFilter !== 'all') params.append('status', salesStatusFilter);
+    if (customerFilter) params.append('customer', customerFilter);
+    if (cashierFilter && cashierFilter !== 'all') params.append('cashier', cashierFilter);
+    if (referenceNumberFilter) params.append('reference', referenceNumberFilter);
+    if (searchTerm) params.append('search', searchTerm);
+    return params;
+  };
 
   const { data: salesResult, isLoading } = useQuery({
-    queryKey: ['salesTransactions', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), terminalId, currentPage, limit],
+    queryKey: [
+      'salesTransactions', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), terminalId,
+      currentPage, limit, paymentTypeFilter, salesStatusFilter, customerFilter, cashierFilter,
+      referenceNumberFilter, searchTerm,
+    ],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (dateRange?.from) params.append('startDate', format(dateRange.from, 'yyyy-MM-dd'));
-      if (dateRange?.to) params.append('endDate', format(dateRange.to, 'yyyy-MM-dd'));
-      if (terminalId && terminalId !== 'all') params.append('terminalId', terminalId);
+      const params = buildSalesParams();
       params.append('page', currentPage.toString());
       params.append('limit', limit.toString());
       const res = await fetch(getApiUrl(`/sales/transactions?${params.toString()}`));
@@ -106,21 +115,9 @@ export function useSalesPage() {
     });
   };
 
-  const filteredSales = useMemo(() => sales.filter(sale => {
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      if (!String(sale.id || sale.posTransactionId).toLowerCase().includes(term) && !sale.customer?.name?.toLowerCase().includes(term)) return false;
-    }
-    if (paymentTypeFilter !== 'all' && sale.paymentMethod !== paymentTypeFilter) return false;
-    if (salesStatusFilter !== 'all') {
-      const status = sale.status || (sale.paymentStatus === 'completed' ? 'Paid' : 'Pending');
-      if (status !== salesStatusFilter) return false;
-    }
-    if (customerFilter && !sale.customer?.name?.toLowerCase().includes(customerFilter.toLowerCase())) return false;
-    if (cashierFilter && cashierFilter !== 'all' && !sale.cashier?.toLowerCase().includes(cashierFilter.toLowerCase())) return false;
-    if (referenceNumberFilter && !String(sale.orderNumber || '').includes(referenceNumberFilter)) return false;
-    return true;
-  }), [sales, searchTerm, paymentTypeFilter, salesStatusFilter, customerFilter, cashierFilter, referenceNumberFilter]);
+  // Filtering (search, payment type, status, customer, cashier, reference) is applied
+  // server-side by /api/sales/transactions — `sales` already reflects the active filters.
+  const filteredSales = sales;
 
   const columns = useMemo<ColumnDef<Sale>[]>(() => [
     {
@@ -173,43 +170,28 @@ export function useSalesPage() {
 
   const hasActiveFilters = !!(searchTerm || dateRange || terminalId !== 'all' ||
     paymentTypeFilter !== 'all' || salesStatusFilter !== 'all' || customerFilter ||
-    (cashierFilter && cashierFilter !== 'all') || salesGroupFilter !== 'all' ||
-    referenceNumberFilter || transactionFromFilter !== 'all');
+    (cashierFilter && cashierFilter !== 'all') || referenceNumberFilter);
 
   const resetFilters = () => {
     setSearchTerm(''); setDateRange(undefined); setTerminalId('all');
     setPaymentTypeFilter('all'); setSalesStatusFilter('all'); setCustomerFilter('');
-    setCashierFilter('all'); setSalesGroupFilter('all'); setReferenceNumberFilter('');
-    setTransactionFromFilter('all'); setCurrentPage(1);
+    setCashierFilter('all'); setReferenceNumberFilter(''); setCurrentPage(1);
   };
 
   const clearFilterValues = () => {
     setPaymentTypeFilter('all'); setTerminalId('all'); setDateRange(undefined);
     setSalesStatusFilter('all'); setCustomerFilter(''); setCashierFilter('all');
-    setSalesGroupFilter('all'); setReferenceNumberFilter(''); setTransactionFromFilter('all');
+    setReferenceNumberFilter('');
   };
 
   const fetchAllSalesForExport = async () => {
-    const params = new URLSearchParams();
-    if (dateRange?.from) params.append('startDate', format(dateRange.from, 'yyyy-MM-dd'));
-    if (dateRange?.to) params.append('endDate', format(dateRange.to, 'yyyy-MM-dd'));
-    if (terminalId && terminalId !== 'all') params.append('terminalId', terminalId);
+    const params = buildSalesParams();
     params.append('limit', '1000000');
     try {
       const res = await fetch(getApiUrl(`/sales/transactions?${params.toString()}`));
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const result = await res.json();
-      if (result.success && Array.isArray(result.data)) {
-        let data = result.data;
-        if (searchTerm) { const t = searchTerm.toLowerCase(); data = data.filter((s: any) => String(s.id || s.posTransactionId).toLowerCase().includes(t) || s.customer?.name?.toLowerCase().includes(t)); }
-        if (paymentTypeFilter !== 'all') data = data.filter((s: any) => s.paymentMethod === paymentTypeFilter);
-        if (salesStatusFilter !== 'all') data = data.filter((s: any) => { const st = s.status || (s.paymentStatus === 'completed' ? 'Paid' : 'Pending'); return st === salesStatusFilter; });
-        if (customerFilter) data = data.filter((s: any) => s.customer?.name?.toLowerCase().includes(customerFilter.toLowerCase()));
-        if (cashierFilter && cashierFilter !== 'all') data = data.filter((s: any) => s.cashier?.toLowerCase().includes(cashierFilter.toLowerCase()));
-        if (referenceNumberFilter) data = data.filter((s: any) => String(s.orderNumber || '').includes(referenceNumberFilter));
-        return data;
-      }
-      return [];
+      return result.success && Array.isArray(result.data) ? result.data : [];
     } catch { return []; }
   };
 
@@ -268,9 +250,7 @@ export function useSalesPage() {
   const openSalesStatusDialog = () => { setTempSalesStatus(salesStatusFilter); setSalesStatusDialogOpen(true); };
   const openCustomerDialog = () => { setTempCustomer(customerFilter); setCustomerDialogOpen(true); };
   const openCashierDialog = () => { setTempCashier(cashierFilter); setCashierDialogOpen(true); };
-  const openSalesGroupDialog = () => { setTempSalesGroup(salesGroupFilter); setSalesGroupDialogOpen(true); };
   const openReferenceNumberDialog = () => { setTempReferenceNumber(referenceNumberFilter); setReferenceNumberDialogOpen(true); };
-  const openTransactionFromDialog = () => { setTempTransactionFrom(transactionFromFilter); setTransactionFromDialogOpen(true); };
 
   // combined "apply filter" handlers (apply + close)
   const applyPaymentType = () => { setPaymentTypeFilter(tempPaymentType); setPaymentTypeDialogOpen(false); };
@@ -279,9 +259,7 @@ export function useSalesPage() {
   const applySalesStatus = () => { setSalesStatusFilter(tempSalesStatus); setSalesStatusDialogOpen(false); };
   const applyCustomer = () => { setCustomerFilter(tempCustomer); setCustomerDialogOpen(false); };
   const applyCashier = () => { setCashierFilter(tempCashier); setCashierDialogOpen(false); };
-  const applySalesGroup = () => { setSalesGroupFilter(tempSalesGroup); setSalesGroupDialogOpen(false); };
   const applyReferenceNumber = () => { setReferenceNumberFilter(tempReferenceNumber); setReferenceNumberDialogOpen(false); };
-  const applyTransactionFrom = () => { setTransactionFromFilter(tempTransactionFrom); setTransactionFromDialogOpen(false); };
 
   return {
     // data
@@ -296,7 +274,7 @@ export function useSalesPage() {
     searchTerm, setSearchTerm,
     // active filter values (for badge display)
     paymentTypeFilter, terminalId, dateRange, salesStatusFilter,
-    customerFilter, cashierFilter, salesGroupFilter, referenceNumberFilter, transactionFromFilter,
+    customerFilter, cashierFilter, referenceNumberFilter,
     // filter dialog open states
     paymentTypeDialogOpen, setPaymentTypeDialogOpen,
     terminalDialogOpen, setTerminalDialogOpen,
@@ -304,9 +282,7 @@ export function useSalesPage() {
     salesStatusDialogOpen, setSalesStatusDialogOpen,
     customerDialogOpen, setCustomerDialogOpen,
     cashierDialogOpen, setCashierDialogOpen,
-    salesGroupDialogOpen, setSalesGroupDialogOpen,
     referenceNumberDialogOpen, setReferenceNumberDialogOpen,
-    transactionFromDialogOpen, setTransactionFromDialogOpen,
     // temp values
     tempPaymentType, setTempPaymentType,
     tempTerminalId, setTempTerminalId,
@@ -314,16 +290,14 @@ export function useSalesPage() {
     tempSalesStatus, setTempSalesStatus,
     tempCustomer, setTempCustomer,
     tempCashier, setTempCashier,
-    tempSalesGroup, setTempSalesGroup,
     tempReferenceNumber, setTempReferenceNumber,
-    tempTransactionFrom, setTempTransactionFrom,
     // combined handlers
     openPaymentTypeDialog, openTerminalDialog, openDateRangeDialog,
     openSalesStatusDialog, openCustomerDialog, openCashierDialog,
-    openSalesGroupDialog, openReferenceNumberDialog, openTransactionFromDialog,
+    openReferenceNumberDialog,
     applyPaymentType, applyTerminal, applyDateRange,
     applySalesStatus, applyCustomer, applyCashier,
-    applySalesGroup, applyReferenceNumber, applyTransactionFrom,
+    applyReferenceNumber,
     // computed
     summaryTotals, hasActiveFilters,
     // actions

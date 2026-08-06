@@ -35,18 +35,14 @@ export default function SalesPage() {
               salesStatusFilter={p.salesStatusFilter}
               customerFilter={p.customerFilter}
               cashierFilter={p.cashierFilter}
-              salesGroupFilter={p.salesGroupFilter}
               referenceNumberFilter={p.referenceNumberFilter}
-              transactionFromFilter={p.transactionFromFilter}
               onOpenPaymentType={p.openPaymentTypeDialog}
               onOpenTerminal={p.openTerminalDialog}
               onOpenDateRange={p.openDateRangeDialog}
               onOpenSalesStatus={p.openSalesStatusDialog}
               onOpenCustomer={p.openCustomerDialog}
               onOpenCashier={p.openCashierDialog}
-              onOpenSalesGroup={p.openSalesGroupDialog}
               onOpenReferenceNumber={p.openReferenceNumberDialog}
-              onOpenTransactionFrom={p.openTransactionFromDialog}
               onClearFilterValues={p.clearFilterValues}
               onExportCSV={p.exportToCSV}
               onExportPDF={p.exportToPDF}
@@ -84,12 +80,8 @@ export default function SalesPage() {
         cashierDialogOpen={p.cashierDialogOpen} setCashierDialogOpen={p.setCashierDialogOpen}
         tempCashier={p.tempCashier} setTempCashier={p.setTempCashier} onApplyCashier={p.applyCashier}
         users={p.users}
-        salesGroupDialogOpen={p.salesGroupDialogOpen} setSalesGroupDialogOpen={p.setSalesGroupDialogOpen}
-        tempSalesGroup={p.tempSalesGroup} setTempSalesGroup={p.setTempSalesGroup} onApplySalesGroup={p.applySalesGroup}
         referenceNumberDialogOpen={p.referenceNumberDialogOpen} setReferenceNumberDialogOpen={p.setReferenceNumberDialogOpen}
         tempReferenceNumber={p.tempReferenceNumber} setTempReferenceNumber={p.setTempReferenceNumber} onApplyReferenceNumber={p.applyReferenceNumber}
-        transactionFromDialogOpen={p.transactionFromDialogOpen} setTransactionFromDialogOpen={p.setTransactionFromDialogOpen}
-        tempTransactionFrom={p.tempTransactionFrom} setTempTransactionFrom={p.setTempTransactionFrom} onApplyTransactionFrom={p.applyTransactionFrom}
       />
     </>
   );

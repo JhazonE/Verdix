@@ -11,7 +11,12 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate');     // yyyy-MM-dd
     const terminalId = searchParams.get('terminalId');
     const productId = searchParams.get('productId'); // Filter by product content
-    const status = searchParams.get('status');       // 'Paid', 'Void', 'Returned'
+    const status = searchParams.get('status');       // 'Paid', 'Voided', 'Returned'
+    const paymentMethod = searchParams.get('paymentMethod');
+    const customer = searchParams.get('customer');
+    const cashier = searchParams.get('cashier');
+    const reference = searchParams.get('reference');
+    const search = searchParams.get('search');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = (page - 1) * limit;
@@ -97,6 +102,27 @@ export async function GET(request: NextRequest) {
          whereClause += ' AND st.status = ?';
          params.push(status);
       }
+    }
+
+    if (paymentMethod && paymentMethod !== 'all') {
+      whereClause += ' AND pt.payment_method = ?';
+      params.push(paymentMethod);
+    }
+    if (customer) {
+      whereClause += ' AND c.name LIKE ?';
+      params.push(`%${customer}%`);
+    }
+    if (cashier && cashier !== 'all') {
+      whereClause += ' AND u.display_name = ?';
+      params.push(cashier);
+    }
+    if (reference) {
+      whereClause += ' AND (pt.order_number LIKE ? OR pt.si_number LIKE ? OR st.reference LIKE ? OR st.receipt_number LIKE ?)';
+      params.push(`%${reference}%`, `%${reference}%`, `%${reference}%`, `%${reference}%`);
+    }
+    if (search) {
+      whereClause += ' AND (pt.id LIKE ? OR pt.order_number LIKE ? OR c.name LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
     // 1. Get total count

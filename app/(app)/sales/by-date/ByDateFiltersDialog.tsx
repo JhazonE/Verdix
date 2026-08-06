@@ -17,6 +17,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { TerminalSelector } from '@/components/TerminalSelector';
+import { usePaymentMethods } from '@/hooks/use-api';
 
 type Props = {
   open: boolean;
@@ -40,6 +41,7 @@ export function ByDateFiltersDialog({
   transactionReference, setTransactionReference,
   onApply,
 }: Props) {
+  const { paymentMethods } = usePaymentMethods();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
@@ -81,12 +83,7 @@ export function ByDateFiltersDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Payment Types</SelectItem>
-                <SelectItem value="Cash">Cash</SelectItem>
-                <SelectItem value="Card">Card</SelectItem>
-                <SelectItem value="GCash">GCash</SelectItem>
-                <SelectItem value="Maya">Maya</SelectItem>
-                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
-                <SelectItem value="Account">Account</SelectItem>
+                {paymentMethods.map((pm) => <SelectItem key={pm.id} value={pm.name}>{pm.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

@@ -9,9 +9,7 @@ import {
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { TerminalSelector } from '@/components/TerminalSelector';
-
-const PAYMENT_TYPES = ['all', 'Cash', 'Card', 'GCash', 'Maya', 'Account', 'Mixed'] as const;
-const SALES_STATUSES = ['all', 'Paid', 'Pending', 'Partial'] as const;
+import { usePaymentMethods } from '@/hooks/use-api';
 
 type PaymentTypeDialogProps = {
   open: boolean;
@@ -21,12 +19,14 @@ type PaymentTypeDialogProps = {
   onApply: () => void;
 };
 export function PaymentTypeFilterDialog({ open, onClose, tempPaymentType, setTempPaymentType, onApply }: PaymentTypeDialogProps) {
+  const { paymentMethods } = usePaymentMethods();
+  const options = ['all', ...paymentMethods.map(pm => pm.name)];
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
       <DialogContent className="max-w-xs">
         <DialogHeader><DialogTitle>Filter by Payment Type</DialogTitle></DialogHeader>
         <RadioGroup value={tempPaymentType} onValueChange={setTempPaymentType} className="gap-3 mt-2">
-          {PAYMENT_TYPES.map(t => (
+          {options.map(t => (
             <div key={t} className="flex items-center gap-2">
               <RadioGroupItem value={t} id={`pt-${t}`} />
               <Label htmlFor={`pt-${t}`} className="cursor-pointer capitalize">{t === 'all' ? 'All Types' : t}</Label>
