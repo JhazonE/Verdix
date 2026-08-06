@@ -773,7 +773,7 @@ function ProductsContent() {
 
         
         {/* Active Filters Badges */}
-        {(selectedBrand !== 'all' || selectedCategory !== 'all' || selectedSupplier !== 'all' || selectedWarehouse !== 'all' || selectedStatus !== 'all' || selectedDepartment !== 'all') && (
+        {(selectedBrand !== 'all' || selectedCategory !== 'all' || selectedSupplier !== 'all' || selectedWarehouse !== 'all' || selectedShelfLocation !== 'all' || selectedStatus !== 'all' || selectedDepartment !== 'all') && (
             <div className="flex flex-wrap items-center gap-2">
                  {selectedBrand !== 'all' && (
                      <Badge variant="secondary" className="gap-1 pl-2">
