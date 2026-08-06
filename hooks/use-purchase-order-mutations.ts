@@ -87,8 +87,6 @@ export function useReceivePurchaseOrder() {
           userId,
           supplierName: order.supplierName || 'N/A',
           referenceNumber: order.referenceNumber || order.id,
-          poTotal: toSafeNumber(order.total),
-          poGrandTotal: toSafeNumber((order as any).grandTotal || order.total),
         }),
       });
 

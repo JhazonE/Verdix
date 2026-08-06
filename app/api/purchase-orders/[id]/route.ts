@@ -63,9 +63,11 @@ export async function PATCH(
         }
     }
 
-    // Recalculate if items or shipping updated
-    let finalTotal = toSafeNumber(total);
-    let finalVatAmount = toSafeNumber(vatAmount);
+    // Only touch total/vatAmount when the caller actually sent one — e.g. the
+    // "Receive" action doesn't resend `total`, and toSafeNumber(undefined) is 0,
+    // which previously zeroed out the order's total on every receipt.
+    let finalTotal: number | undefined = total !== undefined ? toSafeNumber(total) : undefined;
+    let finalVatAmount: number | undefined = vatAmount !== undefined ? toSafeNumber(vatAmount) : undefined;
 
     if (items && Array.isArray(items)) {
       const calculations = calculatePurchaseCosts(items, shipping !== undefined ? shipping : 0);
