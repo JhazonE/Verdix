@@ -136,30 +136,66 @@ export default function InventoryReportPage() {
     }
   };
 
-  const exportToExcel = () => {
-    const totalValueSum = filteredProducts.reduce((s, p) => s + p.total_value, 0);
-    const fileName = `Stock_On_Hand_${format(new Date(), 'yyyyMMdd')}.xls`;
-    const ok = exportReportExcel<Product>({
-      title: 'Stock on Hand Report',
-      subtitle: `Generated ${format(new Date(), 'yyyy-MM-dd')}`,
-      columns: [
-        { header: 'Product Name', cell: (p) => p.name },
-        { header: 'Barcode', cell: (p) => p.barcode || '-' },
-        { header: 'Category', cell: (p) => p.category },
-        { header: 'Cost', align: 'right', cell: (p) => p.cost },
-        { header: 'Price', align: 'right', cell: (p) => p.price },
-        { header: 'Stock', align: 'right', cell: (p) => `${formatStockQuantity(p.stock)} ${p.unit_of_measure || ''}`.trim() },
-        { header: 'Total Value', align: 'right', cell: (p) => p.total_value },
-      ],
-      rows: filteredProducts,
-      totals: ['TOTALS', null, null, null, null, null, totalValueSum.toFixed(2)],
-      fileName,
-    });
-    if (!ok) {
-      toast({ title: 'No Data', description: 'No records to export.', variant: 'destructive' });
-      return;
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportToExcel = async () => {
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedCategory && selectedCategory !== 'all') params.append('category', selectedCategory);
+      params.append('page', '1');
+      params.append('limit', '100000');
+
+      let rows: Product[] = products;
+      try {
+        const res = await fetch(getApiUrl(`/reports/inventory?${params.toString()}`));
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data)) {
+          rows = data.data;
+        }
+      } catch {
+        // fall back to the currently loaded page
+      }
+
+      const search = searchTerm.toLowerCase();
+      const fullFilteredProducts = rows.filter((p) => {
+        if (!searchTerm.trim()) return true;
+        return (
+          p.name?.toLowerCase().includes(search) ||
+          p.barcode?.toLowerCase().includes(search) ||
+          p.category?.toLowerCase().includes(search)
+        );
+      });
+
+      const totalValueSum = fullFilteredProducts.reduce((s, p) => s + p.total_value, 0);
+      const fileName = `Stock_On_Hand_${format(new Date(), 'yyyyMMdd')}.xls`;
+      const ok = exportReportExcel<Product>({
+        title: 'Stock on Hand Report',
+        subtitle: `Generated ${format(new Date(), 'yyyy-MM-dd')}`,
+        columns: [
+          { header: 'Product Name', cell: (p) => p.name },
+          { header: 'Barcode', cell: (p) => p.barcode || '-' },
+          { header: 'Category', cell: (p) => p.category },
+          { header: 'Cost', align: 'right', cell: (p) => p.cost },
+          { header: 'Price', align: 'right', cell: (p) => p.price },
+          { header: 'Stock', align: 'right', cell: (p) => `${formatStockQuantity(p.stock)} ${p.unit_of_measure || ''}`.trim() },
+          { header: 'Total Value', align: 'right', cell: (p) => p.total_value },
+        ],
+        rows: fullFilteredProducts,
+        totals: ['TOTALS', null, null, null, null, null, totalValueSum.toFixed(2)],
+        fileName,
+      });
+      if (!ok) {
+        toast({ title: 'No Data', description: 'No records to export.', variant: 'destructive' });
+        return;
+      }
+      toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+    } catch (error) {
+      console.error('Failed to export inventory to Excel:', error);
+      toast({ title: 'Export Failed', description: 'Could not export the report. Please try again.', variant: 'destructive' });
+    } finally {
+      setIsExporting(false);
     }
-    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
   };
 
   useEffect(() => {
@@ -243,12 +279,12 @@ export default function InventoryReportPage() {
               Print Report
           </Button>
           <Button
-            onClick={exportToExcel}
+            onClick={() => exportToExcel()}
             variant="outline"
             className="gap-2 border-emerald-700 text-emerald-700 hover:bg-emerald-50"
-            disabled={filteredProducts.length === 0}
+            disabled={isExporting || filteredProducts.length === 0}
           >
-            <FileSpreadsheet className="h-4 w-4" />
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
             Export to Excel
           </Button>
         </div>

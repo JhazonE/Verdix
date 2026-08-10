@@ -143,27 +143,52 @@ export default function LowStockReportPage() {
     setTimeout(() => { try { printWindow.print(); } catch { /* noop */ } }, 300);
   };
 
-  const exportToExcel = () => {
-    const fileName = `Low_Stock_Report_${format(new Date(), 'yyyyMMdd')}.xls`;
-    const ok = exportReportExcel<Product>({
-      title: 'Low Stock Report',
-      subtitle: `Generated ${format(new Date(), 'yyyy-MM-dd')}`,
-      columns: [
-        { header: 'Product Name', cell: (p) => p.name },
-        { header: 'Barcode', cell: (p) => p.barcode || '-' },
-        { header: 'Category', cell: (p) => p.category || '-' },
-        { header: 'Current Stock', align: 'right', cell: (p) => `${formatStockQuantity(p.stock)} ${p.unit_of_measure || ''}`.trim() },
-        { header: 'Reorder Point', align: 'right', cell: (p) => formatStockQuantity(p.reorder_point) },
-        { header: 'Status', cell: () => 'Restock Needed' },
-      ],
-      rows: products,
-      fileName,
-    });
-    if (!ok) {
-      toast({ title: 'No Data', description: 'No records to export.', variant: 'destructive' });
-      return;
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportToExcel = async () => {
+    setIsExporting(true);
+    try {
+      let rows: Product[] = products;
+      try {
+        const params = new URLSearchParams({
+          lowStock: 'true',
+          page: '1',
+          limit: '10000',
+          ...(searchQuery ? { search: searchQuery } : {}),
+        });
+        const res = await fetch(getApiUrl(`/reports/inventory?${params.toString()}`));
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data)) rows = data.data;
+      } catch {
+        // fall back to whatever is currently loaded
+      }
+
+      const fileName = `Low_Stock_Report_${format(new Date(), 'yyyyMMdd')}.xls`;
+      const ok = exportReportExcel<Product>({
+        title: 'Low Stock Report',
+        subtitle: `Generated ${format(new Date(), 'yyyy-MM-dd')}`,
+        columns: [
+          { header: 'Product Name', cell: (p) => p.name },
+          { header: 'Barcode', cell: (p) => p.barcode || '-' },
+          { header: 'Category', cell: (p) => p.category || '-' },
+          { header: 'Current Stock', align: 'right', cell: (p) => `${formatStockQuantity(p.stock)} ${p.unit_of_measure || ''}`.trim() },
+          { header: 'Reorder Point', align: 'right', cell: (p) => formatStockQuantity(p.reorder_point) },
+          { header: 'Status', cell: () => 'Restock Needed' },
+        ],
+        rows,
+        fileName,
+      });
+      if (!ok) {
+        toast({ title: 'No Data', description: 'No records to export.', variant: 'destructive' });
+        return;
+      }
+      toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+    } catch (error) {
+      console.error('Failed to export low stock report to Excel:', error);
+      toast({ title: 'Export Failed', description: 'Could not export the report. Please try again.', variant: 'destructive' });
+    } finally {
+      setIsExporting(false);
     }
-    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
   };
 
   useEffect(() => {
@@ -237,12 +262,12 @@ export default function LowStockReportPage() {
               Print Report
           </Button>
           <Button
-            onClick={exportToExcel}
+            onClick={() => exportToExcel()}
             variant="outline"
             className="gap-2 border-emerald-700 text-emerald-700 hover:bg-emerald-50"
-            disabled={products.length === 0}
+            disabled={isExporting || products.length === 0}
           >
-            <FileSpreadsheet className="h-4 w-4" />
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
             Export to Excel
           </Button>
         </div>

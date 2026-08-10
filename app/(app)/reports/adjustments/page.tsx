@@ -98,27 +98,62 @@ export default function AdjustmentReportPage() {
     );
   });
 
-  const exportToExcel = () => {
-    const fileName = `Stock_Adjustments_${format(new Date(startDate), 'yyyyMMdd')}_${format(new Date(endDate), 'yyyyMMdd')}.xls`;
-    const ok = exportReportExcel<Adjustment>({
-      title: 'Stock Adjustment Report',
-      subtitle: `${startDate} to ${endDate}`,
-      columns: [
-        { header: 'Date', cell: (a) => format(new Date(a.created_at), 'MMM dd, yyyy HH:mm') },
-        { header: 'Product', cell: (a) => a.product_name },
-        { header: 'Barcode', cell: (a) => a.barcode || '-' },
-        { header: 'Reason', cell: (a) => a.reason },
-        { header: 'Adjustment', align: 'right', cell: (a) => `${a.quantity > 0 ? '+' : ''}${a.quantity}` },
-        { header: 'New Stock', align: 'right', cell: (a) => a.new_stock },
-      ],
-      rows: filteredAdjustments,
-      fileName,
-    });
-    if (!ok) {
-      toast({ title: 'No Data', description: 'No records to export.', variant: 'destructive' });
-      return;
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportToExcel = async () => {
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
+      params.append('page', '1');
+      params.append('limit', '100000');
+
+      let rows: Adjustment[] = adjustments;
+      try {
+        const res = await fetch(getApiUrl(`/reports/adjustments?${params.toString()}`));
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data)) rows = data.data;
+      } catch {
+        // fall back to the currently loaded page
+      }
+
+      const search = searchTerm.toLowerCase();
+      const fullFilteredRows = rows.filter((a) => {
+        if (!searchTerm.trim()) return true;
+        return (
+          a.product_name?.toLowerCase().includes(search) ||
+          a.barcode?.toLowerCase().includes(search) ||
+          a.reason?.toLowerCase().includes(search)
+        );
+      });
+
+      const fileName = `Stock_Adjustments_${format(new Date(startDate), 'yyyyMMdd')}_${format(new Date(endDate), 'yyyyMMdd')}.xls`;
+      const ok = exportReportExcel<Adjustment>({
+        title: 'Stock Adjustment Report',
+        subtitle: `${startDate} to ${endDate}`,
+        columns: [
+          { header: 'Date', cell: (a) => format(new Date(a.created_at), 'MMM dd, yyyy HH:mm') },
+          { header: 'Product', cell: (a) => a.product_name },
+          { header: 'Barcode', cell: (a) => a.barcode || '-' },
+          { header: 'Reason', cell: (a) => a.reason },
+          { header: 'Adjustment', align: 'right', cell: (a) => `${a.quantity > 0 ? '+' : ''}${a.quantity}` },
+          { header: 'New Stock', align: 'right', cell: (a) => a.new_stock },
+        ],
+        rows: fullFilteredRows,
+        fileName,
+      });
+      if (!ok) {
+        toast({ title: 'No Data', description: 'No records to export.', variant: 'destructive' });
+        return;
+      }
+      toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+    } catch (error) {
+      console.error('Failed to export adjustments to Excel:', error);
+      toast({ title: 'Export Failed', description: 'Could not export the report. Please try again.', variant: 'destructive' });
+    } finally {
+      setIsExporting(false);
     }
-    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
   };
 
   useEffect(() => {
@@ -172,12 +207,12 @@ export default function AdjustmentReportPage() {
               Print Report
           </Button>
           <Button
-            onClick={exportToExcel}
+            onClick={() => exportToExcel()}
             variant="outline"
             className="gap-2 border-emerald-700 text-emerald-700 hover:bg-emerald-50"
-            disabled={filteredAdjustments.length === 0}
+            disabled={isExporting || filteredAdjustments.length === 0}
           >
-            <FileSpreadsheet className="h-4 w-4" />
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
             Export to Excel
           </Button>
         </div>

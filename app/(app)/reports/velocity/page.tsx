@@ -108,27 +108,62 @@ export default function FastSlowMovingReportPage() {
     );
   });
 
-  const exportToExcel = () => {
-    const fileName = `Product_Velocity_${tabLabel(activeTab).replace(/\s+/g, '_')}_${format(new Date(startDate), 'yyyyMMdd')}.xls`;
-    const ok = exportReportExcel<VelocityProduct>({
-      title: `Product Velocity Report — ${tabLabel(activeTab)}`,
-      subtitle: `${startDate} to ${endDate}`,
-      columns: [
-        { header: 'Barcode', cell: (p) => p.barcode || '-' },
-        { header: 'Product Name', cell: (p) => p.name },
-        { header: 'Category', cell: (p) => p.category },
-        { header: 'Units Sold (30d)', align: 'right', cell: (p) => p.total_sold },
-        { header: 'Revenue Generated', align: 'right', cell: (p) => p.total_revenue },
-        { header: 'Current Stock', align: 'right', cell: (p) => p.stock },
-      ],
-      rows: filteredProducts,
-      fileName,
-    });
-    if (!ok) {
-      toast({ title: 'No Data', description: 'No data available to export.', variant: 'destructive' });
-      return;
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportToExcel = async () => {
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams();
+      params.append('type', activeTab);
+      params.append('startDate', startDate);
+      params.append('endDate', endDate);
+      params.append('page', '1');
+      params.append('limit', '100000');
+
+      let rows: VelocityProduct[] = products;
+      try {
+        const res = await fetch(getApiUrl(`/reports/velocity?${params.toString()}`));
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data)) rows = data.data;
+      } catch {
+        // fall back to the currently loaded page
+      }
+
+      const search = searchTerm.toLowerCase();
+      const fullFilteredProducts = rows.filter((p) => {
+        if (!searchTerm.trim()) return true;
+        return (
+          p.name?.toLowerCase().includes(search) ||
+          p.barcode?.toLowerCase().includes(search)
+        );
+      });
+
+      const fileName = `Product_Velocity_${tabLabel(activeTab).replace(/\s+/g, '_')}_${format(new Date(startDate), 'yyyyMMdd')}.xls`;
+      const ok = exportReportExcel<VelocityProduct>({
+        title: `Product Velocity Report — ${tabLabel(activeTab)}`,
+        subtitle: `${startDate} to ${endDate}`,
+        columns: [
+          { header: 'Barcode', cell: (p) => p.barcode || '-' },
+          { header: 'Product Name', cell: (p) => p.name },
+          { header: 'Category', cell: (p) => p.category },
+          { header: 'Units Sold (30d)', align: 'right', cell: (p) => p.total_sold },
+          { header: 'Revenue Generated', align: 'right', cell: (p) => p.total_revenue },
+          { header: 'Current Stock', align: 'right', cell: (p) => p.stock },
+        ],
+        rows: fullFilteredProducts,
+        fileName,
+      });
+      if (!ok) {
+        toast({ title: 'No Data', description: 'No data available to export.', variant: 'destructive' });
+        return;
+      }
+      toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+    } catch (error) {
+      console.error('Failed to export velocity report to Excel:', error);
+      toast({ title: 'Export Failed', description: 'Could not export the report. Please try again.', variant: 'destructive' });
+    } finally {
+      setIsExporting(false);
     }
-    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
   };
 
   useEffect(() => {
@@ -184,12 +219,12 @@ export default function FastSlowMovingReportPage() {
               Print Report
           </Button>
           <Button
-            onClick={exportToExcel}
+            onClick={() => exportToExcel()}
             variant="outline"
             className="gap-2 border-emerald-700 text-emerald-700 hover:bg-emerald-50"
-            disabled={filteredProducts.length === 0}
+            disabled={isExporting || filteredProducts.length === 0}
           >
-            <FileSpreadsheet className="h-4 w-4" />
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
             Export to Excel
           </Button>
         </div>

@@ -107,6 +107,9 @@ export default function FiscalYearReportPage() {
 
   const exportToExcel = () => {
     if (!report) return;
+    const transactionsSum = filteredMonths.reduce((s, m) => s + m.transactions, 0);
+    const revenueSum = filteredMonths.reduce((s, m) => s + m.revenue, 0);
+    const profitSum = filteredMonths.reduce((s, m) => s + m.profit, 0);
     const fileName = `Fiscal_Year_${report.label.replace(/\s+/g, '_')}.xls`;
     const ok = exportReportExcel<MonthRow>({
       title: 'Fiscal Year Report',
@@ -120,9 +123,9 @@ export default function FiscalYearReportPage() {
       rows: filteredMonths,
       totals: [
         'TOTALS',
-        String(report.summary.transactions),
-        report.summary.revenue.toFixed(2),
-        report.summary.profit.toFixed(2),
+        String(transactionsSum),
+        revenueSum.toFixed(2),
+        profitSum.toFixed(2),
       ],
       fileName,
     });

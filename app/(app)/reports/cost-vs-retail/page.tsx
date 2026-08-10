@@ -171,35 +171,70 @@ export default function CostVsRetailReportPage() {
     }
   };
 
-  const exportToExcel = () => {
-    const costValueSum = filteredRows.reduce((s, r) => s + r.cost_value, 0);
-    const retailValueSum = filteredRows.reduce((s, r) => s + r.retail_value, 0);
-    const profitSum = filteredRows.reduce((s, r) => s + r.profit, 0);
-    const marginPct = retailValueSum > 0 ? ((profitSum / retailValueSum) * 100).toFixed(1) : '0.0';
-    const fileName = `Cost_vs_Retail_${format(new Date(), 'yyyyMMdd')}.xls`;
-    const ok = exportReportExcel<Row>({
-      title: 'Cost vs Retail Valuation',
-      subtitle: `Generated ${format(new Date(), 'yyyy-MM-dd')}`,
-      columns: [
-        { header: 'Product Name', cell: (r) => r.name },
-        { header: 'Category', cell: (r) => r.category },
-        { header: 'Stock', align: 'right', cell: (r) => `${formatStockQuantity(r.stock)} ${r.unit_of_measure || ''}`.trim() },
-        { header: 'Cost', align: 'right', cell: (r) => r.cost },
-        { header: 'Price', align: 'right', cell: (r) => r.price },
-        { header: 'Cost Value', align: 'right', cell: (r) => r.cost_value },
-        { header: 'Retail Value', align: 'right', cell: (r) => r.retail_value },
-        { header: 'Profit', align: 'right', cell: (r) => r.profit },
-        { header: 'Margin %', align: 'right', cell: (r) => `${marginOf(r.retail_value, r.profit).toFixed(1)}%` },
-      ],
-      rows: filteredRows,
-      totals: ['TOTALS', null, null, null, null, costValueSum.toFixed(2), retailValueSum.toFixed(2), profitSum.toFixed(2), `${marginPct}%`],
-      fileName,
-    });
-    if (!ok) {
-      toast({ title: 'No Data', description: 'No records to export.', variant: 'destructive' });
-      return;
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportToExcel = async () => {
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedCategory && selectedCategory !== 'all') params.append('category', selectedCategory);
+      params.append('page', '1');
+      params.append('limit', '100000');
+
+      let exportRows: Row[] = rows;
+      try {
+        const res = await fetch(getApiUrl(`/reports/cost-vs-retail?${params.toString()}`));
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data)) {
+          exportRows = data.data;
+        }
+      } catch {
+        // fall back to the currently loaded page
+      }
+
+      const search = searchTerm.toLowerCase();
+      const fullFilteredRows = exportRows.filter((r) => {
+        if (!searchTerm.trim()) return true;
+        return (
+          r.name?.toLowerCase().includes(search) ||
+          r.category?.toLowerCase().includes(search)
+        );
+      });
+
+      const costValueSum = fullFilteredRows.reduce((s, r) => s + r.cost_value, 0);
+      const retailValueSum = fullFilteredRows.reduce((s, r) => s + r.retail_value, 0);
+      const profitSum = fullFilteredRows.reduce((s, r) => s + r.profit, 0);
+      const marginPct = retailValueSum > 0 ? ((profitSum / retailValueSum) * 100).toFixed(1) : '0.0';
+      const fileName = `Cost_vs_Retail_${format(new Date(), 'yyyyMMdd')}.xls`;
+      const ok = exportReportExcel<Row>({
+        title: 'Cost vs Retail Valuation',
+        subtitle: `Generated ${format(new Date(), 'yyyy-MM-dd')}`,
+        columns: [
+          { header: 'Product Name', cell: (r) => r.name },
+          { header: 'Category', cell: (r) => r.category },
+          { header: 'Stock', align: 'right', cell: (r) => `${formatStockQuantity(r.stock)} ${r.unit_of_measure || ''}`.trim() },
+          { header: 'Cost', align: 'right', cell: (r) => r.cost },
+          { header: 'Price', align: 'right', cell: (r) => r.price },
+          { header: 'Cost Value', align: 'right', cell: (r) => r.cost_value },
+          { header: 'Retail Value', align: 'right', cell: (r) => r.retail_value },
+          { header: 'Profit', align: 'right', cell: (r) => r.profit },
+          { header: 'Margin %', align: 'right', cell: (r) => `${marginOf(r.retail_value, r.profit).toFixed(1)}%` },
+        ],
+        rows: fullFilteredRows,
+        totals: ['TOTALS', null, null, null, null, costValueSum.toFixed(2), retailValueSum.toFixed(2), profitSum.toFixed(2), `${marginPct}%`],
+        fileName,
+      });
+      if (!ok) {
+        toast({ title: 'No Data', description: 'No records to export.', variant: 'destructive' });
+        return;
+      }
+      toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+    } catch (error) {
+      console.error('Failed to export cost vs retail to Excel:', error);
+      toast({ title: 'Export Failed', description: 'Could not export the report. Please try again.', variant: 'destructive' });
+    } finally {
+      setIsExporting(false);
     }
-    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
   };
 
   return (
@@ -222,12 +257,12 @@ export default function CostVsRetailReportPage() {
             Print Report
           </Button>
           <Button
-            onClick={exportToExcel}
+            onClick={() => exportToExcel()}
             variant="outline"
             className="gap-2 border-emerald-700 text-emerald-700 hover:bg-emerald-50"
-            disabled={filteredRows.length === 0}
+            disabled={isExporting || filteredRows.length === 0}
           >
-            <FileSpreadsheet className="h-4 w-4" />
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
             Export to Excel
           </Button>
         </div>

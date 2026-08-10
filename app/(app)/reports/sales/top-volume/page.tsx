@@ -173,6 +173,10 @@ export default function TopItemsVolumePage() {
   };
 
   const exportToExcel = () => {
+    const unitsSoldSum = filteredRecords.reduce((s, r) => s + r.unitsSold, 0);
+    const revenueSum = filteredRecords.reduce((s, r) => s + r.totalRevenue, 0);
+    const costSum = filteredRecords.reduce((s, r) => s + r.totalCost, 0);
+    const profitSum = filteredRecords.reduce((s, r) => s + r.totalProfit, 0);
     const fileName = `Top_Items_Volume_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.xls`;
     const ok = exportReportExcel<ProductSale>({
       title: 'Top Items by Volume Report',
@@ -192,7 +196,7 @@ export default function TopItemsVolumePage() {
         { header: '# Sales', align: 'right', cell: (r) => r.numberOfSales },
       ],
       rows: filteredRecords,
-      totals: ['TOTALS', null, null, null, null, totals.unitsSold, null, totals.revenue.toFixed(2), totals.cost.toFixed(2), totals.profit.toFixed(2), null, null],
+      totals: ['TOTALS', null, null, null, null, unitsSoldSum, null, revenueSum.toFixed(2), costSum.toFixed(2), profitSum.toFixed(2), null, null],
       fileName,
     });
     if (!ok) {
