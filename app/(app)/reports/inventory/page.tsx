@@ -19,15 +19,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Printer } from 'lucide-react';
+import { Loader2, Printer, FileSpreadsheet } from 'lucide-react';
 import { formatCurrency, formatQuantity, formatStockQuantity } from '@/lib/utils';
 import { ReportHeader } from '@/components/reports/ReportHeader';
 import { getApiUrl } from '@/lib/api-config';
-import { printReportTable } from '@/lib/report-print';
+import { printReportTable, exportReportExcel } from '@/lib/report-print';
 
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { getCategories } from '@/app/(app)/products/actions';
 import { Category } from '@/lib/types';
+import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
+import { useToast } from '@/hooks/use-toast';
+import { format } from 'date-fns';
 
 interface Product {
   id: string;
@@ -58,12 +61,24 @@ interface PaginationState {
 }
 
 export default function InventoryReportPage() {
+  const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [summary, setSummary] = useState<Summary>({ totalItems: 0, totalStock: 0, totalValue: 0 });
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredProducts = products.filter((p) => {
+    if (!searchTerm.trim()) return true;
+    const search = searchTerm.toLowerCase();
+    return (
+      p.name?.toLowerCase().includes(search) ||
+      p.barcode?.toLowerCase().includes(search) ||
+      p.category?.toLowerCase().includes(search)
+    );
+  });
+
   // Pagination State
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -119,6 +134,32 @@ export default function InventoryReportPage() {
     } finally {
       setIsPrinting(false);
     }
+  };
+
+  const exportToExcel = () => {
+    const totalValueSum = filteredProducts.reduce((s, p) => s + p.total_value, 0);
+    const fileName = `Stock_On_Hand_${format(new Date(), 'yyyyMMdd')}.xls`;
+    const ok = exportReportExcel<Product>({
+      title: 'Stock on Hand Report',
+      subtitle: `Generated ${format(new Date(), 'yyyy-MM-dd')}`,
+      columns: [
+        { header: 'Product Name', cell: (p) => p.name },
+        { header: 'Barcode', cell: (p) => p.barcode || '-' },
+        { header: 'Category', cell: (p) => p.category },
+        { header: 'Cost', align: 'right', cell: (p) => p.cost },
+        { header: 'Price', align: 'right', cell: (p) => p.price },
+        { header: 'Stock', align: 'right', cell: (p) => `${formatStockQuantity(p.stock)} ${p.unit_of_measure || ''}`.trim() },
+        { header: 'Total Value', align: 'right', cell: (p) => p.total_value },
+      ],
+      rows: filteredProducts,
+      totals: ['TOTALS', null, null, null, null, null, totalValueSum.toFixed(2)],
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
   };
 
   useEffect(() => {
@@ -191,10 +232,26 @@ export default function InventoryReportPage() {
             Current inventory levels and valuation (based on batch-level FIFO costs).
           </p>
         </div>
-        <Button onClick={() => handlePrint()} variant="outline" className="gap-2" disabled={isPrinting}>
-            {isPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-            Print Report
-        </Button>
+        <div className="flex items-center gap-2">
+          <ReportSearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Search product, barcode, category..."
+          />
+          <Button onClick={() => handlePrint()} variant="outline" className="gap-2" disabled={isPrinting}>
+              {isPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              Print Report
+          </Button>
+          <Button
+            onClick={exportToExcel}
+            variant="outline"
+            className="gap-2 border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            disabled={filteredProducts.length === 0}
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Export to Excel
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-4">
@@ -277,14 +334,14 @@ export default function InventoryReportPage() {
                         <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                       </TableCell>
                     </TableRow>
-                  ) : products.length === 0 ? (
+                  ) : filteredProducts.length === 0 ? (
                     <TableRow>
                         <TableCell colSpan={7} className="h-24 text-center">
                             No products found.
                         </TableCell>
                     </TableRow>
                   ) : (
-                    products.map((product) => (
+                    filteredProducts.map((product) => (
                       <TableRow key={product.id}>
                         <TableCell className="font-medium">
                             {product.name}

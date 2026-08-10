@@ -9,14 +9,17 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Printer } from 'lucide-react';
+import { Loader2, Printer, FileSpreadsheet } from 'lucide-react';
 import { formatCurrency, formatStockQuantity } from '@/lib/utils';
 import { ReportHeader } from '@/components/reports/ReportHeader';
 import { getApiUrl } from '@/lib/api-config';
-import { printReportTable } from '@/lib/report-print';
+import { printReportTable, exportReportExcel } from '@/lib/report-print';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { getCategories } from '@/app/(app)/products/actions';
 import { Category } from '@/lib/types';
+import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
+import { useToast } from '@/hooks/use-toast';
+import { format } from 'date-fns';
 
 interface Row {
   id: string;
@@ -46,6 +49,7 @@ const marginOf = (retail: number, profit: number) =>
   retail > 0 ? (profit / retail) * 100 : 0;
 
 export default function CostVsRetailReportPage() {
+  const { toast } = useToast();
   const [rows, setRows] = useState<Row[]>([]);
   const [summary, setSummary] = useState<Summary>({
     totalItems: 0, totalCostValue: 0, totalRetailValue: 0, totalProfit: 0, marginPct: 0,
@@ -60,6 +64,16 @@ export default function CostVsRetailReportPage() {
   const [totalItems, setTotalItems] = useState(0);
   const [settings, setSettings] = useState<any>(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredRows = rows.filter((r) => {
+    if (!searchTerm.trim()) return true;
+    const search = searchTerm.toLowerCase();
+    return (
+      r.name?.toLowerCase().includes(search) ||
+      r.category?.toLowerCase().includes(search)
+    );
+  });
 
   useEffect(() => {
     fetchData();
@@ -157,6 +171,37 @@ export default function CostVsRetailReportPage() {
     }
   };
 
+  const exportToExcel = () => {
+    const costValueSum = filteredRows.reduce((s, r) => s + r.cost_value, 0);
+    const retailValueSum = filteredRows.reduce((s, r) => s + r.retail_value, 0);
+    const profitSum = filteredRows.reduce((s, r) => s + r.profit, 0);
+    const marginPct = retailValueSum > 0 ? ((profitSum / retailValueSum) * 100).toFixed(1) : '0.0';
+    const fileName = `Cost_vs_Retail_${format(new Date(), 'yyyyMMdd')}.xls`;
+    const ok = exportReportExcel<Row>({
+      title: 'Cost vs Retail Valuation',
+      subtitle: `Generated ${format(new Date(), 'yyyy-MM-dd')}`,
+      columns: [
+        { header: 'Product Name', cell: (r) => r.name },
+        { header: 'Category', cell: (r) => r.category },
+        { header: 'Stock', align: 'right', cell: (r) => `${formatStockQuantity(r.stock)} ${r.unit_of_measure || ''}`.trim() },
+        { header: 'Cost', align: 'right', cell: (r) => r.cost },
+        { header: 'Price', align: 'right', cell: (r) => r.price },
+        { header: 'Cost Value', align: 'right', cell: (r) => r.cost_value },
+        { header: 'Retail Value', align: 'right', cell: (r) => r.retail_value },
+        { header: 'Profit', align: 'right', cell: (r) => r.profit },
+        { header: 'Margin %', align: 'right', cell: (r) => `${marginOf(r.retail_value, r.profit).toFixed(1)}%` },
+      ],
+      rows: filteredRows,
+      totals: ['TOTALS', null, null, null, null, costValueSum.toFixed(2), retailValueSum.toFixed(2), profitSum.toFixed(2), `${marginPct}%`],
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -166,10 +211,26 @@ export default function CostVsRetailReportPage() {
             Inventory value at cost vs selling price, with potential profit and margin.
           </p>
         </div>
-        <Button onClick={handlePrint} variant="outline" className="gap-2" disabled={isPrinting}>
-          {isPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-          Print Report
-        </Button>
+        <div className="flex items-center gap-2">
+          <ReportSearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Search product, category..."
+          />
+          <Button onClick={handlePrint} variant="outline" className="gap-2" disabled={isPrinting}>
+            {isPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+            Print Report
+          </Button>
+          <Button
+            onClick={exportToExcel}
+            variant="outline"
+            className="gap-2 border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            disabled={filteredRows.length === 0}
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Export to Excel
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-4">
@@ -239,10 +300,10 @@ export default function CostVsRetailReportPage() {
             <TableBody>
               {loading ? (
                 <TableRow><TableCell colSpan={9} className="h-24 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></TableCell></TableRow>
-              ) : rows.length === 0 ? (
+              ) : filteredRows.length === 0 ? (
                 <TableRow><TableCell colSpan={9} className="h-24 text-center">No products found.</TableCell></TableRow>
               ) : (
-                rows.map((r) => {
+                filteredRows.map((r) => {
                   const margin = marginOf(r.retail_value, r.profit);
                   return (
                     <TableRow key={r.id}>
