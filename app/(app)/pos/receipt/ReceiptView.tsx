@@ -43,6 +43,12 @@ export const ReceiptView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ saleD
                     {paymentMethod?.toUpperCase() === 'CHARGE' ? 'CHARGE INVOICE' : 'CASH INVOICE'}
                 </div>
                 <div className="font-bold">SI NO.: {formatSINumber(saleDetails.siNumber || saleDetails.orderNumber)}</div>
+                {saleDetails.isReprint && (
+                    <div className="text-center">
+                        <div className="font-bold">*** REPRINT ***</div>
+                        <div>Reprinted: {format(new Date(), 'PP p')}</div>
+                    </div>
+                )}
                 <div>Cust: {customer?.name || 'Walk-in'}</div>
                 <div>Cashier: {saleDetails.cashierName || 'Admin'}</div>
                 {saleDetails.terminalName && <div>Terminal: {saleDetails.terminalName}</div>}

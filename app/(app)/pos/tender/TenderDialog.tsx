@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import {
     Sheet,
     SheetContent,
@@ -103,6 +103,8 @@ export function TenderDialog(props: TenderDialogProps) {
 
 
 
+    const [isReprintPrint, setIsReprintPrint] = useState(false);
+
     const receiptRef = useRef<HTMLDivElement>(null);
     const yesButtonRef = useRef<HTMLButtonElement>(null);
     const noButtonRef = useRef<HTMLButtonElement>(null);
@@ -141,6 +143,7 @@ export function TenderDialog(props: TenderDialogProps) {
          if (!details) return;
 
          if (printMode === 'browser') {
+             setIsReprintPrint(isReprint);
              handlePrint();
              return;
          }
@@ -697,7 +700,7 @@ export function TenderDialog(props: TenderDialogProps) {
                 )}
                 {/* Hidden Receipt for Printing - using absolute positioning instead of display:none to ensure it renders for print */}
                 <div style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}>
-                    {completedSale && <ReceiptView ref={receiptRef} saleDetails={completedSale} settings={settings} />}
+                    {completedSale && <ReceiptView ref={receiptRef} saleDetails={{ ...completedSale, isReprint: isReprintPrint }} settings={settings} />}
                 </div>
             </SheetContent>
         </Sheet>

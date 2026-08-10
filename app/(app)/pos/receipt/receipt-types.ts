@@ -26,6 +26,7 @@ export interface ReceiptViewProps {
     terminalPermitDateIssued?: string;
     terminalName?: string;
     isTrainingMode?: boolean;
+    isReprint?: boolean;
     paymentReference?: string;
     taxBreakdown?: {
       vatableSales: number;

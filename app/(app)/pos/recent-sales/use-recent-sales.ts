@@ -168,7 +168,8 @@ export function useRecentSales({
             sale,
             onBack: () => {},
             onPrint: () => {},
-            settings: posSettings
+            settings: posSettings,
+            isReprint: true
           }),
           '80mm'
         );

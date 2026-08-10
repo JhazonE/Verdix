@@ -168,6 +168,13 @@ export const ZReadingPreview = React.forwardRef<HTMLDivElement, ZReadingPreviewP
         <div>Z-READING REPORT</div>
       </div>
 
+      {data.id !== 'PREVIEW' && (
+        <div style={{ textAlign: 'center' as const }}>
+          <div style={{ fontWeight: 'bold' }}>*** REPRINT ***</div>
+          <div>Reprinted: {format(new Date(), 'PP p')}</div>
+        </div>
+      )}
+
       <div style={styles.section}>
         <div style={styles.row}>
           <span>Report Date:</span>

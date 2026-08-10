@@ -11,15 +11,17 @@ interface ReceiptPrintViewProps {
   onBack: () => void;
   onPrint: () => void;
   settings?: SystemSettings | null;
+  isReprint?: boolean;
 }
 
 export function ReceiptPrintView({
   sale,
   onBack,
   onPrint,
-  settings
+  settings,
+  isReprint
 }: ReceiptPrintViewProps) {
-  const saleDetails = mapSaleToReceiptDetails(sale);
+  const saleDetails = { ...mapSaleToReceiptDetails(sale), isReprint };
 
   return (
     <div className="flex flex-col h-full">
