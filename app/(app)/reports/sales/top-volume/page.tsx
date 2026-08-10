@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/card';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, FileDown, Package2, TrendingUp, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { CalendarIcon, FileDown, FileSpreadsheet, Package2, TrendingUp, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -33,7 +33,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { getApiUrl } from '@/lib/api-config';
-import { exportReportPdf } from '@/lib/report-print';
+import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 
 interface ProductSale {
   product: {
@@ -172,6 +172,36 @@ export default function TopItemsVolumePage() {
     toast({ title: 'PDF Exported', description: `Report saved as ${fileName}` });
   };
 
+  const exportToExcel = () => {
+    const fileName = `Top_Items_Volume_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.xls`;
+    const ok = exportReportExcel<ProductSale>({
+      title: 'Top Items by Volume Report',
+      subtitle: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
+      columns: [
+        { header: 'Rank', align: 'right', cell: (_r, i) => i + 1 },
+        { header: 'Product', cell: (r) => r.product.name || 'N/A' },
+        { header: 'Barcode', cell: (r) => r.product.barcode || '-' },
+        { header: 'Category', cell: (r) => r.product.category || '-' },
+        { header: 'Brand', cell: (r) => r.product.brand || '-' },
+        { header: 'Units Sold', align: 'right', cell: (r) => r.unitsSold },
+        { header: 'UOM', cell: (r) => r.product.unitOfMeasure || '-' },
+        { header: 'Revenue', align: 'right', cell: (r) => r.totalRevenue },
+        { header: 'Cost', align: 'right', cell: (r) => r.totalCost },
+        { header: 'Profit', align: 'right', cell: (r) => r.totalProfit },
+        { header: 'Margin %', align: 'right', cell: (r) => (r.totalRevenue > 0 ? ((r.totalProfit / r.totalRevenue) * 100) : 0).toFixed(1) + '%' },
+        { header: '# Sales', align: 'right', cell: (r) => r.numberOfSales },
+      ],
+      rows: filteredRecords,
+      totals: ['TOTALS', null, null, null, null, totals.unitsSold, null, totals.revenue.toFixed(2), totals.cost.toFixed(2), totals.profit.toFixed(2), null, null],
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export. Please fetch the report first.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+  };
+
   const formatCurrency = (value: number) => {
     return `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
@@ -264,6 +294,16 @@ export default function TopItemsVolumePage() {
             >
               <FileDown className="mr-2 h-4 w-4" />
               Export to PDF
+            </Button>
+
+            <Button
+              onClick={exportToExcel}
+              disabled={isLoading || records.length === 0}
+              variant="outline"
+              className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Export to Excel
             </Button>
           </div>
         </CardContent>
