@@ -317,3 +317,100 @@ export function exportReportPdf<T>(opts: PdfReportOptions<T>): boolean {
   doc.save(fileName);
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// Shared Excel export — generates an HTML-table-based .xls download (same
+// technique proven in sales/bir-summary/page.tsx), no new dependency.
+// ---------------------------------------------------------------------------
+
+export interface ExcelReportColumn<T> {
+  header: string;
+  align?: ReportAlign;
+  /** Return the already-formatted cell text/number (use the same formatters as the on-screen table). */
+  cell: (row: T, index: number) => string | number;
+}
+
+export interface ExcelReportOptions<T> {
+  /** Used as the sheet name and the title row above the table. */
+  title: string;
+  /** Optional line shown under the title (e.g. a date range). */
+  subtitle?: string;
+  columns: ExcelReportColumn<T>[];
+  rows: T[];
+  /** Totals row, aligned 1:1 to `columns`. Use null for cells with no total. */
+  totals?: (string | number | null)[];
+  fileName: string;
+}
+
+/**
+ * Downloads `rows` as an .xls file (HTML table wrapped in the Excel MSO
+ * namespace so it opens natively in Excel/LibreOffice/Sheets).
+ * Returns false if there are no rows to export (caller can toast "No Data").
+ */
+export function exportReportExcel<T>(opts: ExcelReportOptions<T>): boolean {
+  const { title, subtitle, columns, rows, totals, fileName } = opts;
+  if (rows.length === 0) return false;
+
+  const colCount = columns.length;
+  const isNum = (v: unknown) => typeof v === 'number';
+
+  const headCells = columns
+    .map(
+      (c) =>
+        `<th style="background:#2563eb;color:#ffffff;border:1px solid #1e3a8a;padding:4px;font-weight:bold;text-align:${
+          c.align === 'right' ? 'right' : c.align === 'center' ? 'center' : 'left'
+        }">${escapeReportHtml(c.header)}</th>`
+    )
+    .join('');
+
+  const bodyRows = rows
+    .map((row, rowIndex) => {
+      const cells = columns
+        .map((c) => {
+          const value = c.cell(row, rowIndex);
+          const align = c.align === 'right' ? 'right' : c.align === 'center' ? 'center' : 'left';
+          const numFmt = isNum(value) ? 'mso-number-format:\\#\\,\\#\\#0\\.00;' : '';
+          return `<td style="border:1px solid #cccccc;padding:3px;text-align:${align};${numFmt}">${escapeReportHtml(value)}</td>`;
+        })
+        .join('');
+      return `<tr>${cells}</tr>`;
+    })
+    .join('');
+
+  const totalsRow = totals
+    ? `<tr>${columns
+        .map((c, i) => {
+          const val = totals[i];
+          const align = c.align === 'right' ? 'right' : c.align === 'center' ? 'center' : 'left';
+          return `<td style="border:1px solid #cccccc;padding:3px;font-weight:bold;background:#f1f5f9;text-align:${align}">${
+            val == null ? '' : escapeReportHtml(val)
+          }</td>`;
+        })
+        .join('')}</tr>`
+    : '';
+
+  const html =
+    `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">` +
+    `<head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>${escapeReportHtml(
+      title.slice(0, 31)
+    )}</x:Name>` +
+    `<x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>` +
+    `<body><table border="0" cellspacing="0">` +
+    `<tr><td colspan="${colCount}" style="font-size:15px;font-weight:bold">${escapeReportHtml(title)}</td></tr>` +
+    (subtitle ? `<tr><td colspan="${colCount}">${escapeReportHtml(subtitle)}</td></tr>` : '') +
+    `<tr><td colspan="${colCount}"></td></tr>` +
+    `<tr>${headCells}</tr>` +
+    bodyRows +
+    totalsRow +
+    `</table></body></html>`;
+
+  const blob = new Blob(['﻿', html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+  return true;
+}

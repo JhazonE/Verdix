@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/card';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, FileDown, DollarSign, TrendingUp, Receipt, Percent, ShoppingCart, LayoutGrid, Table as TableIcon, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PhilippinePeso } from 'lucide-react';
+import { CalendarIcon, FileDown, FileSpreadsheet, DollarSign, TrendingUp, Receipt, Percent, ShoppingCart, LayoutGrid, Table as TableIcon, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PhilippinePeso } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -33,7 +33,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { getApiUrl } from '@/lib/api-config';
-import { exportReportPdf } from '@/lib/report-print';
+import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 
 interface SalesTransaction {
   id: string;
@@ -170,6 +170,40 @@ export default function SalesSummaryPage() {
     toast({ title: 'PDF Exported', description: `Report saved as ${fileName}` });
   };
 
+  const exportToExcel = () => {
+    const subtotalSum = filteredRecords.reduce((s, r) => s + r.subtotal, 0);
+    const discountSum = filteredRecords.reduce((s, r) => s + r.discount, 0);
+    const taxSum = filteredRecords.reduce((s, r) => s + r.taxAmount, 0);
+    const totalSum = filteredRecords.reduce((s, r) => s + r.total, 0);
+    const profitSum = filteredRecords.reduce((s, r) => s + r.profit, 0);
+    const fileName = `Sales_Summary_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.xls`;
+    const ok = exportReportExcel<SalesTransaction>({
+      title: 'Sales Summary Report',
+      subtitle: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
+      columns: [
+        { header: 'OR No.', cell: (r) => r.orderNumber || 'N/A' },
+        { header: 'Date/Time', cell: (r) => r.date ? format(new Date(r.date), 'MM/dd/yy hh:mma') : '-' },
+        { header: 'Customer', cell: (r) => r.customer?.name || 'Walk-in' },
+        { header: 'Cashier', cell: (r) => r.cashier || 'N/A' },
+        { header: 'Terminal', cell: (r) => r.terminal || 'N/A' },
+        { header: 'Payment', cell: (r) => r.paymentMethod || 'N/A' },
+        { header: 'Subtotal', align: 'right', cell: (r) => r.subtotal },
+        { header: 'Discount', align: 'right', cell: (r) => r.discount },
+        { header: 'Tax', align: 'right', cell: (r) => r.taxAmount },
+        { header: 'Total', align: 'right', cell: (r) => r.total },
+        { header: 'Profit', align: 'right', cell: (r) => r.profit },
+      ],
+      rows: filteredRecords,
+      totals: ['TOTALS', null, null, null, null, null, subtotalSum.toFixed(2), discountSum.toFixed(2), taxSum.toFixed(2), totalSum.toFixed(2), profitSum.toFixed(2)],
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export. Please fetch the report first.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+  };
+
   const formatCurrency = (value: number) => {
     return `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
@@ -263,6 +297,16 @@ export default function SalesSummaryPage() {
             >
               <FileDown className="mr-2 h-4 w-4" />
               Export to PDF
+            </Button>
+
+            <Button
+              onClick={exportToExcel}
+              disabled={isLoading || records.length === 0}
+              variant="outline"
+              className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Export to Excel
             </Button>
           </div>
         </CardContent>

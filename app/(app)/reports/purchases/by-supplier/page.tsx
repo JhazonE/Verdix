@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/card';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, FileDown, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PhilippinePeso, Users, TrendingUp, Package } from 'lucide-react';
+import { CalendarIcon, FileDown, FileSpreadsheet, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PhilippinePeso, Users, TrendingUp, Package } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -33,7 +33,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { getApiUrl } from '@/lib/api-config';
-import { exportReportPdf } from '@/lib/report-print';
+import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 
 interface SupplierPurchase {
   supplierId: string;
@@ -147,6 +147,33 @@ export default function PurchasesBySupplierPage() {
     toast({ title: 'PDF Exported', description: `Report saved as ${fileName}` });
   };
 
+  const exportToExcel = () => {
+    const totalOrdersSum = filteredRecords.reduce((s, r) => s + r.totalOrders, 0);
+    const totalSpentSum = filteredRecords.reduce((s, r) => s + r.totalSpent, 0);
+    const fileName = `Purchases_By_Supplier_${format(new Date(), 'yyyyMMdd_HHmm')}.xls`;
+    const pct = (v: number) => (totalSpentSum > 0 ? ((v / totalSpentSum) * 100).toFixed(1) + '%' : '0%');
+    const ok = exportReportExcel<SupplierPurchase>({
+      title: 'Purchases by Supplier Report',
+      subtitle: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
+      columns: [
+        { header: 'Supplier Name', cell: (r) => r.supplierName || 'N/A' },
+        { header: 'Contact Person', cell: (r) => r.contactPerson || '-' },
+        { header: 'Total Orders', align: 'right', cell: (r) => r.totalOrders },
+        { header: 'Total Spent', align: 'right', cell: (r) => r.totalSpent },
+        { header: 'Last Purchase Date', cell: (r) => r.lastPurchaseDate ? format(new Date(r.lastPurchaseDate), 'yyyy-MM-dd') : '-' },
+        { header: '% of Total', align: 'right', cell: (r) => pct(r.totalSpent) },
+      ],
+      rows: filteredRecords,
+      totals: ['TOTAL', null, totalOrdersSum, totalSpentSum.toFixed(2), null, '100%'],
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export. Please fetch the report first.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+  };
+
   const formatCurrency = (value: number) => {
     return `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
@@ -240,6 +267,16 @@ export default function PurchasesBySupplierPage() {
             >
               <FileDown className="mr-2 h-4 w-4" />
               Export to PDF
+            </Button>
+
+            <Button
+              onClick={exportToExcel}
+              disabled={isLoading || records.length === 0}
+              variant="outline"
+              className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Export to Excel
             </Button>
           </div>
         </CardContent>

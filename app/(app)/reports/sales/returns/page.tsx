@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/card';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, FileDown, DollarSign, TrendingUp, Receipt, Percent, Undo, LayoutGrid, Table as TableIcon, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { CalendarIcon, FileDown, FileSpreadsheet, DollarSign, TrendingUp, Receipt, Percent, Undo, LayoutGrid, Table as TableIcon, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -33,7 +33,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { getApiUrl } from '@/lib/api-config';
-import { exportReportPdf } from '@/lib/report-print';
+import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 
 interface ReturnRecord {
   /** Merchandise Credit number. Empty on returns predating MC numbering. */
@@ -189,6 +189,42 @@ export default function ReturnedSalesPage() {
     toast({ title: 'PDF Exported', description: `Report saved as ${fileName}` });
   };
 
+  const exportToExcel = () => {
+    const revenueSum = filteredRecords.reduce((s, r) => s + r.salesAmount, 0);
+    const costSum = filteredRecords.reduce((s, r) => s + r.cost, 0);
+    const profitSum = filteredRecords.reduce((s, r) => s + r.profit, 0);
+    const vatableSum = filteredRecords.reduce((s, r) => s + r.vatableSales, 0);
+    const vatSum = filteredRecords.reduce((s, r) => s + r.vatAmount, 0);
+    const fileName = `Merchandise_Credit_Report_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.xls`;
+    const ok = exportReportExcel<ReturnRecord>({
+      title: 'Merchandise Credit Report',
+      subtitle: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
+      columns: [
+        { header: 'MC No.', cell: (r) => r.mcNo || '—' },
+        { header: 'Orig SI No.', cell: (r) => r.origSiNo },
+        { header: 'Trans Date', cell: (r) => r.transDate ? format(new Date(r.transDate), 'MM/dd/yy hh:mma') : '-' },
+        { header: 'Sold By', cell: (r) => r.soldByCashier || '-' },
+        { header: 'Return Date', cell: (r) => r.returnedDate ? format(new Date(r.returnedDate), 'MM/dd/yy hh:mma') : '-' },
+        { header: 'Returned By', cell: (r) => r.returnedByCashier || '-' },
+        { header: 'Override By', cell: (r) => r.overrideBy || '-' },
+        { header: 'Amount', align: 'right', cell: (r) => r.salesAmount },
+        { header: 'Cost', align: 'right', cell: (r) => r.cost },
+        { header: 'Profit', align: 'right', cell: (r) => r.profit },
+        { header: 'Vatable', align: 'right', cell: (r) => r.vatableSales },
+        { header: 'VAT', align: 'right', cell: (r) => r.vatAmount },
+        { header: 'Note', cell: (r) => r.note || '-' },
+      ],
+      rows: filteredRecords,
+      totals: ['TOTALS', null, null, null, null, null, null, revenueSum.toFixed(2), costSum.toFixed(2), profitSum.toFixed(2), vatableSum.toFixed(2), vatSum.toFixed(2), null],
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export. Please fetch the report first.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+  };
+
   const formatCurrency = (value: number) => {
     return `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
@@ -282,6 +318,16 @@ export default function ReturnedSalesPage() {
             >
               <FileDown className="mr-2 h-4 w-4" />
               Export to PDF
+            </Button>
+
+            <Button
+              onClick={exportToExcel}
+              disabled={isLoading || records.length === 0}
+              variant="outline"
+              className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Export to Excel
             </Button>
           </div>
         </CardContent>

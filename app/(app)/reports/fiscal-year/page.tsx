@@ -12,11 +12,12 @@ import {
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, FileDown, ShoppingCart, TrendingUp, Percent } from 'lucide-react';
+import { Calendar, FileDown, FileSpreadsheet, ShoppingCart, TrendingUp, Percent } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
-import { exportReportPdf } from '@/lib/report-print';
+import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
+import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
 
 interface MonthRow {
   period: number;
@@ -38,6 +39,7 @@ export default function FiscalYearReportPage() {
   const [report, setReport] = useState<FiscalReport | null>(null);
   const [selectedYear, setSelectedYear] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const { toast } = useToast();
 
   const formatCurrency = (value: number) =>
@@ -98,6 +100,42 @@ export default function FiscalYearReportPage() {
     toast({ title: 'PDF Exported', description: `Report saved as ${fileName}` });
   };
 
+  const filteredMonths = (report?.months || []).filter((m) => {
+    if (!searchTerm.trim()) return true;
+    return m.monthLabel.toLowerCase().includes(searchTerm.toLowerCase());
+  });
+
+  const exportToExcel = () => {
+    if (!report) return;
+    const transactionsSum = filteredMonths.reduce((s, m) => s + m.transactions, 0);
+    const revenueSum = filteredMonths.reduce((s, m) => s + m.revenue, 0);
+    const profitSum = filteredMonths.reduce((s, m) => s + m.profit, 0);
+    const fileName = `Fiscal_Year_${report.label.replace(/\s+/g, '_')}.xls`;
+    const ok = exportReportExcel<MonthRow>({
+      title: 'Fiscal Year Report',
+      subtitle: report.label,
+      columns: [
+        { header: 'Month', cell: (r) => r.monthLabel },
+        { header: 'Transactions', align: 'right', cell: (r) => r.transactions },
+        { header: 'Revenue', align: 'right', cell: (r) => r.revenue },
+        { header: 'Profit', align: 'right', cell: (r) => r.profit },
+      ],
+      rows: filteredMonths,
+      totals: [
+        'TOTALS',
+        String(transactionsSum),
+        revenueSum.toFixed(2),
+        profitSum.toFixed(2),
+      ],
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export. Please fetch the report first.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -150,6 +188,16 @@ export default function FiscalYearReportPage() {
             >
               <FileDown className="mr-2 h-4 w-4" />
               Export to PDF
+            </Button>
+
+            <Button
+              onClick={exportToExcel}
+              disabled={isLoading || !report}
+              variant="outline"
+              className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Export to Excel
             </Button>
           </div>
         </CardContent>
@@ -205,8 +253,17 @@ export default function FiscalYearReportPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Monthly Breakdown</CardTitle>
-          <CardDescription>Each fiscal period mapped to its calendar month.</CardDescription>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <CardTitle>Monthly Breakdown</CardTitle>
+              <CardDescription>Each fiscal period mapped to its calendar month.</CardDescription>
+            </div>
+            <ReportSearchInput
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search month..."
+            />
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <Table className="w-full text-sm">
@@ -219,8 +276,8 @@ export default function FiscalYearReportPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {report && report.months.length > 0 ? (
-                report.months.map((m) => (
+              {report && filteredMonths.length > 0 ? (
+                filteredMonths.map((m) => (
                   <TableRow key={m.period} className="text-xs">
                     <TableCell className="py-2 px-3 font-medium">{m.monthLabel}</TableCell>
                     <TableCell className="py-2 px-2 text-right font-mono">{m.transactions}</TableCell>

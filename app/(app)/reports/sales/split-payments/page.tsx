@@ -18,14 +18,15 @@ import {
 } from '@/components/ui/card';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { 
-  CalendarIcon, 
-  FileDown, 
-  Search, 
-  ChevronLeft, 
-  ChevronRight, 
-  ChevronsLeft, 
-  ChevronsRight, 
+import {
+  CalendarIcon,
+  FileDown,
+  FileSpreadsheet,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   PhilippinePeso,
   CreditCard,
   Package,
@@ -41,7 +42,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { getApiUrl } from '@/lib/api-config';
-import { exportReportPdf } from '@/lib/report-print';
+import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface PaymentDetail {
@@ -176,6 +177,31 @@ export default function SplitPaymentsReportPage() {
     toast({ title: 'PDF Exported', description: `Report saved as ${fileName}` });
   };
 
+  const exportToExcel = () => {
+    const revenueSum = filteredRecords.reduce((s, r) => s + r.total, 0);
+    const fileName = `Split_Payments_Report_${format(new Date(), 'yyyyMMdd')}.xls`;
+    const ok = exportReportExcel<SplitPaymentTransaction>({
+      title: 'Split Payments Report',
+      subtitle: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
+      columns: [
+        { header: 'OR No.', cell: (r) => r.orderNumber },
+        { header: 'Date/Time', cell: (r) => format(new Date(r.date), 'MM/dd/yy hh:mma') },
+        { header: 'Customer', cell: (r) => r.customer },
+        { header: 'Cashier', cell: (r) => r.cashier },
+        { header: 'Total', align: 'right', cell: (r) => r.total },
+        { header: 'Payment Breakdown', cell: (r) => r.payments.map((p) => `${p.method}: ${p.amount.toFixed(2)}`).join(' | ') },
+      ],
+      rows: filteredRecords,
+      totals: ['TOTAL', null, null, null, revenueSum.toFixed(2), null],
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export. Please fetch the report first.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+  };
+
   const formatCurrency = (value: number) => {
     return `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
@@ -238,6 +264,11 @@ export default function SplitPaymentsReportPage() {
             <Button onClick={exportToPDF} disabled={isLoading || records.length === 0} variant="outline" className="border-blue-600 text-blue-600 hover:bg-blue-50">
               <FileDown className="mr-2 h-4 w-4" />
               Export to PDF
+            </Button>
+
+            <Button onClick={exportToExcel} disabled={isLoading || records.length === 0} variant="outline" className="border-emerald-700 text-emerald-700 hover:bg-emerald-50">
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Export to Excel
             </Button>
           </div>
         </CardContent>

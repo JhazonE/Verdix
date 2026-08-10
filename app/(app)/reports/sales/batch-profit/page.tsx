@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/card';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, FileDown, Layers, TrendingUp, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PhilippinePeso } from 'lucide-react';
+import { CalendarIcon, FileDown, FileSpreadsheet, Layers, TrendingUp, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PhilippinePeso } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -33,7 +33,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { getApiUrl } from '@/lib/api-config';
-import { exportReportPdf } from '@/lib/report-print';
+import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 
 // Type definitions matching the API response
 interface BatchAnalysisRecord {
@@ -168,6 +168,40 @@ export default function BatchProfitPage() {
     toast({ title: 'Report Exported', description: `Report saved as ${fileName}` });
   };
 
+  const exportToExcel = () => {
+    const qtySum = filteredRecords.reduce((s, r) => s + r.qtySold, 0);
+    const revenueSum = filteredRecords.reduce((s, r) => s + r.lineRevenue, 0);
+    const costSum = filteredRecords.reduce((s, r) => s + r.lineCost, 0);
+    const profitSum = filteredRecords.reduce((s, r) => s + r.lineProfit, 0);
+    const marginPct = revenueSum > 0 ? ((profitSum / revenueSum) * 100).toFixed(1) : '0.0';
+    const fileName = `Batch_Profit_Report_${format(new Date(), 'yyyyMMdd')}.xls`;
+    const ok = exportReportExcel<BatchAnalysisRecord>({
+      title: 'Batch Profit Analysis Report',
+      subtitle: `Period: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} to ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
+      columns: [
+        { header: 'Sale Date', cell: (r) => r.saleDate || 'N/A' },
+        { header: 'Ref', cell: (r) => r.saleReference },
+        { header: 'Product', cell: (r) => r.productName },
+        { header: 'Batch ID', cell: (r) => (r.batchId === 'fallback' ? 'Untracked' : r.batchId) },
+        { header: 'Qty', align: 'right', cell: (r) => r.qtySold },
+        { header: 'U.Cost', align: 'right', cell: (r) => r.unitCost },
+        { header: 'U.Sell', align: 'right', cell: (r) => r.unitSellingPrice },
+        { header: 'Revenue', align: 'right', cell: (r) => r.lineRevenue },
+        { header: 'Cost', align: 'right', cell: (r) => r.lineCost },
+        { header: 'Profit', align: 'right', cell: (r) => r.lineProfit },
+        { header: 'Margin', align: 'right', cell: (r) => r.marginPct.toFixed(1) + '%' },
+      ],
+      rows: filteredRecords,
+      totals: ['TOTALS', null, null, null, qtySum, null, null, revenueSum.toFixed(2), costSum.toFixed(2), profitSum.toFixed(2), `${marginPct}%`],
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export. Please fetch the report first.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+  };
+
   const formatCurrency = (value: number) => {
     return `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
@@ -251,6 +285,16 @@ export default function BatchProfitPage() {
             >
               <FileDown className="mr-2 h-4 w-4" />
               Export PDF
+            </Button>
+
+            <Button
+              onClick={exportToExcel}
+              disabled={records.length === 0}
+              variant="outline"
+              className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Export Excel
             </Button>
           </div>
         </CardContent>

@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/card';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, FileDown, ShoppingCart, TrendingUp, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PhilippinePeso, Package, Timer, Truck } from 'lucide-react';
+import { CalendarIcon, FileDown, FileSpreadsheet, ShoppingCart, TrendingUp, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PhilippinePeso, Package, Timer, Truck } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -33,7 +33,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { getApiUrl } from '@/lib/api-config';
-import { exportReportPdf } from '@/lib/report-print';
+import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 
 interface PurchaseOrder {
   id: string;
@@ -156,6 +156,32 @@ export default function PurchasesSummaryPage() {
     toast({ title: 'PDF Exported', description: `Report saved as ${fileName}` });
   };
 
+  const exportToExcel = () => {
+    const totalSpentSum = filteredRecords.reduce((s, r) => s + r.total, 0);
+    const fileName = `Purchases_Summary_${format(new Date(), 'yyyyMMdd_HHmm')}.xls`;
+    const ok = exportReportExcel<PurchaseOrder>({
+      title: 'Purchases Summary Report',
+      subtitle: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
+      columns: [
+        { header: 'PO ID', cell: (r) => r.id || 'N/A' },
+        { header: 'Date', cell: (r) => r.date ? format(new Date(r.date), 'yyyy-MM-dd') : '-' },
+        { header: 'Supplier', cell: (r) => r.supplierName || 'N/A' },
+        { header: 'Reference', cell: (r) => r.referenceNumber || '-' },
+        { header: 'Payment', cell: (r) => r.paymentMethod || '-' },
+        { header: 'Status', cell: (r) => r.status || '-' },
+        { header: 'Total Amount', align: 'right', cell: (r) => r.total },
+      ],
+      rows: filteredRecords,
+      totals: [null, null, null, null, null, 'TOTAL', totalSpentSum.toFixed(2)],
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export. Please fetch the report first.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+  };
+
   const formatCurrency = (value: number) => {
     return `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
@@ -264,6 +290,16 @@ export default function PurchasesSummaryPage() {
             >
               <FileDown className="mr-2 h-4 w-4" />
               Export to PDF
+            </Button>
+
+            <Button
+              onClick={exportToExcel}
+              disabled={isLoading || records.length === 0}
+              variant="outline"
+              className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Export to Excel
             </Button>
           </div>
         </CardContent>

@@ -16,13 +16,15 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
-import { Loader2, TrendingUp, TrendingDown, Printer, MinusCircle } from 'lucide-react';
+import { Loader2, TrendingUp, TrendingDown, Printer, MinusCircle, FileSpreadsheet } from 'lucide-react';
 import { formatCurrency, formatQuantity } from '@/lib/utils';
 import { format, subDays } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { ReportHeader } from '@/components/reports/ReportHeader';
 import { getApiUrl } from '@/lib/api-config';
-import { printReportTable } from '@/lib/report-print';
+import { printReportTable, exportReportExcel } from '@/lib/report-print';
+import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
+import { useToast } from '@/hooks/use-toast';
 
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 
@@ -38,10 +40,12 @@ interface VelocityProduct {
 }
 
 export default function FastSlowMovingReportPage() {
+  const { toast } = useToast();
   const [products, setProducts] = useState<VelocityProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'fast' | 'slow' | 'none'>('fast');
-  
+  const [searchTerm, setSearchTerm] = useState('');
+
   // Default lookback 30 days
   const startDate = format(subDays(new Date(), 30), 'yyyy-MM-dd');
   const endDate = format(new Date(), 'yyyy-MM-dd');
@@ -95,6 +99,73 @@ export default function FastSlowMovingReportPage() {
     }
   };
 
+  const filteredProducts = products.filter((p) => {
+    if (!searchTerm.trim()) return true;
+    const search = searchTerm.toLowerCase();
+    return (
+      p.name?.toLowerCase().includes(search) ||
+      p.barcode?.toLowerCase().includes(search)
+    );
+  });
+
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportToExcel = async () => {
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams();
+      params.append('type', activeTab);
+      params.append('startDate', startDate);
+      params.append('endDate', endDate);
+      params.append('page', '1');
+      params.append('limit', '100000');
+
+      let rows: VelocityProduct[] = products;
+      try {
+        const res = await fetch(getApiUrl(`/reports/velocity?${params.toString()}`));
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data)) rows = data.data;
+      } catch {
+        // fall back to the currently loaded page
+      }
+
+      const search = searchTerm.toLowerCase();
+      const fullFilteredProducts = rows.filter((p) => {
+        if (!searchTerm.trim()) return true;
+        return (
+          p.name?.toLowerCase().includes(search) ||
+          p.barcode?.toLowerCase().includes(search)
+        );
+      });
+
+      const fileName = `Product_Velocity_${tabLabel(activeTab).replace(/\s+/g, '_')}_${format(new Date(startDate), 'yyyyMMdd')}.xls`;
+      const ok = exportReportExcel<VelocityProduct>({
+        title: `Product Velocity Report — ${tabLabel(activeTab)}`,
+        subtitle: `${startDate} to ${endDate}`,
+        columns: [
+          { header: 'Barcode', cell: (p) => p.barcode || '-' },
+          { header: 'Product Name', cell: (p) => p.name },
+          { header: 'Category', cell: (p) => p.category },
+          { header: 'Units Sold (30d)', align: 'right', cell: (p) => p.total_sold },
+          { header: 'Revenue Generated', align: 'right', cell: (p) => p.total_revenue },
+          { header: 'Current Stock', align: 'right', cell: (p) => p.stock },
+        ],
+        rows: fullFilteredProducts,
+        fileName,
+      });
+      if (!ok) {
+        toast({ title: 'No Data', description: 'No data available to export.', variant: 'destructive' });
+        return;
+      }
+      toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+    } catch (error) {
+      console.error('Failed to export velocity report to Excel:', error);
+      toast({ title: 'Export Failed', description: 'Could not export the report. Please try again.', variant: 'destructive' });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   useEffect(() => {
     fetchData();
   }, [activeTab, page, pageSize]);
@@ -137,10 +208,26 @@ export default function FastSlowMovingReportPage() {
             Analysis of fast and slow moving products over the last 30 days.
           </p>
         </div>
-        <Button onClick={() => handlePrint()} variant="outline" className="gap-2" disabled={isPrinting}>
-            {isPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-            Print Report
-        </Button>
+        <div className="flex items-center gap-2">
+          <ReportSearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Search product, barcode..."
+          />
+          <Button onClick={() => handlePrint()} variant="outline" className="gap-2" disabled={isPrinting}>
+              {isPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              Print Report
+          </Button>
+          <Button
+            onClick={() => exportToExcel()}
+            variant="outline"
+            className="gap-2 border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            disabled={isExporting || filteredProducts.length === 0}
+          >
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+            Export to Excel
+          </Button>
+        </div>
       </div>
 
       <div>
@@ -199,14 +286,14 @@ export default function FastSlowMovingReportPage() {
                             <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                             </TableCell>
                         </TableRow>
-                        ) : products.length === 0 ? (
+                        ) : filteredProducts.length === 0 ? (
                         <TableRow>
                             <TableCell colSpan={6} className="h-24 text-center">
                                 No data available.
                             </TableCell>
                         </TableRow>
                         ) : (
-                        products.map((product, index) => (
+                        filteredProducts.map((product, index) => (
                             <TableRow key={product.id}>
                             <TableCell className="font-medium text-muted-foreground">
                                 {product.barcode || '-'}

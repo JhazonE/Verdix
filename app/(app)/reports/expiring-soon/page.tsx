@@ -2,10 +2,17 @@
 
 import { useEffect, useState } from 'react';
 
+import { format } from 'date-fns';
+import { FileSpreadsheet } from 'lucide-react';
+
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
+import { useToast } from '@/hooks/use-toast';
+import { exportReportExcel } from '@/lib/report-print';
 
 interface ExpiringBatch {
   batchId: string;
@@ -22,6 +29,8 @@ export default function ExpiringSoonPage() {
   const [items, setItems] = useState<ExpiringBatch[]>([]);
   const [days, setDays] = useState('30');
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const { toast } = useToast();
 
   useEffect(() => {
     setLoading(true);
@@ -32,8 +41,42 @@ export default function ExpiringSoonPage() {
       .finally(() => setLoading(false));
   }, [days]);
 
-  const expired = items.filter(i => i.isExpired);
-  const upcoming = items.filter(i => !i.isExpired);
+  const filteredItems = items.filter((item) => {
+    if (!searchTerm.trim()) return true;
+    const search = searchTerm.toLowerCase();
+    return (
+      item.productName?.toLowerCase().includes(search) ||
+      item.sku?.toLowerCase().includes(search)
+    );
+  });
+  const filteredExpired = filteredItems.filter((i) => i.isExpired);
+  const filteredUpcoming = filteredItems.filter((i) => !i.isExpired);
+
+  const exportToExcel = () => {
+    const fileName = `Expiring_Soon_${format(new Date(), 'yyyyMMdd')}.xls`;
+    const combined = [
+      ...filteredExpired.map((i) => ({ ...i, statusLabel: `Expired ${Math.abs(i.daysUntilExpiry)}d ago` })),
+      ...filteredUpcoming.map((i) => ({ ...i, statusLabel: `${i.daysUntilExpiry}d left` })),
+    ];
+    const ok = exportReportExcel<typeof combined[number]>({
+      title: 'Expiring Soon Report',
+      subtitle: `Generated ${format(new Date(), 'yyyy-MM-dd')}`,
+      columns: [
+        { header: 'Product', cell: (r) => r.productName },
+        { header: 'SKU', cell: (r) => r.sku || '—' },
+        { header: 'Qty', align: 'right', cell: (r) => r.quantityRemaining },
+        { header: 'Expires', cell: (r) => r.expirationDate },
+        { header: 'Status', cell: (r) => r.statusLabel },
+      ],
+      rows: combined,
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+  };
 
   const renderRows = (rows: ExpiringBatch[]) =>
     rows.map(item => (
@@ -59,14 +102,30 @@ export default function ExpiringSoonPage() {
           <h1 className="text-2xl font-bold">Expiring Soon</h1>
           <p className="text-sm text-muted-foreground">Stock on hand approaching its expiration date.</p>
         </div>
-        <Select value={days} onValueChange={setDays}>
-          <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7">Next 7 days</SelectItem>
-            <SelectItem value="30">Next 30 days</SelectItem>
-            <SelectItem value="90">Next 90 days</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <ReportSearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Search product, SKU..."
+          />
+          <Select value={days} onValueChange={setDays}>
+            <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">Next 7 days</SelectItem>
+              <SelectItem value="30">Next 30 days</SelectItem>
+              <SelectItem value="90">Next 90 days</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            onClick={exportToExcel}
+            variant="outline"
+            className="gap-2 border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            disabled={filteredItems.length === 0}
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Export to Excel
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -79,9 +138,9 @@ export default function ExpiringSoonPage() {
         </Card>
       ) : (
         <>
-          {expired.length > 0 && (
+          {filteredExpired.length > 0 && (
             <Card className="border-destructive/30">
-              <CardHeader><CardTitle className="text-destructive text-base">Already Expired ({expired.length})</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-destructive text-base">Already Expired ({filteredExpired.length})</CardTitle></CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
@@ -90,15 +149,15 @@ export default function ExpiringSoonPage() {
                       <TableHead>Qty</TableHead><TableHead>Expires</TableHead><TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody>{renderRows(expired)}</TableBody>
+                  <TableBody>{renderRows(filteredExpired)}</TableBody>
                 </Table>
               </CardContent>
             </Card>
           )}
 
-          {upcoming.length > 0 && (
+          {filteredUpcoming.length > 0 && (
             <Card>
-              <CardHeader><CardTitle className="text-base">Expiring Soon ({upcoming.length})</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base">Expiring Soon ({filteredUpcoming.length})</CardTitle></CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
@@ -107,7 +166,7 @@ export default function ExpiringSoonPage() {
                       <TableHead>Qty</TableHead><TableHead>Expires</TableHead><TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody>{renderRows(upcoming)}</TableBody>
+                  <TableBody>{renderRows(filteredUpcoming)}</TableBody>
                 </Table>
               </CardContent>
             </Card>

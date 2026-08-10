@@ -12,11 +12,13 @@ import {
   TableRow 
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Printer, AlertTriangle, Search, X } from 'lucide-react';
+import { Loader2, Printer, AlertTriangle, Search, X, FileSpreadsheet } from 'lucide-react';
 import { format } from 'date-fns';
 import { ReportHeader } from '@/components/reports/ReportHeader';
 import { getApiUrl } from '@/lib/api-config';
 import { formatQuantity, formatStockQuantity } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
+import { exportReportExcel } from '@/lib/report-print';
 
 // Escape user-provided text before injecting into the print document.
 function escapeHtml(value: unknown): string {
@@ -59,13 +61,15 @@ interface Product {
 export default function LowStockReportPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Search and Pagination states
   const [searchTerm, setSearchTerm] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [limit, setLimit] = useState(10);
+
+  const { toast } = useToast();
   
   const handlePrint = async () => {
     // Print the full low-stock list (all pages), not just the visible page.
@@ -139,6 +143,54 @@ export default function LowStockReportPage() {
     setTimeout(() => { try { printWindow.print(); } catch { /* noop */ } }, 300);
   };
 
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportToExcel = async () => {
+    setIsExporting(true);
+    try {
+      let rows: Product[] = products;
+      try {
+        const params = new URLSearchParams({
+          lowStock: 'true',
+          page: '1',
+          limit: '10000',
+          ...(searchQuery ? { search: searchQuery } : {}),
+        });
+        const res = await fetch(getApiUrl(`/reports/inventory?${params.toString()}`));
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data)) rows = data.data;
+      } catch {
+        // fall back to whatever is currently loaded
+      }
+
+      const fileName = `Low_Stock_Report_${format(new Date(), 'yyyyMMdd')}.xls`;
+      const ok = exportReportExcel<Product>({
+        title: 'Low Stock Report',
+        subtitle: `Generated ${format(new Date(), 'yyyy-MM-dd')}`,
+        columns: [
+          { header: 'Product Name', cell: (p) => p.name },
+          { header: 'Barcode', cell: (p) => p.barcode || '-' },
+          { header: 'Category', cell: (p) => p.category || '-' },
+          { header: 'Current Stock', align: 'right', cell: (p) => `${formatStockQuantity(p.stock)} ${p.unit_of_measure || ''}`.trim() },
+          { header: 'Reorder Point', align: 'right', cell: (p) => formatStockQuantity(p.reorder_point) },
+          { header: 'Status', cell: () => 'Restock Needed' },
+        ],
+        rows,
+        fileName,
+      });
+      if (!ok) {
+        toast({ title: 'No Data', description: 'No records to export.', variant: 'destructive' });
+        return;
+      }
+      toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+    } catch (error) {
+      console.error('Failed to export low stock report to Excel:', error);
+      toast({ title: 'Export Failed', description: 'Could not export the report. Please try again.', variant: 'destructive' });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   useEffect(() => {
     fetchData(currentPage, searchQuery);
   }, [currentPage, searchQuery, limit]);
@@ -204,10 +256,21 @@ export default function LowStockReportPage() {
             Products that have fallen below their reorder point.
           </p>
         </div>
-        <Button onClick={() => handlePrint()} variant="outline" className="gap-2">
-            <Printer className="h-4 w-4" />
-            Print Report
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => handlePrint()} variant="outline" className="gap-2">
+              <Printer className="h-4 w-4" />
+              Print Report
+          </Button>
+          <Button
+            onClick={() => exportToExcel()}
+            variant="outline"
+            className="gap-2 border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            disabled={isExporting || products.length === 0}
+          >
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+            Export to Excel
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-2 items-end sm:items-center justify-between non-printable">
