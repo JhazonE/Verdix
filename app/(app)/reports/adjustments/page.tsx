@@ -16,6 +16,7 @@ import { Loader2, Printer, ClipboardX, FileSpreadsheet } from 'lucide-react';
 import { format } from 'date-fns';
 import { ReportHeader } from '@/components/reports/ReportHeader';
 import { getApiUrl } from '@/lib/api-config';
+import { formatQuantity } from '@/lib/utils';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { printReportTable, exportReportExcel } from '@/lib/report-print';
 import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
@@ -77,8 +78,8 @@ export default function AdjustmentReportPage() {
           { header: 'Product', cell: (a) => a.product_name },
           { header: 'Barcode', cell: (a) => a.barcode || '-' },
           { header: 'Reason', cell: (a) => a.reason },
-          { header: 'Adjustment', align: 'right', emphasize: true, cell: (a) => `${a.quantity > 0 ? '+' : ''}${a.quantity}` },
-          { header: 'New Stock', align: 'right', cell: (a) => a.new_stock },
+          { header: 'Adjustment', align: 'right', emphasize: true, cell: (a) => `${Number(a.quantity) > 0 ? '+' : ''}${formatQuantity(a.quantity, a.unit_of_measure)}` },
+          { header: 'New Stock', align: 'right', cell: (a) => formatQuantity(a.new_stock, a.unit_of_measure) },
         ],
         rows,
         emptyMessage: 'No adjustments found for this period.',
@@ -137,8 +138,8 @@ export default function AdjustmentReportPage() {
           { header: 'Product', cell: (a) => a.product_name },
           { header: 'Barcode', cell: (a) => a.barcode || '-' },
           { header: 'Reason', cell: (a) => a.reason },
-          { header: 'Adjustment', align: 'right', cell: (a) => `${a.quantity > 0 ? '+' : ''}${a.quantity}` },
-          { header: 'New Stock', align: 'right', cell: (a) => a.new_stock },
+          { header: 'Adjustment', align: 'right', cell: (a) => `${Number(a.quantity) > 0 ? '+' : ''}${formatQuantity(a.quantity, a.unit_of_measure)}` },
+          { header: 'New Stock', align: 'right', cell: (a) => formatQuantity(a.new_stock, a.unit_of_measure) },
         ],
         rows: fullFilteredRows,
         fileName,
@@ -288,11 +289,11 @@ export default function AdjustmentReportPage() {
                         {adj.reason === 'damaged' && <ClipboardX className="inline-block w-4 h-4 mr-1 text-red-500"/>}
                         {adj.reason}
                     </TableCell>
-                    <TableCell className={`text-right font-bold ${adj.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {adj.quantity > 0 ? '+' : ''}{adj.quantity}
+                    <TableCell className={`text-right font-bold ${Number(adj.quantity) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {Number(adj.quantity) > 0 ? '+' : ''}{formatQuantity(adj.quantity, adj.unit_of_measure)}
                     </TableCell>
                     <TableCell className="text-right">
-                        {adj.new_stock}
+                        {formatQuantity(adj.new_stock, adj.unit_of_measure)}
                     </TableCell>
                   </TableRow>
                 ))

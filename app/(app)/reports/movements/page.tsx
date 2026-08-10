@@ -23,6 +23,7 @@ import { Loader2, ArrowUpRight, ArrowDownLeft, Minus, RefreshCcw, Printer, FileS
 import { format } from 'date-fns';
 import { ReportHeader } from '@/components/reports/ReportHeader';
 import { getApiUrl } from '@/lib/api-config';
+import { formatQuantity } from '@/lib/utils';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { printReportTable, exportReportExcel } from '@/lib/report-print';
 import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
@@ -72,8 +73,8 @@ export default function StockMovementPage() {
         { header: 'Type', cell: (m) => capitalize(m.movement_type) },
         { header: 'Product', cell: (m) => m.product_name },
         { header: 'Barcode', cell: (m) => m.barcode || '-' },
-        { header: 'Change', align: 'right', emphasize: true, cell: (m) => `${m.quantity_change > 0 ? '+' : ''}${m.quantity_change}` },
-        { header: 'Balance', align: 'right', cell: (m) => m.new_stock },
+        { header: 'Change', align: 'right', emphasize: true, cell: (m) => `${Number(m.quantity_change) > 0 ? '+' : ''}${formatQuantity(m.quantity_change, m.unit_of_measure)}` },
+        { header: 'Balance', align: 'right', cell: (m) => formatQuantity(m.new_stock, m.unit_of_measure) },
         { header: 'Reference', cell: (m) => `${capitalize(m.reference_type || '')}${m.notes ? ` - ${m.notes}` : ''}`.trim() || '-' },
       ],
       rows: movements,
@@ -101,8 +102,8 @@ export default function StockMovementPage() {
         { header: 'Type', cell: (m) => capitalize(m.movement_type) },
         { header: 'Product', cell: (m) => m.product_name },
         { header: 'Barcode', cell: (m) => m.barcode || '-' },
-        { header: 'Change', align: 'right', cell: (m) => `${m.quantity_change > 0 ? '+' : ''}${m.quantity_change}` },
-        { header: 'Balance', align: 'right', cell: (m) => m.new_stock },
+        { header: 'Change', align: 'right', cell: (m) => `${Number(m.quantity_change) > 0 ? '+' : ''}${formatQuantity(m.quantity_change, m.unit_of_measure)}` },
+        { header: 'Balance', align: 'right', cell: (m) => formatQuantity(m.new_stock, m.unit_of_measure) },
         { header: 'Reference', cell: (m) => `${capitalize(m.reference_type || '')}${m.notes ? ` - ${m.notes}` : ''}`.trim() || '-' },
       ],
       rows: filteredMovements,
@@ -270,11 +271,11 @@ export default function StockMovementPage() {
                     </TableCell>
                     <TableCell className="font-medium">{movement.product_name}</TableCell>
                     <TableCell>{movement.barcode || '-'}</TableCell>
-                    <TableCell className={`text-right font-bold ${movement.quantity_change > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {movement.quantity_change > 0 ? '+' : ''}{movement.quantity_change}
+                    <TableCell className={`text-right font-bold ${Number(movement.quantity_change) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {Number(movement.quantity_change) > 0 ? '+' : ''}{formatQuantity(movement.quantity_change, movement.unit_of_measure)}
                     </TableCell>
                     <TableCell className="text-right">
-                        {movement.new_stock}
+                        {formatQuantity(movement.new_stock, movement.unit_of_measure)}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground capitalize">
                         {movement.reference_type} 
