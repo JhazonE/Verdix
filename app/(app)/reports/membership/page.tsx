@@ -5,14 +5,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, FileDown, CreditCard, UserPlus, RefreshCw } from 'lucide-react';
+import { CalendarIcon, FileDown, FileSpreadsheet, CreditCard, UserPlus, RefreshCw } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
-import { exportReportPdf } from '@/lib/report-print';
+import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
+import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
 
 interface MembershipRow {
   id: string;
@@ -43,6 +44,7 @@ export default function MembershipReportPage() {
   const [rows, setRows] = useState<MembershipRow[]>([]);
   const [summary, setSummary] = useState<Summary>(EMPTY);
   const [isLoading, setIsLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const { toast } = useToast();
 
   const formatCurrency = (v: number) => `₱${v.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -101,6 +103,42 @@ export default function MembershipReportPage() {
     toast({ title: 'PDF Exported', description: `Report saved as ${fileName}` });
   };
 
+  const filteredRows = rows.filter((r) => {
+    if (!searchTerm.trim()) return true;
+    const search = searchTerm.toLowerCase();
+    return (
+      r.customerName?.toLowerCase().includes(search) ||
+      r.rfidCode?.toLowerCase().includes(search)
+    );
+  });
+
+  const exportToExcel = () => {
+    const collectedSum = filteredRows.reduce((s, r) => s + r.amount, 0);
+    const fileName = `Membership_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.xls`;
+    const ok = exportReportExcel<MembershipRow>({
+      title: 'Membership Report',
+      subtitle: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
+      columns: [
+        { header: 'Date', cell: (r) => format(new Date(r.createdAt), 'MMM dd, yyyy') },
+        { header: 'Customer', cell: (r) => r.customerName },
+        { header: 'RFID', cell: (r) => r.rfidCode || '-' },
+        { header: 'Type', cell: (r) => r.type === 'activation' ? 'Activation' : 'Renewal' },
+        { header: 'Amount', align: 'right', cell: (r) => r.amount },
+        { header: 'Method', cell: (r) => r.paymentMethod.toUpperCase() },
+        { header: 'Cashier', cell: (r) => r.cashierName },
+        { header: 'Valid Until', cell: (r) => format(new Date(r.newExpiry), 'MMM dd, yyyy') },
+      ],
+      rows: filteredRows,
+      totals: ['TOTALS', null, null, null, collectedSum.toFixed(2), null, null, null],
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export. Please fetch the report first.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -141,6 +179,15 @@ export default function MembershipReportPage() {
             <Button onClick={exportToPDF} disabled={isLoading || rows.length === 0} variant="outline" className="border-amber-600 text-amber-600 hover:bg-amber-50">
               <FileDown className="mr-2 h-4 w-4" />Export to PDF
             </Button>
+            <Button
+              onClick={exportToExcel}
+              disabled={isLoading || rows.length === 0}
+              variant="outline"
+              className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Export to Excel
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -165,7 +212,19 @@ export default function MembershipReportPage() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Membership Details</CardTitle><CardDescription>Each activation and renewal in the selected date range</CardDescription></CardHeader>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <CardTitle>Membership Details</CardTitle>
+              <CardDescription>Each activation and renewal in the selected date range</CardDescription>
+            </div>
+            <ReportSearchInput
+              value={searchTerm}
+              onChange={setSearchTerm}
+              placeholder="Search customer, RFID..."
+            />
+          </div>
+        </CardHeader>
         <CardContent className="p-0">
           <Table className="w-full text-sm">
             <TableHeader>
@@ -181,7 +240,7 @@ export default function MembershipReportPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.length > 0 ? rows.map((r) => (
+              {filteredRows.length > 0 ? filteredRows.map((r) => (
                 <TableRow key={r.id} className="text-xs">
                   <TableCell className="py-2 px-3">{format(new Date(r.createdAt), 'MMM dd, yyyy')}</TableCell>
                   <TableCell className="py-2 px-2 font-medium">{r.customerName}</TableCell>
@@ -199,7 +258,7 @@ export default function MembershipReportPage() {
               )) : (
                 <TableRow>
                   <TableCell colSpan={8} className="h-24 text-center">
-                    {isLoading ? 'Loading...' : <span className="text-muted-foreground">No membership records for the selected date range.</span>}
+                    {isLoading ? 'Loading...' : <span className="text-muted-foreground">{rows.length > 0 ? 'No records match your search.' : 'No membership records for the selected date range.'}</span>}
                   </TableCell>
                 </TableRow>
               )}
