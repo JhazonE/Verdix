@@ -88,7 +88,8 @@ function ZReadingReportView({ onBack, printMode, terminalId, terminalName, initi
           if (!success) throw new Error('Could not connect to printer');
         }
         const generator = new ZReadingGenerator();
-        const bytes = generator.generate({ ...data, terminalName } as any, businessSettings);
+        const isReprint = data.id !== 'PREVIEW';
+        const bytes = generator.generate({ ...data, terminalName } as any, businessSettings, isReprint);
         await print(bytes);
       }
       if (data.id === 'PREVIEW') {

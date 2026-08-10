@@ -28,7 +28,7 @@ export class ZReadingGenerator {
         });
     }
 
-    public generate(data: ZReadingData, settings?: BusinessSettings | null): Uint8Array {
+    public generate(data: ZReadingData, settings?: BusinessSettings | null, isReprint?: boolean): Uint8Array {
         const enc = this.encoder.initialize().codepage('cp437');
 
         const row = (left: string, right: string) => {
@@ -66,6 +66,14 @@ export class ZReadingGenerator {
         // ── TITLE ────────────────────────────────────────────────────────────
         enc.line('Z-READING REPORT');
         enc.raw([0x1b, 0x61, 0x30]); // Native Left
+
+        // ── REPRINT WATERMARK ──────────────────────────────────────────────
+        if (isReprint) {
+            enc.align('center');
+            enc.bold(true).line('*** REPRINT ***').bold(false);
+            enc.line(`Reprinted: ${format(new Date(), 'PP p')}`);
+            enc.align('left');
+        }
 
         // ── DATE SECTION ─────────────────────────────────────────────────────
         const reportDate = data.reportDate ? new Date(data.reportDate) : new Date();
