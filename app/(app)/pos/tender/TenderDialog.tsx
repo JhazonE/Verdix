@@ -223,7 +223,7 @@ export function TenderDialog(props: TenderDialogProps) {
     
     const handleSmartPrint = () => {
         if (completedSale) {
-             handlePrintReceipt(completedSale);
+             handlePrintReceipt(completedSale, true);
         }
     };
 

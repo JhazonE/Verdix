@@ -114,6 +114,7 @@ export function RecentSalesDialog({
               onBack={handleBackToList}
               onPrint={() => handlePrintReceiptAction(saleToPrint)}
               settings={posSettings}
+              isReprint={true}
             />
           ) : (
             <>
