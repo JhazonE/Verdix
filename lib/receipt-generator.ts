@@ -657,17 +657,27 @@ export class ReceiptGenerator {
         // Mirrors: DashedLine + sectionTitle + section
         enc.line(dash);
         enc.align('center').bold(true).line('DISCOUNT SUMMARY').bold(false).align('left');
-        enc.line(row('SC Disc. :',          '0.00'));
-        enc.line(row('PWD Disc. :',         '0.00'));
-        enc.line(row('NAAC Disc. :',        '0.00'));
-        enc.line(row('Solo Parent Disc. :', '0.00'));
-        enc.line(row('Other Disc. :',       fmt(data.discounts || 0)));
+        const zDiscountSummary: Array<{ type: string; amount: number }> = data.discountSummary || [];
+        let scDiscAmt = 0, pwdDiscAmt = 0, naacDiscAmt = 0, soloDiscAmt = 0, otherDiscAmt = 0;
+        zDiscountSummary.forEach((d) => {
+            const type = d.type?.toLowerCase();
+            if (type === 'senior') scDiscAmt += d.amount;
+            else if (type === 'pwd') pwdDiscAmt += d.amount;
+            else if (type === 'naac') naacDiscAmt += d.amount;
+            else if (type === 'solo_parent') soloDiscAmt += d.amount;
+            else otherDiscAmt += d.amount;
+        });
+        enc.line(row('SC Disc. :',          fmt(scDiscAmt)));
+        enc.line(row('PWD Disc. :',         fmt(pwdDiscAmt)));
+        enc.line(row('NAAC Disc. :',        fmt(naacDiscAmt)));
+        enc.line(row('Solo Parent Disc. :', fmt(soloDiscAmt)));
+        enc.line(row('Other Disc. :',       fmt(otherDiscAmt)));
 
         // ── SALES ADJUSTMENT ─────────────────────────────────────────────────
         // Mirrors: DashedLine + sectionTitle + section
         enc.line(dash);
         enc.align('center').bold(true).line('SALES ADJUSTMENT').bold(false).align('left');
-        enc.line(row('VOID :',   '0.00'));
+        enc.line(row('VOID :',   fmt(data.voidAmount || 0)));
         enc.line(row('RETURN :', fmt(data.returns || 0)));
 
         // ── VAT ADJUSTMENT ───────────────────────────────────────────────────
