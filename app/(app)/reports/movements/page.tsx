@@ -19,12 +19,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, ArrowUpRight, ArrowDownLeft, Minus, RefreshCcw, Printer } from 'lucide-react';
+import { Loader2, ArrowUpRight, ArrowDownLeft, Minus, RefreshCcw, Printer, FileSpreadsheet } from 'lucide-react';
 import { format } from 'date-fns';
 import { ReportHeader } from '@/components/reports/ReportHeader';
 import { getApiUrl } from '@/lib/api-config';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
-import { printReportTable } from '@/lib/report-print';
+import { printReportTable, exportReportExcel } from '@/lib/report-print';
+import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
+import { useToast } from '@/hooks/use-toast';
 
 const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
@@ -44,9 +46,11 @@ interface StockMovement {
 }
 
 export default function StockMovementPage() {
+  const { toast } = useToast();
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [loading, setLoading] = useState(true);
-  
+  const [searchTerm, setSearchTerm] = useState('');
+
   // Date states
   const [startDate, setStartDate] = useState(format(new Date().setDate(new Date().getDate() - 30), 'yyyy-MM-dd')); // Default last 30 days
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -75,6 +79,40 @@ export default function StockMovementPage() {
       rows: movements,
       emptyMessage: 'No movements found for the selected period.',
     });
+  };
+
+  const filteredMovements = movements.filter((m) => {
+    if (!searchTerm.trim()) return true;
+    const search = searchTerm.toLowerCase();
+    return (
+      m.product_name?.toLowerCase().includes(search) ||
+      m.barcode?.toLowerCase().includes(search) ||
+      m.notes?.toLowerCase().includes(search)
+    );
+  });
+
+  const exportToExcel = () => {
+    const fileName = `Stock_Movements_${format(new Date(startDate), 'yyyyMMdd')}_${format(new Date(endDate), 'yyyyMMdd')}.xls`;
+    const ok = exportReportExcel<StockMovement>({
+      title: 'Stock Movement Report',
+      subtitle: `${startDate} to ${endDate}`,
+      columns: [
+        { header: 'Date', cell: (m) => format(new Date(m.created_at), 'MMM dd, yyyy HH:mm') },
+        { header: 'Type', cell: (m) => capitalize(m.movement_type) },
+        { header: 'Product', cell: (m) => m.product_name },
+        { header: 'Barcode', cell: (m) => m.barcode || '-' },
+        { header: 'Change', align: 'right', cell: (m) => `${m.quantity_change > 0 ? '+' : ''}${m.quantity_change}` },
+        { header: 'Balance', align: 'right', cell: (m) => m.new_stock },
+        { header: 'Reference', cell: (m) => `${capitalize(m.reference_type || '')}${m.notes ? ` - ${m.notes}` : ''}`.trim() || '-' },
+      ],
+      rows: filteredMovements,
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
   };
 
   useEffect(() => {
@@ -123,10 +161,26 @@ export default function StockMovementPage() {
             Track inventory history and changes.
           </p>
         </div>
-        <Button onClick={() => handlePrint()} variant="outline" className="gap-2">
-            <Printer className="h-4 w-4" />
-            Print Report
-        </Button>
+        <div className="flex items-center gap-2">
+          <ReportSearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Search product, reference..."
+          />
+          <Button onClick={() => handlePrint()} variant="outline" className="gap-2">
+              <Printer className="h-4 w-4" />
+              Print Report
+          </Button>
+          <Button
+            onClick={exportToExcel}
+            variant="outline"
+            className="gap-2 border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            disabled={filteredMovements.length === 0}
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Export to Excel
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -196,14 +250,14 @@ export default function StockMovementPage() {
                     <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                   </TableCell>
                 </TableRow>
-              ) : movements.length === 0 ? (
+              ) : filteredMovements.length === 0 ? (
                 <TableRow>
                     <TableCell colSpan={7} className="h-24 text-center">
                         No movements found for the selected period.
                     </TableCell>
                 </TableRow>
               ) : (
-                movements.map((movement) => (
+                filteredMovements.map((movement) => (
                   <TableRow key={movement.id}>
                     <TableCell className="whitespace-nowrap">
                         {format(new Date(movement.created_at), 'MMM dd, yyyy HH:mm')}

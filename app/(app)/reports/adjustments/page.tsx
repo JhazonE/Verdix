@@ -12,12 +12,14 @@ import {
   TableHeader,
   TableRow
 } from '@/components/ui/table';
-import { Loader2, Printer, ClipboardX } from 'lucide-react';
+import { Loader2, Printer, ClipboardX, FileSpreadsheet } from 'lucide-react';
 import { format } from 'date-fns';
 import { ReportHeader } from '@/components/reports/ReportHeader';
 import { getApiUrl } from '@/lib/api-config';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
-import { printReportTable } from '@/lib/report-print';
+import { printReportTable, exportReportExcel } from '@/lib/report-print';
+import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
+import { useToast } from '@/hooks/use-toast';
 
 interface Adjustment {
   id: string;
@@ -32,9 +34,11 @@ interface Adjustment {
 }
 
 export default function AdjustmentReportPage() {
+  const { toast } = useToast();
   const [adjustments, setAdjustments] = useState<Adjustment[]>([]);
   const [loading, setLoading] = useState(true);
-  
+  const [searchTerm, setSearchTerm] = useState('');
+
   const [startDate, setStartDate] = useState(format(new Date().setDate(new Date().getDate() - 30), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
@@ -84,6 +88,39 @@ export default function AdjustmentReportPage() {
     }
   };
 
+  const filteredAdjustments = adjustments.filter((a) => {
+    if (!searchTerm.trim()) return true;
+    const search = searchTerm.toLowerCase();
+    return (
+      a.product_name?.toLowerCase().includes(search) ||
+      a.barcode?.toLowerCase().includes(search) ||
+      a.reason?.toLowerCase().includes(search)
+    );
+  });
+
+  const exportToExcel = () => {
+    const fileName = `Stock_Adjustments_${format(new Date(startDate), 'yyyyMMdd')}_${format(new Date(endDate), 'yyyyMMdd')}.xls`;
+    const ok = exportReportExcel<Adjustment>({
+      title: 'Stock Adjustment Report',
+      subtitle: `${startDate} to ${endDate}`,
+      columns: [
+        { header: 'Date', cell: (a) => format(new Date(a.created_at), 'MMM dd, yyyy HH:mm') },
+        { header: 'Product', cell: (a) => a.product_name },
+        { header: 'Barcode', cell: (a) => a.barcode || '-' },
+        { header: 'Reason', cell: (a) => a.reason },
+        { header: 'Adjustment', align: 'right', cell: (a) => `${a.quantity > 0 ? '+' : ''}${a.quantity}` },
+        { header: 'New Stock', align: 'right', cell: (a) => a.new_stock },
+      ],
+      rows: filteredAdjustments,
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+  };
+
   useEffect(() => {
     fetchData();
   }, [page, pageSize]);
@@ -124,10 +161,26 @@ export default function AdjustmentReportPage() {
             Log of manual stock corrections, damaged goods, and losses.
           </p>
         </div>
-        <Button onClick={() => handlePrint()} variant="outline" className="gap-2" disabled={isPrinting}>
-            {isPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-            Print Report
-        </Button>
+        <div className="flex items-center gap-2">
+          <ReportSearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Search product, reason..."
+          />
+          <Button onClick={() => handlePrint()} variant="outline" className="gap-2" disabled={isPrinting}>
+              {isPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+              Print Report
+          </Button>
+          <Button
+            onClick={exportToExcel}
+            variant="outline"
+            className="gap-2 border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            disabled={filteredAdjustments.length === 0}
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Export to Excel
+          </Button>
+        </div>
       </div>
 
        <Card className="print:hidden">
@@ -182,14 +235,14 @@ export default function AdjustmentReportPage() {
                     <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                   </TableCell>
                 </TableRow>
-              ) : adjustments.length === 0 ? (
+              ) : filteredAdjustments.length === 0 ? (
                 <TableRow>
                     <TableCell colSpan={6} className="h-24 text-center">
                         No adjustments found for this period.
                     </TableCell>
                 </TableRow>
               ) : (
-                adjustments.map((adj) => (
+                filteredAdjustments.map((adj) => (
                   <TableRow key={adj.id}>
                     <TableCell>
                         {format(new Date(adj.created_at), 'MMM dd, yyyy HH:mm')}
