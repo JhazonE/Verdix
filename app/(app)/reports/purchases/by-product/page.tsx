@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/card';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, FileDown, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PhilippinePeso, Package2, TrendingUp, BarChart } from 'lucide-react';
+import { CalendarIcon, FileDown, FileSpreadsheet, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PhilippinePeso, Package2, TrendingUp, BarChart } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -33,7 +33,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { getApiUrl } from '@/lib/api-config';
-import { exportReportPdf } from '@/lib/report-print';
+import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 
 interface ProductPurchase {
   productId: string;
@@ -154,6 +154,31 @@ export default function PurchasesByProductPage() {
     toast({ title: 'PDF Exported', description: `Report saved as ${fileName}` });
   };
 
+  const exportToExcel = () => {
+    const fileName = `Purchases_By_Product_${format(new Date(), 'yyyyMMdd_HHmm')}.xls`;
+    const ok = exportReportExcel<ProductPurchase>({
+      title: 'Purchases by Product Report',
+      subtitle: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
+      columns: [
+        { header: 'Product Name', cell: (r) => r.productName || 'N/A' },
+        { header: 'Barcode', cell: (r) => r.barcode || '-' },
+        { header: 'Category', cell: (r) => r.category || '-' },
+        { header: 'Quantity', align: 'right', cell: (r) => r.totalQuantity },
+        { header: 'UOM', cell: (r) => r.uom || '-' },
+        { header: 'Avg Cost', align: 'right', cell: (r) => r.avgCost },
+        { header: 'Total Spend', align: 'right', cell: (r) => r.totalCost },
+      ],
+      rows: filteredRecords,
+      totals: ['TOTAL', null, null, totals.totalQuantity, null, null, totals.totalCost.toFixed(2)],
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export. Please fetch the report first.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+  };
+
   const formatCurrency = (value: number) => {
     return `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
@@ -247,6 +272,16 @@ export default function PurchasesByProductPage() {
             >
               <FileDown className="mr-2 h-4 w-4" />
               Export to PDF
+            </Button>
+
+            <Button
+              onClick={exportToExcel}
+              disabled={isLoading || records.length === 0}
+              variant="outline"
+              className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Export to Excel
             </Button>
           </div>
         </CardContent>

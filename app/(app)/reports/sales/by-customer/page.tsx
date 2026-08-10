@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/card';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, FileDown, Users, TrendingUp, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { CalendarIcon, FileDown, FileSpreadsheet, Users, TrendingUp, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -33,7 +33,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { getApiUrl } from '@/lib/api-config';
-import { exportReportPdf } from '@/lib/report-print';
+import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 
 interface CustomerSale {
   customerId: string;
@@ -183,6 +183,32 @@ export default function SalesByCustomerPage() {
     toast({ title: 'PDF Exported', description: `Report saved as ${fileName}` });
   };
 
+  const exportToExcel = () => {
+    const fileName = `Sales_By_Customer_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.xls`;
+    const ok = exportReportExcel<CustomerSale>({
+      title: 'Sales by Customer Report',
+      subtitle: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
+      columns: [
+        { header: 'Customer Name', cell: (r) => r.customerName || 'N/A' },
+        { header: 'Contact', cell: (r) => r.contactNumber || '-' },
+        { header: 'Payment Terms', cell: (r) => r.paymentTerms || '-' },
+        { header: '# Trans', align: 'right', cell: (r) => r.transactionCount },
+        { header: 'Total Sales', align: 'right', cell: (r) => r.totalSales },
+        { header: 'Total Paid', align: 'right', cell: (r) => r.totalPaid },
+        { header: 'Outstanding', align: 'right', cell: (r) => r.outstandingBalance },
+        { header: 'Last Purchase', cell: (r) => r.lastPurchaseDate ? format(new Date(r.lastPurchaseDate), 'MMM dd, yyyy') : '-' },
+      ],
+      rows: filteredRecords,
+      totals: ['TOTALS', null, null, null, totals.totalSales.toFixed(2), null, totals.outstanding.toFixed(2), null],
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export. Please fetch the report first.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+  };
+
   const formatCurrency = (value: number) => {
     return `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
@@ -275,6 +301,16 @@ export default function SalesByCustomerPage() {
             >
               <FileDown className="mr-2 h-4 w-4" />
               Export to PDF
+            </Button>
+
+            <Button
+              onClick={exportToExcel}
+              disabled={isLoading || records.length === 0}
+              variant="outline"
+              className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Export to Excel
             </Button>
           </div>
         </CardContent>
