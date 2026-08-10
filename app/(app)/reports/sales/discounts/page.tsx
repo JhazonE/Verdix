@@ -160,7 +160,7 @@ export default function DiscountReportPage() {
   };
 
   const exportToExcel = () => {
-    const grandTotal = filteredRecords.reduce((sum, r) => sum + r.discountAmount, 0);
+    const grandTotal = filteredRecords.reduce((sum, r) => sum + Number(r.discountAmount), 0);
     const fileName = `Discount_Report_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.xls`;
     const ok = exportReportExcel<DiscountRecord>({
       title: 'Discount Report (SC / PWD / NAAC / Solo Parent)',

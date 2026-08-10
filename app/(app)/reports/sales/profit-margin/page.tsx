@@ -172,10 +172,10 @@ export default function ProfitMarginPage() {
   };
 
   const exportToExcel = () => {
-    const unitsSoldSum = filteredRecords.reduce((s, r) => s + r.unitsSold, 0);
-    const revenueSum = filteredRecords.reduce((s, r) => s + r.totalRevenue, 0);
-    const costSum = filteredRecords.reduce((s, r) => s + r.totalCost, 0);
-    const profitSum = filteredRecords.reduce((s, r) => s + r.totalProfit, 0);
+    const unitsSoldSum = filteredRecords.reduce((s, r) => s + Number(r.unitsSold), 0);
+    const revenueSum = filteredRecords.reduce((s, r) => s + Number(r.totalRevenue), 0);
+    const costSum = filteredRecords.reduce((s, r) => s + Number(r.totalCost), 0);
+    const profitSum = filteredRecords.reduce((s, r) => s + Number(r.totalProfit), 0);
     const fileName = `Profit_Margin_Report_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.xls`;
     const ok = exportReportExcel<ProductSale>({
       title: 'Profit Margin Report',

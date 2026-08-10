@@ -171,11 +171,11 @@ export default function SalesSummaryPage() {
   };
 
   const exportToExcel = () => {
-    const subtotalSum = filteredRecords.reduce((s, r) => s + r.subtotal, 0);
-    const discountSum = filteredRecords.reduce((s, r) => s + r.discount, 0);
-    const taxSum = filteredRecords.reduce((s, r) => s + r.taxAmount, 0);
-    const totalSum = filteredRecords.reduce((s, r) => s + r.total, 0);
-    const profitSum = filteredRecords.reduce((s, r) => s + r.profit, 0);
+    const subtotalSum = filteredRecords.reduce((s, r) => s + Number(r.subtotal), 0);
+    const discountSum = filteredRecords.reduce((s, r) => s + Number(r.discount), 0);
+    const taxSum = filteredRecords.reduce((s, r) => s + Number(r.taxAmount), 0);
+    const totalSum = filteredRecords.reduce((s, r) => s + Number(r.total), 0);
+    const profitSum = filteredRecords.reduce((s, r) => s + Number(r.profit), 0);
     const fileName = `Sales_Summary_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.xls`;
     const ok = exportReportExcel<SalesTransaction>({
       title: 'Sales Summary Report',

@@ -155,8 +155,8 @@ export default function PurchasesByProductPage() {
   };
 
   const exportToExcel = () => {
-    const totalQuantitySum = filteredRecords.reduce((s, r) => s + r.totalQuantity, 0);
-    const totalCostSum = filteredRecords.reduce((s, r) => s + r.totalCost, 0);
+    const totalQuantitySum = filteredRecords.reduce((s, r) => s + Number(r.totalQuantity), 0);
+    const totalCostSum = filteredRecords.reduce((s, r) => s + Number(r.totalCost), 0);
     const fileName = `Purchases_By_Product_${format(new Date(), 'yyyyMMdd_HHmm')}.xls`;
     const ok = exportReportExcel<ProductPurchase>({
       title: 'Purchases by Product Report',

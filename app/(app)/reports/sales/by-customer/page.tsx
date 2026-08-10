@@ -184,8 +184,8 @@ export default function SalesByCustomerPage() {
   };
 
   const exportToExcel = () => {
-    const totalSalesSum = filteredRecords.reduce((s, r) => s + r.totalSales, 0);
-    const outstandingSum = filteredRecords.reduce((s, r) => s + r.outstandingBalance, 0);
+    const totalSalesSum = filteredRecords.reduce((s, r) => s + Number(r.totalSales), 0);
+    const outstandingSum = filteredRecords.reduce((s, r) => s + Number(r.outstandingBalance), 0);
     const fileName = `Sales_By_Customer_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.xls`;
     const ok = exportReportExcel<CustomerSale>({
       title: 'Sales by Customer Report',

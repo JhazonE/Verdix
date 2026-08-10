@@ -148,10 +148,10 @@ export default function PurchasesBySupplierPage() {
   };
 
   const exportToExcel = () => {
-    const totalOrdersSum = filteredRecords.reduce((s, r) => s + r.totalOrders, 0);
-    const totalSpentSum = filteredRecords.reduce((s, r) => s + r.totalSpent, 0);
+    const totalOrdersSum = filteredRecords.reduce((s, r) => s + Number(r.totalOrders), 0);
+    const totalSpentSum = filteredRecords.reduce((s, r) => s + Number(r.totalSpent), 0);
     const fileName = `Purchases_By_Supplier_${format(new Date(), 'yyyyMMdd_HHmm')}.xls`;
-    const pct = (v: number) => (totalSpentSum > 0 ? ((v / totalSpentSum) * 100).toFixed(1) + '%' : '0%');
+    const pct = (v: number) => (totalSpentSum > 0 ? ((Number(v) / totalSpentSum) * 100).toFixed(1) + '%' : '0%');
     const ok = exportReportExcel<SupplierPurchase>({
       title: 'Purchases by Supplier Report',
       subtitle: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,

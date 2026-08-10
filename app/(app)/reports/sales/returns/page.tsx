@@ -190,11 +190,11 @@ export default function ReturnedSalesPage() {
   };
 
   const exportToExcel = () => {
-    const revenueSum = filteredRecords.reduce((s, r) => s + r.salesAmount, 0);
-    const costSum = filteredRecords.reduce((s, r) => s + r.cost, 0);
-    const profitSum = filteredRecords.reduce((s, r) => s + r.profit, 0);
-    const vatableSum = filteredRecords.reduce((s, r) => s + r.vatableSales, 0);
-    const vatSum = filteredRecords.reduce((s, r) => s + r.vatAmount, 0);
+    const revenueSum = filteredRecords.reduce((s, r) => s + Number(r.salesAmount), 0);
+    const costSum = filteredRecords.reduce((s, r) => s + Number(r.cost), 0);
+    const profitSum = filteredRecords.reduce((s, r) => s + Number(r.profit), 0);
+    const vatableSum = filteredRecords.reduce((s, r) => s + Number(r.vatableSales), 0);
+    const vatSum = filteredRecords.reduce((s, r) => s + Number(r.vatAmount), 0);
     const fileName = `Merchandise_Credit_Report_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.xls`;
     const ok = exportReportExcel<ReturnRecord>({
       title: 'Merchandise Credit Report',

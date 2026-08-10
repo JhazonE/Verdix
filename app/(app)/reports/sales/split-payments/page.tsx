@@ -178,7 +178,7 @@ export default function SplitPaymentsReportPage() {
   };
 
   const exportToExcel = () => {
-    const revenueSum = filteredRecords.reduce((s, r) => s + r.total, 0);
+    const revenueSum = filteredRecords.reduce((s, r) => s + Number(r.total), 0);
     const fileName = `Split_Payments_Report_${format(new Date(), 'yyyyMMdd')}.xls`;
     const ok = exportReportExcel<SplitPaymentTransaction>({
       title: 'Split Payments Report',

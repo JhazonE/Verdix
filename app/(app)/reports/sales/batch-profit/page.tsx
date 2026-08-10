@@ -169,10 +169,10 @@ export default function BatchProfitPage() {
   };
 
   const exportToExcel = () => {
-    const qtySum = filteredRecords.reduce((s, r) => s + r.qtySold, 0);
-    const revenueSum = filteredRecords.reduce((s, r) => s + r.lineRevenue, 0);
-    const costSum = filteredRecords.reduce((s, r) => s + r.lineCost, 0);
-    const profitSum = filteredRecords.reduce((s, r) => s + r.lineProfit, 0);
+    const qtySum = filteredRecords.reduce((s, r) => s + Number(r.qtySold), 0);
+    const revenueSum = filteredRecords.reduce((s, r) => s + Number(r.lineRevenue), 0);
+    const costSum = filteredRecords.reduce((s, r) => s + Number(r.lineCost), 0);
+    const profitSum = filteredRecords.reduce((s, r) => s + Number(r.lineProfit), 0);
     const marginPct = revenueSum > 0 ? ((profitSum / revenueSum) * 100).toFixed(1) : '0.0';
     const fileName = `Batch_Profit_Report_${format(new Date(), 'yyyyMMdd')}.xls`;
     const ok = exportReportExcel<BatchAnalysisRecord>({

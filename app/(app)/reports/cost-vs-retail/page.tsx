@@ -201,9 +201,9 @@ export default function CostVsRetailReportPage() {
         );
       });
 
-      const costValueSum = fullFilteredRows.reduce((s, r) => s + r.cost_value, 0);
-      const retailValueSum = fullFilteredRows.reduce((s, r) => s + r.retail_value, 0);
-      const profitSum = fullFilteredRows.reduce((s, r) => s + r.profit, 0);
+      const costValueSum = fullFilteredRows.reduce((s, r) => s + Number(r.cost_value), 0);
+      const retailValueSum = fullFilteredRows.reduce((s, r) => s + Number(r.retail_value), 0);
+      const profitSum = fullFilteredRows.reduce((s, r) => s + Number(r.profit), 0);
       const marginPct = retailValueSum > 0 ? ((profitSum / retailValueSum) * 100).toFixed(1) : '0.0';
       const fileName = `Cost_vs_Retail_${format(new Date(), 'yyyyMMdd')}.xls`;
       const ok = exportReportExcel<Row>({

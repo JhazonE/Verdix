@@ -157,7 +157,7 @@ export default function PurchasesSummaryPage() {
   };
 
   const exportToExcel = () => {
-    const totalSpentSum = filteredRecords.reduce((s, r) => s + r.total, 0);
+    const totalSpentSum = filteredRecords.reduce((s, r) => s + Number(r.total), 0);
     const fileName = `Purchases_Summary_${format(new Date(), 'yyyyMMdd_HHmm')}.xls`;
     const ok = exportReportExcel<PurchaseOrder>({
       title: 'Purchases Summary Report',

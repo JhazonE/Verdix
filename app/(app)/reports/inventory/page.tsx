@@ -167,7 +167,7 @@ export default function InventoryReportPage() {
         );
       });
 
-      const totalValueSum = fullFilteredProducts.reduce((s, p) => s + p.total_value, 0);
+      const totalValueSum = fullFilteredProducts.reduce((s, p) => s + Number(p.total_value), 0);
       const fileName = `Stock_On_Hand_${format(new Date(), 'yyyyMMdd')}.xls`;
       const ok = exportReportExcel<Product>({
         title: 'Stock on Hand Report',

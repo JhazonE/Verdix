@@ -113,7 +113,7 @@ export default function MembershipReportPage() {
   });
 
   const exportToExcel = () => {
-    const collectedSum = filteredRows.reduce((s, r) => s + r.amount, 0);
+    const collectedSum = filteredRows.reduce((s, r) => s + Number(r.amount), 0);
     const fileName = `Membership_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.xls`;
     const ok = exportReportExcel<MembershipRow>({
       title: 'Membership Report',
