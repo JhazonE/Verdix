@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/card';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, FileDown, ShieldCheck, Search, Users, BadgeCheck } from 'lucide-react';
+import { CalendarIcon, FileDown, FileSpreadsheet, ShieldCheck, Search, Users, BadgeCheck } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -34,7 +34,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { getApiUrl } from '@/lib/api-config';
-import { exportReportPdf } from '@/lib/report-print';
+import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 
 interface DiscountRecord {
   transactionDate: string;
@@ -159,6 +159,34 @@ export default function DiscountReportPage() {
     toast({ title: 'PDF Exported', description: `Report saved as ${fileName}` });
   };
 
+  const exportToExcel = () => {
+    const grandTotal = filteredRecords.reduce((sum, r) => sum + r.discountAmount, 0);
+    const fileName = `Discount_Report_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.xls`;
+    const ok = exportReportExcel<DiscountRecord>({
+      title: 'Discount Report (SC / PWD / NAAC / Solo Parent)',
+      subtitle: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'}  To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
+      columns: [
+        { header: 'Date', cell: (r) => r.transactionDate ? format(new Date(r.transactionDate), 'yyyy-MM-dd HH:mm') : '-' },
+        { header: 'OR/SI No.', cell: (r) => String(r.orderNumber || '-').padStart(6, '0') },
+        { header: 'Type', cell: (r) => TYPE_LABELS[r.discountType] || r.discountType },
+        { header: 'Cardholder Name', cell: (r) => r.holderName || '-' },
+        { header: 'ID Number', cell: (r) => r.idNumber || '-' },
+        { header: 'Item', cell: (r) => r.productName || '-' },
+        { header: 'Disc %', align: 'right', cell: (r) => `${r.discountPercentage.toFixed(0)}%` },
+        { header: 'Disc Amount', align: 'right', cell: (r) => r.discountAmount },
+        { header: 'Cashier', cell: (r) => r.cashierName || '-' },
+      ],
+      rows: filteredRecords,
+      totals: ['GRAND TOTAL', null, null, null, null, null, `${filteredRecords.length} rec`, grandTotal.toFixed(2), null],
+      fileName,
+    });
+    if (!ok) {
+      toast({ title: 'No Data', description: 'No records to export. Please fetch the report first.', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Excel Exported', description: `Report saved as ${fileName}` });
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -238,6 +266,16 @@ export default function DiscountReportPage() {
             >
               <FileDown className="mr-2 h-4 w-4" />
               Export to PDF
+            </Button>
+
+            <Button
+              onClick={exportToExcel}
+              disabled={isLoading || records.length === 0}
+              variant="outline"
+              className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Export to Excel
             </Button>
           </div>
         </CardContent>
