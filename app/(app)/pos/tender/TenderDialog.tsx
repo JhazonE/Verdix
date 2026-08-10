@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useRef, useEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
 import {
     Sheet,
     SheetContent,
@@ -143,7 +144,15 @@ export function TenderDialog(props: TenderDialogProps) {
          if (!details) return;
 
          if (printMode === 'browser') {
-             setIsReprintPrint(isReprint);
+             // handlePrint() (react-to-print) clones receiptRef.current
+             // synchronously — under React 18 automatic batching, a plain
+             // setState here would not have committed to the DOM yet by the
+             // time handlePrint() reads it. flushSync forces the re-render
+             // to commit before we proceed, so the hidden ReceiptView always
+             // reflects the isReprint value for *this* call.
+             flushSync(() => {
+                 setIsReprintPrint(isReprint);
+             });
              handlePrint();
              return;
          }
