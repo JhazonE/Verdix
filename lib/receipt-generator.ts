@@ -181,6 +181,12 @@ export class ReceiptGenerator {
         // for rows written before si_number existed.
         const formattedSiNo = formatSINumber(sale.siNumber || orderNumber);
         enc.bold(true).line(`SI NO.: ${formattedSiNo}`).bold(false);
+        if (sale.isReprint) {
+            enc.raw([0x1b, 0x61, 0x31]); // Native Center
+            enc.bold(true).line('*** REPRINT ***').bold(false);
+            enc.line(`Reprinted: ${format(new Date(), 'PP p')}`);
+            enc.raw([0x1b, 0x61, 0x30]); // Native Left
+        }
         enc.line(`Cust: ${customer?.name || 'Walk-in'}`);
         enc.line(`Cashier: ${sale.cashierName || 'Admin'}`);
         if (sale.terminalName) {

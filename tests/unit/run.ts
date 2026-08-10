@@ -13,6 +13,7 @@ import './license-machine-match.test';
 import './si-number.test';
 import './drawer-kick.test';
 import './receipt-si-number.test';
+import './reprint-watermark.test';
 import './product-tree.test';
 import './ejournal-text-format.test';
 import './ejournal-text-receipt.test';
