@@ -35,6 +35,21 @@ assert.ok(reprintHtml.includes('Reprinted:'), 'reprinted browser receipt shows a
 
 console.log('✓ reprint-watermark-browser (ReceiptView)');
 
+// ─── ReceiptView document type (SALES INVOICE vs OFFICIAL RECEIPT) ──────
+const goodsHtml = renderToStaticMarkup(
+  React.createElement(ReceiptView, { saleDetails: { ...baseSaleDetails, siNumber: '000123' }, settings: null }),
+);
+assert.ok(goodsHtml.includes('SALES INVOICE'), 'goods sale renders SALES INVOICE title');
+assert.ok(goodsHtml.includes('SI NO.: 000123'), 'goods sale renders SI NO. line');
+
+const servicesHtml = renderToStaticMarkup(
+  React.createElement(ReceiptView, { saleDetails: { ...baseSaleDetails, birOrNumber: 'OR-000045' }, settings: null }),
+);
+assert.ok(servicesHtml.includes('OFFICIAL RECEIPT'), 'services sale renders OFFICIAL RECEIPT title');
+assert.ok(servicesHtml.includes('OR NO.: OR-000045'), 'services sale renders OR NO. line');
+
+console.log('✓ reprint-watermark-browser (document type)');
+
 // ─── ZReadingPreview (Z-reading) ─────────────────────────────────────────
 const baseZData: ZReadingData = {
   id: 'PREVIEW',

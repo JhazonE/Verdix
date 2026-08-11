@@ -11,6 +11,7 @@ export interface ReceiptViewProps {
     payments?: { method: string; amount: number; reference?: string }[];
     orderNumber?: string;
     siNumber?: number | string;
+    birOrNumber?: string;
     amountTendered?: number;
     transactionDate?: Date;
     pointsUsedCount?: number;

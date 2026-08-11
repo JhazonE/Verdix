@@ -40,9 +40,13 @@ export const ReceiptView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ saleD
 
             <div className="mb-2 border-b border-dashed border-black pb-2">
                 <div className="font-bold text-center border-y border-black py-1 mb-1 uppercase">
-                    {paymentMethod?.toUpperCase() === 'CHARGE' ? 'CHARGE INVOICE' : 'CASH INVOICE'}
+                    {saleDetails.birOrNumber ? 'OFFICIAL RECEIPT' : 'SALES INVOICE'}
                 </div>
-                <div className="font-bold">SI NO.: {formatSINumber(saleDetails.siNumber || saleDetails.orderNumber)}</div>
+                {saleDetails.birOrNumber ? (
+                    <div className="font-bold">OR NO.: {saleDetails.birOrNumber}</div>
+                ) : (
+                    <div className="font-bold">SI NO.: {formatSINumber(saleDetails.siNumber || saleDetails.orderNumber)}</div>
+                )}
                 {saleDetails.isReprint && (
                     <div className="text-center">
                         <div className="font-bold">*** REPRINT ***</div>
