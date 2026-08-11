@@ -88,16 +88,16 @@ export class ZReadingGenerator {
         // ── COUNTER SECTION ──────────────────────────────────────────────────
         enc.line(row('Beg. SI #:',        String(data.minSaleId || '000000')));
         enc.line(row('End. SI #:',        String(data.maxSaleId || '000000')));
-        enc.line(row('Beg. OR #:',        String(data.minSaleOrId || '000000')));
-        enc.line(row('End. OR #:',        String(data.maxSaleOrId || '000000')));
+        enc.line(row('Beg. OR #:',        String(data.minSaleOrId || 'OR-000000')));
+        enc.line(row('End. OR #:',        String(data.maxSaleOrId || 'OR-000000')));
         enc.line(row('Beg. VOID #:',      String(data.minVoidId || '000000')));
         enc.line(row('End. VOID #:',      String(data.maxVoidId || '000000')));
-        enc.line(row('Beg. VOID OR #:',   String(data.minVoidOrId || '000000')));
-        enc.line(row('End. VOID OR #:',   String(data.maxVoidOrId || '000000')));
+        enc.line(row('Beg. VOID OR #:',   String(data.minVoidOrId || 'OR-000000')));
+        enc.line(row('End. VOID OR #:',   String(data.maxVoidOrId || 'OR-000000')));
         enc.line(row('Beg. RETURN #:',    String(data.minReturnId || '000000')));
         enc.line(row('End. RETURN #:',    String(data.maxReturnId || '000000')));
-        enc.line(row('Beg. RETURN OR #:', String(data.minReturnOrId || '000000')));
-        enc.line(row('End. RETURN OR #:', String(data.maxReturnOrId || '000000')));
+        enc.line(row('Beg. RETURN OR #:', String(data.minReturnOrId || 'OR-000000')));
+        enc.line(row('End. RETURN OR #:', String(data.maxReturnOrId || 'OR-000000')));
         enc.line(row('Reset Counter No.', String(data.resetCounter || 0)));
         enc.line(row('Z Counter No. :',   String(data.zCounter || 0)));
 
