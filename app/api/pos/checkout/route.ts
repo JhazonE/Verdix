@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withTransaction, getNextReference, getNextReceiptNumber, getNextSINumber, formatSINumber } from '@/lib/mysql';
+import { withTransaction, getNextReference, getNextReceiptNumber, getNextSINumber, getNextBirOrNumber, formatSINumber } from '@/lib/mysql';
 import { deductFamilyStock, findUltimateRoot } from '@/lib/family-sync';
 import { deductFromBatches, getBatchCostingSettings } from '@/lib/batch-deduction';
 import { ensureCustomerCreditColumn } from '@/lib/ensure-customer-credit';
@@ -134,10 +134,12 @@ export async function POST(request: NextRequest) {
       // Get terminal specific receipt (OR)
       const receiptNo = await getNextReceiptNumber(terminalId, connection);
 
-      // Get next SI Number (consolidated sequence number). Training-mode sales are
-      // excluded from official BIR totals, so they must not burn a real SI number —
-      // doing so would create unexplained jumps in the filed sequence.
-      const siNumber = isTrainingMode ? null : await getNextSINumber(connection);
+      // Get next SI Number (goods) or BIR OR Number (services) — never both.
+      // Training-mode sales are excluded from official BIR totals, so they
+      // must not burn a real number from either series — doing so would
+      // create unexplained jumps in the filed sequence.
+      const siNumber = (isTrainingMode || isServiceSale) ? null : await getNextSINumber(connection);
+      const birOrNumber = (isTrainingMode || !isServiceSale) ? null : await getNextBirOrNumber(connection);
 
       const isCharge = typeof paymentMethod === 'string' && paymentMethod.toUpperCase() === 'CHARGE';
       const invoiceStatus = isCharge ? 'Pending' : 'Paid';
@@ -146,14 +148,15 @@ export async function POST(request: NextRequest) {
       // 1. Insert into sales_transactions
       const insertSaleSql = `
         INSERT INTO sales_transactions (
-          id, reference, receipt_number, si_number, customer_id, invoice_date, date, total, payment_method, status, transaction_source, notes, is_training, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, CURDATE(), CURDATE(), ?, ?, ?, 'POS', ?, ?, NOW(), NOW())
+          id, reference, receipt_number, si_number, bir_or_number, customer_id, invoice_date, date, total, payment_method, status, transaction_source, notes, is_training, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, CURDATE(), CURDATE(), ?, ?, ?, 'POS', ?, ?, NOW(), NOW())
       `;
       await connection.query(insertSaleSql, [
         saleId,
         sequentialRef,
         receiptNo,
         siNumber,
+        birOrNumber,
         (customer && customer.id !== 'walk-in') ? customer.id : null,
         totalDue,
         paymentMethod,
@@ -375,11 +378,11 @@ export async function POST(request: NextRequest) {
       // 4. Insert into pos_transactions with payment details reference
       const insertPosTransSql = `
         INSERT INTO pos_transactions (
-          id, sale_id, shift_id, user_id, terminal_id, transaction_type, si_number,
+          id, sale_id, shift_id, user_id, terminal_id, transaction_type, si_number, bir_or_number,
           subtotal, tax_amount, discount_amount, total_amount, payment_method,
           payment_status, payment_details_id, payment_validated_at,
           notes, is_training, transaction_time, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 'sale', ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, NOW(), NOW(), NOW())
+        ) VALUES (?, ?, ?, ?, ?, 'sale', ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, NOW(), NOW(), NOW())
       `;
 
       const posNotes = `Tendered: ₱${(body.amountTendered || totalDue).toFixed(2)}, Change: ₱${(body.change || 0).toFixed(2)}${notes ? ' - ' + notes : ''}`;
@@ -391,6 +394,7 @@ export async function POST(request: NextRequest) {
         userId,
         terminalId || null,
         siNumber,
+        birOrNumber,
         body.subtotal || totalDue,
         body.taxAmount || 0,
         body.discountAmount || 0,
@@ -687,7 +691,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        data: { saleId, posTransId, invoiceId, paymentDetailsId, orderNumber, siNumber, pointsEarned: totalPointsEarned, pointsRemaining, creditApplied },
+        data: { saleId, posTransId, invoiceId, paymentDetailsId, orderNumber, siNumber, birOrNumber, pointsEarned: totalPointsEarned, pointsRemaining, creditApplied },
         message: 'Transaction saved successfully'
       });
     });
