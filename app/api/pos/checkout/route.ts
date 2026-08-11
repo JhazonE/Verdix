@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     // matching the existing isService(soldProd) pattern used later in this
     // route for stock/batch-costing.
     const productIds = items.map((it: any) => it.id);
-    const [productTypeRows]: any = await query(
+    const productTypeRows: any = await query(
       `SELECT id, type FROM products WHERE id IN (${productIds.map(() => '?').join(',')})`,
       productIds
     );
