@@ -126,6 +126,18 @@ export function useByDateTable({ filteredSalesData, totalPages, formatDate, form
         enableSorting: false,
       },
       {
+        id: 'birOrRange',
+        header: 'OR No. Range',
+        cell: ({ row }) =>
+          row.original.startBirOr && row.original.endBirOr ? (
+            <div className="flex flex-col text-xs text-muted-foreground">
+              <span>{row.original.startBirOr}</span>
+              <span>{row.original.endBirOr}</span>
+            </div>
+          ) : '-',
+        enableSorting: false,
+      },
+      {
         id: 'totalDiscount',
         accessorKey: 'totalDiscount',
         header: ({ column }) => <SortBtn column={column}>Discount</SortBtn>,

@@ -75,6 +75,13 @@ export async function GET(request: NextRequest) {
             -- wrong to file against. A day with no SI numbers shows "-".
             MIN(pt.si_number) as start_or,
             MAX(pt.si_number) as end_or,
+            -- BIR OR numbers, kept in their own MIN/MAX pair rather than
+            -- merged into the SI range above: si_number (goods) and
+            -- bir_or_number (services) are independent BIR numbering
+            -- sequences, so mixing them into one range would misrepresent
+            -- either series when filing. A day with no OR numbers shows "-".
+            MIN(pt.bir_or_number) as start_bir_or,
+            MAX(pt.bir_or_number) as end_bir_or,
             SUM(pt.total_amount) as total_revenue,
             SUM(pt.discount_amount) as total_discount,
             SUM(pt.tax_amount) as total_tax,
@@ -108,6 +115,8 @@ export async function GET(request: NextRequest) {
             transactionCount: parseInt(row.transaction_count),
             startOR: row.start_or,
             endOR: row.end_or,
+            startBirOr: row.start_bir_or,
+            endBirOr: row.end_bir_or,
             totalRevenue,
             totalDiscount,
             vatableSales,

@@ -38,7 +38,15 @@ export function useByDateUtils({ salesData, interval, dateRange, terminal, payme
       const dateStr = formatDate(row.date).toLowerCase();
       const orStart = (row.startOR || '').toLowerCase();
       const orEnd = (row.endOR || '').toLowerCase();
-      return dateStr.includes(term) || orStart.includes(term) || orEnd.includes(term);
+      const birOrStart = (row.startBirOr || '').toLowerCase();
+      const birOrEnd = (row.endBirOr || '').toLowerCase();
+      return (
+        dateStr.includes(term) ||
+        orStart.includes(term) ||
+        orEnd.includes(term) ||
+        birOrStart.includes(term) ||
+        birOrEnd.includes(term)
+      );
     });
   }, [salesData, searchTerm, interval]);
 
@@ -83,13 +91,15 @@ export function useByDateUtils({ salesData, interval, dateRange, terminal, payme
   const exportToCSV = async () => {
     const data = await fetchAllSalesForExport();
     const headers = [
-      'Date', 'Terminal', 'SI No. Start', 'SI No. End', 'Transaction Count', 'Discount', 'Revenue',
+      'Date', 'Terminal', 'SI No. Start', 'SI No. End', 'OR No. Start', 'OR No. End',
+      'Transaction Count', 'Discount', 'Revenue',
       'Vatable Sales', 'VAT Amount', 'VAT Exempt', 'Zero Rated', 'Non-VAT', 'Cost', 'Profit',
     ];
     const csvRows = data.map((item) => [
       formatDate(item.date) || '',
       terminal === 'all' ? 'All' : terminal,
       item.startOR || '', item.endOR || '',
+      item.startBirOr || '', item.endBirOr || '',
       item.transactionCount || 0, item.totalDiscount || 0, item.totalRevenue || 0,
       item.vatableSales || 0, item.vatAmount || 0, item.vatExemptSales || 0,
       item.zeroRatedSales || 0, item.nonVatSales || 0, item.cost || 0, item.profit || 0,
@@ -131,7 +141,7 @@ export function useByDateUtils({ salesData, interval, dateRange, terminal, payme
           <table>
             <thead>
               <tr>
-                <th>Date</th><th>SI No. Range</th>
+                <th>Date</th><th>SI No. Range</th><th>OR No. Range</th>
                 <th class="text-right">Discount</th><th class="text-right">Revenue</th>
                 <th class="text-right">Vatable</th><th class="text-right">VAT</th>
                 <th class="text-right">Exempt</th><th class="text-right">Zero</th>
@@ -144,6 +154,7 @@ export function useByDateUtils({ salesData, interval, dateRange, terminal, payme
                 <tr>
                   <td>${formatDate(item.date) || ''}</td>
                   <td>${item.startOR && item.endOR ? `${item.startOR} - ${item.endOR}` : '-'}</td>
+                  <td>${item.startBirOr && item.endBirOr ? `${item.startBirOr} - ${item.endBirOr}` : '-'}</td>
                   <td class="text-right">${formatCurrency(item.totalDiscount)}</td>
                   <td class="text-right">${formatCurrency(item.totalRevenue)}</td>
                   <td class="text-right">${formatCurrency(item.vatableSales)}</td>
@@ -155,7 +166,7 @@ export function useByDateUtils({ salesData, interval, dateRange, terminal, payme
                   <td class="text-right">${formatCurrency(item.profit)}</td>
                 </tr>`).join('')}
               <tr class="summary-row">
-                <td colspan="2">TOTAL</td>
+                <td colspan="3">TOTAL</td>
                 <td class="text-right">${formatCurrency(data.reduce((s, i) => s + i.totalDiscount, 0))}</td>
                 <td class="text-right">${formatCurrency(data.reduce((s, i) => s + i.totalRevenue, 0))}</td>
                 <td class="text-right">${formatCurrency(data.reduce((s, i) => s + i.vatableSales, 0))}</td>
