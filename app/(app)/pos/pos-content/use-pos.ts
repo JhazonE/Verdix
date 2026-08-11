@@ -562,6 +562,23 @@ export function usePOS() {
   // Handlers
   const handleAddItem = (product: any | undefined) => {
     if (product) {
+      const existing = items.find(item => item.id === product.id);
+      // Adding an existing line (quantity bump) never changes the cart's
+      // document type, so only check on a genuinely new line.
+      if (!existing && items.length > 0) {
+        const cartType = items[0].type === 'service' ? 'service' : 'standard';
+        const newItemType = product.type === 'service' ? 'service' : 'standard';
+        if (cartType !== newItemType) {
+          toast({
+            title: 'Cannot Mix Goods and Services',
+            description: 'This sale already has a ' + (cartType === 'service' ? 'service' : 'goods') + ' item. Please complete this as two separate transactions.',
+            variant: 'destructive',
+          });
+          setInputValue('');
+          setTimeout(() => inputRef.current?.focus(), 0);
+          return;
+        }
+      }
       setItems(prevItems => {
         const existing = prevItems.find(item => item.id === product.id);
         if (existing) {
