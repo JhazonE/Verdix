@@ -630,10 +630,16 @@ export class ReceiptGenerator {
         // Mirrors: second section block (no separator from date section, just margin)
         enc.line(row('Beg. SI #:',        stripLead(data.minSaleId)));
         enc.line(row('End. SI #:',        stripLead(data.maxSaleId)));
+        enc.line(row('Beg. OR #:',        stripLead(data.minSaleOrId)));
+        enc.line(row('End. OR #:',        stripLead(data.maxSaleOrId)));
         enc.line(row('Beg. VOID #:',      stripLead(data.minVoidId)));
         enc.line(row('End. VOID #:',      stripLead(data.maxVoidId)));
+        enc.line(row('Beg. VOID OR #:',   stripLead(data.minVoidOrId)));
+        enc.line(row('End. VOID OR #:',   stripLead(data.maxVoidOrId)));
         enc.line(row('Beg. RETURN #:',    stripLead(data.minReturnId || '0')));
         enc.line(row('End. RETURN #:',    stripLead(data.maxReturnId || '0')));
+        enc.line(row('Beg. RETURN OR #:', stripLead(data.minReturnOrId || '0')));
+        enc.line(row('End. RETURN OR #:', stripLead(data.maxReturnOrId || '0')));
         enc.line(row('Reset Counter No.', stripLead(data.resetCounter)));
         enc.line(row('Z Counter No. :',   stripLead(data.zCounter)));
 

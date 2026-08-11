@@ -16,6 +16,7 @@ import './receipt-si-number.test';
 import './receipt-document-type.test';
 import './reprint-watermark.test';
 import './z-reading-discount-summary.test';
+import './z-reading-or-range.test';
 import './reprint-watermark-browser.test';
 import './product-tree.test';
 import './ejournal-text-format.test';

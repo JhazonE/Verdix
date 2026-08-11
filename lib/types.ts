@@ -570,10 +570,16 @@ export interface ZReadingData {
   terminalPermitDateIssued?: string;
   minSaleId?: string;
   maxSaleId?: string;
+  minSaleOrId?: string;
+  maxSaleOrId?: string;
   minVoidId?: string;
   maxVoidId?: string;
+  minVoidOrId?: string;
+  maxVoidOrId?: string;
   minReturnId?: string;
   maxReturnId?: string;
+  minReturnOrId?: string;
+  maxReturnOrId?: string;
   previousReading?: number;
   runningTotal?: number;
   voidAmount?: number;

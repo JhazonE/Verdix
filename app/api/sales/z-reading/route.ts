@@ -45,6 +45,15 @@ async function ensureZReadingsSchema() {
             { name: 'reset_counter', type: 'INT DEFAULT 0' },
             { name: 'min_sale_id', type: 'VARCHAR(50)' },
             { name: 'max_sale_id', type: 'VARCHAR(50)' },
+            // BIR OR-series counterparts of the SI ranges above (Task 7). Goods
+            // (si_number) and services (bir_or_number) are independent BIR
+            // numbering sequences, so their MIN/MAX ranges must never be merged.
+            { name: 'min_sale_or_id', type: 'VARCHAR(50)' },
+            { name: 'max_sale_or_id', type: 'VARCHAR(50)' },
+            { name: 'min_void_or_id', type: 'VARCHAR(50)' },
+            { name: 'max_void_or_id', type: 'VARCHAR(50)' },
+            { name: 'min_return_or_id', type: 'VARCHAR(50)' },
+            { name: 'max_return_or_id', type: 'VARCHAR(50)' },
             { name: 'actual_cash', type: 'DECIMAL(15,2) DEFAULT 0.00' },
             { name: 'cash_difference', type: 'DECIMAL(15,2) DEFAULT 0.00' }
         ];
@@ -127,11 +136,13 @@ export async function GET(request: NextRequest) {
         `;
 
         const salesSql = `
-            SELECT 
+            SELECT
                 SUM(st.total) as gross_sales,
                 COUNT(*) as transaction_count,
                 MIN(st.si_number) as min_sale_id,
                 MAX(st.si_number) as max_sale_id,
+                MIN(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as min_sale_or_id,
+                MAX(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as max_sale_or_id,
                 SUM(pt.discount_amount) as total_discounts
             ${salesBaseSql}
         `;
@@ -149,9 +160,11 @@ export async function GET(request: NextRequest) {
         const [returnsResult] = await query(returnsSql, dateParams) as any[];
 
         const voidSeqSql = `
-            SELECT 
+            SELECT
                 MIN(st.si_number) as min_void_id,
                 MAX(st.si_number) as max_void_id,
+                MIN(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as min_void_or_id,
+                MAX(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as max_void_or_id,
                 SUM(st.total) as void_amount
             FROM sales_transactions st
             JOIN pos_transactions pt ON st.id = pt.sale_id
@@ -164,9 +177,11 @@ export async function GET(request: NextRequest) {
         const voidAmount = parseFloat(voidSeqResult?.void_amount || 0);
 
         const returnSequenceSql = `
-           SELECT 
+           SELECT
                 MIN(st.si_number) as min_return_id,
-                MAX(st.si_number) as max_return_id
+                MAX(st.si_number) as max_return_id,
+                MIN(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as min_return_or_id,
+                MAX(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as max_return_or_id
            FROM pos_transactions pt
            LEFT JOIN sales_transactions st ON pt.sale_id = st.id
            WHERE pt.transaction_type = 'return'
@@ -367,10 +382,16 @@ export async function GET(request: NextRequest) {
             terminalPermitDateIssued: terminalPermitDateIssued || '',
             minSaleId: salesResult?.min_sale_id ? String(salesResult.min_sale_id).padStart(6, '0') : '000000',
             maxSaleId: salesResult?.max_sale_id ? String(salesResult.max_sale_id).padStart(6, '0') : '000000',
+            minSaleOrId: salesResult?.min_sale_or_id ? String(salesResult.min_sale_or_id).padStart(6, '0') : '000000',
+            maxSaleOrId: salesResult?.max_sale_or_id ? String(salesResult.max_sale_or_id).padStart(6, '0') : '000000',
             minVoidId: voidSeqResult?.min_void_id ? String(voidSeqResult.min_void_id).padStart(6, '0') : '000000',
             maxVoidId: voidSeqResult?.max_void_id ? String(voidSeqResult.max_void_id).padStart(6, '0') : '000000',
+            minVoidOrId: voidSeqResult?.min_void_or_id ? String(voidSeqResult.min_void_or_id).padStart(6, '0') : '000000',
+            maxVoidOrId: voidSeqResult?.max_void_or_id ? String(voidSeqResult.max_void_or_id).padStart(6, '0') : '000000',
             minReturnId: returnSeqResult?.min_return_id ? String(returnSeqResult.min_return_id).padStart(6, '0') : '000000',
             maxReturnId: returnSeqResult?.max_return_id ? String(returnSeqResult.max_return_id).padStart(6, '0') : '000000',
+            minReturnOrId: returnSeqResult?.min_return_or_id ? String(returnSeqResult.min_return_or_id).padStart(6, '0') : '000000',
+            maxReturnOrId: returnSeqResult?.max_return_or_id ? String(returnSeqResult.max_return_or_id).padStart(6, '0') : '000000',
             previousReading: safeParseFloat(previousReading),
             runningTotal: safeParseFloat(runningTotal),
             voidAmount: safeParseFloat(voidAmount),
@@ -480,10 +501,16 @@ export async function GET(request: NextRequest) {
                 terminalPermitDateIssued: row.terminal_permit_date_issued || '',
                 minSaleId: row.min_sale_id || '',
                 maxSaleId: row.max_sale_id || '',
+                minSaleOrId: row.min_sale_or_id || '',
+                maxSaleOrId: row.max_sale_or_id || '',
                 minVoidId: row.min_void_id || '',
                 maxVoidId: row.max_void_id || '',
+                minVoidOrId: row.min_void_or_id || '',
+                maxVoidOrId: row.max_void_or_id || '',
                 minReturnId: row.min_return_id || '',
                 maxReturnId: row.max_return_id || '',
+                minReturnOrId: row.min_return_or_id || '',
+                maxReturnOrId: row.max_return_or_id || '',
                 previousReading: safeParseFloat(row.previous_reading), 
                 runningTotal: safeParseFloat(row.running_total),
                 voidAmount: safeParseFloat(row.void_amount),
@@ -543,7 +570,7 @@ export async function POST(request: NextRequest) {
         `;
         const salesParams = [...dateParams, terminalId];
 
-        const salesSql = `SELECT SUM(st.total) as gross_sales, COUNT(*) as transaction_count, MIN(st.si_number) as min_sale_id, MAX(st.si_number) as max_sale_id, SUM(pt.discount_amount) as total_discounts ${salesBaseSql}`;
+        const salesSql = `SELECT SUM(st.total) as gross_sales, COUNT(*) as transaction_count, MIN(st.si_number) as min_sale_id, MAX(st.si_number) as max_sale_id, MIN(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as min_sale_or_id, MAX(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as max_sale_or_id, SUM(pt.discount_amount) as total_discounts ${salesBaseSql}`;
         const [salesResult] = await query(salesSql, salesParams) as any[];
 
         const returnsSql = `SELECT SUM(st.total) as total_returns FROM sales_transactions st JOIN pos_transactions pt ON st.id = pt.sale_id WHERE st.status = 'Returned' AND pt.is_training = 0 ${dateCondition} AND pt.terminal_id = ?`;
@@ -552,11 +579,11 @@ export async function POST(request: NextRequest) {
         const paymentSql = `SELECT st.payment_method, SUM(st.total) as amount FROM sales_transactions st JOIN pos_transactions pt ON st.id = pt.sale_id WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned') AND pt.is_training = 0 ${dateCondition} AND pt.terminal_id = ? GROUP BY st.payment_method`;
         const paymentResults = await query(paymentSql, salesParams) as any[];
 
-        const voidSeqSql = `SELECT MIN(st.si_number) as min_void_id, MAX(st.si_number) as max_void_id, SUM(st.total) as void_amount FROM sales_transactions st JOIN pos_transactions pt ON st.id = pt.sale_id WHERE st.status IN ('Void', 'Voided', 'Cancelled') AND pt.is_training = 0 ${dateCondition} AND pt.terminal_id = ?`;
+        const voidSeqSql = `SELECT MIN(st.si_number) as min_void_id, MAX(st.si_number) as max_void_id, MIN(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as min_void_or_id, MAX(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as max_void_or_id, SUM(st.total) as void_amount FROM sales_transactions st JOIN pos_transactions pt ON st.id = pt.sale_id WHERE st.status IN ('Void', 'Voided', 'Cancelled') AND pt.is_training = 0 ${dateCondition} AND pt.terminal_id = ?`;
         const [voidSeqResult] = await query(voidSeqSql, salesParams) as any[];
         const voidAmount = parseFloat(voidSeqResult?.void_amount || 0);
 
-        const returnSeqSql = `SELECT MIN(st.si_number) as min_return_id, MAX(st.si_number) as max_return_id FROM pos_transactions pt LEFT JOIN sales_transactions st ON pt.sale_id = st.id WHERE pt.transaction_type = 'return' AND pt.is_training = 0 ${dateCondition.replace(/st\.created_at/g, 'pt.created_at')} AND pt.terminal_id = ?`;
+        const returnSeqSql = `SELECT MIN(st.si_number) as min_return_id, MAX(st.si_number) as max_return_id, MIN(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as min_return_or_id, MAX(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as max_return_or_id FROM pos_transactions pt LEFT JOIN sales_transactions st ON pt.sale_id = st.id WHERE pt.transaction_type = 'return' AND pt.is_training = 0 ${dateCondition.replace(/st\.created_at/g, 'pt.created_at')} AND pt.terminal_id = ?`;
         const [returnSeqResult] = await query(returnSeqSql, salesParams) as any[];
 
         // Detailed Summaries for POST
@@ -656,10 +683,11 @@ export async function POST(request: NextRequest) {
                 min_void_id, max_void_id, min_return_id, max_return_id, z_counter, reset_counter, previous_reading, running_total,
                 vatable_sales, vat_exempt, zero_rated, non_vat,
                 discount_summary, sales_adjustment, vat_adjustment, void_amount,
-                actual_cash, cash_difference
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                actual_cash, cash_difference,
+                min_sale_or_id, max_sale_or_id, min_void_or_id, max_void_or_id, min_return_or_id, max_return_or_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
-        
+
         await query(insertSql, [
             readingNumber, endDate, terminalId, cashierName, rawNetSales + parseFloat(salesResult?.total_discounts || 0) + parseFloat(returnsResult?.total_returns || 0) + voidAmount,
             parseFloat(returnsResult?.total_returns || 0), parseFloat(salesResult?.total_discounts || 0), finalNetSales, vatAmount,
@@ -668,7 +696,10 @@ export async function POST(request: NextRequest) {
             returnSeqResult?.min_return_id || '000000', returnSeqResult?.max_return_id || '000000', (termResult?.z_counter || 0), termResult?.reset_counter || 0,
             previousReading, runningTotal, vatableSales, vatExemptSales, zeroRatedSales, nonVatSales,
             JSON.stringify(discountSummary), JSON.stringify(salesAdjustment), vatAdjustmentAmount, voidAmount,
-            actualCash, cashVariance
+            actualCash, cashVariance,
+            salesResult?.min_sale_or_id || '000000', salesResult?.max_sale_or_id || '000000',
+            voidSeqResult?.min_void_or_id || '000000', voidSeqResult?.max_void_or_id || '000000',
+            returnSeqResult?.min_return_or_id || '000000', returnSeqResult?.max_return_or_id || '000000'
         ]);
 
         // NOTE: z_counter is already incremented atomically by getNextZReadingNumber()
@@ -686,8 +717,11 @@ export async function POST(request: NextRequest) {
             terminalPermitNo: termResult?.permit_no || '', terminalAccreditationNo: termResult?.accreditation_no || '',
             terminalPermitDateIssued: termResult?.permit_date_issued || '',
             minSaleId: salesResult?.min_sale_id || '000000', maxSaleId: salesResult?.max_sale_id || '000000',
+            minSaleOrId: salesResult?.min_sale_or_id || '000000', maxSaleOrId: salesResult?.max_sale_or_id || '000000',
             minVoidId: voidSeqResult?.min_void_id || '000000', maxVoidId: voidSeqResult?.max_void_id || '000000',
+            minVoidOrId: voidSeqResult?.min_void_or_id || '000000', maxVoidOrId: voidSeqResult?.max_void_or_id || '000000',
             minReturnId: returnSeqResult?.min_return_id || '000000', maxReturnId: returnSeqResult?.max_return_id || '000000',
+            minReturnOrId: returnSeqResult?.min_return_or_id || '000000', maxReturnOrId: returnSeqResult?.max_return_or_id || '000000',
             previousReading, runningTotal, voidAmount, vatAdjustment: vatAdjustmentAmount, 
             discountSummary: discountSummary, 
             salesAdjustment: salesAdjustment,
