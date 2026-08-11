@@ -41,6 +41,8 @@ interface DailySummary {
   date: string;
   beginningSI: string;
   endingSI: string;
+  beginningOR: string;
+  endingOR: string;
   grandAccumulatedBeginning: number;
   manualSiOr: number;
   grossSales: number;
@@ -198,10 +200,10 @@ export default function BirSalesSummaryPage() {
 
   const summaryPdfSection = (): PdfSection => ({
     title: SECTION_LABELS.summary,
-    headers: ['Date', 'Beg SI/OR', 'End SI/OR', 'Grand Accum Beg', 'Gross Sales', 'Vatable', 'VAT', 'VAT Exempt', 'Zero-Rated', 'Total Deduct.', 'VAT Adj', 'VAT Payable', 'Net Sales'],
-    widths: [18, 16, 16, 24, 24, 22, 18, 22, 20, 24, 20, 22, 24],
+    headers: ['Date', 'Beg SI', 'End SI', 'Beg OR', 'End OR', 'Grand Accum Beg', 'Gross Sales', 'Vatable', 'VAT', 'VAT Exempt', 'Zero-Rated', 'Total Deduct.', 'VAT Adj', 'VAT Payable', 'Net Sales'],
+    widths: [16, 16, 16, 18, 18, 22, 22, 20, 16, 20, 18, 22, 18, 20, 22],
     rows: data.dailySummary.map((r) => [
-      r.date ? format(new Date(r.date), 'yyyy-MM-dd') : '', r.beginningSI, r.endingSI, n2(r.grandAccumulatedBeginning), n2(r.grossSales), n2(r.vatableSales),
+      r.date ? format(new Date(r.date), 'yyyy-MM-dd') : '', r.beginningSI, r.endingSI, r.beginningOR, r.endingOR, n2(r.grandAccumulatedBeginning), n2(r.grossSales), n2(r.vatableSales),
       n2(r.vatAmount), n2(r.vatExempt), n2(r.zeroRated), n2(r.totalDeductions), n2(r.totalVatAdjustment), n2(r.vatPayable), n2(r.netSales),
     ]),
   });
@@ -219,14 +221,14 @@ export default function BirSalesSummaryPage() {
 
   const summarySheetSection = (): SheetSection => ({
     headers: [
-      'Date', 'Beginning SI/OR No.', 'Ending SI/OR No.', 'Grand Accumulated Beginning Balance', 'Sales Issued w/ Manual SI/OR',
+      'Date', 'Beginning SI No.', 'Ending SI No.', 'Beginning OR No.', 'Ending OR No.', 'Grand Accumulated Beginning Balance', 'Sales Issued w/ Manual SI/OR',
       'Gross Sales for the Day', 'Vatable Sales', 'VAT Amount', 'VAT Exempt Sales', 'Zero-Rated Sales',
       'SC Discount', 'PWD Discount', 'NAAC Discount', 'Solo Parent Discount', 'Other Discount', 'Returns', 'Voids', 'Total Deductions',
       'VAT Adj - SC', 'VAT Adj - PWD', 'VAT Adj - Other', 'VAT on Returns', 'VAT Adj - Others', 'Total VAT Adjustment',
       'VAT Payable', 'Net Sales', 'Sales Overrun/Overflow', 'Total Income', 'Reset Counter', 'Z-Counter', 'Remarks',
     ],
     rows: data.dailySummary.map((r) => [
-      r.date ? format(new Date(r.date), 'yyyy-MM-dd') : '', r.beginningSI, r.endingSI, r.grandAccumulatedBeginning, r.manualSiOr,
+      r.date ? format(new Date(r.date), 'yyyy-MM-dd') : '', r.beginningSI, r.endingSI, r.beginningOR, r.endingOR, r.grandAccumulatedBeginning, r.manualSiOr,
       r.grossSales, r.vatableSales, r.vatAmount, r.vatExempt, r.zeroRated,
       r.discSenior, r.discPwd, r.discNaac, r.discSolo, r.discOther, r.returns, r.voids, r.totalDeductions,
       r.vatAdjSenior, r.vatAdjPwd, r.vatAdjOther, r.vatOnReturns, r.vatAdjOthers, r.totalVatAdjustment,
@@ -653,8 +655,10 @@ export default function BirSalesSummaryPage() {
                 <TableHeader>
                   <TableRow className="bg-muted/50">
                     <TableHead className="py-2 px-2 whitespace-nowrap">Date</TableHead>
-                    <TableHead className="py-2 px-2 whitespace-nowrap">Beg. SI/OR</TableHead>
-                    <TableHead className="py-2 px-2 whitespace-nowrap">End. SI/OR</TableHead>
+                    <TableHead className="py-2 px-2 whitespace-nowrap">Beg. SI No.</TableHead>
+                    <TableHead className="py-2 px-2 whitespace-nowrap">End. SI No.</TableHead>
+                    <TableHead className="py-2 px-2 whitespace-nowrap">Beg. OR No.</TableHead>
+                    <TableHead className="py-2 px-2 whitespace-nowrap">End. OR No.</TableHead>
                     <TableHead className="py-2 px-2 text-right whitespace-nowrap">Grand Accum. Beg.</TableHead>
                     <TableHead className="py-2 px-2 text-right whitespace-nowrap">Gross Sales</TableHead>
                     <TableHead className="py-2 px-2 text-right whitespace-nowrap">Vatable Sales</TableHead>
@@ -675,6 +679,8 @@ export default function BirSalesSummaryPage() {
                         <TableCell className="py-2 px-2 whitespace-nowrap">{format(new Date(r.date), 'MMM d, yyyy')}</TableCell>
                         <TableCell className="py-2 px-2 font-mono">{r.beginningSI}</TableCell>
                         <TableCell className="py-2 px-2 font-mono">{r.endingSI}</TableCell>
+                        <TableCell className="py-2 px-2 font-mono">{r.beginningOR}</TableCell>
+                        <TableCell className="py-2 px-2 font-mono">{r.endingOR}</TableCell>
                         <TableCell className="py-2 px-2 text-right font-mono text-muted-foreground">{n2(r.grandAccumulatedBeginning)}</TableCell>
                         <TableCell className="py-2 px-2 text-right font-mono">{n2(r.grossSales)}</TableCell>
                         <TableCell className="py-2 px-2 text-right font-mono">{n2(r.vatableSales)}</TableCell>
@@ -690,7 +696,7 @@ export default function BirSalesSummaryPage() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={14} className="h-24 text-center text-muted-foreground">
+                      <TableCell colSpan={16} className="h-24 text-center text-muted-foreground">
                         {isLoading ? 'Loading...' : 'No sales found for the selected period.'}
                       </TableCell>
                     </TableRow>
@@ -699,7 +705,7 @@ export default function BirSalesSummaryPage() {
                 {data.dailySummary.length > 0 && (
                   <TableFooter>
                     <TableRow className="bg-muted/70 font-bold border-t-2">
-                      <TableCell className="py-2 px-2" colSpan={4}>GRAND TOTAL</TableCell>
+                      <TableCell className="py-2 px-2" colSpan={6}>GRAND TOTAL</TableCell>
                       <TableCell className="py-2 px-2 text-right font-mono">{n2(summaryTotals.grossSales)}</TableCell>
                       <TableCell className="py-2 px-2 text-right font-mono">{n2(data.dailySummary.reduce((s, r) => s + r.vatableSales, 0))}</TableCell>
                       <TableCell className="py-2 px-2 text-right font-mono">{n2(data.dailySummary.reduce((s, r) => s + r.vatAmount, 0))}</TableCell>

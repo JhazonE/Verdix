@@ -44,8 +44,20 @@ export async function GET(request: NextRequest) {
     const dailySql = `
       SELECT
         DATE(pt.transaction_time)                                          AS report_date,
-        MIN(st.receipt_number)                                             AS beginning_si,
-        MAX(st.receipt_number)                                             AS ending_si,
+        -- SI numbers (goods sales), not receipt_number: receipt_number is a
+        -- generic per-terminal receipt counter unrelated to the BIR SI
+        -- series (see getNextReceiptNumber() vs getNextSINumber() in
+        -- lib/mysql.ts). MIN/MAX already ignore NULLs, so days with no SI
+        -- sales simply report NULL here, handled below.
+        MIN(st.si_number)                                                  AS beginning_si,
+        MAX(st.si_number)                                                  AS ending_si,
+        -- BIR OR numbers (services sales), kept in their own MIN/MAX pair
+        -- rather than merged with si_number above: si_number and
+        -- bir_or_number are independent BIR numbering sequences (goods vs.
+        -- services), so mixing them into one range would misrepresent
+        -- either series when filing.
+        MIN(st.bir_or_number)                                              AS beginning_or,
+        MAX(st.bir_or_number)                                              AS ending_or,
         SUM(pti.quantity * pti.unit_price)                                 AS gross_sales,
         SUM(pti.line_total)                                                AS net_sales,
         SUM(CASE WHEN COALESCE(pti.tax_type,'VAT') = 'VAT' THEN pti.line_total ELSE 0 END)               AS vat_incl_total,
@@ -135,8 +147,15 @@ export async function GET(request: NextRequest) {
 
       return {
         date,
+        // si_number is already stored zero-padded to 6 digits (getNextSINumber());
+        // padStart here is a harmless no-op safeguard, matching this report's
+        // pre-existing convention for the (also pre-padded) receipt_number field.
         beginningSI: r.beginning_si != null ? String(r.beginning_si).padStart(6, '0') : '—',
         endingSI: r.ending_si != null ? String(r.ending_si).padStart(6, '0') : '—',
+        // bir_or_number already carries its own "OR-" prefix (getNextBirOrNumber()),
+        // so it is used as-is — no padding/prefixing, unlike the SI fields above.
+        beginningOR: r.beginning_or != null ? String(r.beginning_or) : '—',
+        endingOR: r.ending_or != null ? String(r.ending_or) : '—',
         grandAccumulatedBeginning: grandBeginning,
         manualSiOr: 0, // sales issued with manual SI/OR (per RR 16-2018) — not captured by the POS
         grossSales: num(r.gross_sales),
