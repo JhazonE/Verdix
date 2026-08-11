@@ -49,6 +49,7 @@ export function mapSaleToReceiptDetails(sale: Sale) {
     payments: sale.payments,
     orderNumber: sale.orderNumber ? String(sale.orderNumber) : sale.id,
     siNumber: sale.siNumber ? String(sale.siNumber) : undefined,
+    birOrNumber: sale.birOrNumber || undefined,
     amountTendered: sale.amountTendered || sale.total,
     transactionDate: sale.date ? new Date(sale.date) : new Date(),
     cashierName: sale.cashierName || sale.salesPerson,

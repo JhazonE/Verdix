@@ -145,6 +145,7 @@ export interface Sale {
   status: 'Paid' | 'Pending' | 'Failed' | 'Shipped' | 'Delivered' | 'Returned' | 'Voided' | 'To Deliver' | 'Fully Delivered' | 'Invoiced' | 'Cancelled';
   orderNumber?: number;
   siNumber?: number | string;
+  birOrNumber?: string;
   notes?: string;
   shipping?: number;
   payments?: { method: string; amount: number; reference?: string }[];

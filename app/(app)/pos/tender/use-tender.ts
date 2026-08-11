@@ -324,6 +324,7 @@ export function useTender({
         payments: finalPayments,
         orderNumber: result.data.orderNumber?.toString() || '',
         siNumber: result.data.siNumber || result.data.orderNumber?.toString() || '',
+        birOrNumber: result.data.birOrNumber || undefined,
         amountTendered: totalTenderedAll,
         transactionDate: new Date(),
         cashierName: currentUser?.display_name || currentUser?.username || 'Admin',

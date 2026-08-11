@@ -44,6 +44,7 @@ export interface CompletedSale {
   payments: Payment[];
   orderNumber: string;
   siNumber?: string;
+  birOrNumber?: string;
   amountTendered: number;
   transactionDate: Date;
   cashierName: string;
