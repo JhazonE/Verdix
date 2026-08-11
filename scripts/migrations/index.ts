@@ -106,6 +106,7 @@ import './105_sta_lucia_integration';
 import './106_sta_lucia_submission_claims';
 import './107_add_price_update_approval_setting';
 import './108_add_price_level_adjustment_type';
+import './109_add_bir_or_number';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';

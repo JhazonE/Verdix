@@ -283,6 +283,33 @@ export async function getNextMCNumber(connection?: mysql.PoolConnection): Promis
   });
 }
 
+
+/**
+ * Atomically gets and increments the next BIR Official Receipt (OR) number.
+ *
+ * Named bir_or_number (not or_number) to avoid confusion with the existing,
+ * unrelated getNextReceiptNumber()/or_next_reference counter, which is a
+ * generic per-terminal receipt reference issued for every sale regardless of
+ * type — not this BIR classification series.
+ *
+ * @returns The next BIR OR number, formatted (e.g. "OR-000001")
+ */
+export async function getNextBirOrNumber(connection?: mysql.PoolConnection): Promise<string> {
+  return await onConnection(connection, async (connection) => {
+    await connection.query(
+      `UPDATE transaction_references SET bir_or_number = LPAD(IF(bir_or_number IS NULL OR bir_or_number = '', 0, CAST(bir_or_number AS UNSIGNED)) + 1, 6, '0') WHERE id = 1`
+    );
+
+    const [rows]: any = await connection.query(
+      `SELECT bir_or_number as next_val FROM transaction_references WHERE id = 1`
+    );
+    if (!rows || rows.length === 0) {
+      throw new Error('Failed to fetch next BIR OR number');
+    }
+    return `OR-${String(rows[0].next_val)}`;
+  });
+}
+
 /**
  * Close the connection pool
  */

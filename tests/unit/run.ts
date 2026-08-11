@@ -32,3 +32,4 @@ import './price-update-math.test';
 import './price-list-template.test';
 import './seed-default-price-level.test';
 import './price-level-calc.test';
+import './bir-or-number.test';
