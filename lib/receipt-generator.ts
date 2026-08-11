@@ -63,6 +63,7 @@ export class ReceiptGenerator {
         paymentMethod: string;
         orderNumber?: string;
         siNumber?: string;
+        birOrNumber?: string;
         amountTendered?: number;
         pointsEarned?: number;
         pointsUsedCount?: number;
@@ -175,12 +176,21 @@ export class ReceiptGenerator {
         enc.newline();
 
         // ─── SALE HEADER ───────────────────────────────────────────
-        const title = paymentMethod?.toUpperCase() === 'CHARGE' ? 'CHARGE INVOICE' : 'CASH INVOICE';
+        // Goods → Sales Invoice (si_number); services → Official Receipt
+        // (birOrNumber). No cash/charge distinction in the title on either
+        // side — payment method remains visible in the payment-section line
+        // below. Exactly one of siNumber/birOrNumber is set per sale.
+        const isServicesReceipt = !!sale.birOrNumber;
+        const title = isServicesReceipt ? 'OFFICIAL RECEIPT' : 'SALES INVOICE';
         enc.raw([0x1b, 0x61, 0x31]).line(title).raw([0x1b, 0x61, 0x30]);
-        // orderNumber is a per-terminal counter, not a BIR series — only a fallback
-        // for rows written before si_number existed.
-        const formattedSiNo = formatSINumber(sale.siNumber || orderNumber);
-        enc.bold(true).line(`SI NO.: ${formattedSiNo}`).bold(false);
+        if (isServicesReceipt) {
+            enc.bold(true).line(`OR NO.: ${sale.birOrNumber}`).bold(false);
+        } else {
+            // orderNumber is a per-terminal counter, not a BIR series — only a fallback
+            // for rows written before si_number existed.
+            const formattedSiNo = formatSINumber(sale.siNumber || orderNumber);
+            enc.bold(true).line(`SI NO.: ${formattedSiNo}`).bold(false);
+        }
         if (sale.isReprint) {
             enc.raw([0x1b, 0x61, 0x31]); // Native Center
             enc.bold(true).line('*** REPRINT ***').bold(false);

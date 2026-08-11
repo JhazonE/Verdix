@@ -13,6 +13,7 @@ import './license-machine-match.test';
 import './si-number.test';
 import './drawer-kick.test';
 import './receipt-si-number.test';
+import './receipt-document-type.test';
 import './reprint-watermark.test';
 import './z-reading-discount-summary.test';
 import './reprint-watermark-browser.test';
