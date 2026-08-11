@@ -87,3 +87,48 @@ assert.ok(reprintZHtml.includes('REPRINT'), 'historical Z-reading preview (id!=P
 assert.ok(reprintZHtml.includes('Reprinted:'), 'historical Z-reading preview shows a reprint timestamp label');
 
 console.log('✓ reprint-watermark-browser (ZReadingPreview)');
+
+// ─── ZReadingPreview OR-range fields ─────────────────────────────────────
+const zWithOrRangesHtml = renderToStaticMarkup(
+  React.createElement(ZReadingPreview, {
+    data: {
+      ...baseZData,
+      minSaleOrId: 'OR-000100',
+      maxSaleOrId: 'OR-000150',
+      minVoidOrId: 'OR-000200',
+      maxVoidOrId: 'OR-000210',
+      minReturnOrId: 'OR-000300',
+      maxReturnOrId: 'OR-000305',
+    },
+    printerFormat: '58mm',
+    businessSettings: null,
+  }),
+);
+assert.ok(zWithOrRangesHtml.includes('Beg. OR #:'), 'Z-reading preview renders "Beg. OR #:" label');
+assert.ok(zWithOrRangesHtml.includes('OR-000100'), 'Z-reading preview renders beginning sale OR number');
+assert.ok(zWithOrRangesHtml.includes('End. OR #:'), 'Z-reading preview renders "End. OR #:" label');
+assert.ok(zWithOrRangesHtml.includes('OR-000150'), 'Z-reading preview renders ending sale OR number');
+assert.ok(zWithOrRangesHtml.includes('Beg. VOID OR #:'), 'Z-reading preview renders "Beg. VOID OR #:" label');
+assert.ok(zWithOrRangesHtml.includes('OR-000200'), 'Z-reading preview renders beginning void OR number');
+assert.ok(zWithOrRangesHtml.includes('End. VOID OR #:'), 'Z-reading preview renders "End. VOID OR #:" label');
+assert.ok(zWithOrRangesHtml.includes('OR-000210'), 'Z-reading preview renders ending void OR number');
+assert.ok(zWithOrRangesHtml.includes('Beg. RETURN OR #:'), 'Z-reading preview renders "Beg. RETURN OR #:" label');
+assert.ok(zWithOrRangesHtml.includes('OR-000300'), 'Z-reading preview renders beginning return OR number');
+assert.ok(zWithOrRangesHtml.includes('End. RETURN OR #:'), 'Z-reading preview renders "End. RETURN OR #:" label');
+assert.ok(zWithOrRangesHtml.includes('OR-000305'), 'Z-reading preview renders ending return OR number');
+
+console.log('✓ reprint-watermark-browser (ZReadingPreview OR-range)');
+
+// ─── ZReadingPreview OR-range defaults ───────────────────────────────────
+const zWithoutOrRangesHtml = renderToStaticMarkup(
+  React.createElement(ZReadingPreview, {
+    data: baseZData, // no OR fields provided
+    printerFormat: '58mm',
+    businessSettings: null,
+  }),
+);
+// When OR fields are missing, defaults should be 'OR-000000'
+const defaultOrCount = (zWithoutOrRangesHtml.match(/OR-000000/g) || []).length;
+assert.ok(defaultOrCount >= 6, `Z-reading preview renders default OR-000000 at least 6 times (got ${defaultOrCount})`);
+
+console.log('✓ reprint-watermark-browser (ZReadingPreview OR-range defaults)');

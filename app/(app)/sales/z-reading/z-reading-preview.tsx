@@ -32,6 +32,12 @@ export type ZReadingData = {
   maxVoidId?: string;
   minReturnId?: string;
   maxReturnId?: string;
+  minSaleOrId?: string;
+  maxSaleOrId?: string;
+  minVoidOrId?: string;
+  maxVoidOrId?: string;
+  minReturnOrId?: string;
+  maxReturnOrId?: string;
   previousReading?: number;
   runningTotal?: number;
   voidAmount?: number;
@@ -93,6 +99,12 @@ export const ZReadingPreview = React.forwardRef<HTMLDivElement, ZReadingPreviewP
   const maxVoid = data.maxVoidId || '000000';
   const minReturn = data.minReturnId || '000000';
   const maxReturn = data.maxReturnId || '000000';
+  const minSiOr = data.minSaleOrId || 'OR-000000';
+  const maxSiOr = data.maxSaleOrId || 'OR-000000';
+  const minVoidOr = data.minVoidOrId || 'OR-000000';
+  const maxVoidOr = data.maxVoidOrId || 'OR-000000';
+  const minReturnOr = data.minReturnOrId || 'OR-000000';
+  const maxReturnOr = data.maxReturnOrId || 'OR-000000';
 
   const styles = {
     container: {
@@ -204,12 +216,28 @@ export const ZReadingPreview = React.forwardRef<HTMLDivElement, ZReadingPreviewP
           <span>{maxSi}</span>
         </div>
         <div style={styles.row}>
+          <span>Beg. OR #:</span>
+          <span>{minSiOr}</span>
+        </div>
+        <div style={styles.row}>
+          <span>End. OR #:</span>
+          <span>{maxSiOr}</span>
+        </div>
+        <div style={styles.row}>
           <span>Beg. VOID #:</span>
           <span>{minVoid}</span>
         </div>
          <div style={styles.row}>
           <span>End. VOID #:</span>
           <span>{maxVoid}</span>
+        </div>
+        <div style={styles.row}>
+          <span>Beg. VOID OR #:</span>
+          <span>{minVoidOr}</span>
+        </div>
+        <div style={styles.row}>
+          <span>End. VOID OR #:</span>
+          <span>{maxVoidOr}</span>
         </div>
          <div style={styles.row}>
           <span>Beg. RETURN #:</span>
@@ -218,6 +246,14 @@ export const ZReadingPreview = React.forwardRef<HTMLDivElement, ZReadingPreviewP
          <div style={styles.row}>
           <span>End. RETURN #:</span>
           <span>{maxReturn}</span>
+        </div>
+        <div style={styles.row}>
+          <span>Beg. RETURN OR #:</span>
+          <span>{minReturnOr}</span>
+        </div>
+        <div style={styles.row}>
+          <span>End. RETURN OR #:</span>
+          <span>{maxReturnOr}</span>
         </div>
          <div style={styles.row}>
           <span>Reset Counter No.</span>
