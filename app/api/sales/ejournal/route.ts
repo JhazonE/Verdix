@@ -47,6 +47,7 @@ export async function GET(request: NextRequest) {
       SELECT
         st.id                                             as sale_id,
         COALESCE(NULLIF(st.si_number, ''), st.reference)  as si_number,
+        st.bir_or_number,
         pt.subtotal,
         pt.tax_amount,
         pt.discount_amount,
@@ -127,10 +128,23 @@ export async function GET(request: NextRequest) {
     const beginSI = siNumbers[0] || 'N/A';
     const endSI = siNumbers[siNumbers.length - 1] || 'N/A';
 
+    // bir_or_number (services) is an independent BIR numbering sequence from
+    // si_number (goods) — filter to only transactions that actually have one
+    // before sorting, so an all-goods day produces an empty OR list (and
+    // "N/A") rather than a meaningless range.
+    const orNumbers = validTxns
+      .filter(t => t.bir_or_number)
+      .map(t => String(t.bir_or_number))
+      .sort();
+    const beginOR = orNumbers[0] || 'N/A';
+    const endOR = orNumbers[orNumbers.length - 1] || 'N/A';
+
     content += `DAILY SUMMARY\n`;
     content += `${bar}\n`;
     content += `Beginning SI#            : ${beginSI}\n`;
     content += `Ending SI#               : ${endSI}\n`;
+    content += `Beginning OR#            : ${beginOR}\n`;
+    content += `Ending OR#               : ${endOR}\n`;
     content += `No. of Sales Invoices    : ${validTxns.length}\n`;
     content += `Voided / Cancelled       : ${voidTxns.length}\n`;
     content += `\n`;
