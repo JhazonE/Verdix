@@ -6,6 +6,7 @@ import { ensureCustomerCreditColumn } from '@/lib/ensure-customer-credit';
 import { query } from '@/lib/mysql';
 import { isService } from '@/lib/product-type';
 import { resolveEffectiveTaxType } from '@/lib/tax-utils';
+import { validateSingleDocumentType } from './mixed-cart-validation';
 
 // Cached per process — the columns can't disappear once ensured, so don't pay
 // an INFORMATION_SCHEMA round trip on every checkout.
@@ -76,6 +77,26 @@ export async function POST(request: NextRequest) {
 
     if (paymentMethod?.toUpperCase() === 'CHARGE' && (!customer || customer.id === 'walk-in')) {
       return NextResponse.json({ success: false, error: 'Customer is required for Charge to Account' }, { status: 400 });
+    }
+
+    // Determine this cart's single BIR document type (goods vs services) by
+    // re-querying products.type fresh — never trust client-supplied type,
+    // matching the existing isService(soldProd) pattern used later in this
+    // route for stock/batch-costing.
+    const productIds = items.map((it: any) => it.id);
+    const [productTypeRows]: any = await query(
+      `SELECT id, type FROM products WHERE id IN (${productIds.map(() => '?').join(',')})`,
+      productIds
+    );
+    const typeById = new Map(productTypeRows.map((r: any) => [r.id, r.type]));
+    let isServiceSale: boolean;
+    try {
+      const resolvedType = validateSingleDocumentType(
+        items.map((it: any) => ({ type: typeById.get(it.id) }))
+      );
+      isServiceSale = resolvedType === 'service';
+    } catch (e: any) {
+      return NextResponse.json({ success: false, error: e.message }, { status: 400 });
     }
 
     // Generate IDs
