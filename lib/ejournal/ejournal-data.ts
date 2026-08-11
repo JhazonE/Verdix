@@ -31,6 +31,7 @@ export async function fetchEJournalData(date: string, terminalId?: string): Prom
   const saleRows = (await query(
     `SELECT st.id AS sale_id,
             COALESCE(NULLIF(st.si_number,''), st.reference) AS si_number,
+            st.bir_or_number AS bir_or_number,
             u.display_name AS cashier, c.name AS customer, st.created_at AS dt,
             st.payment_method, st.total, pt.tax_amount AS vat,
             si.product_name, si.quantity, si.price
@@ -49,6 +50,7 @@ export async function fetchEJournalData(date: string, terminalId?: string): Prom
   const voidRows = (await query(
     `SELECT st.id AS sale_id,
             COALESCE(NULLIF(st.si_number,''), st.reference) AS si_number,
+            st.bir_or_number AS bir_or_number,
             u.display_name AS cashier, c.name AS customer, st.created_at AS dt,
             st.payment_method, st.total, pt.tax_amount AS vat, st.void_reason,
             si.product_name, si.quantity, si.price

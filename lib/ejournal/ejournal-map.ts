@@ -37,6 +37,7 @@ export function groupSales(rows: any[]): EJSale[] {
     if (!map.has(key)) {
       map.set(key, {
         siNumber: r.si_number,
+        birOrNumber: r.bir_or_number ?? null,
         cashierName: r.cashier,
         customerName: r.customer,
         dateTime: r.dt,

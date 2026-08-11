@@ -17,6 +17,7 @@ const settings: EJSettings = {
 
 const sale = {
   siNumber: 2,
+  birOrNumber: null,
   cashierName: 'Ana',
   customerName: 'Walk-in',
   dateTime: '2026-07-21T10:00:00.000Z',
@@ -28,9 +29,20 @@ const sale = {
 
 const salesTxt = renderSalesReceiptText(sale, settings);
 assert.ok(salesTxt.includes('My Store'), 'sales receipt shows business name');
+assert.ok(salesTxt.includes('SALES INVOICE'), 'goods sale (no birOrNumber) is titled SALES INVOICE');
+assert.ok(!salesTxt.includes('OFFICIAL RECEIPT'), 'goods sale is not titled OFFICIAL RECEIPT');
 assert.ok(salesTxt.includes('SI NO.: 000002'), 'sales receipt shows formatted SI');
+assert.ok(!salesTxt.includes('OR NO.'), 'goods sale does not print an OR NO. line');
 assert.ok(salesTxt.includes('TEST'), 'sales receipt shows item');
 assert.ok(salesTxt.includes('100.00'), 'sales receipt shows amount');
+
+// ─── services sale (birOrNumber set): OFFICIAL RECEIPT, OR NO. ───────────
+const servicesSale = { ...sale, siNumber: null, birOrNumber: 'OR-000045' };
+const servicesTxt = renderSalesReceiptText(servicesSale, settings);
+assert.ok(servicesTxt.includes('OFFICIAL RECEIPT'), 'services sale (birOrNumber set) is titled OFFICIAL RECEIPT');
+assert.ok(!servicesTxt.includes('SALES INVOICE'), 'services sale is not titled SALES INVOICE');
+assert.ok(servicesTxt.includes('OR NO.: OR-000045'), 'services sale prints OR NO. with the birOrNumber value');
+assert.ok(!servicesTxt.includes('SI NO.'), 'services sale does not print a SI NO. line');
 
 const voidTxt = renderVoidSlipText({ ...sale, voidReason: 'wrong item' }, settings);
 assert.ok(voidTxt.includes('VOID SLIP'), 'void slip title');

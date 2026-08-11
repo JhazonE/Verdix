@@ -19,6 +19,7 @@ export interface EJItem {
 
 export interface EJSale {
   siNumber: string | number | null;
+  birOrNumber: string | null;
   cashierName?: string;
   customerName?: string;
   terminalName?: string;

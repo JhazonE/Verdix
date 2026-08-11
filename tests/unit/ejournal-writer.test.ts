@@ -7,7 +7,7 @@ const settings = { businessName: 'S', paperSize: '58mm' };
 const data: EJournalData = {
   settings,
   salesInvoices: [{
-    siNumber: 1, dateTime: '2026-07-21T10:00:00.000Z',
+    siNumber: 1, birOrNumber: null, dateTime: '2026-07-21T10:00:00.000Z',
     items: [{ name: 'A', quantity: 1, price: 10 }], total: 10, vatAmount: 1,
   }],
   voided: [],
