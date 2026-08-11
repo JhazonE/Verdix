@@ -39,6 +39,11 @@ export type XReadingData = {
   readingNumber?: string;
   minSaleId?: string;
   maxSaleId?: string;
+  // BIR OR-series counterpart of minSaleId/maxSaleId (Task 8, mirroring Task
+  // 7's ZReadingData fields). Goods (si_number) and services (bir_or_number)
+  // are independent BIR numbering sequences, so their ranges are kept separate.
+  minSaleOrId?: string;
+  maxSaleOrId?: string;
   voidAmount?: number;
   refundAmount?: number;
   min?: string;
@@ -159,12 +164,20 @@ export function XReadingPreview({ data, printerFormat = '58mm', businessSettings
             <span>{data.cashierName}</span>
         </div>
         <div style={styles.row}>
-          <span>Beg. OR #:</span>
+          <span>Beg. SI #:</span>
           <span>{data.minSaleId || '000000'}</span>
         </div>
         <div style={styles.row}>
-          <span>End. OR #:</span>
+          <span>End. SI #:</span>
           <span>{data.maxSaleId || '000000'}</span>
+        </div>
+        <div style={styles.row}>
+          <span>Beg. OR #:</span>
+          <span>{data.minSaleOrId || 'OR-000000'}</span>
+        </div>
+        <div style={styles.row}>
+          <span>End. OR #:</span>
+          <span>{data.maxSaleOrId || 'OR-000000'}</span>
         </div>
         <div style={styles.row}>
             <span>Opening Fund:</span>

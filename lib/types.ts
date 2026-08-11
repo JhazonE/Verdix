@@ -634,6 +634,11 @@ export interface XReadingData {
   readingNumber?: string;
   minSaleId?: string;
   maxSaleId?: string;
+  // BIR OR-series counterpart of minSaleId/maxSaleId (Task 8, mirroring Task
+  // 7's ZReadingData fields). Goods (si_number) and services (bir_or_number)
+  // are independent BIR numbering sequences, so their ranges are kept separate.
+  minSaleOrId?: string;
+  maxSaleOrId?: string;
   voidAmount?: number;
   refundAmount?: number;
   min?: string;

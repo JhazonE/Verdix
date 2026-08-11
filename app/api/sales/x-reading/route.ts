@@ -2,6 +2,40 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, getNextXReadingNumber } from '@/lib/mysql';
 import { saveEJournalFiles } from '@/lib/ejournal/ejournal-writer';
 
+// x_readings historically had its columns added ad-hoc via a one-off script
+// (scripts/update_reading_schemas.ts) rather than a numbered migration or an
+// in-route auto-alter like z_readings' ensureZReadingsSchema(). Adding the new
+// BIR OR-series columns (Task 8, mirroring Task 7's z_readings columns) the
+// same ad-hoc way would leave a fresh install's x_readings table without them
+// until someone remembers to run that script. Follow z-reading's safer
+// pattern instead: an idempotent auto-alter run before the INSERT that needs
+// the columns.
+async function ensureXReadingsSchema() {
+    try {
+        const currentColumns = await query(
+            "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'x_readings' AND TABLE_SCHEMA = DATABASE()"
+        ) as any[];
+        const existingColumns = new Set(currentColumns.map((c: any) => c.COLUMN_NAME));
+
+        const columnsToAdd = [
+            // BIR OR-series counterpart of min_sale_id/max_sale_id (Task 8). Goods
+            // (si_number) and services (bir_or_number) are independent BIR
+            // numbering sequences, so their MIN/MAX ranges must never be merged.
+            { name: 'min_sale_or_id', type: 'VARCHAR(50)' },
+            { name: 'max_sale_or_id', type: 'VARCHAR(50)' },
+        ];
+
+        for (const col of columnsToAdd) {
+            if (!existingColumns.has(col.name)) {
+                await query(`ALTER TABLE x_readings ADD COLUMN ${col.name} ${col.type}`);
+                console.log(`✅ Added ${col.name} column to x_readings`);
+            }
+        }
+    } catch (error) {
+        console.error('Error ensuring x_readings schema:', error);
+    }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -40,6 +74,8 @@ export async function GET(request: NextRequest) {
         COALESCE(sales.cash_sales, 0) as cash_sales,
         sales.min_sale_id,
         sales.max_sale_id,
+        sales.min_sale_or_id,
+        sales.max_sale_or_id,
         COALESCE(sales.void_amount, 0) as void_amount,
         COALESCE(sales.refund_amount, 0) as refund_amount,
         pt_term.min_number as terminal_min,
@@ -61,6 +97,8 @@ export async function GET(request: NextRequest) {
               SUM(CASE WHEN pt.transaction_type = 'sale' AND pt.payment_method = 'CASH' THEN pt.total_amount ELSE 0 END) as cash_sales,
               MIN(CASE WHEN pt.transaction_type = 'sale' THEN st.si_number END) as min_sale_id,
               MAX(CASE WHEN pt.transaction_type = 'sale' THEN st.si_number END) as max_sale_id,
+              MIN(CASE WHEN pt.transaction_type = 'sale' AND pt.bir_or_number IS NOT NULL THEN pt.bir_or_number END) as min_sale_or_id,
+              MAX(CASE WHEN pt.transaction_type = 'sale' AND pt.bir_or_number IS NOT NULL THEN pt.bir_or_number END) as max_sale_or_id,
               SUM(CASE WHEN pt.transaction_type = 'void' THEN pt.total_amount ELSE 0 END) as void_amount,
               SUM(CASE WHEN pt.transaction_type = 'refund' THEN pt.total_amount ELSE 0 END) as refund_amount
           FROM pos_transactions pt
@@ -177,6 +215,8 @@ export async function GET(request: NextRequest) {
         // New Layout Fields
         minSaleId: shift.min_sale_id ? String(shift.min_sale_id).padStart(6, '0') : '000000',
         maxSaleId: shift.max_sale_id ? String(shift.max_sale_id).padStart(6, '0') : '000000',
+        minSaleOrId: shift.min_sale_or_id ? String(shift.min_sale_or_id) : 'OR-000000',
+        maxSaleOrId: shift.max_sale_or_id ? String(shift.max_sale_or_id) : 'OR-000000',
         voidAmount: parseFloat(shift.void_amount || 0),
         refundAmount: parseFloat(shift.refund_amount || 0),
         min: shift.terminal_min || '',
@@ -226,16 +266,25 @@ export async function POST(request: NextRequest) {
       shiftStatus = 'active',
       minSaleId: minSaleIdRaw,
       maxSaleId: maxSaleIdRaw,
+      minSaleOrId: minSaleOrIdRaw,
+      maxSaleOrId: maxSaleOrIdRaw,
       voidAmount = 0,
       refundAmount = 0,
     } = body;
 
     const minSaleId = minSaleIdRaw ? String(minSaleIdRaw).padStart(6, '0') : '000000';
     const maxSaleId = maxSaleIdRaw ? String(maxSaleIdRaw).padStart(6, '0') : '000000';
+    // bir_or_number already carries the 'OR-' prefix baked in (see
+    // getNextBirOrNumber(), lib/mysql.ts) unlike si_number's bare digits, so the
+    // empty-range default must be 'OR-000000', not '000000'.
+    const minSaleOrId = minSaleOrIdRaw ? String(minSaleOrIdRaw) : 'OR-000000';
+    const maxSaleOrId = maxSaleOrIdRaw ? String(maxSaleOrIdRaw) : 'OR-000000';
 
     if (!terminalId) {
         return NextResponse.json({ success: false, error: 'Terminal ID is required' }, { status: 400 });
     }
+
+    await ensureXReadingsSchema();
 
     // Generate Reading Number server-side
     const readingNumber = await getNextXReadingNumber(terminalId);
@@ -262,10 +311,12 @@ export async function POST(request: NextRequest) {
         shift_status,
         min_sale_id,
         max_sale_id,
+        min_sale_or_id,
+        max_sale_or_id,
         void_amount,
         refund_amount,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     `;
 
     const formatDate = (date: any) => {
@@ -297,6 +348,8 @@ export async function POST(request: NextRequest) {
       shiftStatus,
       minSaleId,
       maxSaleId,
+      minSaleOrId,
+      maxSaleOrId,
       voidAmount ?? 0,
       refundAmount ?? 0,
     ]);
@@ -306,7 +359,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: { id: (result as any).insertId, readingNumber },
+      data: { id: (result as any).insertId, readingNumber, minSaleId, maxSaleId, minSaleOrId, maxSaleOrId },
     });
   } catch (error) {
     console.error('Error creating X-reading:', error);

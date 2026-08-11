@@ -37,3 +37,4 @@ import './price-level-calc.test';
 import './bir-or-number.test';
 import './mixed-cart-validation.test';
 import './checkout-si-or-routing.test';
+import './x-reading-or-range.test';

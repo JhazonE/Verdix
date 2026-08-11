@@ -32,6 +32,8 @@ export class XReadingGenerator {
             overShort,
             minSaleId,
             maxSaleId,
+            minSaleOrId,
+            maxSaleOrId,
             voidAmount,
             refundAmount,
             min,
@@ -120,8 +122,10 @@ export class XReadingGenerator {
                     { width: 20, align: 'right' }
                 ],
                 [
-                    ['Beg. OR #:', minSaleId || '000000'],
-                    ['End. OR #:', maxSaleId || '000000']
+                    ['Beg. SI #:', minSaleId || '000000'],
+                    ['End. SI #:', maxSaleId || '000000'],
+                    ['Beg. OR #:', minSaleOrId || 'OR-000000'],
+                    ['End. OR #:', maxSaleOrId || 'OR-000000']
                 ]
             )
             .newline()
