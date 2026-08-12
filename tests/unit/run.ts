@@ -30,6 +30,7 @@ import './manual-content.test';
 import './manual-build.test';
 import './stock-count-baseline.test';
 import './sta-lucia-payload.test';
+import './sta-lucia-client-409.test';
 import './price-update-math.test';
 import './price-list-template.test';
 import './seed-default-price-level.test';

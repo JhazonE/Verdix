@@ -17,6 +17,8 @@ export interface SendResult {
   status?: number;
   response?: unknown;
   error?: string;
+  /** True when success came from a 409 — the mall already had this record. */
+  duplicate?: boolean;
 }
 
 function url(cfg: StaLuciaApiConfig, path: string): string {
@@ -106,6 +108,15 @@ export async function sendSales(
     }
 
     const body = await res.json().catch(() => ({}));
+
+    if (res.status === 409) {
+      // The mall's own duplicate rule (one EOD per business date, one hourly
+      // per hour) is the ONLY reason this API returns 409. Treating it as a
+      // transient failure means an already-recorded submission gets retried
+      // forever every 15 minutes with no way to ever succeed. Treating it as
+      // success instead defers to the mall's own idempotency check.
+      return { success: true, status: res.status, response: body, duplicate: true };
+    }
 
     if (!res.ok) {
       return {
