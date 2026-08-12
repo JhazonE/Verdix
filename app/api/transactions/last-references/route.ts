@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '../../../../lib/mysql';
 
-async function getLastReference(tableName: string, orderByColumn: string = 'created_at'): Promise<string | null> {
+async function getLastReference(tableName: string, orderByColumn: string = 'created_at', referenceColumn: string = 'reference'): Promise<string | null> {
   try {
     const result = await query(`
-      SELECT reference 
+      SELECT ${referenceColumn} AS reference
       FROM ${tableName}
-      WHERE reference IS NOT NULL AND reference != ''
-      ORDER BY ${orderByColumn} DESC 
+      WHERE ${referenceColumn} IS NOT NULL AND ${referenceColumn} != ''
+      ORDER BY ${orderByColumn} DESC
       LIMIT 1
     `);
     return result[0]?.reference || null;
@@ -30,9 +30,9 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       getLastReference('sales_orders'),
       getLastReference('sales_invoices', 'invoice_date'),
-      getLastReference('purchase_orders', 'order_date'),
+      getLastReference('purchase_orders', 'date', 'reference_number'),
       getLastReference('customer_payments', 'payment_date'),
-      getLastReference('stock_adjustments', 'adjustment_date'),
+      getLastReference('stock_adjustments', 'created_at', 'reference_no'),
     ]);
 
     const lastReferences = {
