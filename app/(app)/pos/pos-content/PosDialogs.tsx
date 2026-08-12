@@ -19,6 +19,7 @@ import { ZReadingWarningDialog } from '../z-reading-warning/ZReadingWarningDialo
 import { XReadingDialog } from '../x-reading-report/XReadingDialog';
 import { OverallReadingDialog } from '../overall-reading/OverallReadingDialog';
 import { ShutdownConfirmationDialog } from '../shutdown-confirmation/ShutdownConfirmationDialog';
+import { EndShiftReportDialog } from '../end-shift-report/EndShiftReportDialog';
 import { InsufficientStockDialog } from '../insufficient-stock/InsufficientStockDialog';
 import { usePOS } from './use-pos';
 
@@ -137,7 +138,7 @@ export function PosDialogs(pos: Props) {
 
       <AdminAuthDialog
         isOpen={pos.isOverallReadingAuthOpen}
-        onOpenChange={pos.setIsOverallReadingAuthOpen}
+        onOpenChange={pos.handleReadingDialogOpenChange(pos.setIsOverallReadingAuthOpen)}
         title="Overall Reading Authorization"
         description="Please provide credentials to view Overall Terminal Reading"
         requiredCredentials={pos.overallReadingAuthCredentials}
@@ -209,7 +210,7 @@ export function PosDialogs(pos: Props) {
 
       <ZReadingDialog
         isOpen={pos.isZReadingOpen}
-        onOpenChange={pos.setIsZReadingOpen}
+        onOpenChange={pos.handleReadingDialogOpenChange(pos.setIsZReadingOpen)}
         printMode={pos.businessSettings?.printMode || 'browser'}
         terminalId={pos.selectedTerminalId}
         terminalName={pos.currentTerminalName}
@@ -218,31 +219,30 @@ export function PosDialogs(pos: Props) {
 
       <ZReadingWarningDialog
         open={pos.isZReadingWarningOpen}
-        onOpenChange={pos.setIsZReadingWarningOpen}
+        onOpenChange={pos.handleReadingDialogOpenChange(pos.setIsZReadingWarningOpen)}
         onConfirm={pos.handleConfirmZReadingWarning}
       />
 
       <OverallReadingDialog
         isOpen={pos.isOverallReadingOpen}
-        onOpenChange={(open) => { pos.setIsOverallReadingOpen(open); if (!open) pos.setPendingOverallReading(false); }}
+        onOpenChange={pos.handleReadingDialogOpenChange(pos.setIsOverallReadingOpen)}
         terminalId={pos.selectedTerminalId || 'all'}
         terminalName={pos.currentTerminalName || 'All Terminals'}
         printMode={pos.businessSettings?.printMode || 'browser'}
       />
 
-      <XReadingDialog
-        isOpen={pos.showEndShiftReport}
+      <EndShiftReportDialog
+        open={pos.showEndShiftReport}
         onOpenChange={pos.setShowEndShiftReport}
-        shiftId={pos.lastEndedShiftId ?? undefined}
-        terminalName={pos.currentTerminalName}
-        autoShow={true}
-        printMode={pos.businessSettings?.printMode || 'browser'}
+        onOpenOverallReading={pos.handleOpenOverallReadingFromEndShiftReport}
+        onOpenXReading={pos.handleOpenXReadingFromEndShiftReport}
+        onOpenZReadingWarning={pos.handleOpenZReadingWarningFromEndShiftReport}
       />
 
       <XReadingDialog
         isOpen={pos.isXReadingOpen}
-        onOpenChange={pos.setIsXReadingOpen}
-        shiftId={pos.currentShiftId ?? undefined}
+        onOpenChange={pos.handleReadingDialogOpenChange(pos.setIsXReadingOpen)}
+        shiftId={pos.currentShiftId ?? pos.lastEndedShiftId ?? undefined}
         terminalName={pos.currentTerminalName}
         printMode={pos.businessSettings?.printMode || 'browser'}
       />

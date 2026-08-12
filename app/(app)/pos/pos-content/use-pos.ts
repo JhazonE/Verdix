@@ -17,7 +17,7 @@ import type { Customer, SystemSettings } from '@/lib/types';
 export function usePOS() {
   const [currentShiftId, setCurrentShiftId] = useState<string | null>(null);
   const [showEndShiftReport, setShowEndShiftReport] = useState(false);
-  const [pendingOverallReading, setPendingOverallReading] = useState(false);
+  const [returnToEndShiftReport, setReturnToEndShiftReport] = useState(false);
   const [isOverallReadingOpen, setIsOverallReadingOpen] = useState(false);
   const [isXReadingOpen, setIsXReadingOpen] = useState(false);
   const [lastEndedShiftId, setLastEndedShiftId] = useState<string | null>(null);
@@ -533,9 +533,6 @@ export function usePOS() {
           case '5': e.preventDefault(); setIsRecentSalesOpen(true); break;
           case '6': e.preventDefault(); setIsVoidSalesOpen(true); break;
           case '7': e.preventDefault(); setIsReturnSalesOpen(true); break;
-          case '8': e.preventDefault(); handleOpenOverallReading(); break;
-          case '9': e.preventDefault(); handleOpenXReading(); break;
-          case '0': e.preventDefault(); handleOpenZReadingWarning(); break;
           case 'p': case 'P': e.preventDefault(); setIsPriceInquiryOpen(true); break;
         }
       }
@@ -877,7 +874,6 @@ export function usePOS() {
         setHeldTransactions([]);
         setSelectedCustomer(WALK_IN_CUSTOMER);
         setShowEndShiftReport(true);
-        setPendingOverallReading(true);
 
         try {
           const xReadingRes = await fetch(getApiUrl(`/sales/x-reading?shiftId=${currentShiftId}&limit=1`));
@@ -1080,18 +1076,42 @@ export function usePOS() {
     setIsZReadingOpen(true);
   };
 
+  // Opened from the End Shift Report's 3-button picker: closing (back/X) on
+  // the reading dialog should return to that picker instead of just closing,
+  // since the cashier likely wants to check another one of the 3 reports.
+  const handleOpenOverallReadingFromEndShiftReport = () => {
+    setShowEndShiftReport(false);
+    setReturnToEndShiftReport(true);
+    handleOpenOverallReading();
+  };
+
+  const handleOpenXReadingFromEndShiftReport = () => {
+    setShowEndShiftReport(false);
+    setReturnToEndShiftReport(true);
+    handleOpenXReading();
+  };
+
+  const handleOpenZReadingWarningFromEndShiftReport = () => {
+    setShowEndShiftReport(false);
+    setReturnToEndShiftReport(true);
+    handleOpenZReadingWarning();
+  };
+
+  // Shared onOpenChange for the Overall/X/Z reading dialogs: when they close
+  // and they were opened from the End Shift Report picker, reopen it instead
+  // of leaving the cashier with nothing on screen.
+  const handleReadingDialogOpenChange = (setOpen: (v: boolean) => void) => (open: boolean) => {
+    setOpen(open);
+    if (!open && returnToEndShiftReport) {
+      setReturnToEndShiftReport(false);
+      setShowEndShiftReport(true);
+    }
+  };
+
   const handleOpenCashTransfer = () => {
     if (businessSettings?.enableCashTransferAuth) setIsCashTransferPreAuthOpen(true);
     else setIsCashTransferOpen(true);
   };
-
-  // Chain: X-Reading -> Overall Reading after shift end. Z-Reading is no
-  // longer part of this chain — it's a standalone, warning-gated cashier
-  // action (see the Z-READING footer button), decoupled from shift-end
-  // since it now closes the terminal's whole business day, not one shift.
-  useEffect(() => {
-    if (!showEndShiftReport && pendingOverallReading) setIsOverallReadingOpen(true);
-  }, [showEndShiftReport, pendingOverallReading]);
 
   // Tax calculations
   const taxDetails = useMemo(() => {
@@ -1161,6 +1181,10 @@ export function usePOS() {
     handleOpenCashTransfer,
     isCollisionOpen, collisionShift,
     showEndShiftReport, setShowEndShiftReport,
+    handleOpenOverallReadingFromEndShiftReport,
+    handleOpenXReadingFromEndShiftReport,
+    handleOpenZReadingWarningFromEndShiftReport,
+    handleReadingDialogOpenChange,
     lastEndedShiftId,
     // cart
     items, inputValue, setInputValue, inventoryLocation,
@@ -1184,10 +1208,9 @@ export function usePOS() {
     // readings
     isZReadingOpen, setIsZReadingOpen,
     isZReadingWarningOpen, setIsZReadingWarningOpen,
-    handleOpenZReadingWarning, handleConfirmZReadingWarning,
+    handleConfirmZReadingWarning,
     isOverallReadingOpen, setIsOverallReadingOpen,
     isXReadingOpen, setIsXReadingOpen,
-    pendingOverallReading, setPendingOverallReading,
     isPriceInquiryOpen, setIsPriceInquiryOpen,
     // other dialogs
     isRecentSalesOpen, setIsRecentSalesOpen,
@@ -1222,7 +1245,7 @@ export function usePOS() {
     handleRequestPriceEdit, unlockInlinePrice, commitInlinePrice, handlePriceEditAuthSuccess,
     requestInlinePriceEdit,
     handleSelectCustomer, handleOpenLoyalty,
-    handleOpenEndShift, handleOpenOverallReading, handleOpenXReading,
+    handleOpenEndShift,
     startEditName, unlockInlineName, commitInlineName, commitQty,
     handleCheckoutComplete,
   };
