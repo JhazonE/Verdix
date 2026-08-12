@@ -17,7 +17,6 @@ import type { Customer, ZReadingData, SystemSettings } from '@/lib/types';
 export function usePOS() {
   const [currentShiftId, setCurrentShiftId] = useState<string | null>(null);
   const [showEndShiftReport, setShowEndShiftReport] = useState(false);
-  const [pendingZReading, setPendingZReading] = useState(false);
   const [pendingOverallReading, setPendingOverallReading] = useState(false);
   const [isOverallReadingOpen, setIsOverallReadingOpen] = useState(false);
   const [lastEndedShiftId, setLastEndedShiftId] = useState<string | null>(null);
@@ -877,7 +876,6 @@ export function usePOS() {
         setSelectedCustomer(WALK_IN_CUSTOMER);
         setShowEndShiftReport(true);
         setPendingOverallReading(true);
-        setPendingZReading(true);
 
         try {
           const xReadingRes = await fetch(getApiUrl(`/sales/x-reading?shiftId=${currentShiftId}&limit=1`));
@@ -895,20 +893,7 @@ export function usePOS() {
           }
         } catch {}
 
-        try {
-          const zRes = await fetch(getApiUrl('/sales/z-reading'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ terminalId: selectedTerminalId, cashierName: currentUser?.displayName || 'Admin' }),
-          });
-          if (!zRes.ok) throw new Error(`HTTP ${zRes.status}`);
-          const zResult = await zRes.json();
-          if (zResult.success && zResult.data?.length > 0) {
-            setLastSavedZReading({ ...zResult.data[0], reportDate: new Date(zResult.data[0].reportDate) });
-          }
-        } catch {}
-
-        toast({ title: 'Shift Ended', description: 'Shift closed and readings generated successfully.' });
+        toast({ title: 'Shift Ended', description: 'Shift closed and X-Reading saved.' });
       } else throw new Error(result.error);
     } catch (error: any) {
       toast({ title: 'Error', description: 'Failed to end shift: ' + error.message, variant: 'destructive' });
@@ -1085,14 +1070,13 @@ export function usePOS() {
     else setIsCashTransferOpen(true);
   };
 
-  // Chain: X-Reading -> Z-Reading -> Overall Reading after shift end
+  // Chain: X-Reading -> Overall Reading after shift end. Z-Reading is no
+  // longer part of this chain — it's a standalone, warning-gated cashier
+  // action (see the Z-READING footer button), decoupled from shift-end
+  // since it now closes the terminal's whole business day, not one shift.
   useEffect(() => {
-    if (!showEndShiftReport && pendingZReading) setIsZReadingOpen(true);
-  }, [showEndShiftReport, pendingZReading]);
-
-  useEffect(() => {
-    if (!isZReadingOpen && !showEndShiftReport && pendingOverallReading) setIsOverallReadingOpen(true);
-  }, [isZReadingOpen, showEndShiftReport, pendingOverallReading]);
+    if (!showEndShiftReport && pendingOverallReading) setIsOverallReadingOpen(true);
+  }, [showEndShiftReport, pendingOverallReading]);
 
   // Tax calculations
   const taxDetails = useMemo(() => {
@@ -1184,7 +1168,6 @@ export function usePOS() {
     customerPoints, customerPointsValue,
     // readings
     isZReadingOpen, setIsZReadingOpen, lastSavedZReading,
-    pendingZReading, setPendingZReading,
     isOverallReadingOpen, setIsOverallReadingOpen,
     pendingOverallReading, setPendingOverallReading,
     isPriceInquiryOpen, setIsPriceInquiryOpen,
