@@ -11,6 +11,7 @@ import {
   syncAccountsPayable
 } from './services/external-accounting-api';
 import { sendZReadingToStaLucia, loadStaLuciaConfig } from './integrations/sta-lucia/send-z-reading';
+import { sendHourlyStaLuciaSales, HOURLY_TRANSACTION_TYPE } from './integrations/sta-lucia/send-hourly-sales';
 
 export interface BackupSchedule {
   enabled: boolean;
@@ -189,6 +190,39 @@ async function processStaLuciaRetries(): Promise<void> {
 }
 
 /**
+ * Sta Lucia hourly gets its own query and LIMIT for the same reason
+ * processStaLuciaRetries() does: a legacy or EOD backlog must never starve
+ * hourly retries.
+ */
+async function processHourlyStaLuciaRetries(): Promise<void> {
+  const hourlyItems = await query(`
+    SELECT * FROM external_api_logs
+     WHERE transaction_type = '${HOURLY_TRANSACTION_TYPE}'
+       AND (status = 'pending' OR status = 'failed')
+       AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+     ORDER BY created_at ASC
+     LIMIT 10
+  `);
+
+  if (hourlyItems.length === 0) return;
+
+  const staCfg = await loadStaLuciaConfig();
+  if (staCfg?.onErrorAction !== 'retry') return;
+
+  console.log(`--- Sync Queue: Processing ${hourlyItems.length} Sta Lucia hourly item(s) ---`);
+
+  for (const log of hourlyItems) {
+    try {
+      console.log(`Retrying ${log.transaction_type} sync for hour: ${log.transaction_id}`);
+      const r = await sendHourlyStaLuciaSales(new Date(log.transaction_id));
+      await applySyncResult(log, { success: r.success, error: r.error });
+    } catch (itemError) {
+      console.error(`Error processing Sta Lucia hourly sync queue item ${log.id}:`, itemError);
+    }
+  }
+}
+
+/**
  * Sweeps the external_api_logs table and retries pending/failed syncs
  */
 export async function processSyncQueue(): Promise<void> {
@@ -208,6 +242,7 @@ export async function processSyncQueue(): Promise<void> {
       WHERE (status = 'pending' OR status = 'failed')
       AND (next_retry_at IS NULL OR next_retry_at <= NOW())
       AND transaction_type <> 'STA_LUCIA_SALES'
+      AND transaction_type <> '${HOURLY_TRANSACTION_TYPE}'
       ORDER BY created_at ASC
       LIMIT 10
     `);
@@ -250,6 +285,7 @@ export async function processSyncQueue(): Promise<void> {
     }
 
     await processStaLuciaRetries();
+    await processHourlyStaLuciaRetries();
   } catch (error) {
     console.error('Failed to process sync queue:', error);
   }
@@ -447,6 +483,21 @@ export function initScheduler(): void {
   cron.schedule('*/2 * * * *', async () => {
     await processSyncQueue();
     await processPullSync();
+  });
+
+  // Sta Lucia hourly sales submission (runs at :05 past every hour, submits
+  // the hour that just closed — the 5-minute buffer avoids racing a
+  // checkout transaction still mid-write right at the hour boundary)
+  console.log('Starting Sta Lucia hourly sales worker (:05 past every hour)');
+  cron.schedule('5 * * * *', async () => {
+    try {
+      const result = await sendHourlyStaLuciaSales();
+      if (!result.success && !result.skipped) {
+        console.error('Sta Lucia hourly send failed:', result.error);
+      }
+    } catch (error) {
+      console.error('Sta Lucia hourly cron error:', error);
+    }
   });
 
   (global as any).__backupSchedulerInitialized = true;
