@@ -233,6 +233,14 @@ export function PosDialogs(pos: Props) {
         printMode={pos.businessSettings?.printMode || 'browser'}
       />
 
+      <XReadingDialog
+        isOpen={pos.isXReadingOpen}
+        onOpenChange={pos.setIsXReadingOpen}
+        shiftId={pos.currentShiftId ?? undefined}
+        terminalName={pos.currentTerminalName}
+        printMode={pos.businessSettings?.printMode || 'browser'}
+      />
+
       <ShutdownConfirmationDialog
         open={pos.isShutdownConfirmOpen}
         onOpenChange={pos.setIsShutdownConfirmOpen}

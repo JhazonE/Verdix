@@ -19,6 +19,7 @@ export function usePOS() {
   const [showEndShiftReport, setShowEndShiftReport] = useState(false);
   const [pendingOverallReading, setPendingOverallReading] = useState(false);
   const [isOverallReadingOpen, setIsOverallReadingOpen] = useState(false);
+  const [isXReadingOpen, setIsXReadingOpen] = useState(false);
   const [lastEndedShiftId, setLastEndedShiftId] = useState<string | null>(null);
   const [isPriceInquiryOpen, setIsPriceInquiryOpen] = useState(false);
 
@@ -533,6 +534,7 @@ export function usePOS() {
           case '6': e.preventDefault(); setIsVoidSalesOpen(true); break;
           case '7': e.preventDefault(); setIsReturnSalesOpen(true); break;
           case '8': e.preventDefault(); handleOpenOverallReading(); break;
+          case '9': e.preventDefault(); handleOpenXReading(); break;
           case '0': e.preventDefault(); setIsZReadingOpen(true); break;
           case 'p': case 'P': e.preventDefault(); setIsPriceInquiryOpen(true); break;
         }
@@ -1065,6 +1067,10 @@ export function usePOS() {
     else setIsOverallReadingOpen(true);
   };
 
+  const handleOpenXReading = () => {
+    setIsXReadingOpen(true);
+  };
+
   const handleOpenCashTransfer = () => {
     if (businessSettings?.enableCashTransferAuth) setIsCashTransferPreAuthOpen(true);
     else setIsCashTransferOpen(true);
@@ -1169,6 +1175,7 @@ export function usePOS() {
     // readings
     isZReadingOpen, setIsZReadingOpen, lastSavedZReading,
     isOverallReadingOpen, setIsOverallReadingOpen,
+    isXReadingOpen, setIsXReadingOpen,
     pendingOverallReading, setPendingOverallReading,
     isPriceInquiryOpen, setIsPriceInquiryOpen,
     // other dialogs
@@ -1204,7 +1211,7 @@ export function usePOS() {
     handleRequestPriceEdit, unlockInlinePrice, commitInlinePrice, handlePriceEditAuthSuccess,
     requestInlinePriceEdit,
     handleSelectCustomer, handleOpenLoyalty,
-    handleOpenEndShift, handleOpenOverallReading,
+    handleOpenEndShift, handleOpenOverallReading, handleOpenXReading,
     startEditName, unlockInlineName, commitInlineName, commitQty,
     handleCheckoutComplete,
   };

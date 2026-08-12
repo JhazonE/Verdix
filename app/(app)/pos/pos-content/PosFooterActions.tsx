@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { Printer, User, Clock, Ban, Undo, Files, BookOpen, Search, Banknote, ArrowRight } from 'lucide-react';
+import { Printer, User, Clock, Ban, Undo, Files, BookOpen, Search, Banknote, ArrowRight, Receipt } from 'lucide-react';
 
 function CashTransferIcon({ className }: { className?: string }) {
   return (
@@ -21,6 +21,7 @@ type Props = {
   setIsVoidSalesOpen: (v: boolean) => void;
   setIsReturnSalesOpen: (v: boolean) => void;
   handleOpenOverallReading: () => void;
+  handleOpenXReading: () => void;
   setIsZReadingOpen: (v: boolean) => void;
   setIsPriceInquiryOpen: (v: boolean) => void;
   isFrontliner?: boolean;
@@ -29,7 +30,7 @@ type Props = {
 export function PosFooterActions({
   handleOpenEndShift, handleOpenCashTransfer, setIsCustomerSelectOpen, handleOpenLoyalty,
   setIsRecentSalesOpen, setIsVoidSalesOpen, setIsReturnSalesOpen, handleOpenOverallReading,
-  setIsZReadingOpen, setIsPriceInquiryOpen, isFrontliner,
+  handleOpenXReading, setIsZReadingOpen, setIsPriceInquiryOpen, isFrontliner,
 }: Props) {
 
   const allActions = [
@@ -41,6 +42,7 @@ export function PosFooterActions({
     { icon: Ban, label: 'Post Void', shortcut: 'Ctrl+6', action: () => setIsVoidSalesOpen(true), tint: 'text-rose-600', cashierOnly: true },
     { icon: Undo, label: 'Merch Credit', shortcut: 'Ctrl+7', action: () => setIsReturnSalesOpen(true), tint: 'text-amber-600', cashierOnly: true },
     { icon: Files, label: 'OVERALL', shortcut: 'Ctrl+8', action: handleOpenOverallReading, tint: 'text-purple-600', cashierOnly: true },
+    { icon: Receipt, label: 'X-READING', shortcut: 'Ctrl+9', action: handleOpenXReading, tint: 'text-purple-600', cashierOnly: true },
     { icon: BookOpen, label: 'Z-READING', shortcut: 'Ctrl+0', action: () => setIsZReadingOpen(true), tint: 'text-purple-600', cashierOnly: true },
     { icon: Search, label: 'Price Inquiry', shortcut: 'Ctrl+P', action: () => setIsPriceInquiryOpen(true), tint: 'text-fuchsia-600', cashierOnly: false },
   ];
@@ -50,7 +52,7 @@ export function PosFooterActions({
     : allActions;
 
   return (
-    <div className={`grid gap-2 shrink-0 ${isFrontliner ? 'grid-cols-2' : 'grid-cols-10'}`}>
+    <div className={`grid gap-2 shrink-0 ${isFrontliner ? 'grid-cols-2' : 'grid-cols-11'}`}>
       {footerActions.map(({ icon: Icon, label, shortcut, action, tint }) => (
         <Button
           key={label}
