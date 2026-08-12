@@ -122,9 +122,6 @@ function POSContent() {
               setIsRecentSalesOpen={pos.setIsRecentSalesOpen}
               setIsVoidSalesOpen={pos.setIsVoidSalesOpen}
               setIsReturnSalesOpen={pos.setIsReturnSalesOpen}
-              handleOpenOverallReading={pos.handleOpenOverallReading}
-              handleOpenXReading={pos.handleOpenXReading}
-              handleOpenZReadingWarning={pos.handleOpenZReadingWarning}
               setIsPriceInquiryOpen={pos.setIsPriceInquiryOpen}
               isFrontliner={pos.isFrontliner}
             />
