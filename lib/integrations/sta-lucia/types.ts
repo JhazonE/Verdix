@@ -54,6 +54,25 @@ export interface ZReadingLike {
   paymentMethods: Array<{ name: string; amount: number }>;
 }
 
+/**
+ * Pre-aggregated store-wide totals for one clock hour, computed by the
+ * caller (send-hourly-sales.ts) from sales_transactions /
+ * pos_transaction_items. Unlike ZReadingLike this has no `id` or
+ * `transactionCount` — hourly submissions don't carry a running total or a
+ * BIR sequence range the way Z-readings do.
+ */
+export interface HourlySalesTotals {
+  hourStart: Date | string;
+  grossSales: number;
+  discounts: number;
+  vatSales: number;
+  vatAmount: number;
+  vatExempt: number;
+  nonVat: number;
+  cashSales: number;
+  paymentMethods: Array<{ name: string; amount: number }>;
+}
+
 /** Cached session for one configured API. */
 export interface StaLuciaSession {
   token: string;
