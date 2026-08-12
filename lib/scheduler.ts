@@ -223,6 +223,73 @@ async function processHourlyStaLuciaRetries(): Promise<void> {
 }
 
 /**
+ * On scheduler start, find every closed hour that has no successful
+ * STA_LUCIA_HOURLY_SALES log and enqueue it as a pending row for the normal
+ * retry sweep — rather than sending directly here, which would fire an
+ * unbounded burst of HTTP requests at the mall if the app was closed for a
+ * long stretch. The 2-minute sweep's LIMIT 10 naturally rate-limits the
+ * catch-up the same way it already rate-limits retries.
+ *
+ * Range: from the later of (a) the first sales_transactions row today, or
+ * (b) the most recently succeeded hourly submission, up to the most
+ * recently CLOSED hour (never the in-progress one). Bounded to avoid
+ * enqueueing hours from days the store was closed with zero sales, which
+ * would otherwise still be "missing" forever and re-enqueued on every
+ * restart.
+ */
+async function catchUpMissedHourlySales(): Promise<void> {
+  const staCfg = await loadStaLuciaConfig();
+  if (!staCfg) return;
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS sta_lucia_hourly_submissions (
+      hour_start VARCHAR(19) PRIMARY KEY,
+      claimed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      succeeded  TINYINT(1) NOT NULL DEFAULT 0
+    )
+  `);
+
+  const [lastSuccess] = await query(`
+    SELECT MAX(transaction_id) as last_hour FROM external_api_logs
+     WHERE transaction_type = '${HOURLY_TRANSACTION_TYPE}' AND status = 'success'
+  `) as any[];
+
+  const [firstSaleToday] = await query(`
+    SELECT MIN(created_at) as first_sale FROM sales_transactions
+     WHERE created_at >= CURDATE()
+  `) as any[];
+
+  const rangeStartSource = lastSuccess?.last_hour
+    ? new Date(lastSuccess.last_hour)
+    : (firstSaleToday?.first_sale ? new Date(firstSaleToday.first_sale) : null);
+
+  if (!rangeStartSource) return; // no sales today and no prior success — nothing to catch up
+
+  const { startOfHour, addHours, isBefore } = await import('date-fns');
+  let cursor = startOfHour(rangeStartSource);
+  const closedHourLimit = startOfHour(new Date()); // exclusive — the current hour is still open
+
+  const missed: string[] = [];
+  while (isBefore(cursor, closedHourLimit)) {
+    missed.push(cursor.toISOString());
+    cursor = addHours(cursor, 1);
+    if (missed.length >= 48) break; // hard cap: at most two days of hours in one catch-up pass
+  }
+
+  if (missed.length === 0) return;
+
+  console.log(`--- Sta Lucia hourly catch-up: found ${missed.length} hour(s) to check ---`);
+
+  for (const iso of missed) {
+    const hourStart = new Date(iso);
+    const result = await sendHourlyStaLuciaSales(hourStart, staCfg.id);
+    if (!result.success && !result.skipped) {
+      console.warn(`Sta Lucia hourly catch-up: ${result.hourStart} failed (${result.error}) — left for the retry sweep`);
+    }
+  }
+}
+
+/**
  * Sweeps the external_api_logs table and retries pending/failed syncs
  */
 export async function processSyncQueue(): Promise<void> {
@@ -498,6 +565,13 @@ export function initScheduler(): void {
     } catch (error) {
       console.error('Sta Lucia hourly cron error:', error);
     }
+  });
+
+  // One-time catch-up for hours missed while the scheduler was not running
+  // (app closed, machine off). Fire-and-forget: startup must not block on
+  // this, and any hour it can't resolve is left for the normal retry sweep.
+  catchUpMissedHourlySales().catch(err => {
+    console.error('Sta Lucia hourly catch-up failed:', err);
   });
 
   (global as any).__backupSchedulerInitialized = true;
