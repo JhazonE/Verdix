@@ -15,6 +15,7 @@ import { VoidSalesDialog } from '../void-sales/VoidSalesDialog';
 import { ReturnSalesDialog } from '../return-sales/ReturnSalesDialog';
 import { PriceInquiryDialog } from '../price-inquiry/PriceInquiryDialog';
 import { ZReadingDialog } from '../z-reading-report/ZReadingDialog';
+import { ZReadingWarningDialog } from '../z-reading-warning/ZReadingWarningDialog';
 import { XReadingDialog } from '../x-reading-report/XReadingDialog';
 import { OverallReadingDialog } from '../overall-reading/OverallReadingDialog';
 import { ShutdownConfirmationDialog } from '../shutdown-confirmation/ShutdownConfirmationDialog';
@@ -208,12 +209,18 @@ export function PosDialogs(pos: Props) {
 
       <ZReadingDialog
         isOpen={pos.isZReadingOpen}
-        onOpenChange={(open) => { pos.setIsZReadingOpen(open); if (!open) pos.setPendingZReading(false); }}
+        onOpenChange={pos.setIsZReadingOpen}
         printMode={pos.businessSettings?.printMode || 'browser'}
         terminalId={pos.selectedTerminalId}
         terminalName={pos.currentTerminalName}
-        autoShow={pos.pendingZReading}
+        autoShow={false}
         initialData={pos.lastSavedZReading}
+      />
+
+      <ZReadingWarningDialog
+        open={pos.isZReadingWarningOpen}
+        onOpenChange={pos.setIsZReadingWarningOpen}
+        onConfirm={pos.handleConfirmZReadingWarning}
       />
 
       <OverallReadingDialog

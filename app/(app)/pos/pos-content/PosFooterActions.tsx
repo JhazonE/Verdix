@@ -22,7 +22,7 @@ type Props = {
   setIsReturnSalesOpen: (v: boolean) => void;
   handleOpenOverallReading: () => void;
   handleOpenXReading: () => void;
-  setIsZReadingOpen: (v: boolean) => void;
+  handleOpenZReadingWarning: () => void;
   setIsPriceInquiryOpen: (v: boolean) => void;
   isFrontliner?: boolean;
 };
@@ -30,7 +30,7 @@ type Props = {
 export function PosFooterActions({
   handleOpenEndShift, handleOpenCashTransfer, setIsCustomerSelectOpen, handleOpenLoyalty,
   setIsRecentSalesOpen, setIsVoidSalesOpen, setIsReturnSalesOpen, handleOpenOverallReading,
-  handleOpenXReading, setIsZReadingOpen, setIsPriceInquiryOpen, isFrontliner,
+  handleOpenXReading, handleOpenZReadingWarning, setIsPriceInquiryOpen, isFrontliner,
 }: Props) {
 
   const allActions = [
@@ -43,7 +43,7 @@ export function PosFooterActions({
     { icon: Undo, label: 'Merch Credit', shortcut: 'Ctrl+7', action: () => setIsReturnSalesOpen(true), tint: 'text-amber-600', cashierOnly: true },
     { icon: Files, label: 'OVERALL', shortcut: 'Ctrl+8', action: handleOpenOverallReading, tint: 'text-purple-600', cashierOnly: true },
     { icon: Receipt, label: 'X-READING', shortcut: 'Ctrl+9', action: handleOpenXReading, tint: 'text-purple-600', cashierOnly: true },
-    { icon: BookOpen, label: 'Z-READING', shortcut: 'Ctrl+0', action: () => setIsZReadingOpen(true), tint: 'text-purple-600', cashierOnly: true },
+    { icon: BookOpen, label: 'Z-READING', shortcut: 'Ctrl+0', action: handleOpenZReadingWarning, tint: 'text-purple-600', cashierOnly: true },
     { icon: Search, label: 'Price Inquiry', shortcut: 'Ctrl+P', action: () => setIsPriceInquiryOpen(true), tint: 'text-fuchsia-600', cashierOnly: false },
   ];
 

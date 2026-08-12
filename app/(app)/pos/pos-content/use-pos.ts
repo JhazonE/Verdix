@@ -76,6 +76,7 @@ export function usePOS() {
   const [isVoidSalesOpen, setIsVoidSalesOpen] = useState(false);
   const [isReturnSalesOpen, setIsReturnSalesOpen] = useState(false);
   const [isZReadingOpen, setIsZReadingOpen] = useState(false);
+  const [isZReadingWarningOpen, setIsZReadingWarningOpen] = useState(false);
   const [lastSavedZReading, setLastSavedZReading] = useState<ZReadingData | null>(null);
   const [isShutdownConfirmOpen, setIsShutdownConfirmOpen] = useState(false);
 
@@ -535,7 +536,7 @@ export function usePOS() {
           case '7': e.preventDefault(); setIsReturnSalesOpen(true); break;
           case '8': e.preventDefault(); handleOpenOverallReading(); break;
           case '9': e.preventDefault(); handleOpenXReading(); break;
-          case '0': e.preventDefault(); setIsZReadingOpen(true); break;
+          case '0': e.preventDefault(); handleOpenZReadingWarning(); break;
           case 'p': case 'P': e.preventDefault(); setIsPriceInquiryOpen(true); break;
         }
       }
@@ -1071,6 +1072,15 @@ export function usePOS() {
     setIsXReadingOpen(true);
   };
 
+  const handleOpenZReadingWarning = () => {
+    setIsZReadingWarningOpen(true);
+  };
+
+  const handleConfirmZReadingWarning = () => {
+    setIsZReadingWarningOpen(false);
+    setIsZReadingOpen(true);
+  };
+
   const handleOpenCashTransfer = () => {
     if (businessSettings?.enableCashTransferAuth) setIsCashTransferPreAuthOpen(true);
     else setIsCashTransferOpen(true);
@@ -1174,6 +1184,8 @@ export function usePOS() {
     customerPoints, customerPointsValue,
     // readings
     isZReadingOpen, setIsZReadingOpen, lastSavedZReading,
+    isZReadingWarningOpen, setIsZReadingWarningOpen,
+    handleOpenZReadingWarning, handleConfirmZReadingWarning,
     isOverallReadingOpen, setIsOverallReadingOpen,
     isXReadingOpen, setIsXReadingOpen,
     pendingOverallReading, setPendingOverallReading,
