@@ -108,6 +108,7 @@ import './107_add_price_update_approval_setting';
 import './108_add_price_level_adjustment_type';
 import './109_add_bir_or_number';
 import './110_add_business_date_lock';
+import './111_sta_lucia_hourly_submission_claims';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';
