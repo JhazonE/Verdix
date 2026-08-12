@@ -218,11 +218,32 @@ export async function PUT(request: NextRequest) {
         // Handle Shift Takeover (Transfer ownership)
         return await withTransaction(async (connection) => {
             await connection.query(
-                `UPDATE shifts SET 
-                    user_id = ?, 
-                    updated_at = NOW() 
+                `UPDATE shifts SET
+                    user_id = ?,
+                    updated_at = NOW()
                  WHERE id = ?`,
                 [takeoverUserId, shiftId]
+            );
+
+            // BIR Annex F checklist item #29: taking over an already-active
+            // shift on this terminal is, like starting a fresh shift (see the
+            // POST handler above), the signal that work is continuing/resuming
+            // on this terminal, so clear any lock a mid-shift Z-reading left in
+            // place (see app/api/sales/z-reading/route.ts POST, which sets
+            // this). Without this, a Z-reading generated mid-shift (Task 6
+            // decoupled Z-reading from shift-end, so this is now possible)
+            // would leave the terminal permanently locked across a takeover,
+            // since takeover only used to transfer ownership. Joined to the
+            // shift row so we resolve the correct terminal from shiftId alone
+            // (the request body doesn't carry a terminal id) and stay scoped
+            // to that one terminal, in the same transaction as the ownership
+            // transfer above.
+            await connection.query(
+                `UPDATE pos_terminals pt
+                 JOIN shifts s ON s.terminal_id = pt.id
+                 SET pt.business_date_locked_at = NULL
+                 WHERE s.id = ?`,
+                [shiftId]
             );
 
             return NextResponse.json({
