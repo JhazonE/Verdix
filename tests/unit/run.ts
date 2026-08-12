@@ -38,3 +38,5 @@ import './bir-or-number.test';
 import './mixed-cart-validation.test';
 import './checkout-si-or-routing.test';
 import './x-reading-or-range.test';
+import './terminal-lock-check.test';
+import './checkout-terminal-lock.test';

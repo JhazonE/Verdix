@@ -7,6 +7,7 @@ import { query } from '@/lib/mysql';
 import { isService } from '@/lib/product-type';
 import { resolveEffectiveTaxType } from '@/lib/tax-utils';
 import { validateSingleDocumentType } from './mixed-cart-validation';
+import { isTerminalLocked, TERMINAL_LOCKED_MESSAGE } from './terminal-lock-check';
 
 // Cached per process — the columns can't disappear once ensured, so don't pay
 // an INFORMATION_SCHEMA round trip on every checkout.
@@ -77,6 +78,16 @@ export async function POST(request: NextRequest) {
 
     if (paymentMethod?.toUpperCase() === 'CHARGE' && (!customer || customer.id === 'walk-in')) {
       return NextResponse.json({ success: false, error: 'Customer is required for Charge to Account' }, { status: 400 });
+    }
+
+    if (terminalId) {
+      const terminalRows: any = await query(
+        'SELECT business_date_locked_at FROM pos_terminals WHERE id = ?',
+        [terminalId]
+      );
+      if (isTerminalLocked(terminalRows?.[0]?.business_date_locked_at)) {
+        return NextResponse.json({ success: false, error: TERMINAL_LOCKED_MESSAGE }, { status: 400 });
+      }
     }
 
     // Determine this cart's single BIR document type (goods vs services) by
