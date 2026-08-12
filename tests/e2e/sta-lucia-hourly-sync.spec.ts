@@ -158,15 +158,19 @@ test.describe('Sta Lucia hourly sales submission', () => {
     expect(logs).toHaveLength(1);
   });
 
-  test('a 409 duplicate response is treated as success, not requeued', async ({ request }) => {
+  test('a zero-sales hour still produces a valid, submittable payload', async ({ request }) => {
     await seedApi(MOCK_BASE);
 
-    // Force the mock to return 409 by aiming this hour's date_time at the
-    // sentinel — bypasses needing a real prior submission to trigger it.
-    // We do this by claiming the hour first (so the fast-path log check is
-    // skipped) then relying on aggregateHour's real date_time NOT matching
-    // the sentinel — instead, verify 409 handling directly via the claim
-    // being pre-marked, using a distinct hour so this test is independent.
+    // NOTE on 409 coverage: the mock's SIMULATE_409 sentinel (in
+    // app/api/dev/mock-sta-lucia/api/get-sales/route.ts) matches on
+    // `date_time`, but date_time is always computed server-side by
+    // buildHourlySalesPayload from the real hourStart — there is no path
+    // from this test's HTTP request into that field, so an end-to-end 409
+    // round-trip cannot be triggered here without bypassing the code under
+    // test. sendSales()'s 409-as-success handling is covered instead by
+    // tests/unit/sta-lucia-client-409.test.ts. This test covers a different
+    // edge case: an hour with no sales must still submit a valid zero-value
+    // payload rather than being skipped or erroring.
     const NINE_HOUR = '2026-08-12 09:00:00';
     await testQuery(
       `DELETE FROM external_api_logs WHERE transaction_type = 'STA_LUCIA_HOURLY_SALES' AND transaction_id = ?`,
@@ -174,16 +178,6 @@ test.describe('Sta Lucia hourly sales submission', () => {
     );
     await testQuery('DELETE FROM sta_lucia_hourly_submissions WHERE hour_start = ?', [NINE_HOUR]);
 
-    // No sales seeded in the 9AM hour, so this is a zero-value payload —
-    // the mock's 409 sentinel only fires on date_time, so redirect the mock
-    // by seeding the api_endpoint's date_time sentinel isn't directly
-    // reachable from here since date_time is computed server-side from
-    // hourStart. Instead assert real duplicate behavior end-to-end: submit
-    // the 9AM hour twice against a mock that always 409s on the SECOND
-    // distinct call is not supported by the stateless mock, so this test
-    // instead verifies the unit-level 409 contract (Task 1) covers the
-    // client behavior, and here we verify the zero-sales hour still
-    // produces a valid, submittable payload.
     const res = await request.post('/api/integrations/sta-lucia/send-hourly', {
       data: { apiId: API_ID, hourStart: NINE_HOUR },
     });
