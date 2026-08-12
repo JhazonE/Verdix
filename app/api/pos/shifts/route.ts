@@ -164,6 +164,7 @@ export async function POST(request: NextRequest) {
     // Generate specific ID format if needed, or use auto-increment/uuid
     // Based on existing code, IDs are often strings like "SHIFT-..."
     const shiftId = `SHIFT-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    const resolvedTerminalId = terminalId || 'Counter 1';
 
     return await withTransaction(async (connection) => {
       // Check if user already has an active shift? Optional but good practice.
@@ -173,7 +174,16 @@ export async function POST(request: NextRequest) {
         `INSERT INTO shifts (
             id, user_id, terminal_id, starting_cash, start_time, status, created_at, updated_at
         ) VALUES (?, ?, ?, ?, NOW(), 'active', NOW(), NOW())`,
-        [shiftId, userId, terminalId || 'Counter 1', startingCash]
+        [shiftId, userId, resolvedTerminalId, startingCash]
+      );
+
+      // BIR Annex F checklist item #29: starting a new shift on this
+      // terminal is the signal that a new business day of work has begun,
+      // so clear any lock a prior Z-reading left in place (see
+      // app/api/sales/z-reading/route.ts POST, which sets this).
+      await connection.query(
+        'UPDATE pos_terminals SET business_date_locked_at = NULL WHERE id = ?',
+        [resolvedTerminalId]
       );
 
       return NextResponse.json({
