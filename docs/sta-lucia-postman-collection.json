@@ -1,0 +1,86 @@
+{
+  "info": {
+    "name": "Verdix POS - Sta. Lucia Integration",
+    "description": "Requests against Verdix POS's OWN API routes for the Sta. Lucia mall Sale Consolidator integration (EOD + hourly). None of these call the mall directly — they call our Next.js server, which in turn talks to the mall using the credentials stored in the `external_apis` table.\n\nSet `baseUrl` to wherever the Verdix dev/prod server is running (default: http://localhost:3000). Set `apiId` to the id of the `external_apis` row configured with `provider = 'sta_lucia'` — check with:\n\n```sql\nSELECT id, name, enabled, api_endpoint FROM external_apis WHERE provider = 'sta_lucia';\n```",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000", "type": "string" },
+    { "key": "apiId", "value": "70ce49e3-0e78-4cb3-8f3d-2a88375d4bbf", "type": "string" },
+    { "key": "hourStart", "value": "2026-08-12T11:00:00", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Test connection (SAFE — read-only, never writes to the mall)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"apiId\": \"{{apiId}}\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/api/integrations/sta-lucia/test", "host": ["{{baseUrl}}"], "path": ["api", "integrations", "sta-lucia", "test"] },
+        "description": "Logs in, calls get-transactions, logs out. Builds a sample payload for inspection but NEVER posts it — safe to run repeatedly, including against production credentials, without creating any record on the mall's side. Use this first to confirm credentials/connectivity before trying a real send."
+      }
+    },
+    {
+      "name": "2. Send hourly sales (WRITES to the mall)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"apiId\": \"{{apiId}}\",\n  \"hourStart\": \"{{hourStart}}\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/api/integrations/sta-lucia/send-hourly", "host": ["{{baseUrl}}"], "path": ["api", "integrations", "sta-lucia", "send-hourly"] },
+        "description": "Submits sale_type: true (hourly) for the given hour, aggregated store-wide from sales_transactions. Omit hourStart to submit the most recently CLOSED hour automatically. WARNING: this is a real submission — the mall records it. Re-running for an hour that already succeeded is a safe no-op (returns skipped: true), but a first-time send is real."
+      }
+    },
+    {
+      "name": "3. Send EOD Z-reading (WRITES to the mall)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"apiId\": \"{{apiId}}\",\n  \"zReadingId\": \"\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/api/integrations/sta-lucia/send", "host": ["{{baseUrl}}"], "path": ["api", "integrations", "sta-lucia", "send"] },
+        "description": "Submits sale_type: false (end-of-day) for the given Z-reading. Leave zReadingId empty to submit the most recent one. WARNING: real submission, same as above. A Z-reading that already succeeded is a safe no-op."
+      }
+    },
+    {
+      "name": "4. View sync logs",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{baseUrl}}/api/external-api/logs?transactionType=STA_LUCIA_HOURLY_SALES&limit=20",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "external-api", "logs"],
+          "query": [
+            { "key": "transactionType", "value": "STA_LUCIA_HOURLY_SALES", "description": "Swap to STA_LUCIA_SALES for EOD logs, or remove this param entirely for all types." },
+            { "key": "limit", "value": "20" },
+            { "key": "status", "value": "failed", "disabled": true }
+          ]
+        },
+        "description": "Read-only. Shows submission history (success/failed/pending) with the exact payload and response for each attempt."
+      }
+    },
+    {
+      "name": "5. Retry a failed log entry",
+      "request": {
+        "method": "POST",
+        "url": { "raw": "{{baseUrl}}/api/external-api/logs/:logId/retry", "host": ["{{baseUrl}}"], "path": ["api", "external-api", "logs", ":logId", "retry"], "variable": [{ "key": "logId", "value": "PASTE_LOG_ID_HERE" }] },
+        "description": "Manually retry one failed row (works for both STA_LUCIA_SALES and STA_LUCIA_HOURLY_SALES). Get the log id from request #4's response. WARNING: real submission if it succeeds."
+      }
+    },
+    {
+      "name": "6. Trigger the retry sweep manually (dev only)",
+      "request": {
+        "method": "POST",
+        "url": { "raw": "{{baseUrl}}/api/dev/run-sync-queue", "host": ["{{baseUrl}}"], "path": ["api", "dev", "run-sync-queue"] },
+        "description": "Runs one pass of the background retry sweep on demand, instead of waiting for the 2-minute cron. Only exists in non-production builds (404s in production). Picks up any pending/failed row for a config with on_error_action = 'retry'."
+      }
+    }
+  ]
+}
