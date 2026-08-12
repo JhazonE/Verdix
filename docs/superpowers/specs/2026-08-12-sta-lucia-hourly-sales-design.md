@@ -1,7 +1,39 @@
 # Sta. Lucia Hourly Sales Submission — Design
 
 **Date:** 2026-08-12
-**Status:** Approved, pending implementation plan
+**Status:** Implemented (2026-08-12)
+
+## Constraint: single-terminal deployment only
+
+**The hourly cron in `lib/scheduler.ts` (`5 * * * *`) is not safe to enable on
+a multi-terminal store.** `initScheduler()` runs once per process, and this
+project's deployment model runs one local Next.js server per physical POS
+terminal, all pointed at one shared MySQL database (see CLAUDE.md's
+"Verdix deployment model" note and `main.js`'s per-machine "server already
+running" check, which is a per-machine check, not a per-store one). That
+means every terminal in a multi-terminal store runs its own copy of the
+hourly cron, all targeting the same clock hour at :05 past, all racing for
+the same `sta_lucia_hourly_submissions` claim row.
+
+The claim table's atomic INSERT-then-conditional-UPDATE prevents the simple
+case (only one INSERT wins). But if the winning terminal's send is slow or
+fails, the claim goes stale after 15 minutes and **every other terminal
+becomes eligible to take it over simultaneously** — combined with the
+2-minute retry sweep also running on every terminal, this turns
+double-submission into a routine risk rather than the crash-only edge case
+it is on the EOD path (where each terminal submits its own distinct
+Z-reading, never a shared row). Since mall rent is commonly a percentage of
+reported sales, a duplicate submission double-reports revenue.
+
+**This was reviewed and explicitly accepted for the current deployment**,
+which is single-terminal — with exactly one scheduler process, the race
+cannot occur. **Before enabling hourly submission (`external_apis.enabled =
+1` with `provider = 'sta_lucia'`) on any store running more than one
+terminal, this must be closed first** — e.g. by gating the hourly cron and
+catch-up sweep on a designated primary terminal, or by adding a DB-level
+lease (`GET_LOCK()` or a `scheduler_leases` row) so exactly one process owns
+the hourly job cluster-wide. Do not enable hourly submission on a
+multi-terminal store without one of these in place.
 
 ## Context
 
