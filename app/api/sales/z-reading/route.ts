@@ -540,7 +540,20 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         const ejTerminal = body.terminalId && body.terminalId !== 'all' ? body.terminalId : 'all';
         let { terminalId, cashierName } = body;
-        terminalId = terminalId && terminalId !== 'all' ? terminalId : 'terminal_default_01';
+
+        // BIR Annex F checklist item #29: a Z-reading locks a specific
+        // terminal's business date (see the business_date_locked_at UPDATE
+        // below). Silently coercing a missing/'all' terminalId to a
+        // hardcoded 'terminal_default_01' would lock a terminal nobody
+        // actually specified — a latent trap for any caller other than the
+        // POS UI (which always supplies a real selectedTerminalId before
+        // reaching this route). Require a specific terminal instead.
+        if (!terminalId || terminalId === 'all') {
+            return NextResponse.json(
+                { success: false, error: 'A specific terminalId is required to generate a Z-reading (it locks that terminal\'s business date).' },
+                { status: 400 }
+            );
+        }
         cashierName = cashierName || 'Admin';
 
         const lastZSql = `SELECT report_date FROM z_readings WHERE terminal_id = ? ORDER BY report_date DESC LIMIT 1`;
