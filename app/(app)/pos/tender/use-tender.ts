@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
+import { TERMINAL_LOCKED_MESSAGE } from '@/app/api/pos/checkout/terminal-lock-check';
 import type { SaleItem } from '../pos-content/pos-types';
 import { mapVatStatusToTaxType as mapTax } from '../pos-content/pos-types';
 import type { Customer, SystemSettings } from '@/lib/types';
@@ -358,9 +359,17 @@ export function useTender({
       }
 
     } catch (error: any) {
+      const isTerminalLockedError = error.message?.includes(TERMINAL_LOCKED_MESSAGE);
       const isBatchError = error.message?.includes('Batch stock exhausted');
 
-      if (isBatchError) {
+      if (isTerminalLockedError) {
+        toast({
+          title: "Business Day Closed",
+          description: error.message,
+          variant: "destructive",
+          duration: 5000,
+        });
+      } else if (isBatchError) {
         toast({
           title: "Stock Alert",
           description: error.message,
