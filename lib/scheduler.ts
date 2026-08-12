@@ -265,7 +265,7 @@ async function catchUpMissedHourlySales(): Promise<void> {
 
   if (!rangeStartSource) return; // no sales today and no prior success — nothing to catch up
 
-  const { startOfHour, addHours, isBefore } = await import('date-fns');
+  const { startOfHour, addHours, isBefore, format } = await import('date-fns');
   let cursor = startOfHour(rangeStartSource);
   const closedHourLimit = startOfHour(new Date()); // exclusive — the current hour is still open
 
@@ -280,12 +280,33 @@ async function catchUpMissedHourlySales(): Promise<void> {
 
   console.log(`--- Sta Lucia hourly catch-up: found ${missed.length} hour(s) to check ---`);
 
+  const endpoint = `${staCfg.apiEndpoint.replace(/\/+$/, '')}/api/get-sales`;
+
   for (const iso of missed) {
     const hourStart = new Date(iso);
-    const result = await sendHourlyStaLuciaSales(hourStart, staCfg.id);
-    if (!result.success && !result.skipped) {
-      console.warn(`Sta Lucia hourly catch-up: ${result.hourStart} failed (${result.error}) — left for the retry sweep`);
-    }
+    const hourKey = format(hourStart, 'yyyy-MM-dd HH:mm:ss');
+
+    // Skip hours that already have a success log (defensive — the range-start
+    // computation above already excludes hours before the last success) or a
+    // non-success row already sitting in the queue (re-running catch-up on
+    // every restart must not pile up duplicate pending rows for the same
+    // hour). Mirrors the dedup reasoning in writeHourlyLog()/writeLog().
+    const existing = await query(
+      `SELECT id, status FROM external_api_logs
+        WHERE transaction_type = ? AND transaction_id = ?
+        ORDER BY created_at DESC LIMIT 1`,
+      [HOURLY_TRANSACTION_TYPE, hourKey],
+    ) as any[];
+    if (existing?.length) continue; // either already succeeded or already queued (pending/failed/abandoned)
+
+    const id = `log_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+    await query(
+      `INSERT INTO external_api_logs
+        (id, transaction_type, transaction_id, endpoint, payload, response, status, error_message, retry_count)
+       VALUES (?, ?, ?, ?, NULL, NULL, 'pending', NULL, 0)`,
+      [id, HOURLY_TRANSACTION_TYPE, hourKey, endpoint],
+    );
+    console.log(`Sta Lucia hourly catch-up: enqueued ${hourKey} as pending for the retry sweep`);
   }
 }
 

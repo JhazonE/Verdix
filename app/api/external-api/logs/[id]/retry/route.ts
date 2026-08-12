@@ -8,6 +8,7 @@ import {
 } from '@/lib/services/external-accounting-api';
 import { applySyncResult } from '@/lib/scheduler';
 import { sendZReadingToStaLucia, TRANSACTION_TYPE as STA_LUCIA_TYPE } from '@/lib/integrations/sta-lucia/send-z-reading';
+import { sendHourlyStaLuciaSales, HOURLY_TRANSACTION_TYPE } from '@/lib/integrations/sta-lucia/send-hourly-sales';
 
 /**
  * POST /api/external-api/logs/[id]/retry
@@ -53,6 +54,28 @@ export async function POST(
           success: true,
           message: r.skipped
             ? `Z-reading ${r.zReadingId} was already submitted; the log entry has been reconciled.`
+            : 'Retry successful',
+        });
+      }
+      return NextResponse.json({ success: false, error: r.error || 'Retry failed again' });
+    }
+
+    // Sta Lucia hourly is handled BEFORE the legacy gate for the same reason
+    // as the EOD branch above: external_api_settings.enabled describes the
+    // legacy accounting integration and says nothing about the Sta Lucia
+    // `external_apis` row, so letting it block this branch would make the
+    // Retry button permanently dead for hourly rows on any install that never
+    // enabled the legacy sync. Sta Lucia enablement is enforced inside the
+    // sender itself.
+    if (log.transaction_type === HOURLY_TRANSACTION_TYPE) {
+      const r = await sendHourlyStaLuciaSales(new Date(log.transaction_id));
+      await applySyncResult(log, { success: r.success, error: r.error });
+
+      if (r.success) {
+        return NextResponse.json({
+          success: true,
+          message: r.skipped
+            ? `Hour ${r.hourStart} was already submitted; the log entry has been reconciled.`
             : 'Retry successful',
         });
       }
