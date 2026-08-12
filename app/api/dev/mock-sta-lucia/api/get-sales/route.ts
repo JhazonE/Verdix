@@ -33,6 +33,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, message: 'Invalid JSON body' }, { status: 400 });
   }
 
+  // Test hook: a request whose date_time carries this sentinel simulates the
+  // mall's "already have this record" response, without needing two real
+  // submissions in sequence to trigger it.
+  if (received.date_time === 'SIMULATE_409') {
+    return NextResponse.json(
+      { success: false, message: 'Duplicate hourly sale' },
+      { status: 409 },
+    );
+  }
+
   const required = [
     'credit', 'gross_sales', 'date_time', 'total_discounts', 'vat_exempt_sales',
     'vat_sales', 'non_vat_sales', 'vat_amount', 'other_taxes', 'net_sales',
