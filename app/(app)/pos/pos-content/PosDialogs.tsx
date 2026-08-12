@@ -214,7 +214,6 @@ export function PosDialogs(pos: Props) {
         terminalId={pos.selectedTerminalId}
         terminalName={pos.currentTerminalName}
         autoShow={false}
-        initialData={pos.lastSavedZReading}
       />
 
       <ZReadingWarningDialog

@@ -12,7 +12,7 @@ import { getApiUrl } from '@/lib/api-config';
 import { formatStockQuantity } from '@/lib/utils';
 import { WALK_IN_CUSTOMER } from '../customer-account/customer-account-types';
 import { type SaleItem, type SuspendedTransaction, type QueuedOrder, mapVatStatusToTaxType } from './pos-types';
-import type { Customer, ZReadingData, SystemSettings } from '@/lib/types';
+import type { Customer, SystemSettings } from '@/lib/types';
 
 export function usePOS() {
   const [currentShiftId, setCurrentShiftId] = useState<string | null>(null);
@@ -77,7 +77,6 @@ export function usePOS() {
   const [isReturnSalesOpen, setIsReturnSalesOpen] = useState(false);
   const [isZReadingOpen, setIsZReadingOpen] = useState(false);
   const [isZReadingWarningOpen, setIsZReadingWarningOpen] = useState(false);
-  const [lastSavedZReading, setLastSavedZReading] = useState<ZReadingData | null>(null);
   const [isShutdownConfirmOpen, setIsShutdownConfirmOpen] = useState(false);
 
   const [businessSettings, setBusinessSettings] = useState<SystemSettings | null>(null);
@@ -1183,7 +1182,7 @@ export function usePOS() {
     isLoyaltyOpen, setIsLoyaltyOpen,
     customerPoints, customerPointsValue,
     // readings
-    isZReadingOpen, setIsZReadingOpen, lastSavedZReading,
+    isZReadingOpen, setIsZReadingOpen,
     isZReadingWarningOpen, setIsZReadingWarningOpen,
     handleOpenZReadingWarning, handleConfirmZReadingWarning,
     isOverallReadingOpen, setIsOverallReadingOpen,
