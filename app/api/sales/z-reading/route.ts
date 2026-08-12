@@ -702,6 +702,15 @@ export async function POST(request: NextRequest) {
             returnSeqResult?.min_return_or_id || 'OR-000000', returnSeqResult?.max_return_or_id || 'OR-000000'
         ]);
 
+        // BIR Annex F checklist item #29: a Z-reading closes out this
+        // terminal's business day. No further sale can post here until a
+        // new shift starts (see app/api/pos/shifts/route.ts POST, which
+        // clears this). Not run inside a transaction with the INSERT above
+        // — this route has no transactional wrapper today (see terminal-lock
+        // design doc) — a plain follow-up query() call matches this file's
+        // existing non-transactional style throughout.
+        await query('UPDATE pos_terminals SET business_date_locked_at = NOW() WHERE id = ?', [terminalId]);
+
         // NOTE: z_counter is already incremented atomically by getNextZReadingNumber()
         // above (see lib/mysql.ts). Do NOT increment again here, otherwise the Z Counter
         // advances by 2 per reading and no longer matches the reading number / preview.
