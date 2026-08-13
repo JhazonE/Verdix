@@ -621,6 +621,14 @@ export function usePOS() {
     return [...exactCode, ...exactName, ...partial].slice(0, limit);
   }, [products]);
 
+  // Scanners submit a barcode/SKU that exactly matches one product; that case
+  // auto-adds on the spot rather than waiting for Enter or showing suggestions.
+  const findExactCodeMatch = useCallback((query: string): any | undefined => {
+    const q = query.trim().toLowerCase();
+    if (!q || !products) return undefined;
+    return products.find(p => (p.sku || '').toLowerCase() === q || (p.barcode || '').toLowerCase() === q);
+  }, [products]);
+
   const handleAddItemBySKU = (sku: string) => {
     if (!sku) return;
     const product = getSearchSuggestions(sku, 1)[0];
@@ -1252,7 +1260,7 @@ export function usePOS() {
     // totals
     totalDue, subTotal, vatSales, vatAmount, taxDetails, numberOfItems,
     // handlers
-    handleAddItem, handleAddItemBySKU, getSearchSuggestions, updateQuantity, handleUpdateItem,
+    handleAddItem, handleAddItemBySKU, getSearchSuggestions, findExactCodeMatch, updateQuantity, handleUpdateItem,
     handleVoidLine, performVoidLine, focusInlineQuantity,
     removeItem, handleSuccessfulSale,
     handleOpenTender, handleDefaultTender,

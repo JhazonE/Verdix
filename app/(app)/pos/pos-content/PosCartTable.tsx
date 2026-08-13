@@ -1,6 +1,6 @@
 'use client';
 
-import { RefObject, useEffect, useMemo, useState } from 'react';
+import { RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -14,6 +14,7 @@ type Props = {
   setInputValue: (v: string) => void;
   handleAddItemBySKU: (sku: string) => void;
   getSearchSuggestions: (query: string, limit?: number) => any[];
+  findExactCodeMatch: (query: string) => any | undefined;
   handleAddItem: (product: any) => void;
   handleDefaultTender: () => void;
   setIsProductSearchOpen: (v: boolean) => void;
@@ -39,7 +40,7 @@ type Props = {
 };
 
 export function PosCartTable({
-  inputRef, inputValue, setInputValue, handleAddItemBySKU, getSearchSuggestions, handleAddItem, handleDefaultTender,
+  inputRef, inputValue, setInputValue, handleAddItemBySKU, getSearchSuggestions, findExactCodeMatch, handleAddItem, handleDefaultTender,
   setIsProductSearchOpen, items, selectedItemId, setSelectedItemId,
   editingNameItemId, setEditingNameItemId,
   editingQtyItemId, setEditingQtyItemId,
@@ -50,10 +51,25 @@ export function PosCartTable({
 }: Props) {
   const [isSuggestOpen, setIsSuggestOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  // A scanner's own trailing Enter arrives just after the auto-add effect has
+  // already cleared inputValue; without this guard that Enter falls through
+  // to the "empty input" branch and opens the tender dialog unintentionally.
+  const justAutoAddedRef = useRef(false);
+
+  // A scanned barcode (or a typed exact SKU) lands as an exact code match —
+  // skip the dropdown entirely and drop it straight into the cart.
+  useEffect(() => {
+    const exactMatch = findExactCodeMatch(inputValue);
+    if (exactMatch) {
+      setIsSuggestOpen(false);
+      justAutoAddedRef.current = true;
+      handleAddItem(exactMatch);
+    }
+  }, [inputValue, findExactCodeMatch, handleAddItem]);
 
   const suggestions = useMemo(
-    () => (inputValue.trim() ? getSearchSuggestions(inputValue) : []),
-    [inputValue, getSearchSuggestions]
+    () => (inputValue.trim() && !findExactCodeMatch(inputValue) ? getSearchSuggestions(inputValue) : []),
+    [inputValue, getSearchSuggestions, findExactCodeMatch]
   );
 
   useEffect(() => {
@@ -101,8 +117,13 @@ export function PosCartTable({
                 if (inputValue.trim()) {
                   if (isSuggestOpen && suggestions.length > 0) selectSuggestion(suggestions[highlightedIndex]);
                   else handleAddItemBySKU(inputValue);
+                } else if (justAutoAddedRef.current) {
+                  // Scanner's trailing Enter landing on an already-cleared box — swallow it.
+                  justAutoAddedRef.current = false;
                 } else if (isFrontliner) handleSendToQueue?.();
                 else handleDefaultTender();
+              } else if (e.key !== 'Shift' && e.key !== 'Control' && e.key !== 'Alt') {
+                justAutoAddedRef.current = false;
               }
             }}
             onBlur={() => setTimeout(() => setIsSuggestOpen(false), 150)}
