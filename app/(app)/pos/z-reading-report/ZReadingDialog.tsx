@@ -1,6 +1,6 @@
 'use client';
 
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Printer, ArrowLeft, Loader2 } from 'lucide-react';
@@ -165,32 +165,48 @@ function ZReadingReportView({ onBack, printMode, terminalId, terminalName, initi
 }
 
 export function ZReadingDialog({ isOpen, onOpenChange, terminalId, terminalName, printMode, initialData, autoShow }: ZReadingDialogProps) {
-  const [isAuthDialogOpen, setIsAuthDialogOpen] = useState(false);
-  const [showReport, setShowReport] = useState(!!initialData || !!autoShow);
+  const skipAuth = !!initialData || !!autoShow;
+  const [showReport, setShowReport] = useState(skipAuth);
 
   useEffect(() => {
     if (isOpen) {
-      if (initialData || autoShow) {
-        setShowReport(true);
-      } else {
-        setIsAuthDialogOpen(true);
-        setShowReport(false);
-      }
+      setShowReport(skipAuth);
     } else {
-      setIsAuthDialogOpen(false);
       setShowReport(false);
     }
-  }, [isOpen, initialData, autoShow]);
+  }, [isOpen, skipAuth]);
+
+  const authSucceededRef = useRef(false);
 
   const handleAuthSuccess = () => {
-    setIsAuthDialogOpen(false);
+    authSucceededRef.current = true;
     setShowReport(true);
   };
 
   return (
-    <Sheet open={isOpen} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-2xl h-full overflow-hidden flex flex-col p-0 gap-0 [&>button]:hidden">
-        {showReport ? (
+    <>
+      {/* Rendered as a sibling, not nested inside SheetContent: Radix Dialog
+          and Sheet share the same portal primitive, and a Dialog portaled
+          inside a Sheet's portal content causes the Sheet's outside-click
+          detection to treat the nested Dialog as "outside" and dismiss
+          itself, closing the report the instant auth succeeds. */}
+      <AdminAuthDialog
+        isOpen={isOpen && !showReport}
+        onOpenChange={(open) => {
+          // useAdminAuth calls onSuccess() then onOpenChange(false) as part
+          // of the same authenticate flow - only treat this as the user
+          // closing/cancelling when auth did NOT just succeed, otherwise the
+          // outer isOpen flips false and wipes out the showReport we just set.
+          if (!open && !authSucceededRef.current) onOpenChange(false);
+          authSucceededRef.current = false;
+        }}
+        title="Z-Reading Authorization"
+        description="Admin password is required to generate the report."
+        onSuccess={handleAuthSuccess}
+      />
+
+      <Sheet open={isOpen && showReport} onOpenChange={onOpenChange}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl h-full overflow-hidden flex flex-col p-0 gap-0 [&>button]:hidden">
           <ZReadingReportView
             onBack={() => onOpenChange(false)}
             printMode={printMode}
@@ -198,20 +214,8 @@ export function ZReadingDialog({ isOpen, onOpenChange, terminalId, terminalName,
             terminalName={terminalName}
             initialData={initialData}
           />
-        ) : (
-          <div className="p-6">
-            <SheetHeader className="text-left space-y-0.5">
-              <SheetTitle>Z-Reading Authorization</SheetTitle>
-              <SheetDescription>Admin password is required to generate the report.</SheetDescription>
-            </SheetHeader>
-            <AdminAuthDialog
-              isOpen={isAuthDialogOpen}
-              onOpenChange={setIsAuthDialogOpen}
-              onSuccess={handleAuthSuccess}
-            />
-          </div>
-        )}
-      </SheetContent>
-    </Sheet>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

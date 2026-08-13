@@ -219,7 +219,7 @@ export function PosDialogs(pos: Props) {
 
       <ZReadingWarningDialog
         open={pos.isZReadingWarningOpen}
-        onOpenChange={pos.handleReadingDialogOpenChange(pos.setIsZReadingWarningOpen)}
+        onOpenChange={pos.zReadingWarningOpenChange}
         onConfirm={pos.handleConfirmZReadingWarning}
       />
 

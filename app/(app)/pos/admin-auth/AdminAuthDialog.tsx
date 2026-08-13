@@ -19,7 +19,8 @@ export function AdminAuthDialog({
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent
-        className="sm:max-w-md"
+        className="sm:max-w-md z-[120]"
+        overlayClassName="z-[120]"
         onCloseAutoFocus={preventCloseAutoFocus ? (e) => e.preventDefault() : undefined}
       >
         <DialogHeader>

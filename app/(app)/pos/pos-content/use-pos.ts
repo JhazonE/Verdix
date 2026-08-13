@@ -1130,9 +1130,31 @@ export function usePOS() {
     setIsZReadingWarningOpen(true);
   };
 
+  // AlertDialogAction (Continue) closes the warning AlertDialog itself before
+  // onConfirm runs, same as AlertDialogCancel does for Cancel/Escape/outside-
+  // click - Radix gives no way to tell which caused onOpenChange(false). This
+  // ref lets zReadingWarningOpenChange distinguish "proceeding to Z-Reading"
+  // from "cashier backed out", so only the latter reopens the picker.
+  const zReadingWarningConfirmedRef = useRef(false);
+
   const handleConfirmZReadingWarning = () => {
+    zReadingWarningConfirmedRef.current = true;
     setIsZReadingWarningOpen(false);
-    setIsZReadingOpen(true);
+    // Deferred: opening the Z-Reading Sheet in the same tick as closing this
+    // AlertDialog races Radix's shared scroll-lock/focus-trap singleton
+    // (both are built on @radix-ui/react-dialog) - the outgoing Root hasn't
+    // released it yet, so the incoming Sheet can mount unable to receive
+    // pointer events. Letting this AlertDialog's close commit first avoids it.
+    setTimeout(() => setIsZReadingOpen(true), 0);
+  };
+
+  const zReadingWarningOpenChange = (open: boolean) => {
+    setIsZReadingWarningOpen(open);
+    if (!open && !zReadingWarningConfirmedRef.current && returnToEndShiftReport) {
+      setReturnToEndShiftReport(false);
+      setShowEndShiftReport(true);
+    }
+    zReadingWarningConfirmedRef.current = false;
   };
 
   // Opened from the End Shift Report's 3-button picker: closing (back/X) on
@@ -1267,6 +1289,7 @@ export function usePOS() {
     // readings
     isZReadingOpen, setIsZReadingOpen,
     isZReadingWarningOpen, setIsZReadingWarningOpen,
+    zReadingWarningOpenChange,
     handleConfirmZReadingWarning,
     isOverallReadingOpen, setIsOverallReadingOpen,
     isXReadingOpen, setIsXReadingOpen,

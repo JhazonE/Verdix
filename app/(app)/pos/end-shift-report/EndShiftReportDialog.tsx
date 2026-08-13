@@ -10,7 +10,7 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Files, Receipt, BookOpen } from 'lucide-react';
+import { CheckCircle2, Files, BookOpen } from 'lucide-react';
 import type { EndShiftReportDialogProps } from './end-shift-report-types';
 
 export function EndShiftReportDialog({
@@ -22,7 +22,11 @@ export function EndShiftReportDialog({
 }: EndShiftReportDialogProps) {
   const openThen = (action: () => void) => () => {
     onOpenChange(false);
-    action();
+    // Deferred: the target dialog is also built on @radix-ui/react-dialog
+    // (AlertDialog/Dialog/Sheet all share it), so opening it in the same
+    // tick as this AlertDialog's close races the shared scroll-lock/focus-
+    // trap singleton and can leave the new dialog unable to receive clicks.
+    setTimeout(action, 0);
   };
 
   return (
@@ -48,7 +52,7 @@ export function EndShiftReportDialog({
             <span className="text-xs font-semibold">Overall</span>
           </Button>
           <Button type="button" variant="outline" className="h-auto flex-col gap-2 py-4" onClick={openThen(onOpenXReading)}>
-            <Receipt className="h-5 w-5 text-purple-600" />
+            <BookOpen className="h-5 w-5 text-purple-600" />
             <span className="text-xs font-semibold">X-Reading</span>
           </Button>
           <Button type="button" variant="outline" className="h-auto flex-col gap-2 py-4" onClick={openThen(onOpenZReadingWarning)}>
