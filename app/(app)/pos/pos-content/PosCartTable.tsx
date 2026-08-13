@@ -1,6 +1,6 @@
 'use client';
 
-import { RefObject } from 'react';
+import { RefObject, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -13,6 +13,8 @@ type Props = {
   inputValue: string;
   setInputValue: (v: string) => void;
   handleAddItemBySKU: (sku: string) => void;
+  getSearchSuggestions: (query: string, limit?: number) => any[];
+  handleAddItem: (product: any) => void;
   handleDefaultTender: () => void;
   setIsProductSearchOpen: (v: boolean) => void;
   items: SaleItem[];
@@ -37,7 +39,7 @@ type Props = {
 };
 
 export function PosCartTable({
-  inputRef, inputValue, setInputValue, handleAddItemBySKU, handleDefaultTender,
+  inputRef, inputValue, setInputValue, handleAddItemBySKU, getSearchSuggestions, handleAddItem, handleDefaultTender,
   setIsProductSearchOpen, items, selectedItemId, setSelectedItemId,
   editingNameItemId, setEditingNameItemId,
   editingQtyItemId, setEditingQtyItemId,
@@ -46,10 +48,28 @@ export function PosCartTable({
   startEditName, commitInlineName, isFrontliner, handleSendToQueue,
   requestInlinePriceEdit, commitInlinePrice, focusInlineQuantity, commitQty,
 }: Props) {
+  const [isSuggestOpen, setIsSuggestOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+
+  const suggestions = useMemo(
+    () => (inputValue.trim() ? getSearchSuggestions(inputValue) : []),
+    [inputValue, getSearchSuggestions]
+  );
+
+  useEffect(() => {
+    setHighlightedIndex(0);
+    setIsSuggestOpen(suggestions.length > 0);
+  }, [suggestions]);
+
+  const selectSuggestion = (product: any) => {
+    handleAddItem(product);
+    setIsSuggestOpen(false);
+  };
+
   return (
     <>
       {/* Search Bar */}
-      <div className="shrink-0 z-0">
+      <div className="shrink-0 z-30 relative">
         <div className="relative w-full group">
           <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors">
             <Search className="w-4 h-4" />
@@ -62,14 +82,32 @@ export function PosCartTable({
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => {
+              if (isSuggestOpen && suggestions.length > 0 && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+                e.preventDefault();
+                setHighlightedIndex((prev) => {
+                  const delta = e.key === 'ArrowDown' ? 1 : -1;
+                  return (prev + delta + suggestions.length) % suggestions.length;
+                });
+                return;
+              }
+              if (e.key === 'Escape' && isSuggestOpen) {
+                e.preventDefault();
+                setIsSuggestOpen(false);
+                return;
+              }
               if (e.key === 'Enter' || (e.key === 'Tab' && inputValue.trim())) {
                 e.preventDefault();
                 e.stopPropagation();
-                if (inputValue.trim()) handleAddItemBySKU(inputValue);
-                else if (isFrontliner) handleSendToQueue?.();
+                if (inputValue.trim()) {
+                  if (isSuggestOpen && suggestions.length > 0) selectSuggestion(suggestions[highlightedIndex]);
+                  else handleAddItemBySKU(inputValue);
+                } else if (isFrontliner) handleSendToQueue?.();
                 else handleDefaultTender();
               }
             }}
+            onBlur={() => setTimeout(() => setIsSuggestOpen(false), 150)}
+            onFocus={() => { if (suggestions.length > 0) setIsSuggestOpen(true); }}
+            autoComplete="off"
             autoFocus
           />
           <Button
@@ -83,6 +121,30 @@ export function PosCartTable({
               F9
             </kbd>
           </Button>
+
+          {isSuggestOpen && suggestions.length > 0 && (
+            <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-popover border rounded-lg shadow-lg overflow-hidden">
+              {suggestions.map((product, index) => (
+                <button
+                  key={product.id}
+                  type="button"
+                  className={`w-full flex items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors ${index === highlightedIndex ? 'bg-primary/10' : 'hover:bg-muted/50'}`}
+                  onMouseEnter={() => setHighlightedIndex(index)}
+                  onMouseDown={(e) => { e.preventDefault(); selectSuggestion(product); }}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium truncate">{product.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {product.sku}{product.barcode ? ` · ${product.barcode}` : ''}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-sm font-medium text-muted-foreground">
+                    ₱{Number(product.price ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

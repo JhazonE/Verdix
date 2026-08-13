@@ -604,11 +604,26 @@ export function usePOS() {
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
+  const getSearchSuggestions = useCallback((query: string, limit = 8): any[] => {
+    const q = query.trim().toLowerCase();
+    if (!q || !products) return [];
+    const exactCode: any[] = [];
+    const exactName: any[] = [];
+    const partial: any[] = [];
+    for (const p of products) {
+      const sku = (p.sku || '').toLowerCase();
+      const barcode = (p.barcode || '').toLowerCase();
+      const name = (p.name || '').toLowerCase();
+      if (sku === q || barcode === q) exactCode.push(p);
+      else if (name === q) exactName.push(p);
+      else if (sku.includes(q) || barcode.includes(q) || name.includes(q)) partial.push(p);
+    }
+    return [...exactCode, ...exactName, ...partial].slice(0, limit);
+  }, [products]);
+
   const handleAddItemBySKU = (sku: string) => {
     if (!sku) return;
-    let product = products?.find(p => p.sku === sku || p.barcode === sku);
-    if (!product) product = products?.find(p => p.name.toLowerCase() === sku.toLowerCase());
-    if (!product) product = products?.find(p => p.name.toLowerCase().includes(sku.toLowerCase()));
+    const product = getSearchSuggestions(sku, 1)[0];
     handleAddItem(product);
   };
 
@@ -1237,7 +1252,7 @@ export function usePOS() {
     // totals
     totalDue, subTotal, vatSales, vatAmount, taxDetails, numberOfItems,
     // handlers
-    handleAddItem, handleAddItemBySKU, updateQuantity, handleUpdateItem,
+    handleAddItem, handleAddItemBySKU, getSearchSuggestions, updateQuantity, handleUpdateItem,
     handleVoidLine, performVoidLine, focusInlineQuantity,
     removeItem, handleSuccessfulSale,
     handleOpenTender, handleDefaultTender,
