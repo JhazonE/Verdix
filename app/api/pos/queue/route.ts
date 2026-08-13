@@ -99,9 +99,12 @@ export async function POST(request: NextRequest) {
     await query(`INSERT IGNORE INTO pos_queue_counter (id) VALUES (1)`);
 
     // Get counter config and compute next queue number
+    // (dateDiffDays > 0 means last_reset_date is before today, compared server-side
+    // in MySQL's own timezone to avoid local-Date/UTC round-trip mismatches)
     const [counter] = await query(
       `SELECT current_number AS currentNumber, max_number AS maxNumber,
-              auto_reset_daily AS autoResetDaily, last_reset_date AS lastResetDate
+              auto_reset_daily AS autoResetDaily,
+              DATEDIFF(CURDATE(), last_reset_date) AS dateDiffDays
        FROM pos_queue_counter WHERE id = 1`
     ) as any[];
 
@@ -111,11 +114,8 @@ export async function POST(request: NextRequest) {
 
     // Auto-reset daily if enabled and date changed
     if (autoResetDaily) {
-      const lastDate = counter?.lastResetDate
-        ? new Date(counter.lastResetDate).toISOString().slice(0, 10)
-        : null;
-      const today = new Date().toISOString().slice(0, 10);
-      if (lastDate !== today) {
+      const dateDiffDays = counter?.dateDiffDays;
+      if (dateDiffDays === null || Number(dateDiffDays) !== 0) {
         await query(
           `UPDATE pos_queue_counter SET current_number = 0, last_reset_at = NOW(), last_reset_date = CURDATE() WHERE id = 1`
         );

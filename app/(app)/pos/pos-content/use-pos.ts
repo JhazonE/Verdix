@@ -517,7 +517,11 @@ export function usePOS() {
         }
         case 'F9': e.preventDefault(); setIsProductSearchOpen(prev => !prev); break;
         case 'q': case 'Q': {
-          if (e.ctrlKey && !isFrontliner) { e.preventDefault(); setIsQueuePanelOpen(true); } break;
+          if (e.ctrlKey && !isFrontliner && businessSettings?.posMode === 'pharmacy') {
+            e.preventDefault();
+            setIsQueuePanelOpen(true);
+          }
+          break;
         }
         case 'F10': handleOpenTender('CREDIT_CARD'); break;
         case 'F11': handleOpenTender('E_WALLET'); break;
@@ -539,7 +543,7 @@ export function usePOS() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [items, selectedItemId, heldTransactions, enableLineVoidAuth]);
+  }, [items, selectedItemId, heldTransactions, enableLineVoidAuth, isFrontliner, businessSettings?.posMode]);
 
   const defaultLevelId = useMemo(() => priceLevels.find((l: any) => l.isDefault)?.id || 'retail-level', [priceLevels]);
   const activeLevelId = useMemo(() => selectedCustomer?.priceLevelId || selectedPriceLevelId || defaultLevelId, [selectedCustomer, selectedPriceLevelId, defaultLevelId]);
