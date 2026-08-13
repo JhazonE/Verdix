@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useTheme } from 'next-themes';
 import { useToast } from '@/hooks/use-toast';
 import { useProducts } from '@/hooks/use-api';
+import { useDebounce } from '@/hooks/use-debounce';
 import { useCustomerDisplay } from '@/hooks/use-customer-display';
 import { useLiveRefresh, dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { calculateEffectivePrice } from '@/lib/pricing';
@@ -59,6 +60,17 @@ export function usePOS() {
 
   const stableRefresh = useCallback(() => { refreshProducts(); }, [refreshProducts]);
   useLiveRefresh(stableRefresh);
+
+  // The locally-cached `products` above is capped (server returns only the
+  // first page) — with a large catalog most products live outside that page,
+  // so the search box queries the server directly, same as the F9 dialog does.
+  const debouncedSearchQuery = useDebounce(inputValue, 250);
+  const { products: serverSearchResults, loading: searchLoading } = useProducts(
+    debouncedSearchQuery.trim(),
+    'Available',
+    undefined,
+    inventoryLocation
+  );
 
   const [isTenderDialogOpen, setIsTenderDialogOpen] = useState(false);
   const [tenderMethod, setTenderMethod] = useState<string | null>(null);
@@ -604,13 +616,14 @@ export function usePOS() {
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
-  const getSearchSuggestions = useCallback((query: string, limit = 8): any[] => {
-    const q = query.trim().toLowerCase();
-    if (!q || !products) return [];
+  const rankMatches = (list: any[], q: string, limit: number): any[] => {
     const exactCode: any[] = [];
     const exactName: any[] = [];
     const partial: any[] = [];
-    for (const p of products) {
+    const seen = new Set<string>();
+    for (const p of list) {
+      if (seen.has(p.id)) continue;
+      seen.add(p.id);
       const sku = (p.sku || '').toLowerCase();
       const barcode = (p.barcode || '').toLowerCase();
       const name = (p.name || '').toLowerCase();
@@ -619,19 +632,38 @@ export function usePOS() {
       else if (sku.includes(q) || barcode.includes(q) || name.includes(q)) partial.push(p);
     }
     return [...exactCode, ...exactName, ...partial].slice(0, limit);
-  }, [products]);
+  };
 
-  // Scanners submit a barcode/SKU that exactly matches one product; that case
-  // auto-adds on the spot rather than waiting for Enter or showing suggestions.
+  // The catalog is larger than the locally-cached page, so suggestions rank
+  // matches from the debounced server search (comprehensive) — falling back
+  // to the local cache only while that server call is in flight.
+  const getSearchSuggestions = useCallback((query: string, limit = 8): any[] => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const source = debouncedSearchQuery.trim().toLowerCase() === q && !searchLoading
+      ? serverSearchResults
+      : products;
+    return rankMatches(source || [], q, limit);
+  }, [products, serverSearchResults, searchLoading, debouncedSearchQuery]);
+
+  // Scanners submit a barcode/SKU that exactly matches one product. Check the
+  // instant local cache first (covers the common case with zero lag), then
+  // the debounced server results so products outside the cached page still
+  // auto-add once their search response lands.
   const findExactCodeMatch = useCallback((query: string): any | undefined => {
     const q = query.trim().toLowerCase();
-    if (!q || !products) return undefined;
-    return products.find(p => (p.sku || '').toLowerCase() === q || (p.barcode || '').toLowerCase() === q);
-  }, [products]);
+    if (!q) return undefined;
+    const inLocal = (products || []).find(p => (p.sku || '').toLowerCase() === q || (p.barcode || '').toLowerCase() === q);
+    if (inLocal) return inLocal;
+    if (debouncedSearchQuery.trim().toLowerCase() === q) {
+      return (serverSearchResults || []).find(p => (p.sku || '').toLowerCase() === q || (p.barcode || '').toLowerCase() === q);
+    }
+    return undefined;
+  }, [products, serverSearchResults, debouncedSearchQuery]);
 
   const handleAddItemBySKU = (sku: string) => {
     if (!sku) return;
-    const product = getSearchSuggestions(sku, 1)[0];
+    const product = findExactCodeMatch(sku) || getSearchSuggestions(sku, 1)[0];
     handleAddItem(product);
   };
 
