@@ -262,6 +262,50 @@ export async function GET(request: NextRequest) {
         if (terminalId && terminalId !== 'all') shiftParams.push(terminalId);
         const [shiftResult] = await query(shiftSql, shiftParams) as any[];
 
+        // Per-cashier breakdown, mirrored from the POST/commit path below —
+        // see the comment there for the definition of shift count vs. sales.
+        const cashierShiftCountSql = `
+            SELECT user_id, COUNT(*) as shift_count
+            FROM shifts
+            WHERE 1=1
+            ${startDate ? ' AND start_time > ?' : ''}
+            AND start_time <= ?
+            ${terminalId && terminalId !== 'all' ? ' AND terminal_id = ?' : ''}
+            GROUP BY user_id
+        `;
+        const cashierShiftCountResults = await query(cashierShiftCountSql, shiftParams) as any[];
+
+        const cashierSalesSql = `
+            SELECT pt.user_id, SUM(st.total) as sales_total, COUNT(*) as transaction_count
+            ${salesBaseSql}
+            GROUP BY pt.user_id
+        `;
+        const cashierSalesResults = await query(cashierSalesSql, dateParams) as any[];
+
+        const cashierUserIds = Array.from(new Set([
+            ...cashierShiftCountResults.map((r: any) => r.user_id),
+            ...cashierSalesResults.map((r: any) => r.user_id),
+        ].filter(Boolean)));
+        let cashierNames: Record<string, string> = {};
+        if (cashierUserIds.length > 0) {
+            const usersRows = await query(
+                `SELECT uid, display_name FROM users WHERE uid IN (${cashierUserIds.map(() => '?').join(',')})`,
+                cashierUserIds
+            ) as any[];
+            cashierNames = Object.fromEntries(usersRows.map((u: any) => [u.uid, u.display_name]));
+        }
+        const cashierBreakdown = cashierUserIds.map((uid) => {
+            const shiftRow = cashierShiftCountResults.find((r: any) => r.user_id === uid);
+            const salesRow = cashierSalesResults.find((r: any) => r.user_id === uid);
+            return {
+                userId: uid,
+                cashierName: cashierNames[uid] || 'Unknown',
+                shiftCount: safeInt(shiftRow?.shift_count),
+                transactionCount: safeInt(salesRow?.transaction_count),
+                salesTotal: safeParseFloat(salesRow?.sales_total),
+            };
+        }).sort((a, b) => b.salesTotal - a.salesTotal);
+
         const previousReadingSql = `
             SELECT SUM(net_sales) as previous_total
             FROM z_readings
@@ -416,7 +460,8 @@ export async function GET(request: NextRequest) {
             resetCounter: terminalResetCounter,
             actualCash,
             variance: cashVariance,
-            intervalStartDate: startDate
+            intervalStartDate: startDate,
+            cashierBreakdown
         };
 
         
@@ -650,6 +695,48 @@ export async function POST(request: NextRequest) {
         const shiftParams = startDate ? [startDate, endDate, terminalId] : [endDate, terminalId];
         const [shiftResult] = await query(shiftSql, shiftParams) as any[];
 
+        // Per-cashier breakdown: how many shifts each user worked and how
+        // much they sold within this Z-reading's window, scoped to the same
+        // terminal/status/training filters as the rest of the report.
+        const cashierShiftCountSql = `
+            SELECT terminal_id AS scope_terminal_id, user_id, COUNT(*) as shift_count
+            FROM shifts
+            WHERE 1=1 ${startDate ? ' AND start_time > ?' : ''} AND start_time <= ? AND terminal_id = ?
+            GROUP BY user_id
+        `;
+        const cashierShiftCountResults = await query(cashierShiftCountSql, shiftParams) as any[];
+
+        const cashierSalesSql = `
+            SELECT pt.user_id, SUM(st.total) as sales_total, COUNT(*) as transaction_count
+            ${salesBaseSql}
+            GROUP BY pt.user_id
+        `;
+        const cashierSalesResults = await query(cashierSalesSql, salesParams) as any[];
+
+        const cashierUserIds = Array.from(new Set([
+            ...cashierShiftCountResults.map((r: any) => r.user_id),
+            ...cashierSalesResults.map((r: any) => r.user_id),
+        ].filter(Boolean)));
+        let cashierNames: Record<string, string> = {};
+        if (cashierUserIds.length > 0) {
+            const usersRows = await query(
+                `SELECT uid, display_name FROM users WHERE uid IN (${cashierUserIds.map(() => '?').join(',')})`,
+                cashierUserIds
+            ) as any[];
+            cashierNames = Object.fromEntries(usersRows.map((u: any) => [u.uid, u.display_name]));
+        }
+        const cashierBreakdown = cashierUserIds.map((uid) => {
+            const shiftRow = cashierShiftCountResults.find((r: any) => r.user_id === uid);
+            const salesRow = cashierSalesResults.find((r: any) => r.user_id === uid);
+            return {
+                userId: uid,
+                cashierName: cashierNames[uid] || 'Unknown',
+                shiftCount: safeInt(shiftRow?.shift_count),
+                transactionCount: safeInt(salesRow?.transaction_count),
+                salesTotal: safeParseFloat(salesRow?.sales_total),
+            };
+        }).sort((a, b) => b.salesTotal - a.salesTotal);
+
         const rawNetSales = parseFloat(salesResult?.gross_sales || 0);
         const finalNetSales = rawNetSales; 
         const vatRow = vatAdjustmentResults.find((v: any) => v.tax_type === 'VAT');
@@ -752,7 +839,8 @@ export async function POST(request: NextRequest) {
             nonVat: nonVatSales,
             actualCash,
             variance: cashVariance,
-            zCounter: (termResult?.z_counter || 0), resetCounter: termResult?.reset_counter || 0
+            zCounter: (termResult?.z_counter || 0), resetCounter: termResult?.reset_counter || 0,
+            cashierBreakdown
         };
 
 

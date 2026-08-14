@@ -886,7 +886,12 @@ export function usePOS() {
         toast({ title: 'Shift Started', description: 'You are now ready to make sales.' });
       } else throw new Error(result.error);
     } catch (error: any) {
-      toast({ title: 'Error', description: 'Failed to start shift: ' + error.message, variant: 'destructive' });
+      const isBusinessDayClosed = error.message?.includes('business day is still closed');
+      toast({
+        title: isBusinessDayClosed ? 'Business Day Closed' : 'Error',
+        description: isBusinessDayClosed ? error.message : 'Failed to start shift: ' + error.message,
+        variant: 'destructive',
+      });
     }
   };
 
@@ -1041,9 +1046,14 @@ export function usePOS() {
         localStorage.setItem('pos_current_shift_id', collisionShift.id);
         setIsCollisionOpen(false);
         toast({ title: 'Shift Taken Over', description: `You have continued the session from ${collisionShift.cashierName || 'previous cashier'}.` });
-      }
+      } else throw new Error(result.error);
     } catch (error: any) {
-      toast({ title: 'Takeover Failed', description: error.message, variant: 'destructive' });
+      const isBusinessDayClosed = error.message?.includes('business day is still closed');
+      toast({
+        title: isBusinessDayClosed ? 'Business Day Closed' : 'Takeover Failed',
+        description: error.message,
+        variant: 'destructive',
+      });
     }
   };
 
@@ -1127,7 +1137,8 @@ export function usePOS() {
   };
 
   const handleOpenZReadingWarning = () => {
-    setIsZReadingWarningOpen(true);
+    if (businessSettings?.requireZReadingConfirmation === false) setIsZReadingOpen(true);
+    else setIsZReadingWarningOpen(true);
   };
 
   // AlertDialogAction (Continue) closes the warning AlertDialog itself before

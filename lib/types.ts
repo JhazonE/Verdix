@@ -407,6 +407,7 @@ export interface SystemSettings {
   requireReceiveConfirmation?: boolean;
   requireBadOrderConfirmation?: boolean;
   requireStockCountApproval?: boolean;
+  requireZReadingConfirmation?: boolean;
   enableOverallReadingAuth?: boolean;
   overallReadingAuthUsername?: string | null;
   overallReadingAuthPassword?: string | null;
@@ -594,6 +595,7 @@ export interface ZReadingData {
     return: { count: number; amount: number };
   };
   vatAdjustmentDetails?: Array<{ type: string; amount: number; vatAmount: number }>;
+  cashierBreakdown?: Array<{ userId: string; cashierName: string; shiftCount: number; transactionCount: number; salesTotal: number }>;
 }
 
 

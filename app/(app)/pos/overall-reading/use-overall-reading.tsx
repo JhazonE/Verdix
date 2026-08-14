@@ -18,7 +18,8 @@ export function useOverallReading({ isOpen, terminalId, terminalName, printMode 
   const [reportData, setReportData] = useState<OverallReadingData | null>(null);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const { isPrinting, isConnected, connect, print } = usePrinter(printMode);
+  const nativePrinterName = typeof window !== 'undefined' ? localStorage.getItem('pos_printer_name') || undefined : undefined;
+  const { isPrinting, isConnected, connect, print } = usePrinter(printMode, nativePrinterName);
 
   useEffect(() => {
     if (isOpen) {

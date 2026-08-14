@@ -18,7 +18,8 @@ function ZReadingReportView({ onBack, printMode, terminalId, terminalName, initi
   const [data, setData] = useState<ZReadingData | null>(initialData || null);
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(null);
   const [isLoading, setIsLoading] = useState(!initialData);
-  const { isPrinting, isConnected, connect, print } = usePrinter(printMode);
+  const nativePrinterName = typeof window !== 'undefined' ? localStorage.getItem('pos_printer_name') || undefined : undefined;
+  const { isPrinting, isConnected, connect, print } = usePrinter(printMode, nativePrinterName);
   const { toast } = useToast();
   const contentRef = useRef<HTMLDivElement>(null);
   const paperSize = businessSettings?.paperSize || '58mm';

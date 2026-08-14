@@ -57,6 +57,8 @@ export interface PosSettings {
   requireShelfTransferApproval?: boolean;
   requireProductConfirmation?: boolean;
   requirePriceUpdateConfirmation?: boolean;
+  requireZReadingConfirmation?: boolean;
+  enforceZReadingLockout?: boolean;
   batchCostingRepackInherit?: boolean;
   batchCostingOversellBlock?: boolean;
   enableOverallReadingAuth?: boolean;
@@ -133,6 +135,8 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   requireShelfTransferApproval: false,
   requireProductConfirmation: false,
   requirePriceUpdateConfirmation: false,
+  requireZReadingConfirmation: true,
+  enforceZReadingLockout: true,
   batchCostingRepackInherit: true,
   batchCostingOversellBlock: false,
   enableOverallReadingAuth: false,

@@ -51,6 +51,7 @@ export type ZReadingData = {
     void: { count: number; amount: number };
     return: { count: number; amount: number };
   };
+  cashierBreakdown?: Array<{ userId: string; cashierName: string; shiftCount: number; transactionCount: number; salesTotal: number }>;
 };
 
 
@@ -389,6 +390,31 @@ export const ZReadingPreview = React.forwardRef<HTMLDivElement, ZReadingPreviewP
 
 
       <DashedLine />
+
+      {(data.cashierBreakdown && data.cashierBreakdown.length > 0) && (
+        <>
+          <div style={styles.sectionTitle}>
+            <div>BY CASHIER</div>
+          </div>
+
+          <div style={styles.section}>
+            {data.cashierBreakdown.map(c => (
+              <div key={c.userId} style={{ marginBottom: '4px' }}>
+                <div style={styles.row}>
+                  <span>{c.cashierName}</span>
+                  <span>{formatCurrency(c.salesTotal)}</span>
+                </div>
+                <div style={{ ...styles.row, fontSize: '0.85em', opacity: 0.75 }}>
+                  <span>{c.shiftCount} shift{c.shiftCount === 1 ? '' : 's'}, {c.transactionCount} txn{c.transactionCount === 1 ? '' : 's'}</span>
+                  <span></span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <DashedLine />
+        </>
+      )}
 
        <div style={styles.sectionTitle}>
         <div>SALES ADJUSTMENT</div>

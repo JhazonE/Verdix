@@ -19,6 +19,8 @@ const CONFIRMATIONS: { key: keyof PosSettings; label: string; desc: string }[] =
   { key: 'requireShelfTransferApproval',      label: 'Shelf Transfer Approval',         desc: 'Require multi-level approval before moving stock between shelves' },
   { key: 'requireProductConfirmation',        label: 'Add Product Approval',            desc: 'Require multi-level approval before a new product is created' },
   { key: 'requirePriceUpdateConfirmation',    label: 'Bulk Price Update Approval',      desc: 'Require multi-level approval before bulk price changes are applied' },
+  { key: 'requireZReadingConfirmation',       label: 'Z-Reading Confirmation',          desc: 'Confirm before generating a Z-Reading (this locks the terminal for the rest of the calendar day)' },
+  { key: 'enforceZReadingLockout',            label: 'Enforce Z-Reading Lockout',       desc: 'Block sales and Start Shift on a terminal after Z-Reading until the next calendar day (BIR Annex F requirement — disable only if you understand the compliance impact)' },
 ];
 
 interface Props { settings: PosSettings; set: SetFn; }

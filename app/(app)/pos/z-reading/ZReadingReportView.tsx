@@ -15,7 +15,8 @@ interface ZReadingReportViewProps {
 
 export function ZReadingReportView({ onPrint }: ZReadingReportViewProps) {
   const { toast } = useToast();
-  const { print, isConnected, connect } = usePrinter('native');
+  const nativePrinterName = typeof window !== 'undefined' ? localStorage.getItem('pos_printer_name') || undefined : undefined;
+  const { print, isConnected, connect } = usePrinter('native', nativePrinterName);
   const [data, setData] = useState<ZReadingData | null>(null);
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);

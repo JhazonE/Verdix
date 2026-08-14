@@ -222,7 +222,9 @@
       "Bash(grep -n -A 40 \"CREATE TABLE.*\\\\`products\\\\`\\\\|CREATE TABLE products\" schema.sql)",
       "Bash(grep -n -A 30 \"CREATE TABLE.*\\\\`sales_transactions\\\\`\" schema.sql)",
       "Bash(grep -n -A 30 \"CREATE TABLE.*\\\\`pos_transactions\\\\`\" schema.sql)",
-      "Bash(sort -t_ -k1 -n)"
+      "Bash(sort -t_ -k1 -n)",
+      "Bash(node \"C:/Users/Admin/AppData/Local/Temp/claude/d--VERDIX-POS-Verdix-POS/56007001-9823-45ae-ba72-015b0636fe09/scratchpad/verify-pos-search.mjs\")",
+      "Bash(npm ls *)"
     ],
     "additionalDirectories": [
       "D:\\VERDIX_POS\\Verdix_POS\\app\\api\\sales\\orders\\[id]\\deliver",

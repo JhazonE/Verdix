@@ -35,7 +35,8 @@ export function useXReadingReport({ isOpen, shiftId, autoShow = false, terminalN
   const [reportData, setReportData] = useState<XReadingData | null>(null);
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(null);
   const [loading, setLoading] = useState(false);
-  const { isPrinting, isConnected, connect, print } = usePrinter(printMode);
+  const nativePrinterName = typeof window !== 'undefined' ? localStorage.getItem('pos_printer_name') || undefined : undefined;
+  const { isPrinting, isConnected, connect, print } = usePrinter(printMode, nativePrinterName);
   const { toast } = useToast();
 
   const loadReportData = useCallback(async () => {

@@ -44,7 +44,8 @@ export function useReturnSales({
   const [mcNumber, setMcNumber] = useState('');
   const [recentSales, setRecentSales] = useState<Sale[]>([]);
   const [isRecentLoading, setIsRecentLoading] = useState(false);
-  const { isPrinting, isConnected, connect, print } = usePrinter(printMode);
+  const nativePrinterName = typeof window !== 'undefined' ? localStorage.getItem('pos_printer_name') || undefined : undefined;
+  const { isPrinting, isConnected, connect, print } = usePrinter(printMode, nativePrinterName);
   const { toast } = useToast();
   const authSucceededRef = useRef(false);
 

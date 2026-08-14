@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withTransaction, query } from '@/lib/mysql';
+import { isTerminalLockedSameDay, SHIFT_START_BLOCKED_MESSAGE } from '@/app/api/pos/checkout/terminal-lock-check';
 
 export async function GET(request: NextRequest) {
   try {
@@ -170,6 +171,32 @@ export async function POST(request: NextRequest) {
       // Check if user already has an active shift? Optional but good practice.
       // For now, let's just create.
 
+      // BIR Annex F checklist item #29: a Z-reading closes out this
+      // terminal's business day for the rest of that calendar day — Start
+      // Shift is no longer the unlock signal by itself (see
+      // app/api/sales/z-reading/route.ts POST, which sets this lock).
+      // Locked into a previous calendar day is stale and self-heals below;
+      // locked into *today* must still block, or a cashier could bypass the
+      // BIR-mandated same-day sales block just by starting a new shift.
+      // Gated by the same pos_settings.enforce_z_reading_lockout toggle as
+      // checkout (app/api/pos/checkout/route.ts) — OFF means the lockout
+      // system is fully disabled, not just checkout's half of it.
+      const [settingsRows]: any = await connection.query(
+        'SELECT enforce_z_reading_lockout FROM pos_settings LIMIT 1'
+      );
+      const lockoutEnforced = settingsRows?.[0]?.enforce_z_reading_lockout ?? true;
+      const [terminalRows]: any = await connection.query(
+        'SELECT business_date_locked_at FROM pos_terminals WHERE id = ? FOR UPDATE',
+        [resolvedTerminalId]
+      );
+      const lockedAt = terminalRows?.[0]?.business_date_locked_at;
+      if (lockoutEnforced && isTerminalLockedSameDay(lockedAt)) {
+        return NextResponse.json(
+          { success: false, error: SHIFT_START_BLOCKED_MESSAGE },
+          { status: 400 }
+        );
+      }
+
       await connection.query(
         `INSERT INTO shifts (
             id, user_id, terminal_id, starting_cash, start_time, status, created_at, updated_at
@@ -177,14 +204,15 @@ export async function POST(request: NextRequest) {
         [shiftId, userId, resolvedTerminalId, startingCash]
       );
 
-      // BIR Annex F checklist item #29: starting a new shift on this
-      // terminal is the signal that a new business day of work has begun,
-      // so clear any lock a prior Z-reading left in place (see
-      // app/api/sales/z-reading/route.ts POST, which sets this).
-      await connection.query(
-        'UPDATE pos_terminals SET business_date_locked_at = NULL WHERE id = ?',
-        [resolvedTerminalId]
-      );
+      // A lock from a previous calendar day is stale (the day it was
+      // guarding against has already passed) — clear it now that a new
+      // shift is starting.
+      if (lockedAt) {
+        await connection.query(
+          'UPDATE pos_terminals SET business_date_locked_at = NULL WHERE id = ?',
+          [resolvedTerminalId]
+        );
+      }
 
       return NextResponse.json({
         success: true,
@@ -217,6 +245,24 @@ export async function PUT(request: NextRequest) {
     if (takeoverUserId) {
         // Handle Shift Takeover (Transfer ownership)
         return await withTransaction(async (connection) => {
+            const [settingsRows]: any = await connection.query(
+                'SELECT enforce_z_reading_lockout FROM pos_settings LIMIT 1'
+            );
+            const lockoutEnforced = settingsRows?.[0]?.enforce_z_reading_lockout ?? true;
+            const [lockRows]: any = await connection.query(
+                `SELECT pt.business_date_locked_at
+                 FROM pos_terminals pt
+                 JOIN shifts s ON s.terminal_id = pt.id
+                 WHERE s.id = ? FOR UPDATE`,
+                [shiftId]
+            );
+            if (lockoutEnforced && isTerminalLockedSameDay(lockRows?.[0]?.business_date_locked_at)) {
+                return NextResponse.json(
+                    { success: false, error: SHIFT_START_BLOCKED_MESSAGE },
+                    { status: 400 }
+                );
+            }
+
             await connection.query(
                 `UPDATE shifts SET
                     user_id = ?,
@@ -225,19 +271,11 @@ export async function PUT(request: NextRequest) {
                 [takeoverUserId, shiftId]
             );
 
-            // BIR Annex F checklist item #29: taking over an already-active
-            // shift on this terminal is, like starting a fresh shift (see the
-            // POST handler above), the signal that work is continuing/resuming
-            // on this terminal, so clear any lock a mid-shift Z-reading left in
-            // place (see app/api/sales/z-reading/route.ts POST, which sets
-            // this). Without this, a Z-reading generated mid-shift (Task 6
-            // decoupled Z-reading from shift-end, so this is now possible)
-            // would leave the terminal permanently locked across a takeover,
-            // since takeover only used to transfer ownership. Joined to the
-            // shift row so we resolve the correct terminal from shiftId alone
-            // (the request body doesn't carry a terminal id) and stay scoped
-            // to that one terminal, in the same transaction as the ownership
-            // transfer above.
+            // Any lock still in place here is guaranteed stale (from a prior
+            // calendar day) — a same-day lock already returned 400 above.
+            // Clear it now, same as the POST handler above, so a takeover
+            // doesn't leave the terminal permanently locked past the day the
+            // lock was guarding against.
             await connection.query(
                 `UPDATE pos_terminals pt
                  JOIN shifts s ON s.terminal_id = pt.id

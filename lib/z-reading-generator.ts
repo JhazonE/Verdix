@@ -151,6 +151,17 @@ export class ZReadingGenerator {
         enc.line(row('Solo Parent Disc. :', fmt(soloAmt)));
         enc.line(row('Other Disc. :', fmt(otherAmt)));
 
+        // ── BY CASHIER ───────────────────────────────────────────────────────
+        const cashierBreakdown = data.cashierBreakdown || [];
+        if (cashierBreakdown.length > 0) {
+            enc.line(dash);
+            enc.align('center').bold(true).line('BY CASHIER').bold(false).align('left');
+            cashierBreakdown.forEach(c => {
+                enc.line(row(c.cashierName, fmt(c.salesTotal)));
+                enc.line(`  ${c.shiftCount} shift${c.shiftCount === 1 ? '' : 's'}, ${c.transactionCount} txn${c.transactionCount === 1 ? '' : 's'}`);
+            });
+        }
+
         // ── SALES ADJUSTMENT ─────────────────────────────────────────────────
         enc.line(dash);
         enc.align('center').bold(true).line('SALES ADJUSTMENT').bold(false).align('left');

@@ -81,12 +81,19 @@ export async function POST(request: NextRequest) {
     }
 
     if (terminalId) {
-      const terminalRows: any = await query(
-        'SELECT business_date_locked_at FROM pos_terminals WHERE id = ?',
-        [terminalId]
+      const settingsRows: any = await query(
+        'SELECT enforce_z_reading_lockout FROM pos_settings LIMIT 1',
+        []
       );
-      if (isTerminalLocked(terminalRows?.[0]?.business_date_locked_at)) {
-        return NextResponse.json({ success: false, error: TERMINAL_LOCKED_MESSAGE }, { status: 400 });
+      const lockoutEnforced = settingsRows?.[0]?.enforce_z_reading_lockout ?? true;
+      if (lockoutEnforced) {
+        const terminalRows: any = await query(
+          'SELECT business_date_locked_at FROM pos_terminals WHERE id = ?',
+          [terminalId]
+        );
+        if (isTerminalLocked(terminalRows?.[0]?.business_date_locked_at)) {
+          return NextResponse.json({ success: false, error: TERMINAL_LOCKED_MESSAGE }, { status: 400 });
+        }
       }
     }
 
