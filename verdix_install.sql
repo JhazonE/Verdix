@@ -716,6 +716,8 @@ CREATE TABLE IF NOT EXISTS `pos_settings` (
   `bir_permit_number` varchar(100) DEFAULT NULL,
   `bir_permit_date_issued` date DEFAULT NULL,
   `require_price_update_confirmation` tinyint(1) NOT NULL DEFAULT '0',
+  `require_z_reading_confirmation` tinyint(1) NOT NULL DEFAULT '1',
+  `enforce_z_reading_lockout` tinyint(1) NOT NULL DEFAULT '1',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -1734,7 +1736,7 @@ LOCK TABLES `pos_queue_counter` WRITE;
 INSERT  IGNORE INTO `pos_queue_counter` VALUES (1,5,999,1,'2026-08-12 03:29:31','2026-08-12');
 UNLOCK TABLES;
 LOCK TABLES `pos_settings` WRITE;
-INSERT  IGNORE INTO `pos_settings` VALUES ('pos_settings_1','My Business',NULL,0,'TXN','2026-07-21 05:37:03','2026-08-13 01:59:29',NULL,NULL,NULL,NULL,'₱','PHP','Asia/Manila','MM/DD/YYYY',1,0.00,'[\"subcategory\", \"category\", \"brand\", \"supplier\"]',0,NULL,NULL,0,NULL,NULL,0,NULL,NULL,'58mm','browser',1,0,NULL,NULL,0,NULL,NULL,0,0,NULL,NULL,NULL,NULL,NULL,10,0,NULL,1,0,NULL,0,NULL,NULL,1,0,'XP-58-P',0,0,0,0,0,0,0,1,0,0,0,NULL,NULL,0,'Welcome! Thank you for shopping.',1,'VAT',NULL,0,NULL,NULL,'default',0,NULL,NULL,0,NULL,NULL,0,NULL,NULL,200.00,12,0,NULL,NULL,NULL,0);
+INSERT  IGNORE INTO `pos_settings` VALUES ('pos_settings_1','My Business',NULL,0,'TXN','2026-07-21 05:37:03','2026-08-13 01:59:29',NULL,NULL,NULL,NULL,'₱','PHP','Asia/Manila','MM/DD/YYYY',1,0.00,'[\"subcategory\", \"category\", \"brand\", \"supplier\"]',0,NULL,NULL,0,NULL,NULL,0,NULL,NULL,'58mm','browser',1,0,NULL,NULL,0,NULL,NULL,0,0,NULL,NULL,NULL,NULL,NULL,10,0,NULL,1,0,NULL,0,NULL,NULL,1,0,'XP-58-P',0,0,0,0,0,0,0,1,0,0,0,NULL,NULL,0,'Welcome! Thank you for shopping.',1,'VAT',NULL,0,NULL,NULL,'default',0,NULL,NULL,0,NULL,NULL,0,NULL,NULL,200.00,12,0,NULL,NULL,NULL,0,1,1);
 UNLOCK TABLES;
 LOCK TABLES `price_levels` WRITE;
 INSERT  IGNORE INTO `price_levels` VALUES ('pl_1785919201572','Whosale','cost',NULL,0,'2026-08-05 08:40:01','2026-08-05 08:51:47',1.79,0,'percentage'),('retail-level','Retail','cost','Standard retail price',1,'2026-07-21 05:37:03','2026-08-04 08:32:38',0.00,0,'fixed');
