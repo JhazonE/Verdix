@@ -29,6 +29,7 @@ export function useSalesByProduct() {
     cashierFilter: filters.cashierFilter,
     referenceFilter: filters.referenceFilter,
     searchTerm: filters.searchTerm,
+    totals: query.totals,
   });
 
   const tableState = useByProductTable({

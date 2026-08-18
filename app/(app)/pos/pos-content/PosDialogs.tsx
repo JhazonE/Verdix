@@ -150,6 +150,7 @@ export function PosDialogs(pos: Props) {
         onOpenChange={pos.setIsEndShiftOpen}
         startingCash={pos.startingCash}
         cashSales={pos.cashSales}
+        otherPaymentMethods={pos.otherPaymentMethods}
         membershipCash={pos.membershipCash}
         cashIn={pos.cashDeposits}
         cashOut={pos.cashPickups}

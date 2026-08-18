@@ -146,6 +146,52 @@ export async function GET(request: NextRequest) {
     const totalRecords = countResult[0]?.total || 0;
     const totalPages = Math.ceil(totalRecords / limit);
 
+    // 1b. Get aggregate totals across ALL matching rows (not just the current page).
+    // Mirrors the per-row cost/profit calc below (cost from item*qty joined via
+    // pos_transaction_items, profit = total - cost - tax) but summed in SQL so the
+    // summary cards reflect the whole filtered date range, not one page of results.
+    const totalsSql = `
+      SELECT
+        COALESCE(SUM(pt.discount_amount), 0) as discounts,
+        COALESCE(SUM(pt.total_amount), 0) as revenue,
+        COALESCE(SUM(pt.tax_amount), 0) as vatAmount,
+        COALESCE(SUM(pt.total_amount - pt.tax_amount), 0) as vatableSales,
+        COALESCE(SUM(CASE WHEN pt.payment_method = 'Account' THEN pt.total_amount ELSE 0 END), 0) as accountPayments,
+        COALESCE(SUM(item_costs.item_cost), 0) as cost
+      FROM pos_transactions pt
+      LEFT JOIN users u ON pt.user_id = u.uid
+      LEFT JOIN pos_terminals term ON pt.terminal_id = term.id
+      LEFT JOIN sales_transactions st ON pt.sale_id = st.id
+      LEFT JOIN customers c ON st.customer_id = c.id
+      LEFT JOIN (
+        SELECT pti.pos_transaction_id, SUM(pti.quantity * COALESCE(p.cost, 0)) as item_cost
+        FROM pos_transaction_items pti
+        LEFT JOIN products p ON pti.product_id = p.id
+        GROUP BY pti.pos_transaction_id
+      ) item_costs ON item_costs.pos_transaction_id = pt.id
+      WHERE 1=1 ${whereClause}
+    `;
+    const totalsResult = await query(totalsSql, params);
+    const totalsRow = totalsResult[0] || {};
+    const aggDiscounts = parseFloat(totalsRow.discounts) || 0;
+    const aggRevenue = parseFloat(totalsRow.revenue) || 0;
+    const aggVatAmount = parseFloat(totalsRow.vatAmount) || 0;
+    const aggVatableSales = parseFloat(totalsRow.vatableSales) || 0;
+    const aggAccountPayments = parseFloat(totalsRow.accountPayments) || 0;
+    const aggCost = parseFloat(totalsRow.cost) || 0;
+    const totals = {
+      discounts: aggDiscounts,
+      revenue: aggRevenue,
+      amountPaid: aggRevenue,
+      customerBalance: 0,
+      cost: aggCost,
+      grossProfit: aggRevenue - aggCost - aggVatAmount,
+      vatableSales: aggVatableSales,
+      vatAmount: aggVatAmount,
+      nonVatSales: 0,
+      accountPayments: aggAccountPayments,
+    };
+
     // 2. Get paginated data
     const dataSql = baseSql + whereClause + ' ORDER BY pt.transaction_time DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
@@ -274,6 +320,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data,
+      totals,
       pagination: {
         page,
         limit,

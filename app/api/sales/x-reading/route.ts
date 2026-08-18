@@ -94,6 +94,11 @@ export async function GET(request: NextRequest) {
               SUM(pt.discount_amount) as discounts,
               SUM(CASE WHEN pt.transaction_type = 'return' THEN pt.total_amount ELSE 0 END) as returns_amount,
               COUNT(CASE WHEN pt.transaction_type = 'sale' THEN 1 END) as transaction_count,
+              -- Placeholder — pt.payment_method collapses split-tender sales to the
+              -- literal string 'MULTIPLE', which would hide the real cash portion
+              -- from the drawer reconciliation. The real per-shift cash figure is
+              -- recomputed below from the same payment_details breakdown used for
+              -- paymentMethods, so both stay consistent with one source of truth.
               SUM(CASE WHEN pt.transaction_type = 'sale' AND pt.payment_method = 'CASH' THEN pt.total_amount ELSE 0 END) as cash_sales,
               MIN(CASE WHEN pt.transaction_type = 'sale' THEN st.si_number END) as min_sale_id,
               MAX(CASE WHEN pt.transaction_type = 'sale' THEN st.si_number END) as max_sale_id,
@@ -148,13 +153,30 @@ export async function GET(request: NextRequest) {
 
     // For each shift, we also need breakdown of payments
     const formattedReadings = await Promise.all(shifts.map(async (shift) => {
-        // Fetch payment breakdown for this shift
+        // Fetch payment breakdown for this shift. pos_transactions.payment_method
+        // collapses split-tender sales (part Cash + part GCash, etc.) to the
+        // literal string 'MULTIPLE' — see use-tender.ts. The real per-method
+        // split lives in payment_details (one row per tender). Prefer that;
+        // fall back to pos_transactions.payment_method only for sales with no
+        // payment_details rows at all, so no sale is silently dropped.
         const payments = await query(`
-            SELECT payment_method as name, SUM(total_amount) as amount
-            FROM pos_transactions
-            WHERE shift_id = ? AND transaction_type = 'sale' AND is_training = 0
-            GROUP BY payment_method
-        `, [shift.id]);
+            SELECT name, SUM(amount) as amount FROM (
+                SELECT pd.payment_method as name, SUM(pd.amount_tendered - pd.change_given) as amount
+                FROM pos_transactions pt
+                JOIN payment_details pd ON pd.transaction_id = pt.id
+                WHERE pt.shift_id = ? AND pt.transaction_type = 'sale' AND pt.is_training = 0
+                GROUP BY pd.payment_method
+
+                UNION ALL
+
+                SELECT pt.payment_method as name, SUM(pt.total_amount) as amount
+                FROM pos_transactions pt
+                WHERE pt.shift_id = ? AND pt.transaction_type = 'sale' AND pt.is_training = 0
+                AND NOT EXISTS (SELECT 1 FROM payment_details pd WHERE pd.transaction_id = pt.id)
+                GROUP BY pt.payment_method
+            ) combined
+            GROUP BY name
+        `, [shift.id, shift.id]);
 
         // Cash membership fees for this shift. Membership is not a sale (never in
         // pos_transactions), but its cash sits in the drawer, so it must be counted
@@ -172,11 +194,20 @@ export async function GET(request: NextRequest) {
         const membershipActivationCount = parseInt(membershipRows[0]?.activation_count || 0, 10) || 0;
         const membershipRenewalCount = parseInt(membershipRows[0]?.renewal_count || 0, 10) || 0;
 
-        // Calculate Cash In Drawer (System) — includes cash membership fees.
-        const cashInDrawer = parseFloat(shift.starting_cash) + parseFloat(shift.cash_sales) + membershipCash;
-        const overShort = parseFloat(shift.actual_cash) - cashInDrawer;
-
         const pMethods = payments as any[];
+
+        // Derive cash_sales from the corrected per-method breakdown above (which
+        // already attributes split-tender sales to their real methods) rather
+        // than shift.cash_sales, which is computed from the collapsed
+        // pos_transactions.payment_method column and would miss the cash portion
+        // of any split payment.
+        const cashSales = pMethods
+            .filter((p: any) => p.name?.toUpperCase() === 'CASH')
+            .reduce((acc: number, p: any) => acc + parseFloat(p.amount || 0), 0);
+
+        // Calculate Cash In Drawer (System) — includes cash membership fees.
+        const cashInDrawer = parseFloat(shift.starting_cash) + cashSales + membershipCash;
+        const overShort = parseFloat(shift.actual_cash) - cashInDrawer;
 
       return {
         id: shift.id,
@@ -192,7 +223,7 @@ export async function GET(request: NextRequest) {
         paymentMethods: pMethods.map(p => ({ name: p.name, amount: parseFloat(p.amount) })),
         transactionCount: shift.transaction_count || 0,
         startingCash: parseFloat(shift.starting_cash) || 0,
-        cashSales: parseFloat(shift.cash_sales) || 0,
+        cashSales: cashSales,
         cashInDrawer: cashInDrawer,
         membershipCash: membershipCash,
         membershipActivationCount: membershipActivationCount,

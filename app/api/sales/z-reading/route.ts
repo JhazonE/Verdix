@@ -191,19 +191,39 @@ export async function GET(request: NextRequest) {
         `;
         const [returnSeqResult] = await query(returnSequenceSql, dateParams) as any[];
 
+        // st.payment_method collapses split-tender sales (part Cash + part GCash,
+        // etc.) to the literal string 'MULTIPLE' — see use-tender.ts. The real
+        // per-method split lives in payment_details (one row per tender). Prefer
+        // that; fall back to st.payment_method only for the rare sale with no
+        // payment_details rows at all (e.g. legacy data, 100% points redemption),
+        // so no sale is ever silently dropped from the breakdown.
         const paymentSql = `
-          SELECT 
-            st.payment_method, 
-            SUM(st.total) as amount
-          FROM sales_transactions st
-          JOIN pos_transactions pt ON st.id = pt.sale_id
-          WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
-          AND pt.is_training = 0
-          ${dateCondition}
-          ${terminalCondition}
-          GROUP BY st.payment_method
+          SELECT payment_method, SUM(amount) as amount FROM (
+            SELECT pd.payment_method as payment_method, SUM(pd.amount_tendered - pd.change_given) as amount
+            FROM sales_transactions st
+            JOIN pos_transactions pt ON st.id = pt.sale_id
+            JOIN payment_details pd ON pd.transaction_id = pt.id
+            WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
+            AND pt.is_training = 0
+            ${dateCondition}
+            ${terminalCondition}
+            GROUP BY pd.payment_method
+
+            UNION ALL
+
+            SELECT st.payment_method as payment_method, SUM(st.total) as amount
+            FROM sales_transactions st
+            JOIN pos_transactions pt ON st.id = pt.sale_id
+            WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
+            AND pt.is_training = 0
+            AND NOT EXISTS (SELECT 1 FROM payment_details pd WHERE pd.transaction_id = pt.id)
+            ${dateCondition}
+            ${terminalCondition}
+            GROUP BY st.payment_method
+          ) combined
+          GROUP BY payment_method
         `;
-        const paymentResults = await query(paymentSql, dateParams) as any[];
+        const paymentResults = await query(paymentSql, [...dateParams, ...dateParams]) as any[];
         
         // Detailed Summaries
         const discountSummarySql = `
@@ -634,8 +654,35 @@ export async function POST(request: NextRequest) {
         const returnsSql = `SELECT SUM(st.total) as total_returns FROM sales_transactions st JOIN pos_transactions pt ON st.id = pt.sale_id WHERE st.status = 'Returned' AND pt.is_training = 0 ${dateCondition} AND pt.terminal_id = ?`;
         const [returnsResult] = await query(returnsSql, salesParams) as any[];
 
-        const paymentSql = `SELECT st.payment_method, SUM(st.total) as amount FROM sales_transactions st JOIN pos_transactions pt ON st.id = pt.sale_id WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned') AND pt.is_training = 0 ${dateCondition} AND pt.terminal_id = ? GROUP BY st.payment_method`;
-        const paymentResults = await query(paymentSql, salesParams) as any[];
+        // See the comment on the equivalent query in the GET handler above:
+        // st.payment_method collapses split-tender sales to 'MULTIPLE', so prefer
+        // payment_details (real per-method split) and fall back to
+        // st.payment_method only for sales with no payment_details rows at all.
+        const paymentSql = `
+          SELECT payment_method, SUM(amount) as amount FROM (
+            SELECT pd.payment_method as payment_method, SUM(pd.amount_tendered - pd.change_given) as amount
+            FROM sales_transactions st
+            JOIN pos_transactions pt ON st.id = pt.sale_id
+            JOIN payment_details pd ON pd.transaction_id = pt.id
+            WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
+            AND pt.is_training = 0
+            ${dateCondition} AND pt.terminal_id = ?
+            GROUP BY pd.payment_method
+
+            UNION ALL
+
+            SELECT st.payment_method as payment_method, SUM(st.total) as amount
+            FROM sales_transactions st
+            JOIN pos_transactions pt ON st.id = pt.sale_id
+            WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
+            AND pt.is_training = 0
+            AND NOT EXISTS (SELECT 1 FROM payment_details pd WHERE pd.transaction_id = pt.id)
+            ${dateCondition} AND pt.terminal_id = ?
+            GROUP BY st.payment_method
+          ) combined
+          GROUP BY payment_method
+        `;
+        const paymentResults = await query(paymentSql, [...salesParams, ...salesParams]) as any[];
 
         const voidSeqSql = `SELECT MIN(st.si_number) as min_void_id, MAX(st.si_number) as max_void_id, MIN(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as min_void_or_id, MAX(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as max_void_or_id, SUM(st.total) as void_amount FROM sales_transactions st JOIN pos_transactions pt ON st.id = pt.sale_id WHERE st.status IN ('Void', 'Voided', 'Cancelled') AND pt.is_training = 0 ${dateCondition} AND pt.terminal_id = ?`;
         const [voidSeqResult] = await query(voidSeqSql, salesParams) as any[];

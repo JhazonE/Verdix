@@ -155,18 +155,13 @@ export function useSalesPage() {
     pageCount: totalPages,
   });
 
-  const summaryTotals = useMemo<SalesTotals>(() => sales.reduce<SalesTotals>((acc, sale) => ({
-    discounts: acc.discounts + Number(sale.discount || 0),
-    revenue: acc.revenue + Number(sale.total || 0),
-    amountPaid: acc.amountPaid + Number(sale.amountPaid || sale.total || 0),
-    customerBalance: acc.customerBalance + Number(sale.balance || 0),
-    cost: acc.cost + Number(sale.cost || 0),
-    grossProfit: acc.grossProfit + Number(sale.profit || 0),
-    vatableSales: acc.vatableSales + Number(sale.vatableSales || 0),
-    vatAmount: acc.vatAmount + Number(sale.taxAmount || 0),
-    nonVatSales: acc.nonVatSales + Number(sale.nonVatSales || 0),
-    accountPayments: acc.accountPayments + (sale.paymentMethod === 'Account' ? Number(sale.total || 0) : 0),
-  }), { discounts: 0, revenue: 0, amountPaid: 0, customerBalance: 0, cost: 0, grossProfit: 0, vatableSales: 0, vatAmount: 0, nonVatSales: 0, accountPayments: 0 }), [sales]);
+  // Totals come from the server, aggregated across ALL rows matching the active
+  // filters/date range — not just the current page — so the summary cards reflect
+  // the whole filtered result set instead of one page of it.
+  const summaryTotals = useMemo<SalesTotals>(() => salesResult?.totals || {
+    discounts: 0, revenue: 0, amountPaid: 0, customerBalance: 0, cost: 0,
+    grossProfit: 0, vatableSales: 0, vatAmount: 0, nonVatSales: 0, accountPayments: 0,
+  }, [salesResult]);
 
   const hasActiveFilters = !!(searchTerm || dateRange || terminalId !== 'all' ||
     paymentTypeFilter !== 'all' || salesStatusFilter !== 'all' || customerFilter ||

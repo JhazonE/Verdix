@@ -4,6 +4,7 @@ export interface EndShiftDialogProps {
   onShiftEnd: (data: { actualCash: number; cashDifference: number; notes: string; cashDenominations: any[] }) => void;
   startingCash: number;
   cashSales: number;
+  otherPaymentMethods?: { name: string; amount: number }[];
   membershipCash?: number;
   cashIn?: number;
   cashOut?: number;

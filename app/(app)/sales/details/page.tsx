@@ -28,7 +28,7 @@ export default function SalesDetailsPage() {
     filteredSales,
     summaryTotals,
     exportToCSV, exportToPDF,
-    isLoading, totalPages,
+    isLoading, totalPages, totalRecords,
     table,
   } = useSalesDetails();
 
@@ -38,7 +38,7 @@ export default function SalesDetailsPage() {
         <h2 className="text-3xl font-bold tracking-tight">Sales Details</h2>
       </div>
 
-      <DetailsSummaryCards totals={summaryTotals} transactionCount={filteredSales.length} />
+      <DetailsSummaryCards totals={summaryTotals} transactionCount={totalRecords} />
 
       <Card>
         <CardHeader>

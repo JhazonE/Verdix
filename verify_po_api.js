@@ -1,4 +1,4 @@
-
+ 
 async function verifyPurchaseOrder() {
   const baseUrl = 'http://localhost:3000/api/purchase-orders';
   const productsUrl = 'http://localhost:3000/api/products?limit=1';

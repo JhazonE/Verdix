@@ -7,15 +7,31 @@ import { DateRange } from 'react-day-picker';
 export const formatAmount = (val: any) =>
   Number(val || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+export type SummaryTotals = {
+  discounts: number;
+  revenue: number;
+  amountPaid: number;
+  customerBalance: number;
+  cost: number;
+  grossProfit: number;
+  vatableSales: number;
+  vatAmount: number;
+  nonVatSales: number;
+  accountPayments: number;
+};
+
 type UtilParams = {
   sales: any[];
   searchTerm: string;
   dateRange: DateRange | undefined;
   terminalId: string;
   paymentTypeFilter: string;
+  totals?: SummaryTotals;
 };
 
-export function useDetailsUtils({ sales, searchTerm, dateRange, terminalId, paymentTypeFilter }: UtilParams) {
+const EMPTY_TOTALS: SummaryTotals = { discounts: 0, revenue: 0, amountPaid: 0, customerBalance: 0, cost: 0, grossProfit: 0, vatableSales: 0, vatAmount: 0, nonVatSales: 0, accountPayments: 0 };
+
+export function useDetailsUtils({ sales, searchTerm, dateRange, terminalId, paymentTypeFilter, totals }: UtilParams) {
   // Payment type is applied server-side by /api/sales/transactions — `sales`
   // already reflects it. Search remains client-side (free text over the loaded page).
   const filteredSales = useMemo(() => sales.filter(sale => {
@@ -27,23 +43,10 @@ export function useDetailsUtils({ sales, searchTerm, dateRange, terminalId, paym
     return true;
   }), [sales, searchTerm]);
 
-  const summaryTotals = sales.reduce((acc, sale) => {
-    const totalAmount = Number(sale.total || 0);
-    const costAmount = Number(sale.cost || 0);
-    const taxAmount = Number(sale.taxAmount || 0);
-    return {
-      discounts: acc.discounts + Number(sale.discount || 0),
-      revenue: acc.revenue + totalAmount,
-      amountPaid: acc.amountPaid + Number(sale.amountPaid || totalAmount),
-      customerBalance: acc.customerBalance + Number(sale.balance || 0),
-      cost: acc.cost + costAmount,
-      grossProfit: acc.grossProfit + (totalAmount - costAmount - taxAmount),
-      vatableSales: acc.vatableSales + Number(sale.vatableSales || 0),
-      vatAmount: acc.vatAmount + taxAmount,
-      nonVatSales: acc.nonVatSales + Number(sale.nonVatSales || 0),
-      accountPayments: acc.accountPayments + (sale.paymentMethod === 'Account' ? totalAmount : 0),
-    };
-  }, { discounts: 0, revenue: 0, amountPaid: 0, customerBalance: 0, cost: 0, grossProfit: 0, vatableSales: 0, vatAmount: 0, nonVatSales: 0, accountPayments: 0 });
+  // Totals come from the server, aggregated across ALL rows matching the active
+  // filters/date range — not just the current page — so the summary cards reflect
+  // the whole filtered result set instead of one page of it.
+  const summaryTotals = totals || EMPTY_TOTALS;
 
   const fetchAllSalesForExport = async (): Promise<any[]> => {
     const params = new URLSearchParams();

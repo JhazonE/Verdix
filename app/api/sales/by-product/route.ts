@@ -190,6 +190,29 @@ export async function GET(request: NextRequest) {
     const countResult = await query(countQuery, params);
     const totalItems = countResult[0]?.total || 0;
 
+    // 1b. Get aggregate totals across ALL matching products (not just the current
+    // page of products), so the summary cards reflect the whole filtered result set.
+    const totalsQuery = `
+      SELECT
+        COALESCE(SUM(t.units_sold), 0) as unitsSold,
+        COALESCE(SUM(t.total_revenue), 0) as totalRevenue,
+        COALESCE(SUM(t.total_discount), 0) as totalDiscount,
+        COALESCE(SUM(t.total_cost), 0) as totalCost
+      FROM (${fullQueryWithoutLimit}) as t
+    `;
+    const totalsResult = await query(totalsQuery, params);
+    const totalsRow = totalsResult[0] || {};
+    const aggRevenue = parseFloat(totalsRow.totalRevenue) || 0;
+    const aggDiscount = parseFloat(totalsRow.totalDiscount) || 0;
+    const aggCost = parseFloat(totalsRow.totalCost) || 0;
+    const totals = {
+      totalRevenue: aggRevenue,
+      totalDiscount: aggDiscount,
+      totalCost: aggCost,
+      totalProfit: aggRevenue - aggCost - aggDiscount,
+      unitsSold: parseInt(totalsRow.unitsSold) || 0,
+    };
+
     // 2. Get Paginated Data
     let orderByClause = 'ORDER BY total_revenue DESC';
     if (sortBy === 'volume') {
@@ -229,6 +252,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: formattedData,
+      totals,
       pagination: {
         totalItems,
         totalPages: Math.ceil(totalItems / limit),

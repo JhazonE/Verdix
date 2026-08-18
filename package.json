@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "nextn",
-  "version": "1.19.8",
+  "version": "1.19.9",
   "private": true,
   "main": "main.js",
   "scripts": {
@@ -13,6 +13,8 @@
     "seed": "tsx scripts/seed.ts",
     "migrate": "tsx scripts/migrations/index.ts up",
     "migrate:down": "tsx scripts/migrations/index.ts down",
+    "updater:migrate": "tsx scripts/updater/run-migrate.ts",
+    "build:updater": "npm run protect && iscc /DAppVersion=%npm_package_version% updater.iss",
     "set-admin": "tsx scripts/set-super-admin.ts",
     "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000/pos && node start-electron.js --route=/pos --role=\"POS Terminal\"\"",
     "electron-only": "node start-electron.js --route=/pos --role=\"POS Terminal\"",

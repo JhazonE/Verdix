@@ -14,22 +14,16 @@ type UtilParams = {
   cashierFilter: string;
   referenceFilter: string;
   searchTerm: string;
+  totals: { totalRevenue: number; totalDiscount: number; totalCost: number; totalProfit: number; unitsSold: number };
 };
 
 export function useByProductUtils({
   productSales, dateRange, terminal,
-  categoryFilter, brandFilter, cashierFilter, referenceFilter, searchTerm,
+  categoryFilter, brandFilter, cashierFilter, referenceFilter, searchTerm, totals,
 }: UtilParams) {
-  const summaryTotals = productSales.reduce(
-    (acc, item) => ({
-      totalRevenue: acc.totalRevenue + item.totalRevenue,
-      totalDiscount: acc.totalDiscount + item.totalDiscount,
-      totalCost: acc.totalCost + item.totalCost,
-      totalProfit: acc.totalProfit + item.totalProfit,
-      unitsSold: acc.unitsSold + item.unitsSold,
-    }),
-    { totalRevenue: 0, totalDiscount: 0, totalCost: 0, totalProfit: 0, unitsSold: 0 }
-  );
+  // Totals come from the server, aggregated across ALL products matching the active
+  // filters/date range — not just the current page of products.
+  const summaryTotals = totals;
 
   const fetchAllProductSalesForExport = async (): Promise<ProductSalesData[]> => {
     const params = new URLSearchParams();

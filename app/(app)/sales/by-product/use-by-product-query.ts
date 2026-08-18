@@ -26,6 +26,9 @@ export function useByProductQuery({
 }: QueryParams) {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
+  const [totals, setTotals] = useState<{ totalRevenue: number; totalDiscount: number; totalCost: number; totalProfit: number; unitsSold: number }>({
+    totalRevenue: 0, totalDiscount: 0, totalCost: 0, totalProfit: 0, unitsSold: 0,
+  });
 
   const { data: attributesData } = useQuery({
     queryKey: ['salesByProductAttributes'],
@@ -83,6 +86,7 @@ export function useByProductQuery({
         setTotalPages(productData.pagination.totalPages);
       if (productData.pagination.totalItems !== totalItems)
         setTotalItems(productData.pagination.totalItems);
+      if (productData.totals) setTotals(productData.totals);
     }
   }, [productData]);
 
@@ -93,5 +97,5 @@ export function useByProductQuery({
     ? usersData.map((u: any) => ({ uid: u.uid, displayName: u.displayName || u.email }))
     : [];
 
-  return { productSales, isLoading, totalPages, totalItems, categories, brands, cashiers };
+  return { productSales, isLoading, totalPages, totalItems, totals, categories, brands, cashiers };
 }

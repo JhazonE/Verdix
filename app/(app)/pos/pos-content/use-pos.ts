@@ -79,6 +79,7 @@ export function usePOS() {
   const [shiftActive, setShiftActive] = useState(false);
   const [startingCash, setStartingCash] = useState(0);
   const [cashSales, setCashSales] = useState(0);
+  const [otherPaymentMethods, setOtherPaymentMethods] = useState<{ name: string; amount: number }[]>([]);
   const [membershipCash, setMembershipCash] = useState(0);
   const [isPosLoggedIn, setIsPosLoggedIn] = useState(false);
   const [isCustomerSelectOpen, setIsCustomerSelectOpen] = useState(false);
@@ -874,7 +875,6 @@ export function usePOS() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, terminalId: selectedTerminalId, startingCash: cash }),
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const result = await response.json();
       if (result.success) {
         setStartingCash(cash);
@@ -884,7 +884,7 @@ export function usePOS() {
         setCurrentShiftId(result.data.shiftId);
         localStorage.setItem('pos_current_shift_id', result.data.shiftId);
         toast({ title: 'Shift Started', description: 'You are now ready to make sales.' });
-      } else throw new Error(result.error);
+      } else throw new Error(result.error || `HTTP ${response.status}`);
     } catch (error: any) {
       const isBusinessDayClosed = error.message?.includes('business day is still closed');
       toast({
@@ -907,6 +907,7 @@ export function usePOS() {
       if (result.success && result.data) {
         setStartingCash(result.data.startingCash);
         setCashSales(result.data.cashSales);
+        setOtherPaymentMethods(result.data.otherPaymentMethods ?? []);
         setMembershipCash(result.data.membershipCash ?? 0);
         setCashDeposits(result.data.cashDeposits);
         setCashPickups(result.data.cashPickups);
@@ -1267,7 +1268,7 @@ export function usePOS() {
     isCashCountAuthOpen, setIsCashCountAuthOpen,
     cashCountAuthCredentials,
     isEndShiftOpen, setIsEndShiftOpen,
-    startingCash, cashSales, membershipCash, cashDeposits, cashPickups,
+    startingCash, cashSales, otherPaymentMethods, membershipCash, cashDeposits, cashPickups,
     isCashTransferOpen, setIsCashTransferOpen,
     isCashTransferPreAuthOpen, setIsCashTransferPreAuthOpen,
     handleOpenCashTransfer,

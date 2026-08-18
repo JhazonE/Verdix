@@ -7,7 +7,7 @@ import { useDetailsTable } from './use-details-table';
 
 export function useSalesDetails() {
   const filters = useDetailsFilters();
-  const { sales, isLoading, totalPages } = useDetailsQuery({
+  const { sales, isLoading, totalPages, totalRecords, totals } = useDetailsQuery({
     dateRange: filters.dateRange,
     terminalId: filters.terminalId,
     paymentTypeFilter: filters.paymentTypeFilter,
@@ -20,6 +20,7 @@ export function useSalesDetails() {
     dateRange: filters.dateRange,
     terminalId: filters.terminalId,
     paymentTypeFilter: filters.paymentTypeFilter,
+    totals,
   });
   const { table } = useDetailsTable({ filteredSales, totalPages, expandedRows: filters.expandedRows });
 
@@ -28,6 +29,7 @@ export function useSalesDetails() {
     sales,
     isLoading,
     totalPages,
+    totalRecords,
     filteredSales,
     summaryTotals,
     exportToCSV,

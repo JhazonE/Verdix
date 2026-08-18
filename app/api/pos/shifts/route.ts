@@ -23,17 +23,48 @@ export async function GET(request: NextRequest) {
 
       const startingCash = parseFloat(shiftResult[0].starting_cash || 0);
 
-      // 2. Get Cash Sales
-      const salesResult = await query(
-        `SELECT 
-           SUM(CASE WHEN transaction_type = 'sale' THEN total_amount ELSE 0 END) as total_sales,
-           SUM(CASE WHEN transaction_type IN ('void', 'return', 'refund') THEN total_amount ELSE 0 END) as total_refunds
-         FROM pos_transactions 
-         WHERE shift_id = ? AND payment_method = 'CASH'`,
+      // 2. Payment method breakdown for this shift. pos_transactions.payment_method
+      // collapses split-tender sales (part Cash + part GCash, etc.) to the literal
+      // string 'MULTIPLE' — see use-tender.ts. The real per-method split lives in
+      // payment_details (one row per tender). Prefer that; fall back to
+      // pos_transactions.payment_method only for sales with no payment_details
+      // rows at all, so no sale is silently dropped. Mirrors the same fix in
+      // app/api/sales/x-reading/route.ts.
+      const paymentBreakdown = await query(
+        `SELECT name, SUM(amount) as amount FROM (
+            SELECT pd.payment_method as name, SUM(pd.amount_tendered - pd.change_given) as amount
+            FROM pos_transactions pt
+            JOIN payment_details pd ON pd.transaction_id = pt.id
+            WHERE pt.shift_id = ? AND pt.transaction_type = 'sale' AND pt.is_training = 0
+            GROUP BY pd.payment_method
+
+            UNION ALL
+
+            SELECT pt.payment_method as name, SUM(pt.total_amount) as amount
+            FROM pos_transactions pt
+            WHERE pt.shift_id = ? AND pt.transaction_type = 'sale' AND pt.is_training = 0
+            AND NOT EXISTS (SELECT 1 FROM payment_details pd WHERE pd.transaction_id = pt.id)
+            GROUP BY pt.payment_method
+         ) combined
+         GROUP BY name`,
+        [shiftId, shiftId]
+      ) as any[];
+
+      // Refunds/voids/returns aren't split-tender (see checkout route — they
+      // reverse a whole sale, not a portion of one) so they stay on the
+      // collapsed column; only cash reduces the physical drawer.
+      const refundsResult = await query(
+        `SELECT SUM(total_amount) as total_refunds
+         FROM pos_transactions
+         WHERE shift_id = ? AND transaction_type IN ('void', 'return', 'refund') AND payment_method = 'CASH'`,
         [shiftId]
       );
 
-      const totalCashSales = (parseFloat(salesResult[0].total_sales || 0) - parseFloat(salesResult[0].total_refunds || 0));
+      const cashRow = paymentBreakdown.find((p: any) => p.name?.toUpperCase() === 'CASH');
+      const totalCashSales = parseFloat(cashRow?.amount || 0) - parseFloat(refundsResult[0].total_refunds || 0);
+      const otherPaymentMethods = paymentBreakdown
+        .filter((p: any) => p.name?.toUpperCase() !== 'CASH')
+        .map((p: any) => ({ name: p.name || 'Unknown', amount: parseFloat(p.amount || 0) }));
 
       // 3. Get Cash Transfers
       const transfersResult = await query(
@@ -64,6 +95,7 @@ export async function GET(request: NextRequest) {
         data: {
           startingCash,
           cashSales: totalCashSales,
+          otherPaymentMethods,
           membershipCash,
           cashDeposits: totalDeposits,
           cashPickups: totalPickups,

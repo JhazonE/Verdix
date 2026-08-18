@@ -3,6 +3,7 @@
 import { format } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 import { useQuery } from '@tanstack/react-query';
+import type { SummaryTotals } from './use-details-utils';
 
 type QueryParams = {
   dateRange: DateRange | undefined;
@@ -34,6 +35,8 @@ export function useDetailsQuery({ dateRange, terminalId, paymentTypeFilter, curr
 
   const sales: any[] = salesResult?.data || [];
   const totalPages: number = salesResult?.pagination?.totalPages ?? 1;
+  const totalRecords: number = salesResult?.pagination?.totalRecords ?? 0;
+  const totals: SummaryTotals | undefined = salesResult?.totals;
 
-  return { sales, isLoading, totalPages };
+  return { sales, isLoading, totalPages, totalRecords, totals };
 }

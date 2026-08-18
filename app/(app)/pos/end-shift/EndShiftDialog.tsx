@@ -18,9 +18,12 @@ import type { EndShiftDialogProps } from './end-shift-types';
 
 const fmt = (n: number) => new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2 }).format(n);
 
-export function EndShiftDialog({ isOpen, onOpenChange, onShiftEnd, startingCash, cashSales, membershipCash = 0, cashIn = 0, cashOut = 0 }: EndShiftDialogProps) {
+export function EndShiftDialog({ isOpen, onOpenChange, onShiftEnd, startingCash, cashSales, otherPaymentMethods = [], membershipCash = 0, cashIn = 0, cashOut = 0 }: EndShiftDialogProps) {
   const { counts, countedCash, expectedCash, variance, handleCountChange, handleEndShift } =
     useEndShift({ isOpen, onShiftEnd, startingCash, cashSales, membershipCash, cashIn, cashOut });
+
+  const otherPaymentMethodsTotal = otherPaymentMethods.reduce((acc, pm) => acc + pm.amount, 0);
+  const totalSales = cashSales + otherPaymentMethodsTotal;
 
   return (
     <Sheet open={isOpen} onOpenChange={onOpenChange}>
@@ -131,6 +134,33 @@ export function EndShiftDialog({ isOpen, onOpenChange, onShiftEnd, startingCash,
                 <div className="flex justify-between items-center py-2">
                   <span className="text-slate-800 dark:text-slate-100 font-bold uppercase text-xs tracking-widest">Expected Transfer</span>
                   <span className="text-lg font-black font-mono">₱{fmt(expectedCash)}</span>
+                </div>
+
+                {otherPaymentMethods.length > 0 && (
+                  <>
+                    <Separator className="bg-slate-100 dark:bg-slate-700" />
+                    <div className="space-y-2">
+                      <span className="text-slate-400 dark:text-slate-500 text-xs font-bold uppercase tracking-widest">
+                        Other Payment Methods
+                      </span>
+                      {otherPaymentMethods.map(pm => (
+                        <div key={pm.name} className="flex justify-between items-center">
+                          <span className="text-slate-500 dark:text-slate-400 text-sm">{pm.name}</span>
+                          <span className="font-mono font-medium dark:text-slate-100">₱{fmt(pm.amount)}</span>
+                        </div>
+                      ))}
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 italic">
+                        Reference only — not physical cash, so not part of the drawer count below.
+                      </p>
+                    </div>
+                  </>
+                )}
+
+                <Separator className="bg-slate-100 dark:bg-slate-700" />
+
+                <div className="flex justify-between items-center py-1">
+                  <span className="text-slate-800 dark:text-slate-100 font-bold uppercase text-xs tracking-widest">Total Sales (All Methods)</span>
+                  <span className="text-base font-black font-mono dark:text-slate-100">₱{fmt(totalSales)}</span>
                 </div>
 
                 <div className="rounded-xl bg-slate-900 text-slate-50 p-5 mt-2 shadow-lg">

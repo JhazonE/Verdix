@@ -122,19 +122,38 @@ export async function GET(request: NextRequest) {
     const cashiers = await query(cashierBreakdownSql, breakdownParams) as any[];
 
     // ── 4. Payment method breakdown ───────────────────────────────────────────
+    // st.payment_method collapses split-tender sales (part Cash + part GCash,
+    // etc.) to the literal string 'MULTIPLE' — see use-tender.ts. The real
+    // per-method split lives in payment_details (one row per tender). Prefer
+    // that; fall back to st.payment_method only for sales with no
+    // payment_details rows at all, so no sale is silently dropped.
     const paymentSql = `
-        SELECT 
-            st.payment_method,
-            SUM(st.total) as amount
-        FROM sales_transactions st
-        JOIN pos_transactions pt ON st.id = pt.sale_id
-        WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
-        AND pt.is_training = 0
-        ${terminalCondition}
-        ${dateCondition}
-        GROUP BY st.payment_method
+        SELECT payment_method, SUM(amount) as amount FROM (
+            SELECT pd.payment_method as payment_method, SUM(pd.amount_tendered - pd.change_given) as amount
+            FROM sales_transactions st
+            JOIN pos_transactions pt ON st.id = pt.sale_id
+            JOIN payment_details pd ON pd.transaction_id = pt.id
+            WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
+            AND pt.is_training = 0
+            ${terminalCondition}
+            ${dateCondition}
+            GROUP BY pd.payment_method
+
+            UNION ALL
+
+            SELECT st.payment_method as payment_method, SUM(st.total) as amount
+            FROM sales_transactions st
+            JOIN pos_transactions pt ON st.id = pt.sale_id
+            WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
+            AND pt.is_training = 0
+            AND NOT EXISTS (SELECT 1 FROM payment_details pd WHERE pd.transaction_id = pt.id)
+            ${terminalCondition}
+            ${dateCondition}
+            GROUP BY st.payment_method
+        ) combined
+        GROUP BY payment_method
     `;
-    const paymentResults = await query(paymentSql, allParams) as any[];
+    const paymentResults = await query(paymentSql, [...allParams, ...allParams]) as any[];
 
     // ── 5. Discount summary ───────────────────────────────────────────────────
     // Only include rows that actually have a discount amount applied (> 0)
