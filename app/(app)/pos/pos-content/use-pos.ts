@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useTheme } from 'next-themes';
 import { useToast } from '@/hooks/use-toast';
-import { useProducts } from '@/hooks/use-api';
+import { useProducts, mapApiProduct } from '@/hooks/use-api';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useCustomerDisplay } from '@/hooks/use-customer-display';
 import { useLiveRefresh, dispatchStockUpdate } from '@/hooks/use-live-refresh';
@@ -662,10 +662,31 @@ export function usePOS() {
     return undefined;
   }, [products, serverSearchResults, debouncedSearchQuery]);
 
-  const handleAddItemBySKU = (sku: string) => {
+  // A scanner's Enter can arrive before the 250ms debounce resolves the
+  // server search, so findExactCodeMatch/getSearchSuggestions may still only
+  // see the local cache page. Before reporting "not found", fire one direct
+  // (undebounced) lookup for the exact code so products outside that page
+  // still scan correctly.
+  const handleAddItemBySKU = async (sku: string) => {
     if (!sku) return;
-    const product = findExactCodeMatch(sku) || getSearchSuggestions(sku, 1)[0];
-    handleAddItem(product);
+    const local = findExactCodeMatch(sku) || getSearchSuggestions(sku, 1)[0];
+    if (local) { handleAddItem(local); return; }
+
+    const q = sku.trim();
+    try {
+      const response = await fetch(getApiUrl(`/products?search=${encodeURIComponent(q)}&limit=100`), { cache: 'no-store' });
+      const result = await response.json();
+      if (result.success) {
+        const qLower = q.toLowerCase();
+        const remote = (result.data || []).find((p: any) =>
+          (p.sku || '').toLowerCase() === qLower || (p.barcode || '').toLowerCase() === qLower
+        );
+        if (remote) { handleAddItem(mapApiProduct(remote)); return; }
+      }
+    } catch {
+      // Network/API failure — fall through to the "not found" toast below.
+    }
+    handleAddItem(undefined);
   };
 
   const updateQuantity = (productId: string, newQuantity: number) => {

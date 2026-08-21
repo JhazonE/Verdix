@@ -16,6 +16,37 @@ export interface UseProductsResult {
   refetch: () => void;
 }
 
+export function mapApiProduct(item: any): Product {
+  return {
+    id: item.id,
+    name: item.name,
+    description: item.description || '',
+    additionalDescription: '',
+    category: item.category || '',
+    brand: item.brand || '',
+    subcategory: '',
+    supplier: '',
+    stock: item.stock || 0,
+    type: item.type,
+    reorderPoint: item.reorderPoint || 0,
+    avgDailySales: item.avgDailySales || 0,
+    price: parseFloat(item.price) || 0,
+    cost: item.cost ? parseFloat(item.cost) : undefined,
+    sku: item.sku || '',
+    barcode: item.barcode || '',
+    imageUrl: '',
+    imageHint: '',
+    vatStatus: item.vat_status,
+    availability: item.availability,
+    unitOfMeasure: item.unitOfMeasure || item.unit_of_measure || '',
+    incomeAccount: '',
+    expenseAccount: '',
+    priceLevels: item.priceLevels || [],
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
+  };
+}
+
 export interface UseSalesInvoicesResult {
   salesInvoices: Sale[];
   loading: boolean;
@@ -46,34 +77,7 @@ export function useProducts(search?: string, availability?: string, supplierId?:
         throw new Error(result.error || 'Failed to fetch products');
       }
 
-      return result.data.map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        description: item.description || '',
-        additionalDescription: '',
-        category: item.category || '',
-        brand: item.brand || '',
-        subcategory: '',
-        supplier: '',
-        stock: item.stock || 0,
-        type: item.type,
-        reorderPoint: item.reorderPoint || 0,
-        avgDailySales: item.avgDailySales || 0,
-        price: parseFloat(item.price) || 0,
-        cost: item.cost ? parseFloat(item.cost) : undefined,
-        sku: item.sku || '',
-        barcode: item.barcode || '',
-        imageUrl: '',
-        imageHint: '',
-        vatStatus: item.vat_status,
-        availability: item.availability,
-        unitOfMeasure: item.unitOfMeasure || item.unit_of_measure || '',
-        incomeAccount: '',
-        expenseAccount: '',
-        priceLevels: item.priceLevels || [],
-        createdAt: item.created_at,
-        updatedAt: item.updated_at,
-      }));
+      return result.data.map(mapApiProduct);
     },
   });
 
