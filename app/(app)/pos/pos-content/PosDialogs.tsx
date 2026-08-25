@@ -108,6 +108,16 @@ export function PosDialogs(pos: Props) {
       />
 
       <AdminAuthDialog
+        isOpen={pos.isEditQtyAuthOpen}
+        onOpenChange={pos.setIsEditQtyAuthOpen}
+        title="Edit Quantity Authorization"
+        description="Please provide credentials to edit item quantity"
+        requiredCredentials={pos.editQtyAuthCredentials}
+        onSuccess={pos.handleEditQtyAuthSuccess}
+        preventCloseAutoFocus
+      />
+
+      <AdminAuthDialog
         isOpen={pos.isSuspendAuthOpen}
         onOpenChange={pos.setIsSuspendAuthOpen}
         title="Suspend Authorization"

@@ -119,6 +119,9 @@ export function usePOS() {
   const [isPriceEditAuthOpen, setIsPriceEditAuthOpen] = useState(false);
   const [editItemAuthCredentials, setEditItemAuthCredentials] = useState<{ username?: string | null; password?: string | null } | null>(null);
   const [isEditItemAuthOpen, setIsEditItemAuthOpen] = useState(false);
+  const [editQtyAuthCredentials, setEditQtyAuthCredentials] = useState<{ username?: string | null; password?: string | null } | null>(null);
+  const [isEditQtyAuthOpen, setIsEditQtyAuthOpen] = useState(false);
+  const [pendingQtyDelta, setPendingQtyDelta] = useState<number | null>(null);
   const [suspendAuthCredentials, setSuspendAuthCredentials] = useState<{ username?: string | null; password?: string | null } | null>(null);
   const [isSuspendAuthOpen, setIsSuspendAuthOpen] = useState(false);
   const [suspendedAuthCredentials, setSuspendedAuthCredentials] = useState<{ username?: string | null; password?: string | null } | null>(null);
@@ -285,6 +288,7 @@ export function usePOS() {
         setLineVoidAuthCredentials({ username: result.data.lineVoidAuthUsername, password: result.data.lineVoidAuthPassword });
         setPriceEditAuthCredentials({ username: result.data.priceEditAuthUsername, password: result.data.priceEditAuthPassword });
         setEditItemAuthCredentials({ username: result.data.editItemAuthUsername, password: result.data.editItemAuthPassword });
+        setEditQtyAuthCredentials({ username: result.data.editQtyAuthUsername, password: result.data.editQtyAuthPassword });
         setSuspendAuthCredentials({ username: result.data.suspendAuthUsername, password: result.data.suspendAuthPassword });
         setSuspendedAuthCredentials({ username: result.data.suspendedAuthUsername, password: result.data.suspendedAuthPassword });
         setOverallReadingAuthCredentials({ username: result.data.overallReadingAuthUsername, password: result.data.overallReadingAuthPassword });
@@ -493,8 +497,7 @@ export function usePOS() {
           const isInputEmpty = inputRef.current ? inputRef.current.value === '' : true;
           if (selectedItemId && (!isInputFocused || isInputEmpty) && !isDialogOpen) {
             e.preventDefault();
-            const item = items.find(i => i.id === selectedItemId);
-            if (item) updateQuantity(selectedItemId, item.quantity + 1);
+            requestQuantityDelta(selectedItemId, 1);
           }
           break;
         }
@@ -504,7 +507,7 @@ export function usePOS() {
           if (selectedItemId && (!isInputFocused || isInputEmpty) && !isDialogOpen) {
             e.preventDefault();
             const item = items.find(i => i.id === selectedItemId);
-            if (item && item.quantity > 1) updateQuantity(selectedItemId, item.quantity - 1);
+            if (item && item.quantity > 1) requestQuantityDelta(selectedItemId, -1);
           }
           break;
         }
@@ -722,13 +725,42 @@ export function usePOS() {
     toast({ title: 'Line Voided', description: `Removed ${item.name} from the cart.` });
   };
 
-  const focusInlineQuantity = (itemId: string | null) => {
-    if (!itemId) { toast({ title: 'No Item Selected', description: 'Please select an item to adjust quantity.', variant: 'destructive' }); return; }
+  const unlockInlineQty = (itemId: string) => {
     setSelectedItemId(itemId);
     setEditingQtyItemId(itemId);
     setEditingNameItemId(null);
     setEditingPriceItemId(null);
     focusInlineField('pos-qty', itemId);
+  };
+
+  const focusInlineQuantity = (itemId: string | null) => {
+    if (!itemId) { toast({ title: 'No Item Selected', description: 'Please select an item to adjust quantity.', variant: 'destructive' }); return; }
+    setSelectedItemId(itemId);
+    if (businessSettings?.enableEditQtyAuth) { setPendingQtyDelta(null); setIsEditQtyAuthOpen(true); }
+    else unlockInlineQty(itemId);
+  };
+
+  const requestQuantityDelta = (itemId: string, delta: number) => {
+    if (businessSettings?.enableEditQtyAuth) {
+      setSelectedItemId(itemId);
+      setPendingQtyDelta(delta);
+      setIsEditQtyAuthOpen(true);
+    } else {
+      const item = items.find(i => i.id === itemId);
+      if (item) updateQuantity(itemId, item.quantity + delta);
+    }
+  };
+
+  const handleEditQtyAuthSuccess = () => {
+    setIsEditQtyAuthOpen(false);
+    if (!selectedItemId) return;
+    if (pendingQtyDelta !== null) {
+      const item = items.find(i => i.id === selectedItemId);
+      if (item) updateQuantity(selectedItemId, item.quantity + pendingQtyDelta);
+      setPendingQtyDelta(null);
+    } else {
+      unlockInlineQty(selectedItemId);
+    }
   };
 
   const removeItem = (productId: string) => {
@@ -1336,6 +1368,7 @@ export function usePOS() {
     isLineVoidAuthOpen, setIsLineVoidAuthOpen, lineVoidAuthCredentials, pendingVoidItemId,
     isPriceEditAuthOpen, setIsPriceEditAuthOpen, priceEditAuthCredentials,
     isEditItemAuthOpen, setIsEditItemAuthOpen, editItemAuthCredentials, handleEditItemAuthSuccess,
+    isEditQtyAuthOpen, setIsEditQtyAuthOpen, editQtyAuthCredentials, handleEditQtyAuthSuccess,
     isSuspendAuthOpen, setIsSuspendAuthOpen, suspendAuthCredentials, handleSuspendAuthSuccess,
     isSuspendedAuthOpen, setIsSuspendedAuthOpen, suspendedAuthCredentials, handleSuspendedAuthSuccess,
     handleOpenSuspended,

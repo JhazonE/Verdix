@@ -35,6 +35,9 @@ export interface PosSettings {
   enableEditItemAuth?: boolean;
   editItemAuthUsername?: string | null;
   editItemAuthPassword?: string | null;
+  enableEditQtyAuth?: boolean;
+  editQtyAuthUsername?: string | null;
+  editQtyAuthPassword?: string | null;
   enableSuspendAuth?: boolean;
   suspendAuthUsername?: string | null;
   suspendAuthPassword?: string | null;
@@ -113,6 +116,9 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   enableEditItemAuth: false,
   editItemAuthUsername: '',
   editItemAuthPassword: '',
+  enableEditQtyAuth: false,
+  editQtyAuthUsername: '',
+  editQtyAuthPassword: '',
   enableSuspendAuth: false,
   suspendAuthUsername: '',
   suspendAuthPassword: '',

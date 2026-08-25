@@ -383,6 +383,9 @@ export interface SystemSettings {
   enableEditItemAuth?: boolean;
   editItemAuthUsername?: string | null;
   editItemAuthPassword?: string | null;
+  enableEditQtyAuth?: boolean;
+  editQtyAuthUsername?: string | null;
+  editQtyAuthPassword?: string | null;
   enableSuspendAuth?: boolean;
   suspendAuthUsername?: string | null;
   suspendAuthPassword?: string | null;
