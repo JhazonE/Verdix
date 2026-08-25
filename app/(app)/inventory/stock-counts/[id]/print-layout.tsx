@@ -2,16 +2,20 @@ import { formatCurrency, toSafeNumber } from '@/lib/utils';
 
 export function PrintLayout({
   count,
-  filteredItems,
+  printItems,
   isCompleted,
   totalVariance,
   totalVarianceAmount,
+  page,
+  totalPages,
 }: {
   count: any;
-  filteredItems: any[];
+  printItems: any[];
   isCompleted: boolean;
   totalVariance: number;
   totalVarianceAmount: number;
+  page: number;
+  totalPages: number;
 }) {
   return (
     <div className="hidden print:block printable-area p-8 bg-white text-black font-sans">
@@ -45,7 +49,7 @@ export function PrintLayout({
         <thead>
           <tr className="border-b-2 border-black">
             <th className="py-3 px-2 font-bold uppercase tracking-wider">Product Name</th>
-            <th className="py-3 px-2 font-bold uppercase tracking-wider">SKU / Barcode</th>
+            <th className="py-3 px-2 font-bold uppercase tracking-wider">Barcode</th>
             <th className="py-3 px-2 font-bold uppercase tracking-wider text-right">
               Expected
             </th>
@@ -67,7 +71,7 @@ export function PrintLayout({
           </tr>
         </thead>
         <tbody>
-          {filteredItems.map((item, index) => {
+          {printItems.map((item, index) => {
             const variance =
               item.counted_quantity !== null
                 ? item.counted_quantity - item.snapshot_quantity
@@ -82,7 +86,7 @@ export function PrintLayout({
               >
                 <td className="py-3 px-2 border-b border-gray-200">{item.product_name}</td>
                 <td className="py-3 px-2 border-b border-gray-200 text-gray-600">
-                  {item.product_sku || item.product_barcode || '-'}
+                  {item.product_barcode || '-'}
                 </td>
                 <td className="py-3 px-2 border-b border-gray-200 text-right">
                   {item.snapshot_quantity}
@@ -112,11 +116,11 @@ export function PrintLayout({
             );
           })}
         </tbody>
-        {filteredItems.length > 0 && (
+        {printItems.length > 0 && (
           <tfoot>
             <tr className="border-t-2 border-black font-bold">
               <td className="py-3 px-2 text-right" colSpan={6}>
-                Totals
+                Totals (this page)
               </td>
               <td className="py-3 px-2 text-right">
                 {totalVariance > 0 ? `+${totalVariance}` : totalVariance}
@@ -131,7 +135,7 @@ export function PrintLayout({
 
       <div className="mt-12 pt-8 border-t border-gray-300 flex justify-between text-sm text-gray-500">
         <p>Report generated on: {new Date().toLocaleString()}</p>
-        <p>Page 1 of 1</p>
+        <p>Page {page} of {totalPages}</p>
       </div>
     </div>
   );

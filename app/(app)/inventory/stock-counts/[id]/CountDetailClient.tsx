@@ -7,39 +7,57 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import {
-  ArrowLeft, Save, CheckCircle, Search, AlertTriangle, Printer, Package,
+  ArrowLeft, Save, CheckCircle, Search, AlertTriangle, Printer, Package, FileDown,
 } from 'lucide-react';
-import { formatCurrency, toSafeNumber } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 
-import { useCountDetail } from './use-count-detail';
+import { useCountDetail, ITEM_PAGE_SIZE_OPTIONS } from './use-count-detail';
 import { MobileItemCard } from './mobile-item-card';
+import { CountItemRow } from './count-item-row';
 import { ReviewDialog } from './review-dialog';
 import { PrintLayout } from './print-layout';
+import { Pagination } from '../pagination';
 
 export function CountDetailClient({ countId }: { countId: string }) {
   const {
     count,
     items,
     search,
-    setSearch,
+    searchTerm,
+    setSearchTerm,
+    handleSearch,
+    handleSearchKeyDown,
+    isSearchPending,
     isLoading,
     isSaving,
     isCompleting,
+    isPrinting,
+    isExporting,
     showReviewDialog,
     setShowReviewDialog,
     router,
     searchInputRef,
     handleQuantityChange,
+    handleFocusSearch,
     handleSaveProgress,
     handleComplete,
     handlePrint,
+    handleExportPDF,
     filteredItems,
+    paginatedItems,
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    totalPages,
     itemsWithVariances,
     uncountedItems,
     countedCount,
     progressPct,
     totalVariance,
     totalVarianceAmount,
+    printPageVariance,
+    printPageVarianceAmount,
   } = useCountDetail({ countId });
 
   // ── Loading / not found ───────────────────────────────────────────────────
@@ -97,9 +115,26 @@ export function CountDetailClient({ countId }: { countId: string }) {
 
           {/* Action buttons – full-width on mobile, auto on sm+ */}
           <div className="flex flex-wrap gap-2 w-full sm:w-auto non-printable">
-            <Button variant="outline" size="sm" onClick={handlePrint} className="flex-1 sm:flex-none">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePrint}
+              className="flex-1 sm:flex-none"
+              title={`Prints the current page (${paginatedItems.length} of ${filteredItems.length} items). Use the row-count selector below to fit more per page.`}
+            >
               <Printer className="h-4 w-4 mr-1.5" />
-              <span className="sm:inline">Print</span>
+              <span className="sm:inline">Print Page</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportPDF}
+              disabled={isExporting || items.length === 0}
+              className="flex-1 sm:flex-none"
+              title={`Exports all ${items.length} items in this count to a PDF (ignores search).`}
+            >
+              <FileDown className="h-4 w-4 mr-1.5" />
+              <span className="sm:inline">{isExporting ? 'Exporting…' : 'Export All (PDF)'}</span>
             </Button>
             {!isCompleted && (
               <>
@@ -181,16 +216,29 @@ export function CountDetailClient({ countId }: { countId: string }) {
         </div>
 
         {/* ── Search bar ─────────────────────────────────────────────────── */}
-        <div className="relative">
-          <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-          <Input
-            ref={searchInputRef}
-            placeholder="Scan barcode or search name / SKU…"
-            className="pl-9 w-full"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            autoFocus
-          />
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <Input
+              ref={searchInputRef}
+              placeholder="Scan barcode or search name / SKU, then press Enter…"
+              className="pl-9 w-full"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              autoFocus
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="default"
+            onClick={handleSearch}
+            disabled={!isSearchPending}
+            title="Apply search"
+          >
+            <Search className="h-4 w-4 sm:mr-1.5" />
+            <span className="hidden sm:inline">Search</span>
+          </Button>
         </div>
 
         {/* ── Mobile card list (hidden on md+) ───────────────────────────── */}
@@ -201,15 +249,25 @@ export function CountDetailClient({ countId }: { countId: string }) {
               {search ? `No products matching "${search}"` : 'No items in this count.'}
             </div>
           ) : (
-            filteredItems.map((item) => (
+            paginatedItems.map((item) => (
               <MobileItemCard
                 key={item.id}
                 item={item}
                 isCompleted={isCompleted}
                 onChange={handleQuantityChange}
-                onEnter={() => searchInputRef.current?.focus()}
+                onEnter={handleFocusSearch}
               />
             ))
+          )}
+          {filteredItems.length > 0 && (
+            <Pagination
+              total={filteredItems.length}
+              page={page}
+              pageSize={pageSize}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              pageSizeOptions={ITEM_PAGE_SIZE_OPTIONS}
+            />
           )}
         </div>
 
@@ -226,7 +284,7 @@ export function CountDetailClient({ countId }: { countId: string }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Product Name</TableHead>
-                <TableHead>SKU/Barcode</TableHead>
+                <TableHead>Barcode</TableHead>
                 <TableHead className="text-right">Expected (Snapshot)</TableHead>
                 <TableHead className="text-right w-48">Actual Count</TableHead>
                 <TableHead className="text-right">Cost Amount</TableHead>
@@ -236,76 +294,15 @@ export function CountDetailClient({ countId }: { countId: string }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredItems.map((item) => {
-                const variance =
-                  item.counted_quantity !== null
-                    ? item.counted_quantity - item.snapshot_quantity
-                    : 0;
-                // Actual value of what's physically on-hand. Per design, always show the
-                // amount even when the count is 0 (null count is treated as 0), so these
-                // never blank out.
-                const actualQty = toSafeNumber(item.counted_quantity);
-                const costAmount = actualQty * toSafeNumber(item.product_cost);
-                const retailAmount = actualQty * toSafeNumber(item.product_retail);
-                return (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.product_name}</TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {item.product_sku || item.product_barcode || '-'}
-                    </TableCell>
-                    <TableCell className="text-right">{item.snapshot_quantity}</TableCell>
-                    <TableCell className="text-right">
-                      {isCompleted ? (
-                        <span className="font-semibold">{item.counted_quantity ?? '-'}</span>
-                      ) : (
-                        <Input
-                          type="number"
-                          min="0"
-                          className="w-24 text-right ml-auto"
-                          value={item.counted_quantity ?? ''}
-                          onChange={(e) => handleQuantityChange(item.id, e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              searchInputRef.current?.focus();
-                              searchInputRef.current?.select();
-                            }
-                          }}
-                        />
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">{formatCurrency(costAmount)}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(retailAmount)}</TableCell>
-                    <TableCell
-                      className={`text-right font-medium ${
-                        variance < 0
-                          ? 'text-red-500'
-                          : variance > 0
-                          ? 'text-green-500'
-                          : ''
-                      }`}
-                    >
-                      {item.counted_quantity === null
-                        ? '-'
-                        : variance > 0
-                        ? `+${variance}`
-                        : variance}
-                    </TableCell>
-                    <TableCell
-                      className={`text-right font-medium ${
-                        variance < 0
-                          ? 'text-red-500'
-                          : variance > 0
-                          ? 'text-green-500'
-                          : ''
-                      }`}
-                    >
-                      {item.counted_quantity === null
-                        ? '-'
-                        : formatCurrency(variance * toSafeNumber(item.product_cost))}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {paginatedItems.map((item) => (
+                <CountItemRow
+                  key={item.id}
+                  item={item}
+                  isCompleted={isCompleted}
+                  onChange={handleQuantityChange}
+                  onEnter={handleFocusSearch}
+                />
+              ))}
               {filteredItems.length === 0 && (
                 <TableRow>
                   <TableCell
@@ -349,30 +346,57 @@ export function CountDetailClient({ countId }: { countId: string }) {
               </TableFooter>
             )}
           </Table>
+          {filteredItems.length > 0 && (
+            <div className="p-4 border-t">
+              <Pagination
+                total={filteredItems.length}
+                page={page}
+                pageSize={pageSize}
+                onPageChange={setPage}
+                onPageSizeChange={setPageSize}
+                pageSizeOptions={ITEM_PAGE_SIZE_OPTIONS}
+              />
+            </div>
+          )}
         </div>
 
-        {/* ── Review Dialog ───────────────────────────────────────────────── */}
-        <ReviewDialog
-          open={showReviewDialog}
-          onOpenChange={setShowReviewDialog}
-          count={count}
-          items={items}
-          countedCount={countedCount}
-          variancesCount={itemsWithVariances.length}
-          uncountedCount={uncountedItems.length}
-          isCompleting={isCompleting}
-          onComplete={handleComplete}
-        />
+        {/* ── Review Dialog — mounted only while open. It renders two full-size lists
+             (mobile cards + desktop table rows) over every item in the count; with a
+             whole-store count that's 15k+ elements built on every render, and since it
+             lived permanently in the tree, every keystroke elsewhere on this screen (a
+             search key change re-renders the whole page) rebuilt all of it — that was
+             the actual cause of the search lag, not the visible item table. ─────── */}
+        {showReviewDialog && (
+          <ReviewDialog
+            open={showReviewDialog}
+            onOpenChange={setShowReviewDialog}
+            count={count}
+            items={items}
+            countedCount={countedCount}
+            variancesCount={itemsWithVariances.length}
+            uncountedCount={uncountedItems.length}
+            isCompleting={isCompleting}
+            onComplete={handleComplete}
+          />
+        )}
       </div>
 
-      {/* ── Dedicated Print Layout ───────────────────────────────────────── */}
-      <PrintLayout
-        count={count}
-        filteredItems={filteredItems}
-        isCompleted={isCompleted}
-        totalVariance={totalVariance}
-        totalVarianceAmount={totalVarianceAmount}
-      />
+      {/* ── Dedicated Print Layout — mounted only while printing, and scoped to the
+           current page. With a count spanning the whole catalog (thousands of rows),
+           printing everything at once both froze the page and produced a garbled/
+           overlapping print preview from the print engine choking on ~2000 pages
+           worth of cells — so print covers one page at a time, same as the screen. */}
+      {isPrinting && (
+        <PrintLayout
+          count={count}
+          printItems={paginatedItems}
+          isCompleted={isCompleted}
+          totalVariance={printPageVariance}
+          totalVarianceAmount={printPageVarianceAmount}
+          page={page}
+          totalPages={totalPages}
+        />
+      )}
     </>
   );
 }

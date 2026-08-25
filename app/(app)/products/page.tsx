@@ -306,6 +306,8 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
   );
 }
 
+const HEAD_CLASS = "bg-muted/70 text-foreground font-semibold uppercase tracking-wide text-[11px]";
+
 function ProductSkeleton() {
   return (
     <TableRow>
@@ -868,19 +870,19 @@ function ProductsContent() {
             wrapperClassName="flex-1"
           >
             <TableHeader className="z-20">
-              <TableRow className="hover:bg-transparent border-b">
-                <TableHead className="w-12 hidden sm:table-cell"><span className="sr-only">Expand</span></TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead className="hidden md:table-cell">SKU</TableHead>
-                <TableHead className="hidden lg:table-cell">Barcode</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="hidden sm:table-cell text-center">Unit</TableHead>
-                <TableHead className="text-center">Stock</TableHead>
-                <TableHead className="hidden md:table-cell text-right">Cost</TableHead>
-                <TableHead className="hidden md:table-cell text-right">Retail Price</TableHead>
-                <TableHead className="hidden md:table-cell text-center">Warehouse</TableHead>
-                <TableHead className="hidden md:table-cell text-center">Shelf</TableHead>
-                <TableHead>
+              <TableRow className="hover:bg-transparent border-b-2 border-border">
+                <TableHead className={cn(HEAD_CLASS, "w-12 hidden sm:table-cell")}><span className="sr-only">Expand</span></TableHead>
+                <TableHead className={HEAD_CLASS}>Name</TableHead>
+                <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell")}>SKU</TableHead>
+                <TableHead className={cn(HEAD_CLASS, "hidden lg:table-cell")}>Barcode</TableHead>
+                <TableHead className={HEAD_CLASS}>Status</TableHead>
+                <TableHead className={cn(HEAD_CLASS, "hidden sm:table-cell text-center")}>Unit</TableHead>
+                <TableHead className={cn(HEAD_CLASS, "text-center")}>Stock</TableHead>
+                <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell text-right")}>Cost</TableHead>
+                <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell text-right")}>Retail Price</TableHead>
+                <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell text-center")}>Warehouse</TableHead>
+                <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell text-center")}>Shelf</TableHead>
+                <TableHead className={HEAD_CLASS}>
                   Actions
                 </TableHead>
               </TableRow>

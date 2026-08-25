@@ -3,13 +3,14 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 export const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
 
 export function Pagination({
-  total, page, pageSize, onPageChange, onPageSizeChange,
+  total, page, pageSize, onPageChange, onPageSizeChange, pageSizeOptions = PAGE_SIZE_OPTIONS,
 }: {
   total: number;
   page: number;
   pageSize: number;
   onPageChange: (p: number) => void;
   onPageSizeChange: (s: number) => void;
+  pageSizeOptions?: number[];
 }) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -42,7 +43,7 @@ export function Pagination({
             onChange={(e) => { onPageSizeChange(Number(e.target.value)); onPageChange(1); }}
             className="h-7 rounded-md border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
           >
-            {PAGE_SIZE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+            {pageSizeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
       </div>

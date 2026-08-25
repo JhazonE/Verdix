@@ -689,23 +689,33 @@ export class ReceiptGenerator {
         enc.line(row('Solo Parent Disc. :', fmt(soloDiscAmt)));
         enc.line(row('Other Disc. :',       fmt(otherDiscAmt)));
 
+        // ── BY CASHIER ───────────────────────────────────────────────────────
+        // Mirrors: DashedLine + sectionTitle + section (only when breakdown present)
+        const zCashierBreakdown: Array<{ userId: string; cashierName: string; shiftCount: number; transactionCount: number; salesTotal: number }> = data.cashierBreakdown || [];
+        if (zCashierBreakdown.length > 0) {
+            enc.line(dash);
+            enc.align('center').bold(true).line('BY CASHIER').bold(false).align('left');
+            zCashierBreakdown.forEach((c) => {
+                enc.line(row(c.cashierName, fmt(c.salesTotal)));
+                const shiftLabel = `${c.shiftCount} shift${c.shiftCount === 1 ? '' : 's'}, ${c.transactionCount} txn${c.transactionCount === 1 ? '' : 's'}`;
+                enc.line(shiftLabel);
+            });
+        }
+
         // ── SALES ADJUSTMENT ─────────────────────────────────────────────────
         // Mirrors: DashedLine + sectionTitle + section
         enc.line(dash);
         enc.align('center').bold(true).line('SALES ADJUSTMENT').bold(false).align('left');
-        enc.line(row('VOID :',   fmt(data.voidAmount || 0)));
-        enc.line(row('RETURN :', fmt(data.returns || 0)));
+        enc.line(row('VOID :',   fmt(data.salesAdjustment?.void?.amount ?? data.voidAmount ?? 0)));
+        enc.line(row('RETURN :', fmt(data.salesAdjustment?.return?.amount ?? data.returns ?? 0)));
 
         // ── VAT ADJUSTMENT ───────────────────────────────────────────────────
         // Mirrors: DashedLine + sectionTitle + section
         enc.line(dash);
         enc.align('center').bold(true).line('VAT ADJUSTMENT').bold(false).align('left');
-        enc.line(row('SC TRANS. :',           '0.00'));
-        enc.line(row('PWD TRANS :',           '0.00'));
-        enc.line(row('REG.Disc. TRANS :',     '0.00'));
-        enc.line(row('ZERO-RATED TRANS.:',    '0.00'));
-        enc.line(row('VAT on Return:',        '0.00'));
-        enc.line(row('Other VAT Adjustments', '0.00'));
+        enc.line(row('VAT ADJ. ON SC/PWD :', fmt(data.vatAdjustment || 0)));
+        enc.line(row('VAT ADJ. ON RETURN :', '0.00'));
+        enc.bold(true).line(row('Total VAT Adj. :', fmt(data.vatAdjustment || 0))).bold(false);
 
         // ── TRANSACTION SUMMARY ──────────────────────────────────────────────
         // Mirrors: DashedLine + sectionTitle + section

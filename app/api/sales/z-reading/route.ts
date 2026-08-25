@@ -55,7 +55,8 @@ async function ensureZReadingsSchema() {
             { name: 'min_return_or_id', type: 'VARCHAR(50)' },
             { name: 'max_return_or_id', type: 'VARCHAR(50)' },
             { name: 'actual_cash', type: 'DECIMAL(15,2) DEFAULT 0.00' },
-            { name: 'cash_difference', type: 'DECIMAL(15,2) DEFAULT 0.00' }
+            { name: 'cash_difference', type: 'DECIMAL(15,2) DEFAULT 0.00' },
+            { name: 'cashier_breakdown', type: 'JSON' }
         ];
 
         for (const col of columnsToAdd) {
@@ -533,7 +534,13 @@ export async function GET(request: NextRequest) {
                  const parsed = typeof row.sales_adjustment === 'string' ? JSON.parse(row.sales_adjustment) : row.sales_adjustment;
                  if (parsed) salesAdjustment = parsed;
              } catch (e) {}
-             
+
+             let cashierBreakdown: any[] = [];
+             try {
+                 const parsed = typeof row.cashier_breakdown === 'string' ? JSON.parse(row.cashier_breakdown) : row.cashier_breakdown;
+                 cashierBreakdown = Array.isArray(parsed) ? parsed : [];
+             } catch (e) {}
+
              return {
                 id: row.reading_number,
                 date: format(new Date(row.report_date), 'yyyy-MM-dd HH:mm:ss'),
@@ -585,7 +592,8 @@ export async function GET(request: NextRequest) {
                 actualCash: safeParseFloat(row.actual_cash),
                 variance: safeParseFloat(row.cash_difference),
                 zCounter: safeInt(row.z_counter),
-                resetCounter: safeInt(row.reset_counter)
+                resetCounter: safeInt(row.reset_counter),
+                cashierBreakdown
              };
 
         });
@@ -831,8 +839,9 @@ export async function POST(request: NextRequest) {
                 vatable_sales, vat_exempt, zero_rated, non_vat,
                 discount_summary, sales_adjustment, vat_adjustment, void_amount,
                 actual_cash, cash_difference,
-                min_sale_or_id, max_sale_or_id, min_void_or_id, max_void_or_id, min_return_or_id, max_return_or_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                min_sale_or_id, max_sale_or_id, min_void_or_id, max_void_or_id, min_return_or_id, max_return_or_id,
+                cashier_breakdown
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         await query(insertSql, [
@@ -846,7 +855,8 @@ export async function POST(request: NextRequest) {
             actualCash, cashVariance,
             salesResult?.min_sale_or_id || 'OR-000000', salesResult?.max_sale_or_id || 'OR-000000',
             voidSeqResult?.min_void_or_id || 'OR-000000', voidSeqResult?.max_void_or_id || 'OR-000000',
-            returnSeqResult?.min_return_or_id || 'OR-000000', returnSeqResult?.max_return_or_id || 'OR-000000'
+            returnSeqResult?.min_return_or_id || 'OR-000000', returnSeqResult?.max_return_or_id || 'OR-000000',
+            JSON.stringify(cashierBreakdown)
         ]);
 
         // BIR Annex F checklist item #29: a Z-reading closes out this

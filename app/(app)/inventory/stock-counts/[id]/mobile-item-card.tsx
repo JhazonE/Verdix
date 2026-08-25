@@ -1,12 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { ChevronDown, ChevronUp, Package, TrendingDown, TrendingUp } from 'lucide-react';
 
 import { Input } from '@/components/ui/input';
 import { cn, formatCurrency, toSafeNumber } from '@/lib/utils';
 
-export function MobileItemCard({
+// Memoized: the parent re-renders on every search keystroke (typed text is its own
+// state, separate from the applied filter), and without memo every row — with its
+// own conditional classNames and inputs — re-rendered on every keystroke too, which
+// is what made the search box feel laggy despite filtering itself being unaffected.
+export const MobileItemCard = memo(function MobileItemCard({
   item,
   isCompleted,
   onChange,
@@ -77,11 +81,11 @@ export function MobileItemCard({
           />
         </div>
 
-        {/* Name + SKU */}
+        {/* Name + Barcode */}
         <div className="flex-1 min-w-0">
           <p className="font-medium text-sm leading-tight truncate">{item.product_name}</p>
           <p className="text-xs text-muted-foreground truncate">
-            {item.product_sku || item.product_barcode || 'No SKU'}
+            {item.product_barcode || 'No Barcode'}
           </p>
         </div>
 
@@ -235,4 +239,4 @@ export function MobileItemCard({
       )}
     </div>
   );
-}
+});
