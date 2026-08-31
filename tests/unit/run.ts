@@ -43,3 +43,4 @@ import './x-reading-or-range.test';
 import './terminal-lock-check.test';
 import './checkout-terminal-lock.test';
 import './business-date-lock-lifecycle.test';
+import './license-state-store.test';
