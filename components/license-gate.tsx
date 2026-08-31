@@ -35,6 +35,8 @@ interface LicenseInfo {
   edition?: string;
   expires?: string | null;
   daysRemaining?: number | null;
+  lockReason?: string;
+  graceExpired?: boolean;
 }
 
 const STATUS_COPY: Record<LicenseStatus, { title: string; tone: 'idle' | 'warn' | 'error' }> = {
@@ -135,6 +137,15 @@ function ActivationScreen({
   const status = info?.status || 'unlicensed';
   const meta = STATUS_COPY[status];
 
+  const LOCK_COPY: Record<string, string> = {
+    revoked: 'This license has been revoked. Please contact your vendor.',
+    suspended: 'This license is suspended. Please contact your vendor.',
+    released: 'This activation was released. Please re-activate.',
+    'grace-expired':
+      'Cannot reach the license server. This system has been offline for more than 7 days and needs to reconnect to continue.',
+  };
+  const lockMessage = info?.lockReason ? LOCK_COPY[info.lockReason] : undefined;
+
   const copyMachineId = async () => {
     try {
       await navigator.clipboard.writeText(machineId);
@@ -212,7 +223,7 @@ function ActivationScreen({
             </div>
             <div>
               <CardTitle className="text-xl">Verdix POS — License Activation</CardTitle>
-              <CardDescription>{meta.title}</CardDescription>
+              <CardDescription>{lockMessage || meta.title}</CardDescription>
             </div>
           </div>
 
