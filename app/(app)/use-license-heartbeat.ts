@@ -19,7 +19,15 @@ export function useLicenseHeartbeat() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    let interval = DESKTOP_INTERVAL;
+    // Tracks the interval currently armed on timerRef, so beat() can tell
+    // whether learning `hosted` actually changes anything before re-arming.
+    let armedInterval = DESKTOP_INTERVAL;
+
+    function arm(ms: number) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      armedInterval = ms;
+      timerRef.current = setInterval(beat, ms);
+    }
 
     async function beat() {
       try {
@@ -27,7 +35,8 @@ export function useLicenseHeartbeat() {
         if (!res.ok) return;
         const json = await res.json().catch(() => ({}));
 
-        if (json?.hosted) interval = CLOUD_INTERVAL;
+        const desired = json?.hosted ? CLOUD_INTERVAL : DESKTOP_INTERVAL;
+        if (desired !== armedInterval) arm(desired);
         if (json?.changed) window.location.reload();
       } catch {
         // Network unreachable — keep working on the cached license.
@@ -35,7 +44,7 @@ export function useLicenseHeartbeat() {
     }
 
     beat();
-    timerRef.current = setInterval(beat, interval);
+    timerRef.current = setInterval(beat, armedInterval);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, []);
 }
