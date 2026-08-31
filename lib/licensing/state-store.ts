@@ -7,8 +7,13 @@
  *
  * Every read degrades to null rather than throwing: a desktop database may not
  * have the table at all, and licensing must never crash the app.
+ *
+ * `query` is imported lazily (not at module top level) so this module carries
+ * no static dependency on lib/mysql.ts — that file has a side-effecting
+ * `import './init-scheduler'` that starts cron timers and keeps the Node
+ * event loop alive forever, which would hang a plain `tsx` unit-test run that
+ * only needs the pure `isGraceExpired` / `GRACE_WINDOW_DAYS` exports below.
  */
-import { query } from '../mysql';
 
 export interface LicenseState {
   signedLicense: string | null;
@@ -37,6 +42,7 @@ export function isGraceExpired(lastValidatedAt: Date | null, now: Date = new Dat
 
 export async function readLicenseState(): Promise<LicenseState | null> {
   try {
+    const { query } = await import('../mysql');
     const rows: any = await query(
       `SELECT signed_license, last_validated_at, lock_reason, seat_limit
          FROM license_state WHERE id = 1`
@@ -65,6 +71,7 @@ export async function writeLicenseState(patch: Partial<LicenseState>): Promise<v
   if (!sets.length) return;
 
   try {
+    const { query } = await import('../mysql');
     await query(
       `INSERT INTO license_state (id, signed_license, last_validated_at, lock_reason, seat_limit)
        VALUES (1, ?, ?, ?, ?)
