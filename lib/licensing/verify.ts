@@ -20,7 +20,7 @@ import {
 } from './core';
 import { PUBLIC_KEY_PEM } from './public-key';
 import { getMachineId } from './machine';
-import { readLicenseState, isGraceExpired, LicenseState } from './state-store';
+import type { LicenseState } from './state-store';
 
 export type LicenseStatus =
   | 'active' // valid, machine matches, not expired
@@ -206,6 +206,7 @@ export function resolveLicenseKey(state: LicenseState | null): string | null {
  * license_state row, so this degrades to exactly the synchronous behaviour.
  */
 export async function getLicenseInfoAsync(): Promise<LicenseInfo> {
+  const { readLicenseState, isGraceExpired } = await import('./state-store');
   const state = await readLicenseState();
   const info = evaluateLicenseKey(resolveLicenseKey(state));
 
@@ -240,6 +241,7 @@ export function isHostedLicense(key: string | null): boolean {
 
 /** DB-aware payload read, used by the heartbeat. */
 export async function readLicensePayloadAsync(): Promise<LicensePayload | null> {
+  const { readLicenseState } = await import('./state-store');
   const state = await readLicenseState();
   const key = resolveLicenseKey(state);
   if (!key) return null;
