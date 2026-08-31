@@ -176,8 +176,15 @@ On the cloud deployment, **going over the limit does not lock checkout.**
 Locking a paying store out of checkout over a seat count would be
 unacceptable — a business mid-transaction cannot be told to stop selling.
 Instead, exceeding `max_activations` blocks the creation of **additional**
-terminals and surfaces a warning reporting the overage. Existing terminals
-keep working normally.
+terminals. Existing terminals keep working normally.
+
+> **Note:** the block is the only signal the customer gets. When they try to
+> add a terminal beyond the limit, the request is refused with a message
+> naming the count and the limit. There is **no** standing in-app banner
+> warning an admin that the store is already over its seat count — the
+> heartbeat reports `seatLimit` and `terminalCount`, but no screen displays
+> them yet. Check the license dashboard if you need to know a customer's
+> current standing.
 
 To let the customer add another terminal, either raise `max_activations` on
 their license in the dashboard (if they're paying for the extra seat) or
