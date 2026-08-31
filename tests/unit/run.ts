@@ -46,3 +46,4 @@ import './business-date-lock-lifecycle.test';
 import './license-state-store.test';
 import './license-resolution-order.test';
 import './license-heartbeat-transitions.test';
+import './license-seat-overage.test';
