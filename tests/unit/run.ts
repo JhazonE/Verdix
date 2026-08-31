@@ -44,3 +44,4 @@ import './terminal-lock-check.test';
 import './checkout-terminal-lock.test';
 import './business-date-lock-lifecycle.test';
 import './license-state-store.test';
+import './license-resolution-order.test';

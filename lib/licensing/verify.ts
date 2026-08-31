@@ -20,6 +20,7 @@ import {
 } from './core';
 import { PUBLIC_KEY_PEM } from './public-key';
 import { getMachineId } from './machine';
+import { readLicenseState, isGraceExpired, LicenseState } from './state-store';
 
 export type LicenseStatus =
   | 'active' // valid, machine matches, not expired
@@ -41,6 +42,10 @@ export interface LicenseInfo {
   /** Null for perpetual licenses; otherwise whole days until expiry (can be negative). */
   daysRemaining?: number | null;
   features?: string[];
+  /** Set when a vendor action or the grace window locked this install. */
+  lockReason?: string;
+  /** True when the license server has been unreachable past the grace window. */
+  graceExpired?: boolean;
 }
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -182,6 +187,61 @@ export function getLicenseInfo(): LicenseInfo {
  */
 export function readLicensePayload(): LicensePayload | null {
   const key = readLicenseKey();
+  if (!key) return null;
+  const res = verifyLicenseSignature(key, PUBLIC_KEY_PEM);
+  return res.valid && res.payload ? res.payload : null;
+}
+
+/**
+ * Pure resolution order: DB row → LICENSE_KEY env (bootstrap) → license.dat.
+ * Split out from getLicenseInfoAsync so it can be unit-tested without a DB.
+ */
+export function resolveLicenseKey(state: LicenseState | null): string | null {
+  if (state?.signedLicense) return state.signedLicense;
+  return readLicenseKey();
+}
+
+/**
+ * DB-aware license status. Used by the API routes. Desktop installs have no
+ * license_state row, so this degrades to exactly the synchronous behaviour.
+ */
+export async function getLicenseInfoAsync(): Promise<LicenseInfo> {
+  const state = await readLicenseState();
+  const info = evaluateLicenseKey(resolveLicenseKey(state));
+
+  // A vendor lock (revoked/suspended/released) outranks local verification —
+  // this is what makes the kill switch work while LICENSE_KEY is still set.
+  if (state?.lockReason) {
+    return { ...info, licensed: false, status: 'invalid', lockReason: state.lockReason };
+  }
+
+  // Only a hosted license is subject to the grace window; desktop is offline-first.
+  const hosted = isHostedLicense(resolveLicenseKey(state));
+  if (hosted && isGraceExpired(state?.lastValidatedAt ?? null)) {
+    return {
+      ...info,
+      licensed: false,
+      status: 'invalid',
+      lockReason: 'grace-expired',
+      graceExpired: true,
+    };
+  }
+
+  return info;
+}
+
+/** True when the given key is a vendor-signed HOSTED (cloud) license. */
+export function isHostedLicense(key: string | null): boolean {
+  if (!key) return false;
+  const res = verifyLicenseSignature(key, PUBLIC_KEY_PEM);
+  if (!res.valid || !res.payload) return false;
+  return normalizeMachineId(res.payload.machineId) === normalizeMachineId(HOSTED_MACHINE_ID);
+}
+
+/** DB-aware payload read, used by the heartbeat. */
+export async function readLicensePayloadAsync(): Promise<LicensePayload | null> {
+  const state = await readLicenseState();
+  const key = resolveLicenseKey(state);
   if (!key) return null;
   const res = verifyLicenseSignature(key, PUBLIC_KEY_PEM);
   return res.valid && res.payload ? res.payload : null;
