@@ -23,8 +23,15 @@ export function decideHeartbeatWrite(
     return { lastValidatedAt: now, lockReason: status };
   }
 
-  // 'active', 'expired', and anything else the server answered with.
+  // 'active', 'expired', 'seat-exceeded', and anything else the server
+  // answered with. 'seat-exceeded' still carries a valid renewed token — the
+  // server deliberately keeps signing licenses over the seat limit rather than
+  // withholding one, so checkout is never blocked by a seat count. Dropping
+  // that token here would silently stop renewals while last_validated_at kept
+  // advancing, eventually expiring a store the vendor had already renewed.
   const patch: Partial<LicenseState> = { lastValidatedAt: now, lockReason: null };
-  if (status === 'active' && signedLicense) patch.signedLicense = signedLicense;
+  if ((status === 'active' || status === 'seat-exceeded') && signedLicense) {
+    patch.signedLicense = signedLicense;
+  }
   return patch;
 }

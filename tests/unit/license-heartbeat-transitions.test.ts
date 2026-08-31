@@ -17,6 +17,17 @@ assert.deepEqual(
   'active without token stamps contact only'
 );
 
+// Seat-exceeded still carries a valid renewed token from the server (it
+// deliberately keeps signing over the seat limit rather than withholding a
+// license, so checkout is never blocked by a seat count) — the POS must store
+// it, not silently drop it, or renewals stop while last_validated_at keeps
+// advancing and the store eventually locks itself out on expiry.
+assert.deepEqual(
+  decideHeartbeatWrite('seat-exceeded', 'VRDX1.renewed', now),
+  { signedLicense: 'VRDX1.renewed', lastValidatedAt: now, lockReason: null },
+  'seat-exceeded + token stores renewal and clears lock'
+);
+
 // Vendor locks record a reason and are still a successful contact.
 for (const status of ['revoked', 'suspended', 'released']) {
   assert.deepEqual(

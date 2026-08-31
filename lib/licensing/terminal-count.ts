@@ -18,8 +18,9 @@ export async function countActiveTerminals(): Promise<number> {
       `SELECT COUNT(*) AS cnt FROM pos_terminals WHERE is_active = TRUE`
     );
     return Number(rows?.[0]?.cnt ?? 0);
-  } catch {
+  } catch (e) {
     // Never let a counting failure break the heartbeat.
+    console.error('countActiveTerminals failed:', e);
     return 0;
   }
 }
