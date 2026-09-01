@@ -100,11 +100,15 @@ The heartbeat includes the count of active terminals — `SELECT COUNT(*) FROM p
 is_active = TRUE` — in its `/api/validate` request body. The license server compares it against the
 license's `max_activations` and returns a `seat-exceeded` status when the count is over the limit.
 
-On `seat-exceeded` the store is **not** locked out. The POS surfaces a persistent warning to the
-admin naming the overage (e.g. "6 terminals active, licensed for 4"), and blocks activation of
-additional terminals until the count is back within the limit or the vendor raises it. Locking a
-live store out of checkout over a seat count is disproportionate and would take down a paying
-customer's business.
+On `seat-exceeded` the store is **not** locked out. The POS blocks activation of additional
+terminals until the count is back within the limit or the vendor raises it, refusing the request
+with a message naming the count and the limit. Locking a live store out of checkout over a seat
+count is disproportionate and would take down a paying customer's business.
+
+> **Implemented scope:** the heartbeat carries `seatLimit` and `terminalCount` back to the client,
+> but no screen consumes them, so there is no standing in-app banner telling an admin the store is
+> already over its seat count — only the refusal at the point of adding a terminal. A persistent
+> warning is deliberate follow-up work, not part of this change.
 
 This requires an additive change to `/api/validate` in the license-server repo: accept an optional
 `terminalCount` field and return the new status. The field is optional so existing desktop clients

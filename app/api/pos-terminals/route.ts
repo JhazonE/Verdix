@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '../../../lib/mysql';
+import { countActiveTerminals, isSeatOverage } from '../../../lib/licensing/terminal-count';
+import { readLicenseState } from '../../../lib/licensing/state-store';
 
 // Helper function to ensure pos_terminals table exists
 async function ensurePosTerminalsTable() {
@@ -202,6 +204,23 @@ export async function POST(request: NextRequest) {
       zCounter = 0,
       resetCounter = 0
     } = body;
+
+    // Seat-limit guard: block creating an ADDITIONAL terminal beyond the
+    // licensed seat count. Never blocks checkout or existing terminals — only
+    // new-terminal creation. A null seatLimit (desktop, or an uncapped
+    // license) leaves this inert.
+    const state = await readLicenseState();
+    const seatLimit = state?.seatLimit ?? null;
+    const current = await countActiveTerminals();
+    if (isSeatOverage(current + 1, seatLimit)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Licensed for ${seatLimit} terminal(s); ${current} are already active. Contact your vendor to add seats.`,
+        },
+        { status: 403 }
+      );
+    }
 
     // Generate ID
     const id = `terminal_${Date.now()}`;

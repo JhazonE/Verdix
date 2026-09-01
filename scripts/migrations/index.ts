@@ -112,6 +112,7 @@ import './111_sta_lucia_hourly_submission_claims';
 import './112_add_z_reading_confirmation_setting';
 import './113_add_z_reading_lockout_toggle';
 import './114_add_z_reading_cashier_breakdown';
+import './115_create_license_state';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';
