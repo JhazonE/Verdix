@@ -54,6 +54,17 @@ customer, setting:
 - **Edition** — the plan/tier they purchased.
 - **Expiry date** — the paid-through date for their current billing period.
 
+> **Do not leave `max_activations` at its default of 1 for a cloud customer.**
+> On desktop, 1 is correct — one licence, one machine. On cloud it means
+> something different: every terminal shares the one `HOSTED` fingerprint, so
+> seats are counted from the `pos_terminals` table instead. A cloud store with
+> three tills and `max_activations = 1` is two terminals over its limit from
+> day one, and staff will be unable to add the second and third till.
+>
+> Existing desktop licences were all issued with `max_activations = 1`. If you
+> convert one of them to cloud, **raise it first** to match the number of tills
+> the store actually runs.
+
 ---
 
 ## 3. Mint the hosted token

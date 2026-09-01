@@ -36,6 +36,30 @@ sa live nga server.
 
 ---
 
+## Una: ayaw i-test batok sa production license DB
+
+Ang `.env` sa `../verdix-license-server` naka-punto sa **`metro.proxy.rlwy.net`** —
+ang live nga production license database, diin naa ang 8 ka tinuod nga lisensya sa
+imong mga customer. Ang pag-test batok niini mo-himo ug tinuod nga license rows ug
+mo-mutate sa tinuod nga `activations` nga lamesa.
+
+Adunay staging setup na. Gikan sa `../verdix-license-server`:
+
+```bash
+./staging.sh server       # dashboard sa localhost:4100, lokal nga DB
+./staging.sh reset        # i-wipe ug i-rebuild ang staging DB
+./staging.sh psql         # mysql shell sa staging DB
+```
+
+Login: `admin` / `staging-only-pw`. Ang script mo-override sa `LICENSE_DB_*` pinaagi
+sa environment (dili niya hilabtan ang `.env`), ug mo-refuse modagan kung ang DB name
+dili "staging" — mao nga dili kini makasulod sa production bisan masayop.
+
+Para sa Tests 1–5, i-set ang `LICENSE_SERVER_URL` sa POS ngadto sa
+`http://localhost:4100` aron maka-heartbeat kini sa staging server.
+
+---
+
 ## Pag-andam — usa ka throwaway nga customer
 
 > **Ayaw gamita ang license sa tinuod nga customer para niini nga pagtest.**
