@@ -50,8 +50,12 @@ Source: "C:\Program Files\nodejs\node.exe"; DestDir: "{app}"; Flags: ignoreversi
 ; Fresh Windows PCs often lack it; installed silently before MySQL setup.
 Source: "redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
-; Database setup — verdix_install.sql holds the full 75-table structure,
-; reference data, and the default admin. Applied via bundled mysql.exe (no Node).
+; Database setup — verdix_install.sql holds the full table structure, reference
+; data, and the default admin. Applied via bundled mysql.exe (no Node).
+; It is a hand-regenerated mysqldump snapshot, NOT built by any npm script, and
+; the installer never runs migrations — so it goes stale silently as migrations
+; land. Regenerate it whenever the schema changes; see the schema-regeneration
+; notes for which seed tables to include and which dev-DB drift to strip.
 Source: "verdix_install.sql"; DestDir: "{app}"; Flags: ignoreversion
 Source: "setup_mysql_service.bat"; DestDir: "{app}"; Flags: ignoreversion
 Source: "uninstall_mysql_service.bat"; DestDir: "{app}"; Flags: ignoreversion
