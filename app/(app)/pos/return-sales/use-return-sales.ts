@@ -159,6 +159,12 @@ export function useReturnSales({
             })),
             terminalId: terminalId || posSettings?.terminalId,
             userId: currentUser?.uid || currentUser?.id || null,
+            // Attribute the return to the open shift, or it lands with
+            // shift_id NULL and never appears on that shift's X-reading.
+            // Same key use-pos.ts writes the active shift to.
+            shiftId: typeof window !== 'undefined'
+              ? localStorage.getItem('pos_current_shift_id')
+              : null,
             reason: 'Merchandise Credit',
             totalAmount
           })

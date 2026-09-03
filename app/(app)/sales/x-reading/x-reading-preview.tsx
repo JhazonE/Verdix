@@ -216,12 +216,22 @@ export function XReadingPreview({ data, printerFormat = '58mm', businessSettings
 
        <DashedLine />
 
+       {/* Merchandise Credit returns: a credit slip, not cash out of the
+           drawer, so this is reported on its own line and never mixed into
+           cash reconciliation. Shown as a positive magnitude (the stored
+           total is negative) to match how VOID is presented. */}
        <div style={styles.section}>
          <div style={styles.row}>
-          <span>REFUND</span>
-          <span>{formatCurrency(data.refundAmount || 0)}</span>
+          <span>RETURNS</span>
+          <span>{formatCurrency(Math.abs(data.returns || 0))}</span>
         </div>
       </div>
+
+       {/* No REFUND line: nothing in this system ever writes
+           transaction_type = 'refund', so the figure could only ever be 0.00,
+           and Z-reading (the filed report) shows no REFUND line either. The
+           refund_amount column and its write path are kept, so this is
+           reversible if a real refund feature is ever built. */}
 
       <DashedLine />
 

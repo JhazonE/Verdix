@@ -35,7 +35,7 @@ export class XReadingGenerator {
             minSaleOrId,
             maxSaleOrId,
             voidAmount,
-            refundAmount,
+            returns,
             min,
             sn,
             permitNo,
@@ -170,15 +170,26 @@ export class XReadingGenerator {
             )
             .line('--------------------------------')
 
-            // REFUND
-             .table(
+            // RETURNS (Merchandise Credit) — a return issues a credit slip, not
+            // cash from the drawer, so it is reported on its own line and never
+            // mixed into cash reconciliation. Printed as a
+            // positive magnitude (the stored total is negative); see the ABS()
+            // in app/api/sales/x-reading/route.ts.
+            .table(
                  [
                     { width: 20, align: 'left' },
                     { width: 12, align: 'right' }
                 ],
-                [['REFUND', formatCurrency(refundAmount || 0)]]
+                [['RETURNS', formatCurrency(Math.abs(returns || 0))]]
             )
             .line('--------------------------------')
+
+            // No REFUND line: this system has no refund feature — nothing ever
+            // writes transaction_type = 'refund', so the figure could only ever
+            // be 0.00, and Z-reading (the filed report) prints no REFUND line
+            // either. A permanently-zero line makes a cashier doubt the report
+            // rather than inform them. The refund_amount column and its POST
+            // write path are kept, so this is reversible if refunds are built.
 
             // WITHDRAWAL
              .table(

@@ -31,18 +31,28 @@ export async function GET(request: NextRequest) {
       // rows at all, so no sale is silently dropped. Mirrors the same fix in
       // app/api/sales/x-reading/route.ts.
       const paymentBreakdown = await query(
+        // Voided sales are excluded: the cash went back to the customer, so it is
+        // not in the drawer and must not raise expectedCash — otherwise a voided
+        // cash sale shows up as a phantom SHORT at cash count. Voiding only flips
+        // sales_transactions.status (see app/api/pos/void-transaction), leaving
+        // the original transaction_type = 'sale' row in place, so the status
+        // filter is what excludes it. Mirrors app/api/sales/x-reading/route.ts.
         `SELECT name, SUM(amount) as amount FROM (
             SELECT pd.payment_method as name, SUM(pd.amount_tendered - pd.change_given) as amount
             FROM pos_transactions pt
+            LEFT JOIN sales_transactions st ON pt.sale_id = st.id
             JOIN payment_details pd ON pd.transaction_id = pt.id
             WHERE pt.shift_id = ? AND pt.transaction_type = 'sale' AND pt.is_training = 0
+            AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
             GROUP BY pd.payment_method
 
             UNION ALL
 
             SELECT pt.payment_method as name, SUM(pt.total_amount) as amount
             FROM pos_transactions pt
+            LEFT JOIN sales_transactions st ON pt.sale_id = st.id
             WHERE pt.shift_id = ? AND pt.transaction_type = 'sale' AND pt.is_training = 0
+            AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
             AND NOT EXISTS (SELECT 1 FROM payment_details pd WHERE pd.transaction_id = pt.id)
             GROUP BY pt.payment_method
          ) combined

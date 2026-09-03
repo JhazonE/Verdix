@@ -86,25 +86,44 @@ export async function GET(request: NextRequest) {
       LEFT JOIN users u ON s.user_id = u.uid
       LEFT JOIN pos_terminals pt_term ON s.terminal_id = pt_term.id
       LEFT JOIN (
-          SELECT 
+          SELECT
               pt.shift_id,
-              SUM(CASE WHEN pt.transaction_type = 'sale' THEN pt.subtotal ELSE 0 END) as gross_sales,
-              SUM(CASE WHEN pt.transaction_type = 'sale' THEN pt.total_amount ELSE 0 END) as net_sales,
-              SUM(pt.tax_amount) as vat_amount,
-              SUM(pt.discount_amount) as discounts,
-              SUM(CASE WHEN pt.transaction_type = 'return' THEN pt.total_amount ELSE 0 END) as returns_amount,
-              COUNT(CASE WHEN pt.transaction_type = 'sale' THEN 1 END) as transaction_count,
+              -- Voiding a sale never creates or retypes a pos_transactions row —
+              -- app/api/pos/void-transaction only flips
+              -- sales_transactions.status to 'Voided' — so the voided sale keeps
+              -- its original transaction_type = 'sale' row. Every sales
+              -- aggregate must therefore exclude voided/returned statuses
+              -- explicitly (NOT_VOIDED below), exactly as z-reading does, or a
+              -- voided sale is still counted as revenue.
+              SUM(CASE WHEN pt.transaction_type = 'sale' AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned') THEN pt.subtotal ELSE 0 END) as gross_sales,
+              SUM(CASE WHEN pt.transaction_type = 'sale' AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned') THEN pt.total_amount ELSE 0 END) as net_sales,
+              -- Scoped to 'sale' like the figures above: VAT and discounts are
+              -- properties of a sale, and leaving the type unfiltered would let
+              -- a future non-sale row type contribute to them.
+              SUM(CASE WHEN pt.transaction_type = 'sale' AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned') THEN pt.tax_amount ELSE 0 END) as vat_amount,
+              SUM(CASE WHEN pt.transaction_type = 'sale' AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned') THEN pt.discount_amount ELSE 0 END) as discounts,
+              -- Returns store total_amount NEGATIVE (see app/api/sales/returns
+              -- route: money owed back to the customer), so ABS() is what makes
+              -- the RETURNS line print as a positive magnitude like VOID does,
+              -- instead of reading as "RETURNS -1,254.15".
+              ABS(SUM(CASE WHEN pt.transaction_type = 'return' THEN pt.total_amount ELSE 0 END)) as returns_amount,
+              COUNT(CASE WHEN pt.transaction_type = 'sale' AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned') THEN 1 END) as transaction_count,
               -- Placeholder — pt.payment_method collapses split-tender sales to the
               -- literal string 'MULTIPLE', which would hide the real cash portion
               -- from the drawer reconciliation. The real per-shift cash figure is
               -- recomputed below from the same payment_details breakdown used for
               -- paymentMethods, so both stay consistent with one source of truth.
-              SUM(CASE WHEN pt.transaction_type = 'sale' AND pt.payment_method = 'CASH' THEN pt.total_amount ELSE 0 END) as cash_sales,
-              MIN(CASE WHEN pt.transaction_type = 'sale' THEN st.si_number END) as min_sale_id,
-              MAX(CASE WHEN pt.transaction_type = 'sale' THEN st.si_number END) as max_sale_id,
-              MIN(CASE WHEN pt.transaction_type = 'sale' AND pt.bir_or_number IS NOT NULL THEN pt.bir_or_number END) as min_sale_or_id,
-              MAX(CASE WHEN pt.transaction_type = 'sale' AND pt.bir_or_number IS NOT NULL THEN pt.bir_or_number END) as max_sale_or_id,
-              SUM(CASE WHEN pt.transaction_type = 'void' THEN pt.total_amount ELSE 0 END) as void_amount,
+              SUM(CASE WHEN pt.transaction_type = 'sale' AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned') AND pt.payment_method = 'CASH' THEN pt.total_amount ELSE 0 END) as cash_sales,
+              MIN(CASE WHEN pt.transaction_type = 'sale' AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned') THEN st.si_number END) as min_sale_id,
+              MAX(CASE WHEN pt.transaction_type = 'sale' AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned') THEN st.si_number END) as max_sale_id,
+              MIN(CASE WHEN pt.transaction_type = 'sale' AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned') AND pt.bir_or_number IS NOT NULL THEN pt.bir_or_number END) as min_sale_or_id,
+              MAX(CASE WHEN pt.transaction_type = 'sale' AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned') AND pt.bir_or_number IS NOT NULL THEN pt.bir_or_number END) as max_sale_or_id,
+              -- Voids are identified by sales_transactions.status, the column the
+              -- void endpoint actually writes — NOT by transaction_type = 'void',
+              -- which nothing in this codebase ever writes and which therefore
+              -- made this figure structurally always 0.00. Same source of truth
+              -- as z-reading's voidSeqSql, so the two reports cannot disagree.
+              SUM(CASE WHEN st.status IN ('Void', 'Voided', 'Cancelled') THEN st.total ELSE 0 END) as void_amount,
               SUM(CASE WHEN pt.transaction_type = 'refund' THEN pt.total_amount ELSE 0 END) as refund_amount
           FROM pos_transactions pt
           LEFT JOIN sales_transactions st ON pt.sale_id = st.id
@@ -159,19 +178,29 @@ export async function GET(request: NextRequest) {
         // split lives in payment_details (one row per tender). Prefer that;
         // fall back to pos_transactions.payment_method only for sales with no
         // payment_details rows at all, so no sale is silently dropped.
+        //
+        // Voided sales are excluded here too: the money was handed back to the
+        // customer, so it is no longer in the drawer and must not appear as a
+        // payment received. Without this, a voided cash sale would inflate
+        // cashInDrawer and show up as a phantom SHORT at cash count. The status
+        // set matches the sales aggregates above and z-reading's.
         const payments = await query(`
             SELECT name, SUM(amount) as amount FROM (
                 SELECT pd.payment_method as name, SUM(pd.amount_tendered - pd.change_given) as amount
                 FROM pos_transactions pt
+                LEFT JOIN sales_transactions st ON pt.sale_id = st.id
                 JOIN payment_details pd ON pd.transaction_id = pt.id
                 WHERE pt.shift_id = ? AND pt.transaction_type = 'sale' AND pt.is_training = 0
+                AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
                 GROUP BY pd.payment_method
 
                 UNION ALL
 
                 SELECT pt.payment_method as name, SUM(pt.total_amount) as amount
                 FROM pos_transactions pt
+                LEFT JOIN sales_transactions st ON pt.sale_id = st.id
                 WHERE pt.shift_id = ? AND pt.transaction_type = 'sale' AND pt.is_training = 0
+                AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
                 AND NOT EXISTS (SELECT 1 FROM payment_details pd WHERE pd.transaction_id = pt.id)
                 GROUP BY pt.payment_method
             ) combined

@@ -11,6 +11,11 @@ export async function POST(request: NextRequest) {
       items, // Array of { productId, productName, quantity, price }
       terminalId,
       userId,
+      // The shift this return belongs to. Without it the pos_transactions row
+      // is written with shift_id NULL, and every shift-scoped report — the
+      // X-reading above all, which is GROUP BY pt.shift_id — silently drops
+      // the return into a NULL group belonging to no shift.
+      shiftId,
       reason,
       totalAmount
     } = body;
@@ -34,17 +39,30 @@ export async function POST(request: NextRequest) {
       const mcNumber = await getNextMCNumber(connection);
 
       // 1. Insert into pos_transactions
+      // If the caller did not supply a shift, fall back to the terminal's
+      // currently-open shift rather than writing NULL: a NULL shift_id makes
+      // the return invisible to every shift-scoped report.
+      let finalShiftId = shiftId || null;
+      if (!finalShiftId && terminalId) {
+        const [openShift]: any = await connection.query(
+          "SELECT id FROM shifts WHERE terminal_id = ? AND status = 'active' ORDER BY start_time DESC LIMIT 1",
+          [terminalId]
+        );
+        finalShiftId = openShift?.[0]?.id || null;
+      }
+
       const insertPosTransSql = `
         INSERT INTO pos_transactions (
-          id, sale_id, user_id, terminal_id, transaction_type, mc_number,
+          id, sale_id, shift_id, user_id, terminal_id, transaction_type, mc_number,
           subtotal, tax_amount, discount_amount, total_amount, payment_method,
           payment_status, notes, transaction_time, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'return', ?, ?, 0, 0, ?, 'Return', 'completed', ?, NOW(), NOW(), NOW())
+        ) VALUES (?, ?, ?, ?, ?, 'return', ?, ?, 0, 0, ?, 'Return', 'completed', ?, NOW(), NOW(), NOW())
       `;
 
       await connection.query(insertPosTransSql, [
         posTransId,
         saleId,
+        finalShiftId,
         finalUserId,
         terminalId || null,
         mcNumber,
