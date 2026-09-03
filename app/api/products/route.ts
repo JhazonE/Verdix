@@ -23,6 +23,11 @@ export async function GET(request: NextRequest) {
       availability: searchParams.get('availability'),
       supplierId: searchParams.get('supplierId'),
       shelfLocationId: searchParams.get('shelfLocationId'),
+      // Optional: restrict to stock > 0, applied in SQL before the LIMIT.
+      // No caller currently sets it — the transfer/shelf boards deliberately
+      // do not, because on this catalogue only 4 of 15,633 rows have stock > 0
+      // and the filter emptied them. Each board applies its own display gate.
+      inStock: searchParams.get('inStock') === 'true',
     };
 
     if (countOnly) {

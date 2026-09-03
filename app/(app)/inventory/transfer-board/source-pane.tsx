@@ -1,6 +1,6 @@
 'use client';
 
-import { Box, Rows3 } from 'lucide-react';
+import { Box, Loader2, Rows3 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,11 +22,14 @@ interface SourcePaneProps {
   onStageSelected: () => void;
   onStageItem: (uniqueId: string) => void;
   onWarehouseChange: () => void;
+  /** A search request is in flight — shown in-place, never as a full remount. */
+  isSearching?: boolean;
 }
 
 export function SourcePane({
   sourceSearch,
   onSearchChange,
+  isSearching,
   filteredSourceItems,
   selectedSourceIds,
   onToggleSelectItem,
@@ -63,12 +66,20 @@ export function SourcePane({
             />
           </div>
         </div>
-        <Input
-          placeholder="Search name or SKU..."
-          value={sourceSearch}
-          onChange={e => onSearchChange(e.target.value)}
-          className="h-8 text-sm"
-        />
+        {/* Search progress shows as a small spinner inside the field rather
+            than replacing the board, so the input keeps focus and the list
+            never flickers while typing. */}
+        <div className="relative">
+          <Input
+            placeholder="Search name, SKU or barcode..."
+            value={sourceSearch}
+            onChange={e => onSearchChange(e.target.value)}
+            className="h-8 text-sm pr-8"
+          />
+          {isSearching && (
+            <Loader2 className="h-3.5 w-3.5 animate-spin absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-[36px,1fr,56px] px-3 py-1 bg-muted/30 border-b text-[10px] font-bold text-muted-foreground uppercase">

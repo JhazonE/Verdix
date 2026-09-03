@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { logActivity } from '@/lib/client-activity-logger';
 import { dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { useToast } from '@/hooks/use-toast';
+import { matchesNormalizedSearch, normalizeSearchTerm } from '@/lib/product-search';
 import type { Product, Supplier, Warehouse } from '@/lib/types';
 
 import { getProducts } from '../../products/actions';
@@ -107,10 +108,11 @@ export function useBulkAdjustment() {
     if (warehouseId && warehouseId !== 'none') {
       filtered = filtered.filter(p => p.warehouseId === warehouseId || p.warehouse === warehouseId);
     }
-    return filtered.filter(p =>
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.sku.toLowerCase().includes(search.toLowerCase())
-    ).slice(0, 40);
+    // Normalize once rather than re-lowercasing the term for every product on
+    // every keystroke. Matching covers barcode as well as name/SKU, so a
+    // scanner finds the item — see lib/product-search.ts.
+    const term = normalizeSearchTerm(search);
+    return filtered.filter(p => matchesNormalizedSearch(p, term)).slice(0, 40);
   }, [allProducts, search, warehouseId]);
 
   const addProduct = (product: Product) => {

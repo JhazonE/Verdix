@@ -61,6 +61,15 @@ export class MySqlProductRepository implements ProductRepository {
       params.push(filters.availability);
     }
 
+    // Screens that can only act on stock they have (the transfer and shelf
+    // boards) ask for this. It MUST be applied in SQL, before the LIMIT:
+    // filtering in JS afterwards would let a page of out-of-stock rows consume
+    // the whole limit and hide the items the caller actually wanted — the
+    // original transfer-board bug, where 2 of 4 in-stock products showed.
+    if (filters.inStock) {
+      sql += ' AND products.stock > 0';
+    }
+
     if (filters.supplierId) {
       sql += ' AND (products.supplier_id = ? OR EXISTS (SELECT 1 FROM supplier_product_mapping spm WHERE spm.product_id = products.id AND spm.supplier_id = ?))';
       params.push(filters.supplierId, filters.supplierId);
@@ -155,6 +164,12 @@ export class MySqlProductRepository implements ProductRepository {
     if (filters.availability) {
       countSql += ' AND availability = ?';
       countParams.push(filters.availability);
+    }
+
+    // Must mirror findAll's inStock clause, or the reported total disagrees
+    // with the rows actually returned and hasMore lies.
+    if (filters.inStock) {
+      countSql += ' AND stock > 0';
     }
 
     if (filters.supplierId) {

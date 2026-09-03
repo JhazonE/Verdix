@@ -11,6 +11,7 @@ export function TransferBoard() {
   const {
     mounted,
     isLoading,
+    isSearching,
     warehouses,
     fetchData,
     sourceSearch,
@@ -32,6 +33,9 @@ export function TransferBoard() {
     setActiveTab,
   } = useTransferBoard();
 
+  // isLoading is raised only by the initial load (see use-transfer-board's
+  // fetchProducts), so this full-screen swap can never fire mid-search and
+  // unmount the search input the user is typing into.
   if (!mounted || isLoading) {
     return (
       <div className="p-10 text-center">
@@ -43,13 +47,16 @@ export function TransferBoard() {
   const sourcePaneProps = {
     sourceSearch,
     onSearchChange: setSourceSearch,
+    isSearching,
     filteredSourceItems,
     selectedSourceIds,
     onToggleSelectItem: toggleSelectItem,
     onToggleSelectAll: toggleSelectAll,
     onStageSelected: () => stageItems(selectedSourceIds),
     onStageItem: (id: string) => stageItems(id),
-    onWarehouseChange: fetchData,
+    // Wrapped so no caller-supplied argument can land in fetchData's `search`
+    // parameter and silently filter the product list.
+    onWarehouseChange: () => fetchData(sourceSearch),
   };
 
   const targetPaneProps = {

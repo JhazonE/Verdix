@@ -1,11 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 
 import { useToast } from '@/hooks/use-toast';
 import { logActivity } from '@/lib/client-activity-logger';
 import { getApiUrl } from '@/lib/api-config';
+import {
+  buildProductQuery,
+  matchesNormalizedSearch,
+  normalizeSearchTerm,
+  PRODUCT_SEARCH_DEBOUNCE_MS,
+} from '@/lib/product-search';
 import type { Warehouse } from '@/lib/types';
 
 import type { StagedTransferItem, WarehouseStockItem } from './transfer-board-types';
@@ -16,7 +22,13 @@ export function useTransferBoard() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Search refreshes are tracked separately from the initial load so they can
+  // show a subtle indicator instead of unmounting the board (see fetchProducts).
+  const [isSearching, setIsSearching] = useState(false);
   const [mounted, setMounted] = useState(false);
+  // Guards the one-time initial load, and discards out-of-order responses.
+  const hasLoadedOnce = useRef(false);
+  const latestProductRequest = useRef(0);
 
   const [sourceSearch, setSourceSearch] = useState('');
   const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set());
@@ -28,28 +40,74 @@ export function useTransferBoard() {
 
   useEffect(() => {
     setMounted(true);
-    fetchData();
+    // The search effect below performs the initial load (empty term), so
+    // fetching here too would double every page open.
     const userSession = localStorage.getItem('mock-user-session');
     if (userSession) setUser(JSON.parse(userSession));
   }, []);
 
-  const fetchData = async () => {
-    setIsLoading(true);
+  // Warehouses don't change while someone types a product name, so they load
+  // once rather than on every debounced search.
+  const fetchWarehouses = async () => {
     try {
-      const [whRes, prodRes] = await Promise.all([
-        fetch(getApiUrl('/warehouses?activeOnly=true')),
-        fetch(getApiUrl('/products?limit=1000')),
-      ]);
+      const whRes = await fetch(getApiUrl('/warehouses?activeOnly=true'));
       const whData = await whRes.json();
-      const prodData = await prodRes.json();
       if (whData.success) setWarehouses(whData.data);
-      if (prodData.success) setProducts(prodData.data);
-    } catch (error) {
-      toast({ variant: 'destructive', title: 'Error', description: 'Failed to load board data.' });
-    } finally {
-      setIsLoading(false);
+    } catch {
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to load warehouses.' });
     }
   };
+
+  // Only the FIRST load may raise isLoading: TransferBoard.tsx early-returns a
+  // full-screen spinner on it, which unmounts the board — and the search input
+  // the user is typing into — causing a visible flicker on every keystroke.
+  // Search refreshes use isSearching, which leaves the board mounted.
+  const fetchProducts = async (search = '', { initial = false } = {}) => {
+    if (initial) setIsLoading(true);
+    else setIsSearching(true);
+    // Ignore a response that arrives after a newer one: requests can complete
+    // out of order, and a slow early keystroke must not overwrite the results
+    // of the term the user has actually typed.
+    const requestId = ++latestProductRequest.current;
+    try {
+      const prodRes = await fetch(getApiUrl(buildProductQuery(search)));
+      const prodData = await prodRes.json();
+      if (requestId !== latestProductRequest.current) return;
+      if (prodData.success) setProducts(prodData.data);
+    } catch (error) {
+      if (requestId !== latestProductRequest.current) return;
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to load board data.' });
+    } finally {
+      if (requestId === latestProductRequest.current) {
+        if (initial) setIsLoading(false);
+        else setIsSearching(false);
+      }
+    }
+  };
+
+  // Kept for callers that want a full refresh (post-transfer, warehouse edits).
+  const fetchData = async (search = '') => {
+    await Promise.all([fetchWarehouses(), fetchProducts(search)]);
+  };
+
+  // Re-query the server as the user types. The catalogue is far larger than
+  // any sane preload (15,633 products at the time of writing), so matching
+  // has to happen in SQL — the repository already matches name, SKU and
+  // barcode. Debounced so a barcode scanner, which types a whole code in
+  // milliseconds, fires one request rather than one per character.
+  useEffect(() => {
+    if (!mounted) return;
+    // First pass loads warehouses and products together and owns the
+    // full-screen spinner; later passes only re-query products.
+    if (!hasLoadedOnce.current) {
+      hasLoadedOnce.current = true;
+      fetchWarehouses();
+      fetchProducts(sourceSearch, { initial: true });
+      return;
+    }
+    const t = setTimeout(() => { fetchProducts(sourceSearch); }, PRODUCT_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [sourceSearch, mounted]);
 
   const allStockItems = useMemo<WarehouseStockItem[]>(() => {
     return products.map(p => {
@@ -66,14 +124,13 @@ export function useTransferBoard() {
   }, [products, warehouses]);
 
   const filteredSourceItems = useMemo(() => {
+    // The server has already matched this term (name/SKU/barcode) across the
+    // whole catalogue. Re-applying the same match locally only hides rows
+    // still on screen from the previous term during the debounce window, so
+    // the list never shows results that contradict what has been typed.
+    const term = normalizeSearchTerm(sourceSearch);
     return allStockItems
-      .filter(i => {
-        const term = sourceSearch.toLowerCase();
-        return (
-          (i.product.name?.toLowerCase().includes(term) || i.product.sku?.toLowerCase().includes(term)) &&
-          i.quantity > 0
-        );
-      })
+      .filter(i => matchesNormalizedSearch(i.product, term) && i.quantity > 0)
       .sort((a, b) => a.product.name.localeCompare(b.product.name));
   }, [allStockItems, sourceSearch]);
 
@@ -179,7 +236,9 @@ export function useTransferBoard() {
         setTargetWarehouseId('');
         setActiveTab('source');
         setStagedItems([]);
-        fetchData();
+        // Refresh within the user's current search, not the whole list —
+        // dropping the term here would silently clear what they typed.
+        fetchData(sourceSearch);
       } else {
         throw new Error(result.error || 'Transfer failed');
       }
@@ -193,6 +252,7 @@ export function useTransferBoard() {
   return {
     mounted,
     isLoading,
+    isSearching,
     warehouses,
     fetchData,
     sourceSearch,

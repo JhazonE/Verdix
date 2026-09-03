@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +29,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { getApiUrl } from '@/lib/api-config';
+import {
+  buildProductQuery,
+  matchesNormalizedSearch,
+  normalizeSearchTerm,
+  PRODUCT_SEARCH_DEBOUNCE_MS,
+} from '@/lib/product-search';
 import { cn, formatStockQuantity } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ManageShelfLocationsDialog } from '../../products/shelf-locations/ManageShelfLocationsDialog';
@@ -60,6 +66,12 @@ export default function ShelfBoard() {
   const [shelfLocations, setShelfLocations] = useState<ShelfLocation[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Search refreshes are tracked separately from the initial load so they can
+  // show a subtle indicator instead of unmounting the board (see fetchProducts).
+  const [isSearching, setIsSearching] = useState(false);
+  // Guards the one-time initial load, and discards out-of-order responses.
+  const hasLoadedOnce = useRef(false);
+  const latestProductRequest = useRef(0);
   const [mounted, setMounted] = useState(false);
   
   const [sourceSearch, setSourceSearch] = useState('');
@@ -72,27 +84,73 @@ export default function ShelfBoard() {
 
   useEffect(() => {
     setMounted(true);
-    fetchData();
+    // The search effect below performs the initial load (empty term), so
+    // fetching here too would double every page open.
     const userSession = localStorage.getItem('mock-user-session');
     if (userSession) setUser(JSON.parse(userSession));
   }, []);
 
-  const fetchData = async () => {
-    setIsLoading(true);
+  // Re-query the server as the user types. The catalogue is far larger than
+  // any sane preload (15,633 products at the time of writing), so matching
+  // has to happen in SQL — the repository already matches name, SKU and
+  // barcode. Debounced so a barcode scanner, which types a whole code in
+  // milliseconds, fires one request rather than one per character.
+  useEffect(() => {
+    if (!mounted) return;
+    // First pass loads shelf locations and products together and owns the
+    // full-screen spinner; later passes only re-query products.
+    if (!hasLoadedOnce.current) {
+      hasLoadedOnce.current = true;
+      fetchShelfLocations();
+      fetchProducts(sourceSearch, { initial: true });
+      return;
+    }
+    const t = setTimeout(() => { fetchProducts(sourceSearch); }, PRODUCT_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [sourceSearch, mounted]);
+
+  // Shelf locations don't change while someone types a product name, so they
+  // load once rather than on every debounced search.
+  const fetchShelfLocations = async () => {
     try {
-      const [shelfRes, prodRes] = await Promise.all([
-        fetch(getApiUrl('/shelf-locations')),
-        fetch(getApiUrl('/products?limit=1000')),
-      ]);
+      const shelfRes = await fetch(getApiUrl('/shelf-locations'));
       const shelfData = await shelfRes.json();
-      const prodData = await prodRes.json();
       if (shelfData.success) setShelfLocations(shelfData.data);
+    } catch {
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to load shelf locations.' });
+    }
+  };
+
+  // Only the FIRST load may raise isLoading: this component early-returns a
+  // full-screen spinner on it, which unmounts the board — and the search input
+  // the user is typing into — causing a visible flicker on every keystroke.
+  // Search refreshes use isSearching, which leaves the board mounted.
+  const fetchProducts = async (search = '', { initial = false } = {}) => {
+    if (initial) setIsLoading(true);
+    else setIsSearching(true);
+    // Ignore a response that arrives after a newer one: requests can complete
+    // out of order, and a slow early keystroke must not overwrite the results
+    // of the term the user has actually typed.
+    const requestId = ++latestProductRequest.current;
+    try {
+      const prodRes = await fetch(getApiUrl(buildProductQuery(search)));
+      const prodData = await prodRes.json();
+      if (requestId !== latestProductRequest.current) return;
       if (prodData.success) setProducts(prodData.data);
     } catch (error) {
+      if (requestId !== latestProductRequest.current) return;
       toast({ variant: 'destructive', title: 'Error', description: 'Failed to load data.' });
     } finally {
-      setIsLoading(false);
+      if (requestId === latestProductRequest.current) {
+        if (initial) setIsLoading(false);
+        else setIsSearching(false);
+      }
     }
+  };
+
+  // Kept for callers that want a full refresh (post-transfer, shelf edits).
+  const fetchData = async (search = '') => {
+    await Promise.all([fetchShelfLocations(), fetchProducts(search)]);
   };
 
   const allStockItems = useMemo<StockItem[]>(() => {
@@ -118,10 +176,12 @@ export default function ShelfBoard() {
   }, [products, shelfLocations]);
 
   const filteredSourceItems = useMemo(() => {
-    return allStockItems.filter(i => {
-      const term = sourceSearch.toLowerCase();
-      return (i.product.name?.toLowerCase().includes(term) || i.product.sku?.toLowerCase().includes(term)) && i.quantity > 0;
-    }).sort((a, b) => a.product.name.localeCompare(b.product.name));
+    // Normalize once, not per row. Matching covers barcode as well as
+    // name/SKU, so a scanner finds the item — see lib/product-search.ts.
+    const term = normalizeSearchTerm(sourceSearch);
+    return allStockItems
+      .filter(i => matchesNormalizedSearch(i.product, term) && i.quantity > 0)
+      .sort((a, b) => a.product.name.localeCompare(b.product.name));
   }, [allStockItems, sourceSearch]);
 
   const stageItems = (ids: Set<string> | string) => {
@@ -147,7 +207,9 @@ export default function ShelfBoard() {
         setTargetShelfId('');
         setActiveTab('source');
         setStagedItems([]);
-        fetchData();
+        // Refresh within the user's current search, not the whole list —
+        // dropping the term here would silently clear what they typed.
+        fetchData(sourceSearch);
       } else throw new Error();
     } catch {
       toast({ variant: 'destructive', title: 'Error', description: "Transfer failed." });
@@ -156,6 +218,8 @@ export default function ShelfBoard() {
     }
   };
 
+  // isLoading is raised only by the initial load (see fetchProducts), so this
+  // full-screen swap can never fire mid-search and unmount the search input.
   if (isLoading) return <div className="p-10 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></div>;
 
   const SourcePane = (
@@ -165,10 +229,22 @@ export default function ShelfBoard() {
                   <h2 className="font-bold text-sm flex items-center gap-1.5 truncate"><Box className="h-4 w-4" /> Inventory</h2>
                   <div className="flex gap-1">
                       <Button size="sm" className="h-7 text-[11px] font-bold" onClick={() => stageItems(selectedSourceIds)} disabled={selectedSourceIds.size === 0}>Stage All</Button>
-                      <ManageShelfLocationsDialog onLocationAdded={fetchData} trigger={<Button variant="outline" size="sm" className="h-7 px-1.5"><Rows3 className="h-4 w-4" /></Button>} />
+                      {/* Wrapped, not passed directly: onLocationAdded hands
+                          back a locationId, which fetchData would otherwise
+                          take as its `search` argument and use to filter the
+                          product list. */}
+                      <ManageShelfLocationsDialog onLocationAdded={() => fetchData(sourceSearch)} trigger={<Button variant="outline" size="sm" className="h-7 px-1.5"><Rows3 className="h-4 w-4" /></Button>} />
                   </div>
               </div>
-              <Input placeholder="Search..." value={sourceSearch} onChange={e => setSourceSearch(e.target.value)} className="h-8 text-sm" />
+              {/* Search progress shows as a small spinner inside the field
+                  rather than replacing the board, so the input keeps focus
+                  and the list never flickers while typing. */}
+              <div className="relative">
+                <Input placeholder="Search name, SKU or barcode..." value={sourceSearch} onChange={e => setSourceSearch(e.target.value)} className="h-8 text-sm pr-8" />
+                {isSearching && (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                )}
+              </div>
           </div>
           <div className="grid grid-cols-[36px,1fr,56px] px-3 py-1 bg-muted/30 border-b text-[10px] font-bold text-muted-foreground uppercase">
               <div className="flex justify-center"><Checkbox checked={filteredSourceItems.length > 0 && selectedSourceIds.size === filteredSourceItems.length} onCheckedChange={() => setSelectedSourceIds(selectedSourceIds.size === filteredSourceItems.length ? new Set() : new Set(filteredSourceItems.map(i => i.uniqueId)))} /></div>
