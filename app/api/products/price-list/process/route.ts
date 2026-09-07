@@ -21,6 +21,11 @@ export async function POST(request: NextRequest) {
   const warehouseId = String(form.get('warehouseId') || '');
   const mode = String(form.get('mode') || 'preview');
   const confirmCreate = String(form.get('confirmCreate') || '') === '1';
+  // Accepted for forward-compatibility with the brief's field list, but not yet
+  // wired anywhere: insertNewProducts() takes no userId parameter, so Excel-created
+  // products currently carry no creator attribution. Wiring that up (a signature
+  // change plus whatever column/audit-log it should land in) is a separate change.
+  const userId = String(form.get('userId') || '');
 
   if (!(file instanceof File)) return Response.json({ message: 'No file uploaded.' }, { status: 400 });
   if (!warehouseId) return Response.json({ message: 'No warehouse selected.' }, { status: 400 });
@@ -67,7 +72,6 @@ export async function POST(request: NextRequest) {
             phase: 'error',
             message: 'This file creates new products, which is not available while product approvals are on.',
           });
-          controller.close();
           return;
         }
 
@@ -82,14 +86,12 @@ export async function POST(request: NextRequest) {
             toCreateSample: result.toCreate.slice(0, SAMPLE_LIMIT),
             skippedRows: result.skipped,
           });
-          controller.close();
           return;
         }
 
         // apply
         if (result.toCreate.length > 0 && !confirmCreate) {
           send({ phase: 'error', message: 'This file creates new products; confirmation is required.' });
-          controller.close();
           return;
         }
 
@@ -115,6 +117,11 @@ export async function POST(request: NextRequest) {
       } catch (error: any) {
         send({ phase: 'error', message: error?.message || 'Processing failed.' });
       } finally {
+        // Sole owner of closing the stream — every early-return path above falls
+        // through to here instead of closing inline, so this can never double-close
+        // (which throws "Invalid state: Controller is already closed" and would
+        // otherwise make any cleanup added here silently unreachable on the common
+        // preview/denial paths).
         controller.close();
       }
     },
