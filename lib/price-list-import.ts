@@ -337,6 +337,36 @@ export async function applyMatchedItems(
   return { applied, skipped };
 }
 
+const PRODUCTS_COLUMNS = `id, name, description, category, brand, warehouse_id, stock, reorder_point,
+    avg_daily_sales, price, cost, sku, barcode, image_hint, unit_of_measure, conversion_factor,
+    vat_status, availability, earns_points, is_perishable, type`;
+const PRODUCTS_PLACEHOLDERS = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+
+/**
+ * Builds a products.id that can never exceed the column's VARCHAR(50) limit.
+ *
+ * Overhead beyond the SKU is fixed: '-' + 13-digit Date.now() + '-' + a 6-char
+ * base36 suffix = 21 chars. Truncating the SKU portion to 29 chars keeps the
+ * total at 50 even for a SKU at its own column's max length (VARCHAR(100)).
+ * Truncating here (not the SKU column itself) means a long SKU still saves
+ * correctly — only this synthetic id is shortened.
+ */
+function buildProductId(sku: string): string {
+  const suffix = `-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+  const maxSkuLen = 50 - suffix.length;
+  return `${sku.slice(0, maxSkuLen)}${suffix}`;
+}
+
+/** Column values for one products row, in PRODUCTS_COLUMNS order. */
+function buildProductValues(r: NewProductFromExcel, warehouseId: string, productId: string): any[] {
+  return [
+    productId, r.name, r.name, r.category, r.brand, warehouseId, 0, 0,
+    0, r.price, r.cost ?? null, r.sku, r.barcode || null,
+    r.name.toLowerCase().replace(/\s+/g, '-'), r.unitOfMeasure, 1,
+    'YES (Subject to 12% VAT)', 'Available', 1, 0, 'standard',
+  ];
+}
+
 /**
  * Inserts new products with multi-row INSERTs instead of one addProduct() call
  * (and therefore one transaction) per row.
@@ -355,43 +385,46 @@ export async function insertNewProducts(
   let done = 0;
   const failed: { row: NewProductFromExcel; reason: string }[] = [];
 
-  const columns = `id, name, description, category, brand, warehouse_id, stock, reorder_point,
-    avg_daily_sales, price, cost, sku, barcode, image_hint, unit_of_measure, conversion_factor,
-    vat_status, availability, earns_points, is_perishable, type`;
-
   for (const part of chunk(rows, APPLY_CHUNK_SIZE)) {
     const values: any[] = [];
     const placeholders: string[] = [];
     for (const r of part) {
-      const productId = `${r.sku}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-      placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-      values.push(
-        productId, r.name, r.name, r.category, r.brand, warehouseId, 0, 0,
-        0, r.price, r.cost ?? null, r.sku, r.barcode || null,
-        r.name.toLowerCase().replace(/\s+/g, '-'), r.unitOfMeasure, 1,
-        'YES (Subject to 12% VAT)', 'Available', 1, 0, 'standard',
-      );
+      placeholders.push(PRODUCTS_PLACEHOLDERS);
+      values.push(...buildProductValues(r, warehouseId, buildProductId(r.sku)));
     }
 
     try {
       await withTransaction(async (connection) => {
-        await connection.query(`INSERT INTO products (${columns}) VALUES ${placeholders.join(', ')}`, values);
+        await connection.query(`INSERT INTO products (${PRODUCTS_COLUMNS}) VALUES ${placeholders.join(', ')}`, values);
       });
       created += part.length;
-    } catch (error: any) {
-      // One bad row fails its whole chunk. Retry the chunk row-by-row so the
-      // good rows still land and only the genuinely bad ones are reported.
+    } catch {
+      // The chunk's transaction threw, but that does not prove nothing landed:
+      // a connection loss or a failure inside commit() itself (PROTOCOL_CONNECTION_LOST,
+      // a server-side timeout) can throw AFTER the commit already succeeded, and the
+      // following rollback() on a dead connection is then a no-op. Find out what is
+      // actually in the DB before retrying anything, so an already-committed row is
+      // never re-inserted (which would otherwise hit the sku+warehouse unique index
+      // and get misreported as failed even though it succeeded).
+      const skusInPart = part.map(r => r.sku);
+      const existingSkuRows: any = await query(
+        `SELECT sku FROM products WHERE warehouse_id = ? AND sku IN (${skusInPart.map(() => '?').join(',')})`,
+        [warehouseId, ...skusInPart],
+      );
+      const alreadyLanded = new Set<string>((existingSkuRows ?? []).map((row: any) => row.sku));
+
       for (const r of part) {
-        const productId = `${r.sku}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+        if (alreadyLanded.has(r.sku)) {
+          // The chunk insert actually succeeded for this row before the
+          // connection-level failure; count it as created, do not re-insert.
+          created++;
+          continue;
+        }
         try {
+          const productId = buildProductId(r.sku);
           await query(
-            `INSERT INTO products (${columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              productId, r.name, r.name, r.category, r.brand, warehouseId, 0, 0,
-              0, r.price, r.cost ?? null, r.sku, r.barcode || null,
-              r.name.toLowerCase().replace(/\s+/g, '-'), r.unitOfMeasure, 1,
-              'YES (Subject to 12% VAT)', 'Available', 1, 0, 'standard',
-            ],
+            `INSERT INTO products (${PRODUCTS_COLUMNS}) VALUES ${PRODUCTS_PLACEHOLDERS}`,
+            buildProductValues(r, warehouseId, productId),
           );
           created++;
         } catch (rowError: any) {
