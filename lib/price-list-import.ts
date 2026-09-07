@@ -1,5 +1,6 @@
 import { applyAdjustment, isValidPriceValue, type AdjustmentType } from '@/lib/price-update-math';
 import { generateSku } from '@/lib/sku';
+import { query, withTransaction } from '@/lib/mysql';
 
 export interface PriceUpdateItem {
   productId: string;
@@ -215,3 +216,192 @@ export function chunk<T>(items: T[], size: number): T[][] {
 export const LOOKUP_CHUNK_SIZE = 1000;
 /** Rows-per-transaction for applying updates and inserting new products. */
 export const APPLY_CHUNK_SIZE = 500;
+
+/**
+ * Loads every product this file could match, in chunked IN (...) queries
+ * instead of one or two SELECTs per row. A 15,000-row file goes from up to
+ * 30,000 sequential round-trips to roughly 30.
+ *
+ * `allSkus` additionally loads every SKU in the warehouse (not just the ones
+ * named in the file) so generateUniqueSku can avoid colliding with a product
+ * the file never mentions.
+ */
+export async function loadMatchMaps(warehouseId: string, rows: PriceListRow[]): Promise<MatchMaps> {
+  const skus = [...new Set(rows.map(r => (r.sku || '').trim()).filter(Boolean))];
+  const barcodes = [...new Set(rows.map(r => (r.barcode || '').trim()).filter(Boolean))];
+
+  const bySku = new Map<string, ProductLookup>();
+  const byBarcode = new Map<string, ProductLookup>();
+
+  for (const part of chunk(skus, LOOKUP_CHUNK_SIZE)) {
+    const rowsOut: any = await query(
+      `SELECT id, name, sku, barcode, price, cost FROM products
+       WHERE warehouse_id = ? AND sku IN (${part.map(() => '?').join(',')})`,
+      [warehouseId, ...part],
+    );
+    for (const p of rowsOut ?? []) if (p.sku) bySku.set(p.sku, p);
+  }
+
+  for (const part of chunk(barcodes, LOOKUP_CHUNK_SIZE)) {
+    const rowsOut: any = await query(
+      `SELECT id, name, sku, barcode, price, cost FROM products
+       WHERE warehouse_id = ? AND barcode IN (${part.map(() => '?').join(',')})`,
+      [warehouseId, ...part],
+    );
+    for (const p of rowsOut ?? []) if (p.barcode) byBarcode.set(p.barcode, p);
+  }
+
+  const allSkuRows: any = await query('SELECT sku FROM products WHERE warehouse_id = ? AND sku IS NOT NULL', [warehouseId]);
+  const allSkus = new Set<string>((allSkuRows ?? []).map((r: any) => r.sku));
+
+  return { bySku, byBarcode, allSkus };
+}
+
+/**
+ * Applies matched items in APPLY_CHUNK_SIZE transactions rather than one.
+ *
+ * This deliberately trades all-or-nothing atomicity for liveness: holding
+ * 15,000 row locks in a single transaction blocks POS checkout for minutes and
+ * risks innodb_lock_wait_timeout. A mid-run failure leaves earlier chunks
+ * committed; re-running the same file is idempotent, since it sets the same
+ * prices again.
+ */
+export async function applyMatchedItems(
+  items: PriceUpdateItem[],
+  onProgress?: (done: number) => void,
+): Promise<{ applied: number; skipped: { productId: string; productName: string; reason: string }[] }> {
+  const skipped: { productId: string; productName: string; reason: string }[] = [];
+  let applied = 0;
+  let done = 0;
+
+  // query() (lib/mysql.ts) already destructures the mysql2 result tuple
+  // internally and returns the row array directly — destructuring it again
+  // here would bind the first row object, not the array.
+  const defaultLevelRows: any = await query('SELECT id FROM price_levels WHERE is_default = 1 LIMIT 1');
+  const defaultLevelId: string | undefined = defaultLevelRows?.[0]?.id;
+
+  for (const part of chunk(items, APPLY_CHUNK_SIZE)) {
+    await withTransaction(async (connection) => {
+      for (const item of part) {
+        // connection.query() is raw mysql2 and DOES return [rows, fields] —
+        // unlike query() above, this destructuring is correct.
+        const [rows]: any = await connection.query('SELECT id, cost FROM products WHERE id = ?', [item.productId]);
+        if (!rows || rows.length === 0) {
+          skipped.push({ productId: item.productId, productName: item.productName, reason: 'Product no longer exists' });
+          continue;
+        }
+
+        // Recompute markup-derived prices at apply time: cost may have drifted
+        // since preview (e.g. a new PO landed).
+        let newValue = item.newValue;
+        if (item.adjustmentType === 'markup') {
+          const liveCost = parseFloat(rows[0].cost ?? 0);
+          newValue = applyAdjustment('markup', 0, item.adjustmentValue, liveCost);
+        }
+
+        if (!isValidPriceValue(newValue)) {
+          skipped.push({ productId: item.productId, productName: item.productName, reason: 'Computed price is invalid' });
+          continue;
+        }
+
+        if (item.field === 'price') {
+          await connection.query('UPDATE products SET price = ? WHERE id = ?', [newValue, item.productId]);
+          // Keep an existing default-level price-level row in sync with the
+          // base price it mirrors. Never creates one.
+          if (defaultLevelId) {
+            await connection.query(
+              'UPDATE product_price_levels SET price = ? WHERE product_id = ? AND price_level_id = ?',
+              [newValue, item.productId, defaultLevelId],
+            );
+          }
+        } else if (item.field === 'cost') {
+          await connection.query('UPDATE products SET cost = ? WHERE id = ?', [newValue, item.productId]);
+        } else if (item.field === 'priceLevel' && item.priceLevelId) {
+          // Upsert on the real PK (product_id, price_level_id); min_quantity is
+          // not part of it, so an existence check filtered on min_quantity can
+          // miss a row and hit a duplicate-PK error.
+          await connection.query(
+            `INSERT INTO product_price_levels (product_id, price_level_id, price, min_quantity)
+             VALUES (?, ?, ?, 0)
+             ON DUPLICATE KEY UPDATE price = VALUES(price)`,
+            [item.productId, item.priceLevelId, newValue],
+          );
+        }
+        applied++;
+      }
+    });
+    done += part.length;
+    onProgress?.(done);
+  }
+
+  return { applied, skipped };
+}
+
+/**
+ * Inserts new products with multi-row INSERTs instead of one addProduct() call
+ * (and therefore one transaction) per row.
+ *
+ * Safe because the Excel path supplies none of addProduct's optional
+ * sub-entities — no shelf locations, conversion factors, price levels or
+ * supplier mappings — and stock 0, so addProduct reduces to this single INSERT.
+ * If addProduct's column defaults change, change them here too.
+ */
+export async function insertNewProducts(
+  warehouseId: string,
+  rows: NewProductFromExcel[],
+  onProgress?: (done: number) => void,
+): Promise<{ created: number; failed: { row: NewProductFromExcel; reason: string }[] }> {
+  let created = 0;
+  let done = 0;
+  const failed: { row: NewProductFromExcel; reason: string }[] = [];
+
+  const columns = `id, name, description, category, brand, warehouse_id, stock, reorder_point,
+    avg_daily_sales, price, cost, sku, barcode, image_hint, unit_of_measure, conversion_factor,
+    vat_status, availability, earns_points, is_perishable, type`;
+
+  for (const part of chunk(rows, APPLY_CHUNK_SIZE)) {
+    const values: any[] = [];
+    const placeholders: string[] = [];
+    for (const r of part) {
+      const productId = `${r.sku}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+      placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      values.push(
+        productId, r.name, r.name, r.category, r.brand, warehouseId, 0, 0,
+        0, r.price, r.cost ?? null, r.sku, r.barcode || null,
+        r.name.toLowerCase().replace(/\s+/g, '-'), r.unitOfMeasure, 1,
+        'YES (Subject to 12% VAT)', 'Available', 1, 0, 'standard',
+      );
+    }
+
+    try {
+      await withTransaction(async (connection) => {
+        await connection.query(`INSERT INTO products (${columns}) VALUES ${placeholders.join(', ')}`, values);
+      });
+      created += part.length;
+    } catch (error: any) {
+      // One bad row fails its whole chunk. Retry the chunk row-by-row so the
+      // good rows still land and only the genuinely bad ones are reported.
+      for (const r of part) {
+        const productId = `${r.sku}-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+        try {
+          await query(
+            `INSERT INTO products (${columns}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              productId, r.name, r.name, r.category, r.brand, warehouseId, 0, 0,
+              0, r.price, r.cost ?? null, r.sku, r.barcode || null,
+              r.name.toLowerCase().replace(/\s+/g, '-'), r.unitOfMeasure, 1,
+              'YES (Subject to 12% VAT)', 'Available', 1, 0, 'standard',
+            ],
+          );
+          created++;
+        } catch (rowError: any) {
+          failed.push({ row: r, reason: rowError.message || 'Failed to create product' });
+        }
+      }
+    }
+    done += part.length;
+    onProgress?.(done);
+  }
+
+  return { created, failed };
+}
