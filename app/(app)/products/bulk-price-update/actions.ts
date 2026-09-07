@@ -54,7 +54,19 @@ export async function submitPriceUpdateBatch(
 }
 
 async function applyPriceUpdateBatch(items: PriceUpdateItem[]): Promise<PriceUpdateResult> {
-  const { applied, skipped } = await applyMatchedItems(items);
+  const { applied, skipped, error } = await applyMatchedItems(items);
+  if (error) {
+    // A chunk threw mid-run: the chunks before it already committed real
+    // price/cost changes, so `applied` here is real and must be reported —
+    // never silently rolled into a "success" count, and never hidden behind
+    // a bare failure message either.
+    return {
+      success: false,
+      applied,
+      skipped,
+      message: `Updated ${applied} product(s) before stopping.${skipped.length ? ` ${skipped.length} skipped.` : ''} Stopped early: ${error}`,
+    };
+  }
   return {
     success: true,
     applied,
