@@ -200,3 +200,18 @@ export function matchPriceListRows(rows: PriceListRow[], maps: MatchMaps): Price
 
   return { matched, toCreate, skipped };
 }
+
+/**
+ * Splits a list into fixed-size chunks. Used for both the 1,000-identifier
+ * IN (...) lookup batches and the 500-item apply transactions.
+ */
+export function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/** Identifiers-per-IN() for the batched lookups. */
+export const LOOKUP_CHUNK_SIZE = 1000;
+/** Rows-per-transaction for applying updates and inserting new products. */
+export const APPLY_CHUNK_SIZE = 500;

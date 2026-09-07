@@ -36,6 +36,7 @@ import './sta-lucia-client-409.test';
 import './price-update-math.test';
 import './price-list-template.test';
 import './price-list-import-match.test';
+import './price-list-import-chunking.test';
 import './seed-default-price-level.test';
 import './price-level-calc.test';
 import './bir-or-number.test';
