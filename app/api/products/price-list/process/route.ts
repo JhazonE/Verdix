@@ -113,6 +113,12 @@ export async function POST(request: NextRequest) {
           skipped: result.skipped.length + applyOut.skipped.length,
           failed: createOut.failed.length,
           skippedRows: result.skipped,
+          // applyOut.error means a chunk mid-run threw after earlier chunks
+          // already committed real price/cost changes. Surface it alongside
+          // the real counts above rather than as a separate {phase:'error'}
+          // frame, so the client can never report a bare "Error" while
+          // thousands of prices actually moved.
+          ...(applyOut.error ? { error: applyOut.error } : {}),
         });
       } catch (error: any) {
         send({ phase: 'error', message: error?.message || 'Processing failed.' });

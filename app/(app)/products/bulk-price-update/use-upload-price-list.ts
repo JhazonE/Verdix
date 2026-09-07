@@ -99,13 +99,17 @@ export function useUploadPriceList(warehouseId: string, onUpdated?: () => void) 
     try {
       const result = await post(file, 'apply', userId);
       const parts: string[] = [];
-      if (result.applied > 0) parts.push(`Updated ${result.applied} product(s)`);
-      if (result.created > 0) parts.push(`Created ${result.created} new product(s)`);
+      // Always state real counts first, even when result.error is set — those
+      // chunks already committed to the database, so the user must see what
+      // actually happened to their prices, never just "Error".
+      parts.push(`Updated ${result.applied || 0} product(s)`);
+      parts.push(`Created ${result.created || 0}`);
       if (result.skipped > 0) parts.push(`${result.skipped} row(s) skipped`);
       if (result.failed > 0) parts.push(`${result.failed} failed`);
+      if (result.error) parts.push(`Stopped early: ${result.error}`);
       toast({
-        variant: result.failed > 0 ? 'destructive' : undefined,
-        title: result.failed > 0 ? 'Completed with issues' : 'Price list processed',
+        variant: (result.failed > 0 || result.error) ? 'destructive' : undefined,
+        title: result.error ? 'Stopped with partial results' : (result.failed > 0 ? 'Completed with issues' : 'Price list processed'),
         description: parts.join('. ') || 'Nothing to do.',
       });
       setPreview(null);

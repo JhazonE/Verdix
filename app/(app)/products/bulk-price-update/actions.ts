@@ -3,7 +3,7 @@
 import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
 import { addProduct } from '@/app/(app)/products/actions';
 import {
-  loadMatchMaps, matchPriceListRows, applyMatchedItems,
+  applyMatchedItems,
   type PriceUpdateItem, type PriceListRow, type NewProductFromExcel, type PriceListPreviewResult,
 } from '@/lib/price-list-import';
 
@@ -61,14 +61,6 @@ async function applyPriceUpdateBatch(items: PriceUpdateItem[]): Promise<PriceUpd
     skipped,
     message: `Updated ${applied} product(s).${skipped.length ? ` ${skipped.length} skipped.` : ''}`,
   };
-}
-
-export async function previewPriceListUpload(
-  warehouseId: string,
-  rows: PriceListRow[],
-): Promise<PriceListPreviewResult> {
-  const maps = await loadMatchMaps(warehouseId, rows);
-  return matchPriceListRows(rows, maps);
 }
 
 export interface CreateProductsResult {

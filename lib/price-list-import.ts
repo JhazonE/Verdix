@@ -269,7 +269,7 @@ export async function loadMatchMaps(warehouseId: string, rows: PriceListRow[]): 
 export async function applyMatchedItems(
   items: PriceUpdateItem[],
   onProgress?: (done: number) => void,
-): Promise<{ applied: number; skipped: { productId: string; productName: string; reason: string }[] }> {
+): Promise<{ applied: number; skipped: { productId: string; productName: string; reason: string }[]; error?: string }> {
   const skipped: { productId: string; productName: string; reason: string }[] = [];
   let applied = 0;
   let done = 0;
@@ -280,61 +280,74 @@ export async function applyMatchedItems(
   const defaultLevelRows: any = await query('SELECT id FROM price_levels WHERE is_default = 1 LIMIT 1');
   const defaultLevelId: string | undefined = defaultLevelRows?.[0]?.id;
 
+  // A chunk that throws (deadlock, connection loss, etc.) stops the loop
+  // rather than propagating: the chunks before it already committed real
+  // money changes (prices, costs), so the caller must be able to report what
+  // actually landed instead of the whole apply being reported as a bare
+  // "Error" while thousands of prices silently changed underneath it.
+  // Continuing past the failure is deliberately not attempted — a systemic
+  // failure (e.g. lost DB connection) would just repeat on every later chunk.
+  let error: string | undefined;
   for (const part of chunk(items, APPLY_CHUNK_SIZE)) {
-    await withTransaction(async (connection) => {
-      for (const item of part) {
-        // connection.query() is raw mysql2 and DOES return [rows, fields] —
-        // unlike query() above, this destructuring is correct.
-        const [rows]: any = await connection.query('SELECT id, cost FROM products WHERE id = ?', [item.productId]);
-        if (!rows || rows.length === 0) {
-          skipped.push({ productId: item.productId, productName: item.productName, reason: 'Product no longer exists' });
-          continue;
-        }
+    try {
+      await withTransaction(async (connection) => {
+        for (const item of part) {
+          // connection.query() is raw mysql2 and DOES return [rows, fields] —
+          // unlike query() above, this destructuring is correct.
+          const [rows]: any = await connection.query('SELECT id, cost FROM products WHERE id = ?', [item.productId]);
+          if (!rows || rows.length === 0) {
+            skipped.push({ productId: item.productId, productName: item.productName, reason: 'Product no longer exists' });
+            continue;
+          }
 
-        // Recompute markup-derived prices at apply time: cost may have drifted
-        // since preview (e.g. a new PO landed).
-        let newValue = item.newValue;
-        if (item.adjustmentType === 'markup') {
-          const liveCost = parseFloat(rows[0].cost ?? 0);
-          newValue = applyAdjustment('markup', 0, item.adjustmentValue, liveCost);
-        }
+          // Recompute markup-derived prices at apply time: cost may have drifted
+          // since preview (e.g. a new PO landed).
+          let newValue = item.newValue;
+          if (item.adjustmentType === 'markup') {
+            const liveCost = parseFloat(rows[0].cost ?? 0);
+            newValue = applyAdjustment('markup', 0, item.adjustmentValue, liveCost);
+          }
 
-        if (!isValidPriceValue(newValue)) {
-          skipped.push({ productId: item.productId, productName: item.productName, reason: 'Computed price is invalid' });
-          continue;
-        }
+          if (!isValidPriceValue(newValue)) {
+            skipped.push({ productId: item.productId, productName: item.productName, reason: 'Computed price is invalid' });
+            continue;
+          }
 
-        if (item.field === 'price') {
-          await connection.query('UPDATE products SET price = ? WHERE id = ?', [newValue, item.productId]);
-          // Keep an existing default-level price-level row in sync with the
-          // base price it mirrors. Never creates one.
-          if (defaultLevelId) {
+          if (item.field === 'price') {
+            await connection.query('UPDATE products SET price = ? WHERE id = ?', [newValue, item.productId]);
+            // Keep an existing default-level price-level row in sync with the
+            // base price it mirrors. Never creates one.
+            if (defaultLevelId) {
+              await connection.query(
+                'UPDATE product_price_levels SET price = ? WHERE product_id = ? AND price_level_id = ?',
+                [newValue, item.productId, defaultLevelId],
+              );
+            }
+          } else if (item.field === 'cost') {
+            await connection.query('UPDATE products SET cost = ? WHERE id = ?', [newValue, item.productId]);
+          } else if (item.field === 'priceLevel' && item.priceLevelId) {
+            // Upsert on the real PK (product_id, price_level_id); min_quantity is
+            // not part of it, so an existence check filtered on min_quantity can
+            // miss a row and hit a duplicate-PK error.
             await connection.query(
-              'UPDATE product_price_levels SET price = ? WHERE product_id = ? AND price_level_id = ?',
-              [newValue, item.productId, defaultLevelId],
+              `INSERT INTO product_price_levels (product_id, price_level_id, price, min_quantity)
+               VALUES (?, ?, ?, 0)
+               ON DUPLICATE KEY UPDATE price = VALUES(price)`,
+              [item.productId, item.priceLevelId, newValue],
             );
           }
-        } else if (item.field === 'cost') {
-          await connection.query('UPDATE products SET cost = ? WHERE id = ?', [newValue, item.productId]);
-        } else if (item.field === 'priceLevel' && item.priceLevelId) {
-          // Upsert on the real PK (product_id, price_level_id); min_quantity is
-          // not part of it, so an existence check filtered on min_quantity can
-          // miss a row and hit a duplicate-PK error.
-          await connection.query(
-            `INSERT INTO product_price_levels (product_id, price_level_id, price, min_quantity)
-             VALUES (?, ?, ?, 0)
-             ON DUPLICATE KEY UPDATE price = VALUES(price)`,
-            [item.productId, item.priceLevelId, newValue],
-          );
+          applied++;
         }
-        applied++;
-      }
-    });
+      });
+    } catch (err: any) {
+      error = err?.message || 'Failed to apply price changes.';
+      break;
+    }
     done += part.length;
     onProgress?.(done);
   }
 
-  return { applied, skipped };
+  return { applied, skipped, ...(error ? { error } : {}) };
 }
 
 const PRODUCTS_COLUMNS = `id, name, description, category, brand, warehouse_id, stock, reorder_point,
