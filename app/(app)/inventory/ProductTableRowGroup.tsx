@@ -16,7 +16,7 @@ import { ProductRowActions } from './ProductRowActions';
 import { getStockStatus, useStockStatus } from './use-stock-status';
 
 export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmentConfirmation, requireTransferConfirmation, lowStockThreshold }: { productGroup: ProductWithChildren, onSuccess?: () => void, requireAdjustmentConfirmation?: boolean, requireTransferConfirmation?: boolean, lowStockThreshold?: number }) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(productGroup.defaultExpanded ?? false);
   const hasChildren = productGroup.children && productGroup.children.length > 0;
 
   const displayStock = productGroup.stock;

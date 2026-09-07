@@ -40,48 +40,70 @@ export function useInventoryPage() {
 
   const products = useMemo(() => {
     const lower = searchTerm.toLowerCase().trim();
-    const searched = lower
-      ? allLoadedProducts.filter((p: Product) =>
-          (p.name?.toLowerCase() ?? '').includes(lower) ||
-          (p.sku?.toLowerCase() ?? '').includes(lower) ||
-          (p.barcode?.toLowerCase() ?? '').includes(lower)
-        )
-      : allLoadedProducts;
+    const matches = (p: Product) =>
+      (p.name?.toLowerCase() ?? '').includes(lower) ||
+      (p.sku?.toLowerCase() ?? '').includes(lower) ||
+      (p.barcode?.toLowerCase() ?? '').includes(lower);
 
-    const filtered = typeFilter === 'all'
-      ? searched
-      : searched.filter((p: Product) => (p.type ?? 'standard') === typeFilter);
+    const matchesType = (p: Product) =>
+      typeFilter === 'all' || (p.type ?? 'standard') === typeFilter;
 
+    // Build the parent → child tree from the FULL product list, not from the
+    // filtered one. Filtering first would strip a parent whose child matched
+    // (leaving the child rendered as a bogus top-level card) or strip the
+    // children of a matching parent (hiding its expander entirely).
     const grouped: ProductWithChildren[] = [];
     const parentMap = new Map<string, ProductWithChildren>();
 
-    filtered.forEach((p: Product) => {
+    allLoadedProducts.forEach((p: Product) => {
       if (!p.parentId) {
-        const parentItem = { ...p, children: [] };
+        const parentItem: ProductWithChildren = { ...p, children: [] };
         grouped.push(parentItem);
         parentMap.set(p.id, parentItem);
       }
     });
 
-    filtered.forEach((p: Product) => {
-      if (p.parentId && parentMap.has(p.parentId)) {
-        const parent = parentMap.get(p.parentId);
-        if (parent && parent.children) {
-           parent.children.push(p);
-        }
+    allLoadedProducts.forEach((p: Product) => {
+      const parent = p.parentId ? parentMap.get(p.parentId) : undefined;
+      if (parent?.children) {
+        parent.children.push(p);
       } else if (p.parentId) {
-        grouped.push({ ...p, children: [] });
+        // Child whose parent is missing from the data set entirely.
+        const orphan: ProductWithChildren = { ...p, children: [] };
+        grouped.push(orphan);
+        parentMap.set(p.id, orphan);
       }
     });
 
-    grouped.sort((a, b) => {
+    // Keep a group when the parent OR any of its children satisfies the
+    // active search/type filter, so a family is never split apart.
+    const visible = grouped.reduce<ProductWithChildren[]>((acc, group) => {
+      const children = group.children ?? [];
+      const parentHit = (!lower || matches(group)) && matchesType(group);
+      const matchedChildren = children.filter(
+        (c) => (!lower || matches(c)) && matchesType(c)
+      );
+
+      if (!parentHit && matchedChildren.length === 0) return acc;
+
+      // A group surfaced only because a child matched opens expanded, so the
+      // hit is visible without the user having to click the chevron.
+      acc.push({
+        ...group,
+        children: parentHit ? children : matchedChildren,
+        defaultExpanded: !parentHit && matchedChildren.length > 0,
+      });
+      return acc;
+    }, []);
+
+    visible.sort((a, b) => {
       if (sortBy === 'name') return a.name.localeCompare(b.name);
       if (sortBy === 'stock') return b.stock - a.stock;
       if (sortBy === 'sku') return a.sku.localeCompare(b.sku);
       return 0;
     });
 
-    return grouped;
+    return visible;
   }, [allLoadedProducts, searchTerm, sortBy, typeFilter]);
 
   const totalProducts = products.length;

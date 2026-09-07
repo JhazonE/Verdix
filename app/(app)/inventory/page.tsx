@@ -193,7 +193,7 @@ export default function InventoryPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {pagedProducts.map((product) => (
             <ProductGroup
-              key={product.id}
+              key={`${product.id}:${product.defaultExpanded ? 'open' : 'closed'}`}
               productGroup={product}
               onSuccess={loadProducts}
               requireAdjustmentConfirmation={posSettings?.requireAdjustmentConfirmation}
@@ -219,7 +219,7 @@ export default function InventoryPage() {
             <TableBody>
               {pagedProducts.map((product) => (
                 <ProductTableRowGroup
-                  key={product.id}
+                  key={`${product.id}:${product.defaultExpanded ? 'open' : 'closed'}`}
                   productGroup={product}
                   onSuccess={loadProducts}
                   requireAdjustmentConfirmation={posSettings?.requireAdjustmentConfirmation}
