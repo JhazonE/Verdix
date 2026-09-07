@@ -35,6 +35,7 @@ import './sta-lucia-hourly-payload.test';
 import './sta-lucia-client-409.test';
 import './price-update-math.test';
 import './price-list-template.test';
+import './price-list-import-match.test';
 import './seed-default-price-level.test';
 import './price-level-calc.test';
 import './bir-or-number.test';
