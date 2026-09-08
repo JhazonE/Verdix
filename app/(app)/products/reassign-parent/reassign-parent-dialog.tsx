@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Product } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,6 +25,8 @@ import { GitBranch } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { reassignParent } from '../actions';
 import { getIllegalReassignTargets, type TreeProduct } from '@/lib/product-tree';
+import { buildProductQuery, PRODUCT_SEARCH_DEBOUNCE_MS } from '@/lib/product-search';
+import { getApiUrl } from '@/lib/api-config';
 
 const DETACH_VALUE = '__detach__';
 
@@ -46,14 +48,47 @@ export function ReassignParentDialog({
   const [autoDetectedFrom, setAutoDetectedFrom] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Legal targets = every product except the child itself and its descendants.
+  const [search, setSearch] = useState('');
+  const [candidates, setCandidates] = useState<Product[]>(products);
+  const [isSearching, setIsSearching] = useState(false);
+  const latestRequest = useRef(0);
+
+  // The `products` prop is whatever page the products list happens to be
+  // showing (paginated at 10 of ~15,600), so it can never be the source of
+  // truth for "which product may become the parent". Search the whole
+  // catalogue in SQL instead, the way the transfer/shelf boards do.
+  useEffect(() => {
+    if (!isOpen) return;
+    const requestId = ++latestRequest.current;
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const res = await fetch(getApiUrl(buildProductQuery(search)));
+        const data = await res.json();
+        // Ignore a response overtaken by a newer keystroke.
+        if (requestId !== latestRequest.current) return;
+        if (data.success) setCandidates(data.data);
+      } catch {
+        if (requestId === latestRequest.current) setCandidates([]);
+      } finally {
+        if (requestId === latestRequest.current) setIsSearching(false);
+      }
+    }, PRODUCT_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search, isOpen]);
+
+  // Legal targets = every candidate except the child itself and its
+  // descendants. This is a convenience filter over the current page of
+  // results; reassignParent re-runs the same check server-side against the
+  // full table, and that check is the authoritative one.
   const legalTargets = useMemo(() => {
-    const treeProducts: TreeProduct[] = products.map((p) => ({ id: p.id, parentId: p.parentId }));
+    const treeProducts: TreeProduct[] = candidates.map((p) => ({ id: p.id, parentId: p.parentId }));
     const illegal = getIllegalReassignTargets(product.id, treeProducts);
-    return products
+    illegal.add(product.id);
+    return candidates
       .filter((p) => !illegal.has(p.id))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [products, product.id]);
+  }, [candidates, product.id]);
 
   const isDetach = targetId === DETACH_VALUE;
   const canSave = targetId !== '' && (isDetach || (Number(factor) > 0));
@@ -65,7 +100,9 @@ export function ReassignParentDialog({
       setAutoDetectedFrom(null);
       return;
     }
-    const parent = products.find((p) => p.id === value);
+    // Look the parent up among the searched candidates, not the paginated
+    // `products` prop — the chosen parent is usually not on that page at all.
+    const parent = candidates.find((p) => p.id === value);
     const match = parent?.conversionFactors?.find(
       (cf) => cf.unit === product.unitOfMeasure,
     );
@@ -89,6 +126,7 @@ export function ReassignParentDialog({
         setIsOpen(false);
         setTargetId('');
         setFactor('');
+        setSearch('');
         setAutoDetectedFrom(null);
         onProductUpdated?.();
       } else {
@@ -126,14 +164,32 @@ export function ReassignParentDialog({
                 <SelectValue placeholder="Select a new parent product" />
               </SelectTrigger>
               <SelectContent>
+                <div className="p-2">
+                  <Input
+                    placeholder="Search by name, SKU or barcode..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    // Radix Select steers typing to option-matching; this box
+                    // needs the keystrokes itself.
+                    onKeyDown={(e) => e.stopPropagation()}
+                  />
+                </div>
                 {product.parentId && (
                   <SelectItem value={DETACH_VALUE}>Detach (no parent)</SelectItem>
                 )}
                 {legalTargets.map((p) => (
                   <SelectItem key={p.id} value={p.id}>
                     {p.name}
+                    {p.sku ? (
+                      <span className="ml-2 text-xs text-muted-foreground">{p.sku}</span>
+                    ) : null}
                   </SelectItem>
                 ))}
+                {legalTargets.length === 0 && (
+                  <p className="px-2 py-3 text-sm text-muted-foreground">
+                    {isSearching ? 'Searching...' : 'No matching products.'}
+                  </p>
+                )}
               </SelectContent>
             </Select>
           </div>
