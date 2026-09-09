@@ -52,6 +52,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { addChildProduct } from './actions';
 import { useLiveRefresh, dispatchStockUpdate } from '@/hooks/use-live-refresh';
+import { ChildUnitsDialog } from './child-units/ChildUnitsDialog';
 
 function ProductRow({ product, onProductDeleted, onProductUpdated, products, productOptions, onOptionsRefresh, lowStockThreshold, onManageChildren }: {
   product: Product;
@@ -924,6 +925,13 @@ function ProductsContent() {
         )}
       </div>
       </Card>
+      <ChildUnitsDialog
+        product={manageChildrenProduct}
+        open={!!manageChildrenProduct}
+        onOpenChange={(open) => { if (!open) setManageChildrenProduct(null); }}
+        productOptions={productOptions}
+        onSaved={() => refetch()}
+      />
     </div>
   );
 }
