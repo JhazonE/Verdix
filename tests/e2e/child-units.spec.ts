@@ -183,6 +183,76 @@ test.describe('Child units markups', () => {
   });
 });
 
+test.describe('Child units markup NULL vs 0', () => {
+  /**
+   * The single most fragile property of this feature, and the one the whole
+   * design rests on: a BLANK markup means "inherit" (SQL NULL) while a typed
+   * `0` means "sell at cost" (SQL 0). They are different values with different
+   * behaviour, and every layer below the UI has been verified for the
+   * distinction (the resolver has unit tests, Task 8 proved the DB round trip).
+   *
+   * Nothing proved it survives the browser. One `||` or truthiness slip in the
+   * input's `value=` expression or in the draft-parsing path would silently
+   * collapse `0` into blank, and no other test in this suite would notice —
+   * both the persistence test above and the resolver tests use non-zero values.
+   *
+   * This test drives the round trip BOTH ways through the real UI, with a full
+   * `page.reload()` between write and read so nothing can pass on surviving
+   * component state:
+   *   0     → save → reload → still `0`, and NO inherit hint (0 is an override)
+   *   blank → save → reload → still blank, and the inherit hint IS back
+   *
+   * It is deliberately self-contained: it does not care what markup the child
+   * starts with, so it is independent of the persistence test's execution order.
+   */
+  test('a typed 0 persists as 0 and does not collapse into blank/inherit', async ({ page }) => {
+    await gotoProducts(page);
+    let dialog = await openPerishableDialog(page);
+
+    const childRowName = new RegExp(PERISHABLE_FAMILY_CHILD.name);
+    const input = markupInput(page, PERISHABLE_FAMILY_CHILD.name);
+    const saveButton = () => childUnitsDialog(page).getByRole('button', { name: 'Save Markups' });
+    // Scope the inherit-hint check to the CHILD'S OWN ROW — a hint belonging to
+    // some other row must never be able to satisfy or defeat this assertion.
+    const inheritHint = () =>
+      childUnitsDialog(page).getByRole('row', { name: childRowName }).getByText(/inherits\s+\d/);
+
+    // --- direction 1: an explicit 0 must survive as 0 -----------------------
+    await input.fill('0');
+    await expect(saveButton()).toBeEnabled();
+    await saveButton().click();
+    await expect(page.getByText('Markups Saved')).toBeVisible({ timeout: 30_000 });
+
+    await page.reload();
+    await showAllRows(page);
+    dialog = await openPerishableDialog(page);
+
+    // THE assertion: 0 came back as "0", not as "".
+    await expect(markupInput(page, PERISHABLE_FAMILY_CHILD.name)).toHaveValue('0', {
+      timeout: 30_000,
+    });
+    // A real 0 is an override, so the row must NOT advertise an inherited value.
+    await expect(inheritHint()).toHaveCount(0);
+
+    // --- direction 2: clearing back to blank must restore inheritance -------
+    const input2 = markupInput(page, PERISHABLE_FAMILY_CHILD.name);
+    await input2.fill('');
+    await expect(saveButton()).toBeEnabled();
+    await saveButton().click();
+    await expect(page.getByText('Markups Saved')).toBeVisible({ timeout: 30_000 });
+
+    await page.reload();
+    await showAllRows(page);
+    dialog = await openPerishableDialog(page);
+
+    // Blank came back blank, and the inherit hint is back on this row.
+    await expect(markupInput(page, PERISHABLE_FAMILY_CHILD.name)).toHaveValue('', {
+      timeout: 30_000,
+    });
+    await expect(inheritHint()).toBeVisible();
+  });
+});
+
 test.describe('Parent badge under search', () => {
   test('a searched child row shows ↳ parent and disappears when cleared', async ({ page }) => {
     await gotoProducts(page);
