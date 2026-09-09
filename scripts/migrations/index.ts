@@ -114,6 +114,7 @@ import './113_add_z_reading_lockout_toggle';
 import './114_add_z_reading_cashier_breakdown';
 import './115_create_license_state';
 import './116_normalize_product_unit_labels';
+import './117_add_product_markup_percentage';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';
