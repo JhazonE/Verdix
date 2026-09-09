@@ -22,21 +22,28 @@ import {
  * Ablihi ang view-product dialog para sa child pinaagi sa row menu ("View Details"
  * dropdown item — parehas sa pattern nga gigamit sa edit/delete spec).
  *
- * IMPORTANTE: DILI mag-search/filter dinhi. Ang ReassignParentDialog's legal-target
- * list gikan ra sa `products` prop nga gipasa sa products page — kana kay ang
- * KASAMTANGAN nga (paginated/filtered) na-load nga listahan. Kung mag-search ta sa
- * child's SKU, Parent B dili na maapil sa result set ug mahanaw sa dropdown.
+ * The unfiltered /products list is flat (top-level only, no chevron/expander —
+ * see the parent/child reorg). A nested child is reached by searching for it:
+ * under a filter the list returns matches at any depth. Searching used to be
+ * unsafe here because ReassignParentDialog's legal-target list came from the
+ * products page's own paginated `products` prop, so filtering the outer list
+ * could drop a needed target out of that prop. That is no longer true — the
+ * dialog now searches the whole catalogue itself in SQL (see the "can never be
+ * the source of truth" comment in reassign-parent-dialog.tsx, fixed in
+ * d17cbfc) — so searching the outer list here is safe.
+ *
+ * Callers must clear the search themselves afterward if a later step in the
+ * same test needs the unfiltered list again.
  */
 async function openViewDialog(page: Page, name: string, parentName?: string) {
   if (parentName) {
-    // The child ships nested under its parent in the tree table — expand the
-    // parent row first (chevron button in the "Expand" column) para mo-appear ang child row.
-    const parentRow = page.getByRole('row', { name: new RegExp(parentName) });
-    await expect(parentRow).toBeVisible();
-    await parentRow.getByRole('button').first().click();
+    // The child only appears in the flat list under a search match (it shows
+    // a "↳ parent" badge there); search by the child's own name to reach it.
+    const search = page.getByPlaceholder('Search products...');
+    await search.fill(name);
   }
   const row = page.getByRole('row', { name: new RegExp(name) });
-  await expect(row).toBeVisible();
+  await expect(row).toBeVisible({ timeout: 30_000 });
   await row.getByRole('button', { name: 'Open menu' }).click();
   await page.getByRole('menuitem', { name: 'View Details' }).click();
 }
@@ -53,15 +60,12 @@ test.describe('Child reassignment', () => {
     await seedSession(page, DEFAULT_ADMIN);
     await page.goto('/products');
 
-    // The tree table's default page size of 10 rows can push Parent A past page 1
-    // once enough dedicated fixtures exist in the DB — bump rows-per-page so it's
-    // always visible, same pattern used by the other tests in this file.
-    await page.getByLabel('Rows per page:').click();
-    await page.getByRole('option', { name: '50' }).click();
-
     // Precondition: child starts under Parent A.
     expect(await fetchParentId(request, REASSIGN_CHILD.sku)).toBe(REASSIGN_PARENT_A.id);
 
+    // The child only shows up in the flat top-level list under a search match
+    // (see openViewDialog above) — reach it that way instead of expanding a
+    // parent row, which no longer exists.
     await openViewDialog(page, REASSIGN_CHILD.name, REASSIGN_PARENT_A.name);
 
     const dialog = page.getByRole('dialog');
@@ -71,8 +75,13 @@ test.describe('Child reassignment', () => {
     const reassignDialog = page.getByRole('dialog', { name: 'Reassign Parent' });
     await expect(reassignDialog).toBeVisible();
 
-    // Pick the new parent, set a factor, save.
+    // Pick the new parent, set a factor, save. The picker searches the whole
+    // catalogue itself (SQL, not the products page's own loaded slice) —
+    // search its OWN box by name so Parent B is guaranteed to be among the
+    // results on a 15,000+ row catalogue.
     await reassignDialog.getByLabel('New parent').click();
+    await page.getByPlaceholder('Search by name, SKU or barcode...').fill(REASSIGN_PARENT_B.name);
+    await expect(page.getByRole('option', { name: REASSIGN_PARENT_B.name })).toBeVisible({ timeout: 15_000 });
     await page.getByRole('option', { name: REASSIGN_PARENT_B.name }).click();
     await reassignDialog.getByLabel(/Conversion factor/).fill('24');
     await reassignDialog.getByRole('button', { name: 'Reassign' }).click();
@@ -93,14 +102,24 @@ test.describe('Top-level reassignment', () => {
     expect(await fetchParentId(request, REASSIGN_TOP_MOVER.sku)).toBeNull();
     expect(await fetchParentId(request, REASSIGN_TOP_MOVER_CHILD.sku)).toBe(REASSIGN_TOP_MOVER.id);
 
-    // The ReassignParentDialog's legal-target list comes only from the CURRENT page's
-    // loaded `products` prop (same constraint documented on openViewDialog above). With
-    // the default page size of 10, REASSIGN_TOP_TARGET (an 11th+ product) can land on
-    // page 2 and be invisible to the picker — bump rows-per-page so everything is loaded.
+    // reassignParent() (actions.ts) refuses to attach a product with stock > 0
+    // to a new parent — a real, unrelated business rule, not something this
+    // spec is about. The fixture seeds REASSIGN_TOP_MOVER with stock: 8 (no
+    // test here or in child-units.spec.ts asserts on that stock value), so
+    // clear it first the same way a real user would ("adjust or clear the
+    // inventory first, then reassign" is the server's own message).
+    await request.patch(`/api/products/${REASSIGN_TOP_MOVER.id}`, {
+      data: { stockIncrement: -REASSIGN_TOP_MOVER.stock },
+    });
+
+    // The mover itself is opened directly off the unfiltered top-level list
+    // (no search — openViewDialog only searches when given a parentName), and
+    // the default page size of 10 can push it past page 1 once enough
+    // dedicated fixtures exist in the DB — bump rows-per-page so it's visible.
     await page.getByLabel('Rows per page:').click();
     await page.getByRole('option', { name: '50' }).click();
 
-    // Open the mover's view dialog (top-level row — no parent expansion).
+    // Open the mover's view dialog (top-level row — no parent expansion, no search needed).
     await openViewDialog(page, REASSIGN_TOP_MOVER.name);
 
     const dialog = page.getByRole('dialog');
@@ -114,7 +133,11 @@ test.describe('Top-level reassignment', () => {
     await reassignDialog.getByLabel('New parent').click();
     await expect(page.getByRole('option', { name: 'Detach (no parent)' })).toHaveCount(0);
 
-    // Pick the target, set a factor, save.
+    // The picker searches the whole catalogue itself (SQL, not the products
+    // page's own loaded slice) — search its OWN box by name so the target is
+    // guaranteed to be among the results on a 15,000+ row catalogue.
+    await page.getByPlaceholder('Search by name, SKU or barcode...').fill(REASSIGN_TOP_TARGET.name);
+    await expect(page.getByRole('option', { name: REASSIGN_TOP_TARGET.name })).toBeVisible({ timeout: 15_000 });
     await page.getByRole('option', { name: REASSIGN_TOP_TARGET.name }).click();
     await reassignDialog.getByLabel(/Conversion factor/).fill('10');
     await reassignDialog.getByRole('button', { name: 'Reassign' }).click();
@@ -134,7 +157,10 @@ test.describe('Reassign factor auto-detect', () => {
     await seedSession(page, DEFAULT_ADMIN);
     await page.goto('/products');
 
-    // Load all products into the page so both targets appear in the picker.
+    // The mover itself is opened directly off the unfiltered top-level list
+    // (no search — openViewDialog only searches when given a parentName), and
+    // the default page size of 10 can push it past page 1 once enough
+    // dedicated fixtures exist in the DB — bump rows-per-page so it's visible.
     await page.getByLabel('Rows per page:').click();
     await page.getByRole('option', { name: '50' }).click();
 
@@ -151,9 +177,15 @@ test.describe('Reassign factor auto-detect', () => {
     await expect(reassignDialog).toBeVisible();
 
     const factorInput = reassignDialog.getByLabel(/Conversion factor/);
+    const pickerSearch = page.getByPlaceholder('Search by name, SKU or barcode...');
 
     // 1) Pick the target that already has a Box factor → input auto-fills "4.00" + hint shows.
+    // The picker searches the whole catalogue itself (SQL), so search its OWN
+    // box by name to guarantee the target is among the results on a 15,000+
+    // row catalogue, rather than relying on an unfiltered top-N fetch.
     await reassignDialog.getByLabel('New parent').click();
+    await pickerSearch.fill(REASSIGN_AUTO_MATCH.name);
+    await expect(page.getByRole('option', { name: REASSIGN_AUTO_MATCH.name })).toBeVisible({ timeout: 15_000 });
     await page.getByRole('option', { name: REASSIGN_AUTO_MATCH.name }).click();
     await expect(factorInput).toHaveValue('4.00');
     await expect(reassignDialog.getByText(/Auto-detected from/)).toBeVisible();
@@ -162,6 +194,8 @@ test.describe('Reassign factor auto-detect', () => {
     // REASSIGN_AUTO_NOMATCH is dedicated to this test and never reassigned onto by
     // any other test, so it genuinely never has a conversion_factors row.
     await reassignDialog.getByLabel('New parent').click();
+    await pickerSearch.fill(REASSIGN_AUTO_NOMATCH.name);
+    await expect(page.getByRole('option', { name: REASSIGN_AUTO_NOMATCH.name })).toBeVisible({ timeout: 15_000 });
     await page.getByRole('option', { name: REASSIGN_AUTO_NOMATCH.name }).click();
     await expect(factorInput).toHaveValue('');
     await expect(reassignDialog.getByText(/Auto-detected from/)).toHaveCount(0);
