@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getChildProducts } from '../actions';
+import { getChildProducts, updateChildMarkups } from '../actions';
 import { calculateMarkupPercentage, calculateSuggestedPrice } from '@/lib/purchase-utils';
 import { getApiUrl } from '@/lib/api-config';
+import { isValidMarkupValue } from '@/lib/markup-validation';
 import type { Product, SystemSettings } from '@/lib/types';
 
 export type ChildUnitRow = {
@@ -111,6 +112,58 @@ export function useChildUnits({
     [priceLevels]
   );
 
+  /** productId -> raw input text. Absent = untouched. '' = cleared to inherit. */
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (open) setDrafts({});
+  }, [open, viewedParent?.id]);
+
+  const setDraft = useCallback((id: string, text: string) => {
+    setDrafts((d) => ({ ...d, [id]: text }));
+  }, []);
+
+  /** The value a row would save: null when blank, else the parsed number. */
+  const draftValue = useCallback((row: ChildUnitRow): number | null => {
+    const text = drafts[row.id];
+    if (text === undefined) return row.markupPercentage;
+    if (text.trim() === '') return null;
+    return Number(text);
+  }, [drafts]);
+
+  const isRowValid = useCallback(
+    (row: ChildUnitRow) => isValidMarkupValue(draftValue(row)),
+    [draftValue]
+  );
+
+  const changedRows = rows.filter((r) => {
+    const text = drafts[r.id];
+    if (text === undefined) return false;
+    return draftValue(r) !== r.markupPercentage;
+  });
+
+  const hasChanges = changedRows.length > 0;
+  const allValid = rows.every(isRowValid);
+
+  const [isSaving, setIsSaving] = useState(false);
+
+  const save = useCallback(async () => {
+    if (!hasChanges || !allValid) return { success: false, message: '' };
+    setIsSaving(true);
+    try {
+      const result = await updateChildMarkups(
+        changedRows.map((r) => ({ id: r.id, markupPercentage: draftValue(r) }))
+      );
+      if (result.success) {
+        setDrafts({});
+        await refetch();
+      }
+      return result;
+    } finally {
+      setIsSaving(false);
+    }
+  }, [hasChanges, allValid, changedRows, draftValue, refetch]);
+
   const drillInto = useCallback((child: Product) => {
     setTrail((t) => [...t, viewedParent!].filter(Boolean) as Product[]);
     setViewedParent(child);
@@ -136,5 +189,13 @@ export function useChildUnits({
     drillInto,
     goBack,
     canGoBack: trail.length > 0,
+    drafts,
+    setDraft,
+    draftValue,
+    isRowValid,
+    hasChanges,
+    allValid,
+    isSaving,
+    save,
   };
 }
