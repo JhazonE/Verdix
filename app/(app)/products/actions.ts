@@ -2222,6 +2222,23 @@ export async function getChildProducts(parentId: string) {
       ORDER BY p.name
     `, [parentId]);
 
+    const childIds = (products as any[]).map((p) => p.id);
+    const cfMap = new Map<string, { unit: string; factor: number }[]>();
+    if (childIds.length > 0) {
+      const placeholders = childIds.map(() => '?').join(', ');
+      const conversionFactorsSql = `SELECT * FROM conversion_factors WHERE product_id IN (${placeholders}) ORDER BY product_id, created_at`;
+      const childConversionFactors = await query(conversionFactorsSql, childIds);
+      (childConversionFactors as any[]).forEach((cf) => {
+        if (!cfMap.has(cf.product_id)) {
+          cfMap.set(cf.product_id, []);
+        }
+        cfMap.get(cf.product_id)!.push({
+          unit: cf.unit,
+          factor: cf.factor,
+        });
+      });
+    }
+
     return (products as any[]).map((p) => ({
       ...p,
       markupPercentage: p.markup_percentage === null || p.markup_percentage === undefined
@@ -2231,6 +2248,7 @@ export async function getChildProducts(parentId: string) {
       cost: p.cost === null || p.cost === undefined ? undefined : parseFloat(p.cost),
       price: p.price === null || p.price === undefined ? undefined : parseFloat(p.price),
       unitOfMeasure: p.unit_of_measure,
+      conversionFactors: cfMap.get(p.id) || [],
     }));
   } catch (error) {
     console.error('Error fetching child products:', error);

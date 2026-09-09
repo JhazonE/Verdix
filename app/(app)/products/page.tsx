@@ -33,7 +33,7 @@ import { BulkPriceUpdateDrawer } from './bulk-price-update/BulkPriceUpdateDrawer
 
 import { Search, Trash2, PlusCircle, Settings, ShoppingCart, MoreVertical, Edit, Eye, Copy, AlertTriangle, Printer } from 'lucide-react';
 import { PrintBarcodeDialog } from './print-barcode/print-barcode-dialog';
-import { useState, useMemo, Fragment, useEffect, useCallback, Suspense } from 'react';
+import { useState, useMemo, useEffect, useCallback, Suspense } from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
@@ -50,7 +50,6 @@ import { AddPurchaseOrderDialog } from '../purchases/add-purchase-order/add-purc
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { addChildProduct } from './actions';
 import { useLiveRefresh, dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { ChildUnitsDialog } from './child-units/ChildUnitsDialog';
 
@@ -404,10 +403,6 @@ function ProductsContent() {
   // Reset to page 1 when structural filters or search term change
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedBrand, selectedCategory, selectedSupplier, selectedWarehouse, selectedShelfLocation, selectedStatus, selectedDepartment, debouncedSearchTerm]);
-
-  const filtersActive = useMemo(() => {
-    return selectedBrand !== 'all' || selectedCategory !== 'all' || selectedSupplier !== 'all' || selectedWarehouse !== 'all' || selectedShelfLocation !== 'all' || selectedStatus !== 'all' || selectedDepartment !== 'all' || !!debouncedSearchTerm;
   }, [selectedBrand, selectedCategory, selectedSupplier, selectedWarehouse, selectedShelfLocation, selectedStatus, selectedDepartment, debouncedSearchTerm]);
 
   // Server-side results are already filtered
@@ -823,7 +818,7 @@ function ProductsContent() {
           >
             <TableHeader className="z-20">
               <TableRow className="hover:bg-transparent border-b-2 border-border">
-                <TableHead className={cn(HEAD_CLASS, "w-12 hidden sm:table-cell")}><span className="sr-only">Expand</span></TableHead>
+                <TableHead className={cn(HEAD_CLASS, "w-12 hidden sm:table-cell")} />
                 <TableHead className={HEAD_CLASS}>Name</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell")}>SKU</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "hidden lg:table-cell")}>Barcode</TableHead>
