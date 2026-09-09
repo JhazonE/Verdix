@@ -58,3 +58,4 @@ import './license-seat-overage.test';
 import './license-features.test';
 import './product-markup-resolution.test';
 import './markup-validation.test';
+import './clear-stock-and-reassign.test';
