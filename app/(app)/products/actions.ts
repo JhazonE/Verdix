@@ -831,6 +831,22 @@ export async function reassignParent(
  * missing parent) the stock adjustment rolls back with it. Splitting them would
  * destroy inventory without producing a child.
  */
+/**
+ * Signals a logical (business-rule) rejection from inside clearStockAndReassign's
+ * transaction callback. withTransaction only rolls back when the callback
+ * throws — a normal `{success:false}` return still commits — so a rejected
+ * attach (cycle, missing parent, self-parent, bad factor) must be raised as
+ * an error to undo the stock clear that already ran. Caught in the outer
+ * catch below and converted back into the { success:false, message } shape
+ * the UI expects, so this never leaks past clearStockAndReassign itself.
+ */
+class ReassignRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ReassignRejectedError';
+  }
+}
+
 export async function clearStockAndReassign(
   childId: string,
   newParentId: string,
@@ -877,11 +893,23 @@ export async function clearStockAndReassign(
       }
 
       // Attach within the SAME transaction as the stock clear above: both run
-      // through this one withTransaction connection, so a failed attach
-      // (loop, missing parent) rolls the stock clear back with it.
-      return await reassignParentOnConnection(childId, newParentId, conversionFactor, connection);
+      // through this one withTransaction connection. reassignParentOnConnection
+      // signals a rejected attach by RETURNING success:false rather than
+      // throwing (it's shared with reassignParent, which must keep that
+      // contract). withTransaction commits on any normal resolution, so a
+      // returned rejection here would otherwise commit the stock clear above
+      // with no attach to show for it — throw instead so the whole
+      // transaction (stock clear included) rolls back together.
+      const result = await reassignParentOnConnection(childId, newParentId, conversionFactor, connection);
+      if (!result.success) {
+        throw new ReassignRejectedError(result.message);
+      }
+      return result;
     });
   } catch (error) {
+    if (error instanceof ReassignRejectedError) {
+      return { success: false, message: error.message };
+    }
     console.error('Error in clearStockAndReassign:', error);
     return { success: false, message: 'There was an error adding the product as a child.' };
   }
