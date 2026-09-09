@@ -20,7 +20,6 @@ import { Badge } from '@/components/ui/badge';
 import { Product } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AddProductDialog } from './add-product/add-product-dialog';
-import { QuickAddChildDialog } from './quick-add-child/quick-add-child-dialog';
 import { ManageBrandsDialog } from './brands/ManageBrandsDialog';
 import { ManageCategoriesDialog } from './categories/ManageCategoriesDialog';
 import { ManageDepartmentsDialog } from './departments/ManageDepartmentsDialog';
@@ -32,7 +31,7 @@ import { ManageUnitOfMeasureDialog } from './units-of-measure/ManageUnitOfMeasur
 import { ManageWarehousesDialog } from '../sales/manage-warehouses/ManageWarehousesDialog';
 import { BulkPriceUpdateDrawer } from './bulk-price-update/BulkPriceUpdateDrawer';
 
-import { Search, ChevronDown, Trash2, PlusCircle, Settings, ShoppingCart, MoreVertical, Edit, Eye, Copy, AlertTriangle, Printer } from 'lucide-react';
+import { Search, Trash2, PlusCircle, Settings, ShoppingCart, MoreVertical, Edit, Eye, Copy, AlertTriangle, Printer } from 'lucide-react';
 import { PrintBarcodeDialog } from './print-barcode/print-barcode-dialog';
 import { useState, useMemo, Fragment, useEffect, useCallback, Suspense } from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -54,22 +53,20 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { addChildProduct } from './actions';
 import { useLiveRefresh, dispatchStockUpdate } from '@/hooks/use-live-refresh';
 
-function ProductRow({ product, onProductDeleted, onProductUpdated, products, productOptions, onOptionsRefresh, depth = 0, lowStockThreshold }: {
-  product: ProductWithChildren;
+function ProductRow({ product, onProductDeleted, onProductUpdated, products, productOptions, onOptionsRefresh, lowStockThreshold, onManageChildren }: {
+  product: Product;
   onProductDeleted?: () => void;
   onProductUpdated?: () => void;
   products: Product[];
   productOptions?: any;
   onOptionsRefresh?: () => void;
-  depth?: number;
   lowStockThreshold?: number;
+  onManageChildren?: (product: Product) => void;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [restockDialogOpen, setRestockDialogOpen] = useState(false);
-  const [addChildDialogOpen, setAddChildDialogOpen] = useState(false);
   const [printBarcodeOpen, setPrintBarcodeOpen] = useState(false);
 
   const { toast } = useToast();
@@ -125,26 +122,28 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
     }
   };
 
-  const hasChildren = product.children && product.children.length > 0;
-  const indentStyle = { paddingLeft: `${depth * 24}px` };
-
   return (
     <>
-      <TableRow className={cn(depth > 0 && "bg-muted/20")}>
-        <TableCell className="hidden sm:table-cell" style={indentStyle}>
-          {hasChildren ? (
-            <Button variant="ghost" size="icon" className="group" onClick={() => setIsOpen(!isOpen)}>
-              <ChevronDown className={cn("h-4 w-4 transition-transform duration-200", isOpen && "rotate-180")} />
-            </Button>
-          ) : depth > 0 ? (
-            <div className="text-sm text-muted-foreground">└</div>
-          ) : (
-            <div className="w-10"></div>
-          )}
+      <TableRow>
+        <TableCell className="hidden sm:table-cell">
+          <div className="w-10"></div>
         </TableCell>
         <TableCell className="font-medium">
           {product.name}
-          {product.parentId && <div className="text-xs text-muted-foreground">Child Unit</div>}
+          {(product.childCount ?? 0) > 0 && (
+            <Badge
+              variant="secondary"
+              className="ml-2 cursor-pointer hover:bg-secondary/80"
+              onClick={(e) => { e.stopPropagation(); onManageChildren?.(product); }}
+            >
+              {product.childCount} {product.childCount === 1 ? 'child' : 'children'}
+            </Badge>
+          )}
+          {product.parentName && (
+            <div className="text-xs text-muted-foreground mt-0.5">
+              ↳ {product.parentName}
+            </div>
+          )}
           {product.expirationDate && (
             <div className="text-[10px] text-orange-600 font-medium flex items-center gap-1 mt-0.5">
               <span className="w-1.5 h-1.5 rounded-full bg-orange-600" />
@@ -207,14 +206,11 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
                   </DropdownMenuItem>
               )}
 
-              {/* Add child product option - available on any product with its own conversion factors */}
-              {product.conversionFactors && product.conversionFactors.length > 0 ? (
-                  <DropdownMenuItem onClick={() => setAddChildDialogOpen(true)}>
-                    <Copy className="mr-2 h-4 w-4" />
-                    <span>Add Child Unit</span>
-                  </DropdownMenuItem>
-              ) : null}
-              
+              <DropdownMenuItem onSelect={() => setTimeout(() => onManageChildren?.(product), 0)}>
+                <Copy className="mr-2 h-4 w-4" />
+                <span>Manage Child Units</span>
+              </DropdownMenuItem>
+
               <DropdownMenuSeparator />
               <DropdownMenuItem 
                 className="text-red-600 focus:text-red-600"
@@ -259,34 +255,9 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
                   if (onProductUpdated) onProductUpdated();
                 }}
             />
-            {/* Always use the current product itself as the parent - supports multi-level nesting */}
-            {product.conversionFactors && product.conversionFactors.length > 0 ? (
-                <QuickAddChildDialog
-                    open={addChildDialogOpen}
-                    onOpenChange={setAddChildDialogOpen}
-                    parentProduct={product}
-                    baseStock={product.stock}
-                    onChildAdded={onProductDeleted || (() => { })}
-                    products={products}
-                />
-            ) : null}
           </div>
         </TableCell>
       </TableRow>
-
-      {isOpen && hasChildren && product.children!.map(child => (
-        <ProductRow
-          key={child.id}
-          product={child}
-          onProductDeleted={onProductDeleted}
-          onProductUpdated={onProductUpdated}
-          products={products}
-          productOptions={productOptions}
-          onOptionsRefresh={onOptionsRefresh}
-          depth={depth + 1}
-          lowStockThreshold={lowStockThreshold}
-        />
-      ))}
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
@@ -325,10 +296,6 @@ function ProductSkeleton() {
       <TableCell className="text-right"><div className='flex gap-2 justify-end'><Skeleton className="h-8 w-8 rounded-full" /></div></TableCell>
     </TableRow>
   );
-}
-
-interface ProductWithChildren extends Product {
-  children?: Product[];
 }
 
 export default function ProductsPage() {
@@ -377,6 +344,8 @@ function ProductsContent() {
   const [isUnitOfMeasureOpen, setIsUnitOfMeasureOpen] = useState(false);
   const [isWarehousesOpen, setIsWarehousesOpen] = useState(false);
   const [isBulkPriceUpdateOpen, setIsBulkPriceUpdateOpen] = useState(false);
+  // Task 7 renders the Manage Child Units dialog from this state.
+  const [manageChildrenProduct, setManageChildrenProduct] = useState<Product | null>(null);
 
   const filters = {
     search: debouncedSearchTerm || undefined,
@@ -446,30 +415,12 @@ function ProductsContent() {
   }, [allProducts]);
 
   const productTree = useMemo(() => {
-    if (!products) return [];
-
-    // If filters are active, show flat list
-    if (filtersActive) {
-        return products.map((p: Product) => ({ ...p, children: [] }));
-    }
-
-    // Build a recursive tree structure
-    const buildTree = (parentId: string | null = null, depth = 0): ProductWithChildren[] => {
-      return products
-        .filter((p: Product) => {
-            if (parentId === null) {
-                return p.parentId == null; // Loose equality to catch null and undefined
-            }
-            return p.parentId === parentId;
-        })
-        .map((p: Product) => ({
-          ...p,
-          children: depth < 10 ? buildTree(p.id, depth + 1) : [], // Prevent infinite recursion, max depth 10
-        }));
-    };
-
-    return buildTree();
-  }, [products, filtersActive]);
+    // Children live in the child-units dialog now, so the table is always a
+    // flat list. In the unfiltered view getProducts returns top-level products
+    // only; under a filter it returns matches at any depth, which is where the
+    // "↳ parent" badge earns its place.
+    return products ?? [];
+  }, [products]);
 
   const filteredProducts = useMemo(() => {
     return productTree;
@@ -892,7 +843,7 @@ function ProductsContent() {
               {isLoadingProducts ? (
                 Array.from({ length: 5 }).map((_, i) => <ProductSkeleton key={i} />)
               ) : (
-                filteredProducts.map((product: ProductWithChildren) => (
+                filteredProducts.map((product: Product) => (
                   <ProductRow
                     key={product.id}
                     product={product}
@@ -902,6 +853,7 @@ function ProductsContent() {
                     productOptions={productOptions}
                     onOptionsRefresh={loadProductOptions}
                     lowStockThreshold={lowStockThreshold}
+                    onManageChildren={setManageChildrenProduct}
                   />
                 ))
               )}

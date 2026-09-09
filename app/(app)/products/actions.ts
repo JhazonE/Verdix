@@ -159,68 +159,6 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
     const pagedProducts = await query(sql, params.length > 0 ? params : undefined);
     
     let products = pagedProducts;
-    if (!hasActiveFilters && limit !== undefined && offset !== undefined && pagedProducts.length > 0) {
-      const rootIds = pagedProducts.map((p: any) => p.id);
-      
-      try {
-        const recursiveSql = `
-          WITH RECURSIVE product_tree AS (
-            SELECT p.*,
-                   s_legacy.name as legacy_supplier_name,
-                   w.name as warehouse_name,
-                   (SELECT GROUP_CONCAT(sl.name) FROM product_shelves ps JOIN shelf_locations sl ON ps.shelf_id = sl.id WHERE ps.product_id = p.id) as shelf_location_names,
-                   (SELECT GROUP_CONCAT(ps.shelf_id) FROM product_shelves ps WHERE ps.product_id = p.id) as shelf_location_ids,
-                   (SELECT GROUP_CONCAT(CONCAT(ps.shelf_id, ':', ps.quantity)) FROM product_shelves ps WHERE ps.product_id = p.id) as shelf_id_quantities,
-                   spm.supplier_id as primary_supplier_id,
-                   spm.supplier_specific_rop as primary_supplier_rop,
-                   s_primary.name as primary_supplier_name,
-                   p.warehouse_id as inherited_warehouse_id,
-                   p.department as inherited_department,
-                   p.vat_status as inherited_vat_status,
-                   EXISTS (SELECT 1 FROM approval_queue aq WHERE (JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.productId')) = p.id OR JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.sourceProductId')) = p.id) AND aq.status = 'Pending') as has_pending_approval,
-                   (SELECT COUNT(*) FROM products c WHERE c.parent_id = p.id) AS child_count,
-                   parent_p.name AS parent_name
-            FROM products p
-            LEFT JOIN suppliers s_legacy ON p.supplier_id = s_legacy.id
-            LEFT JOIN warehouses w ON p.warehouse_id = w.id
-            LEFT JOIN supplier_product_mapping spm ON p.id = spm.product_id AND spm.is_primary = 1
-            LEFT JOIN suppliers s_primary ON spm.supplier_id = s_primary.id
-            LEFT JOIN products parent_p ON p.parent_id = parent_p.id
-            WHERE p.id IN (?)
-
-            UNION ALL
-
-            SELECT p.*,
-                   COALESCE(s_legacy.name, pt.legacy_supplier_name) as legacy_supplier_name,
-                   COALESCE(w.name, pt.warehouse_name) as warehouse_name,
-                   (SELECT GROUP_CONCAT(sl.name) FROM product_shelves ps JOIN shelf_locations sl ON ps.shelf_id = sl.id WHERE ps.product_id = p.id) as shelf_location_names,
-                   (SELECT GROUP_CONCAT(ps.shelf_id) FROM product_shelves ps WHERE ps.product_id = p.id) as shelf_location_ids,
-                   (SELECT GROUP_CONCAT(CONCAT(ps.shelf_id, ':', ps.quantity)) FROM product_shelves ps WHERE ps.product_id = p.id) as shelf_id_quantities,
-                   COALESCE(spm.supplier_id, pt.primary_supplier_id) as primary_supplier_id,
-                   COALESCE(spm.supplier_specific_rop, pt.primary_supplier_rop) as primary_supplier_rop,
-                   COALESCE(s_primary.name, pt.primary_supplier_name) as primary_supplier_name,
-                   COALESCE(p.warehouse_id, pt.inherited_warehouse_id) as inherited_warehouse_id,
-                   COALESCE(p.department, pt.inherited_department) as inherited_department,
-                   COALESCE(p.vat_status, pt.inherited_vat_status) as inherited_vat_status,
-                   EXISTS (SELECT 1 FROM approval_queue aq WHERE (JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.productId')) = p.id OR JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.sourceProductId')) = p.id) AND aq.status = 'Pending') as has_pending_approval,
-                   (SELECT COUNT(*) FROM products c WHERE c.parent_id = p.id) AS child_count,
-                   parent_p.name AS parent_name
-            FROM products p
-            INNER JOIN product_tree pt ON p.parent_id = pt.id
-            LEFT JOIN suppliers s_legacy ON p.supplier_id = s_legacy.id
-            LEFT JOIN warehouses w ON p.warehouse_id = w.id
-            LEFT JOIN supplier_product_mapping spm ON p.id = spm.product_id AND spm.is_primary = 1
-            LEFT JOIN suppliers s_primary ON spm.supplier_id = s_primary.id
-            LEFT JOIN products parent_p ON p.parent_id = parent_p.id
-          )
-          SELECT * FROM product_tree ORDER BY created_at DESC
-        `;
-        products = await query(recursiveSql, [rootIds]);
-      } catch (err) {
-        console.warn('Recursive CTE failed, falling back to flat list. Error:', err);
-        products = pagedProducts;
-      }
-    }
 
     const conversionFactorsSql = `SELECT * FROM conversion_factors ORDER BY product_id, created_at`;
     const allConversionFactors = await query(conversionFactorsSql);
