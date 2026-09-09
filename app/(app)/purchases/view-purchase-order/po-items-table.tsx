@@ -20,9 +20,12 @@ interface PoItemsTableProps {
 
 export function PoItemsTable({ order, products }: PoItemsTableProps) {
   return (
-    <div className="border rounded-md overflow-hidden">
+    // Borders and the sticky header background come from theme tokens in the
+    // shared Table primitive, which go dark-on-dark against this white paper
+    // sheet. Pin them to fixed zinc values for both themes.
+    <div className="border border-zinc-300 rounded-md overflow-hidden [&_th]:bg-zinc-100 [&_tr]:border-zinc-200">
       <Table>
-        <TableHeader className="bg-zinc-100/80">
+        <TableHeader className="bg-zinc-100">
           <TableRow>
             <TableHead className="font-bold text-zinc-900">Product Description</TableHead>
             <TableHead className="text-center font-bold text-zinc-900 w-[100px]">Remaining QTY</TableHead>

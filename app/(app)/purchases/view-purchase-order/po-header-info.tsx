@@ -21,7 +21,7 @@ export function PoHeaderInfo({ order, profile }: PoHeaderInfoProps) {
             <Building2 className="size-8" />
           </div>
           <div className="space-y-1">
-            <h2 className="text-2xl font-bold tracking-tight text-foreground">
+            <h2 className="text-2xl font-bold tracking-tight text-zinc-950">
               {profile?.businessName || 'verdix Inc.'}
             </h2>
             <div className="text-zinc-700 space-y-0.5 text-xs">
@@ -41,7 +41,7 @@ export function PoHeaderInfo({ order, profile }: PoHeaderInfoProps) {
         </div>
       </div>
 
-      <Separator />
+      <Separator className="bg-zinc-300" />
 
       {/* Info Grid */}
       <div className="grid grid-cols-3 gap-12">

@@ -27,7 +27,10 @@ export function ViewPurchaseOrderDialog(props: ViewPurchaseOrderDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-none max-w-full w-full h-screen max-h-screen flex flex-col p-0 gap-0 bg-background border-none rounded-none m-0 shadow-none printable-dialog-content">
-        <DialogHeader className="px-6 py-4 border-b bg-white non-printable shrink-0">
+        {/* Dialog chrome, not paper: use theme tokens so the title stays legible
+            in both themes. A hardcoded bg-white here left near-white
+            `text-foreground` text invisible in dark mode. */}
+        <DialogHeader className="px-6 py-4 border-b bg-background non-printable shrink-0">
           <div className="flex items-center justify-between pr-8">
             <DialogTitle className="text-xl font-bold flex items-center gap-2">
               <Package2 className="size-6 text-primary" />
@@ -67,7 +70,7 @@ export function ViewPurchaseOrderDialog(props: ViewPurchaseOrderDialogProps) {
 
         <DialogFooter className="px-6 py-4 border-t bg-muted/20 non-printable flex-row justify-between items-center shrink-0">
           <div className="text-xs text-muted-foreground">
-            Use <kbd className="border rounded px-1 bg-white">Ctrl+P</kbd> to print this view.
+            Use <kbd className="border rounded px-1 bg-background">Ctrl+P</kbd> to print this view.
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={handlePrint}>
