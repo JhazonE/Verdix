@@ -86,6 +86,10 @@ Migrations in `scripts/migrations/` — numbered TypeScript files (001–088+), 
 - `lib/family-sync.ts` — Products can belong to a family (e.g., 1kg bag → 250g sachets). Any stock change recursively syncs all family members.
 - `lib/stock-movements.ts` — Every stock change writes a movement record for audit/history.
 
+**Product markup** — `lib/purchase-utils.ts` resolves a suggested price's markup in strict precedence: `products.markup_percentage` (a per-product override) first, then subcategory → category → brand → supplier ordered by `settings.markupPriority`, then `defaultMarkupPercentage`. The per-product override deliberately bypasses the `enableAutomaticMarkup` toggle — that toggle suppresses only *inherited* markup, since a value typed against one product is not a guess the system made. `NULL` means inherit and `0` means sell at cost; never coerce between them. Markup only ever *suggests* a price — nothing in this chain writes `products.price`.
+
+**Product families in the UI** — the products list is a flat list of top-level products (`parent_id IS NULL`) when unfiltered; children are reached through the child-units dialog (`app/(app)/products/child-units/`) or by searching, and a filtered row carries a `↳ parent` badge. There is no inline tree — a recursive CTE in `getProducts` used to hydrate one and was removed. Adding a child unit lives inside that dialog, not in the product row menu.
+
 **Approvals workflow** — A multi-level queue pattern used for purchase orders, stock counts, stock transfers, bad orders, and bulk adjustments. Items are inserted with `status='pending'`, moved through approval levels, then finalized to update actual stock/accounts.
 
 **POS (Point of Sale) — `/pos` route** — Fullscreen checkout UI. The Electron window is the primary deployment target. POS uses its own terminal/shift/cash-drawer management separate from the back-office UI. Checkout hits `POST /api/pos/checkout`.
