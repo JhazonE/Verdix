@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { findUltimateRoot, deductFamilyStock, addFamilyStock } from '@/lib/family-sync';
 import { getIllegalReassignTargets, type TreeProduct } from '@/lib/product-tree';
 import { isValidMarkupValue, MARKUP_MAX } from '@/lib/markup-validation';
+import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 
 
 export type ProductFormData = {
@@ -704,97 +705,185 @@ export async function updateProduct(id: string, formData: ProductFormData) {
   }
 }
 
+/**
+ * Shared attach/detach body for reassignParent, extracted so callers that
+ * already hold a transaction connection (e.g. clearStockAndReassign) can
+ * join it instead of opening a second, separate transaction.
+ *
+ * Runs the same guards reassignParent has always run (self-parent, stock,
+ * cycle via getIllegalReassignTargets, parent existence) and performs the
+ * same parent_id update plus conversion_factors upsert. Behaviour is
+ * identical to reassignParent's previous inline body — only the connection
+ * is now a parameter instead of being opened here.
+ */
+async function reassignParentOnConnection(
+  childId: string,
+  newParentId: string | null,
+  conversionFactor: number,
+  connection: any,
+): Promise<{ success: boolean; message: string }> {
+  // Validate factor up front when attaching to a parent.
+  if (newParentId !== null) {
+    if (childId === newParentId) {
+      return { success: false, message: 'A product cannot be its own parent.' };
+    }
+    if (!Number.isFinite(conversionFactor) || conversionFactor <= 0) {
+      return { success: false, message: 'Conversion factor must be a number greater than 0.' };
+    }
+  }
+
+  // Load the child.
+  const [childRows]: any = await connection.query(
+    'SELECT id, name, unit_of_measure, parent_id, stock, cost, price FROM products WHERE id = ?',
+    [childId],
+  );
+  const child = childRows?.[0];
+  if (!child) {
+    return { success: false, message: 'Product not found.' };
+  }
+
+  // Prevent reassignment if product has existing inventory.
+  if (newParentId !== null && child.stock > 0) {
+    return {
+      success: false,
+      message: `Cannot assign "${child.name}" to a parent while it has ${child.stock} units in stock. Please adjust or clear the inventory first, then reassign.`,
+    };
+  }
+
+  if (newParentId !== null) {
+    // Cycle guard: the new parent must not be the child or one of its descendants.
+    // Build the full id/parent map from the DB and reuse the pure helper.
+    const [allRows]: any = await connection.query(
+      'SELECT id, parent_id FROM products',
+    );
+    const treeProducts: TreeProduct[] = (allRows as any[]).map((r) => ({
+      id: r.id,
+      parentId: r.parent_id,
+    }));
+    const illegal = getIllegalReassignTargets(childId, treeProducts);
+    if (illegal.has(newParentId)) {
+      return { success: false, message: 'Cannot reassign: that would create a parent loop.' };
+    }
+
+    // Confirm the target parent exists.
+    const [parentRows]: any = await connection.query(
+      'SELECT id, name FROM products WHERE id = ?',
+      [newParentId],
+    );
+    const newParent = parentRows?.[0];
+    if (!newParent) {
+      return { success: false, message: 'Target parent product not found.' };
+    }
+
+    // Update parentage.
+    await connection.query(
+      'UPDATE products SET parent_id = ? WHERE id = ?',
+      [newParentId, childId],
+    );
+
+    // Upsert the conversion factor on the NEW parent, keyed by the child's unit.
+    // unique_product_unit (product_id, unit) makes this idempotent.
+    const cfId = `${newParentId}-cf-${child.unit_of_measure}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    await connection.query(
+      `INSERT INTO conversion_factors (id, product_id, unit, factor)
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE factor = VALUES(factor)`,
+      [cfId, newParentId, child.unit_of_measure, conversionFactor],
+    );
+
+    console.log(`[reassignParent] ${childId} moved under ${newParentId} (factor ${conversionFactor}, unit ${child.unit_of_measure})`);
+    return { success: true, message: `${child.name} moved under ${newParent.name}.` };
+  }
+
+  // Detach: clear parent_id, leave conversion_factors untouched.
+  await connection.query(
+    'UPDATE products SET parent_id = NULL WHERE id = ?',
+    [childId],
+  );
+  console.log(`[reassignParent] ${childId} detached to top-level`);
+  return { success: true, message: `${child.name} is now a top-level product.` };
+}
+
 export async function reassignParent(
   childId: string,
   newParentId: string | null,
   conversionFactor: number,
 ): Promise<{ success: boolean; message: string }> {
   try {
-    // Validate factor up front when attaching to a parent.
-    if (newParentId !== null) {
-      if (childId === newParentId) {
-        return { success: false, message: 'A product cannot be its own parent.' };
-      }
-      if (!Number.isFinite(conversionFactor) || conversionFactor <= 0) {
-        return { success: false, message: 'Conversion factor must be a number greater than 0.' };
-      }
-    }
-
     return await withTransaction(async (connection) => {
-      // Load the child.
-      const [childRows]: any = await connection.query(
-        'SELECT id, name, unit_of_measure, parent_id, stock, cost, price FROM products WHERE id = ?',
-        [childId],
-      );
-      const child = childRows?.[0];
-      if (!child) {
-        return { success: false, message: 'Product not found.' };
-      }
-
-      // Prevent reassignment if product has existing inventory.
-      if (newParentId !== null && child.stock > 0) {
-        return {
-          success: false,
-          message: `Cannot assign "${child.name}" to a parent while it has ${child.stock} units in stock. Please adjust or clear the inventory first, then reassign.`,
-        };
-      }
-
-      if (newParentId !== null) {
-        // Cycle guard: the new parent must not be the child or one of its descendants.
-        // Build the full id/parent map from the DB and reuse the pure helper.
-        const [allRows]: any = await connection.query(
-          'SELECT id, parent_id FROM products',
-        );
-        const treeProducts: TreeProduct[] = (allRows as any[]).map((r) => ({
-          id: r.id,
-          parentId: r.parent_id,
-        }));
-        const illegal = getIllegalReassignTargets(childId, treeProducts);
-        if (illegal.has(newParentId)) {
-          return { success: false, message: 'Cannot reassign: that would create a parent loop.' };
-        }
-
-        // Confirm the target parent exists.
-        const [parentRows]: any = await connection.query(
-          'SELECT id, name FROM products WHERE id = ?',
-          [newParentId],
-        );
-        const newParent = parentRows?.[0];
-        if (!newParent) {
-          return { success: false, message: 'Target parent product not found.' };
-        }
-
-        // Update parentage.
-        await connection.query(
-          'UPDATE products SET parent_id = ? WHERE id = ?',
-          [newParentId, childId],
-        );
-
-        // Upsert the conversion factor on the NEW parent, keyed by the child's unit.
-        // unique_product_unit (product_id, unit) makes this idempotent.
-        const cfId = `${newParentId}-cf-${child.unit_of_measure}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        await connection.query(
-          `INSERT INTO conversion_factors (id, product_id, unit, factor)
-           VALUES (?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE factor = VALUES(factor)`,
-          [cfId, newParentId, child.unit_of_measure, conversionFactor],
-        );
-
-        console.log(`[reassignParent] ${childId} moved under ${newParentId} (factor ${conversionFactor}, unit ${child.unit_of_measure})`);
-        return { success: true, message: `${child.name} moved under ${newParent.name}.` };
-      }
-
-      // Detach: clear parent_id, leave conversion_factors untouched.
-      await connection.query(
-        'UPDATE products SET parent_id = NULL WHERE id = ?',
-        [childId],
-      );
-      console.log(`[reassignParent] ${childId} detached to top-level`);
-      return { success: true, message: `${child.name} is now a top-level product.` };
+      return await reassignParentOnConnection(childId, newParentId, conversionFactor, connection);
     });
   } catch (error: any) {
     console.error('Error in reassignParent:', error);
     return { success: false, message: 'There was an error reassigning the product.' };
+  }
+}
+
+/**
+ * Attaches a product as a child AFTER zeroing its stock.
+ *
+ * reassignParent refuses a product holding stock, because a child's stock is
+ * derived from its parent by lib/family-sync.ts. This backs the UI's explicit
+ * "Clear stock and add as child" confirmation, so the user has already been told
+ * the stock will go.
+ *
+ * The clear and the attach share ONE transaction: if the attach fails (a loop, a
+ * missing parent) the stock adjustment rolls back with it. Splitting them would
+ * destroy inventory without producing a child.
+ */
+export async function clearStockAndReassign(
+  childId: string,
+  newParentId: string,
+  conversionFactor: number,
+): Promise<{ success: boolean; message: string }> {
+  if (!newParentId) {
+    return { success: false, message: 'A target parent is required.' };
+  }
+  if (!Number.isFinite(conversionFactor) || conversionFactor <= 0) {
+    return { success: false, message: 'Conversion factor must be a number greater than 0.' };
+  }
+
+  try {
+    return await withTransaction(async (connection) => {
+      const [rows]: any = await connection.query(
+        'SELECT id, name, stock FROM products WHERE id = ?',
+        [childId],
+      );
+      const child = rows?.[0];
+      if (!child) {
+        return { success: false, message: 'Product not found.' };
+      }
+
+      const [parentRows]: any = await connection.query(
+        'SELECT id, name FROM products WHERE id = ?',
+        [newParentId],
+      );
+      const parent = parentRows?.[0];
+      if (!parent) {
+        return { success: false, message: 'Target parent product not found.' };
+      }
+
+      const currentStock = Number(child.stock || 0);
+      if (currentStock > 0) {
+        await updateStockAndRecordMovement(
+          childId,
+          -currentStock,
+          'adjustment',
+          childId,
+          'adjustment',
+          `Stock cleared to attach as child of ${parent.name}`,
+          connection,
+        );
+      }
+
+      // Attach within the SAME transaction as the stock clear above: both run
+      // through this one withTransaction connection, so a failed attach
+      // (loop, missing parent) rolls the stock clear back with it.
+      return await reassignParentOnConnection(childId, newParentId, conversionFactor, connection);
+    });
+  } catch (error) {
+    console.error('Error in clearStockAndReassign:', error);
+    return { success: false, message: 'There was an error adding the product as a child.' };
   }
 }
 
