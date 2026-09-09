@@ -122,13 +122,31 @@ export function calculatePurchaseCosts(
  * Calculates the markup percentage for a product based on system settings and priority rules.
  */
 export function calculateMarkupPercentage(
-  product: { category?: string; subcategory?: string; brand?: string; supplierId?: string },
+  product: {
+    markupPercentage?: number | null;
+    category?: string;
+    subcategory?: string;
+    brand?: string;
+    supplierId?: string;
+  },
   settings: any,
   categories: any[] = [],
   subcategories: any[] = [],
   brands: any[] = [],
   suppliers: any[] = []
 ): { markup: number; source: string } {
+  // A markup typed against one specific product is a deliberate entry, not a
+  // guess the system made from its category or brand — so it takes precedence
+  // over every inherited source AND survives enableAutomaticMarkup being off.
+  // That toggle governs only the inherited chain below.
+  //
+  // 0 is a real value here (sell at cost) and must not fall through, which is
+  // why this tests for a finite number rather than truthiness.
+  const ownMarkup = product.markupPercentage;
+  if (ownMarkup !== null && ownMarkup !== undefined && Number.isFinite(Number(ownMarkup))) {
+    return { markup: Number(ownMarkup), source: 'Product' };
+  }
+
   if (!settings?.enableAutomaticMarkup) {
     return { markup: 0, source: '' };
   }
