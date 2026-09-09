@@ -31,7 +31,13 @@ export class MySqlProductRepository implements ProductRepository {
         products.parent_id as parentId,
         products.conversion_factor as conversionFactor
       FROM products
-      LEFT JOIN units_of_measure uom ON products.unit_of_measure = uom.name
+      -- products.unit_of_measure is free text with no FK, and rows hold a mix
+      -- of unit names ('Pieces') and abbreviations ('pcs'). Matching on name
+      -- alone missed every abbreviation-valued row, so COALESCE above fell back
+      -- to the raw string and the column never showed a real abbreviation.
+      LEFT JOIN units_of_measure uom
+        ON products.unit_of_measure = uom.name
+        OR products.unit_of_measure = uom.abbreviation
       WHERE 1=1
     `;
     const params: any[] = [];
