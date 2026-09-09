@@ -250,6 +250,7 @@ export function useEditProductForm({
 
     const { markup, source } = calculateMarkupPercentage(
         {
+            markupPercentage: product?.markupPercentage ?? null,
             category: watchedCategoryName,
             subcategory: watchedSubcategoryName,
             brand: watchedBrandName,

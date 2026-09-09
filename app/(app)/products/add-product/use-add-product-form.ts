@@ -276,6 +276,7 @@ export function useAddProductForm({
 
     const { markup, source } = calculateMarkupPercentage(
         {
+            markupPercentage: null,
             category: watchedCategoryName,
             subcategory: watchedSubcategoryName,
             brand: watchedBrandName,
