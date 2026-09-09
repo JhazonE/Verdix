@@ -7,6 +7,7 @@ import { PriceLevel, Category, Brand, Supplier, Warehouse, Department, UnitOfMea
 import { v4 as uuidv4 } from 'uuid';
 import { findUltimateRoot, deductFamilyStock, addFamilyStock } from '@/lib/family-sync';
 import { getIllegalReassignTargets, type TreeProduct } from '@/lib/product-tree';
+import { isValidMarkupValue, MARKUP_MAX } from '@/lib/markup-validation';
 
 
 export type ProductFormData = {
@@ -65,8 +66,8 @@ export type ProductFilters = {
 export async function getProducts(limit?: number, offset?: number, filters?: ProductFilters) {
   try {
     let sql = `
-      SELECT p.*, 
-             s_legacy.name as legacy_supplier_name, 
+      SELECT p.*,
+             s_legacy.name as legacy_supplier_name,
              w.name as warehouse_name,
              (SELECT GROUP_CONCAT(sl.name) FROM product_shelves ps JOIN shelf_locations sl ON ps.shelf_id = sl.id WHERE ps.product_id = p.id) as shelf_location_names,
              (SELECT GROUP_CONCAT(ps.shelf_id) FROM product_shelves ps WHERE ps.product_id = p.id) as shelf_location_ids,
@@ -74,12 +75,15 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
              spm.supplier_id as primary_supplier_id,
              spm.supplier_specific_rop as primary_supplier_rop,
              s_primary.name as primary_supplier_name,
-             EXISTS (SELECT 1 FROM approval_queue aq WHERE (JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.productId')) = p.id OR JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.sourceProductId')) = p.id) AND aq.status = 'Pending') as has_pending_approval
+             EXISTS (SELECT 1 FROM approval_queue aq WHERE (JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.productId')) = p.id OR JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.sourceProductId')) = p.id) AND aq.status = 'Pending') as has_pending_approval,
+             (SELECT COUNT(*) FROM products c WHERE c.parent_id = p.id) AS child_count,
+             parent_p.name AS parent_name
       FROM products p
       LEFT JOIN suppliers s_legacy ON p.supplier_id = s_legacy.id
       LEFT JOIN warehouses w ON p.warehouse_id = w.id
       LEFT JOIN supplier_product_mapping spm ON p.id = spm.product_id AND spm.is_primary = 1
       LEFT JOIN suppliers s_primary ON spm.supplier_id = s_primary.id
+      LEFT JOIN products parent_p ON p.parent_id = parent_p.id
     `;
 
     const whereClauses: string[] = [];
@@ -161,8 +165,8 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
       try {
         const recursiveSql = `
           WITH RECURSIVE product_tree AS (
-            SELECT p.*, 
-                   s_legacy.name as legacy_supplier_name, 
+            SELECT p.*,
+                   s_legacy.name as legacy_supplier_name,
                    w.name as warehouse_name,
                    (SELECT GROUP_CONCAT(sl.name) FROM product_shelves ps JOIN shelf_locations sl ON ps.shelf_id = sl.id WHERE ps.product_id = p.id) as shelf_location_names,
                    (SELECT GROUP_CONCAT(ps.shelf_id) FROM product_shelves ps WHERE ps.product_id = p.id) as shelf_location_ids,
@@ -173,18 +177,21 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
                    p.warehouse_id as inherited_warehouse_id,
                    p.department as inherited_department,
                    p.vat_status as inherited_vat_status,
-                   EXISTS (SELECT 1 FROM approval_queue aq WHERE (JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.productId')) = p.id OR JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.sourceProductId')) = p.id) AND aq.status = 'Pending') as has_pending_approval
+                   EXISTS (SELECT 1 FROM approval_queue aq WHERE (JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.productId')) = p.id OR JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.sourceProductId')) = p.id) AND aq.status = 'Pending') as has_pending_approval,
+                   (SELECT COUNT(*) FROM products c WHERE c.parent_id = p.id) AS child_count,
+                   parent_p.name AS parent_name
             FROM products p
             LEFT JOIN suppliers s_legacy ON p.supplier_id = s_legacy.id
             LEFT JOIN warehouses w ON p.warehouse_id = w.id
             LEFT JOIN supplier_product_mapping spm ON p.id = spm.product_id AND spm.is_primary = 1
             LEFT JOIN suppliers s_primary ON spm.supplier_id = s_primary.id
+            LEFT JOIN products parent_p ON p.parent_id = parent_p.id
             WHERE p.id IN (?)
-            
+
             UNION ALL
-            
-            SELECT p.*, 
-                   COALESCE(s_legacy.name, pt.legacy_supplier_name) as legacy_supplier_name, 
+
+            SELECT p.*,
+                   COALESCE(s_legacy.name, pt.legacy_supplier_name) as legacy_supplier_name,
                    COALESCE(w.name, pt.warehouse_name) as warehouse_name,
                    (SELECT GROUP_CONCAT(sl.name) FROM product_shelves ps JOIN shelf_locations sl ON ps.shelf_id = sl.id WHERE ps.product_id = p.id) as shelf_location_names,
                    (SELECT GROUP_CONCAT(ps.shelf_id) FROM product_shelves ps WHERE ps.product_id = p.id) as shelf_location_ids,
@@ -195,13 +202,16 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
                    COALESCE(p.warehouse_id, pt.inherited_warehouse_id) as inherited_warehouse_id,
                    COALESCE(p.department, pt.inherited_department) as inherited_department,
                    COALESCE(p.vat_status, pt.inherited_vat_status) as inherited_vat_status,
-                   EXISTS (SELECT 1 FROM approval_queue aq WHERE (JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.productId')) = p.id OR JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.sourceProductId')) = p.id) AND aq.status = 'Pending') as has_pending_approval
+                   EXISTS (SELECT 1 FROM approval_queue aq WHERE (JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.productId')) = p.id OR JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.sourceProductId')) = p.id) AND aq.status = 'Pending') as has_pending_approval,
+                   (SELECT COUNT(*) FROM products c WHERE c.parent_id = p.id) AS child_count,
+                   parent_p.name AS parent_name
             FROM products p
             INNER JOIN product_tree pt ON p.parent_id = pt.id
             LEFT JOIN suppliers s_legacy ON p.supplier_id = s_legacy.id
             LEFT JOIN warehouses w ON p.warehouse_id = w.id
             LEFT JOIN supplier_product_mapping spm ON p.id = spm.product_id AND spm.is_primary = 1
             LEFT JOIN suppliers s_primary ON spm.supplier_id = s_primary.id
+            LEFT JOIN products parent_p ON p.parent_id = parent_p.id
           )
           SELECT * FROM product_tree ORDER BY created_at DESC
         `;
@@ -276,6 +286,11 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
         imageHint: product.image_hint,
         unitOfMeasure: product.unit_of_measure,
         parentId: product.parent_id,
+        markupPercentage: product.markup_percentage === null || product.markup_percentage === undefined
+          ? null
+          : Number(product.markup_percentage),
+        childCount: Number(product.child_count ?? 0),
+        parentName: product.parent_name ?? null,
         conversionFactor: product.conversion_factor,
         conversionFactors: cfMap.get(product.id) || [],
         incomeAccount: product.income_account,
@@ -2259,17 +2274,73 @@ export async function getChildProducts(parentId: string) {
     const products = await query(`
       SELECT p.*, p.parent_id as parentId, p.conversion_factor as conversionFactor,
              COALESCE(w.name, pw.name) as warehouseName,
-             (SELECT GROUP_CONCAT(sl.name) FROM product_shelves ps JOIN shelf_locations sl ON ps.shelf_id = sl.id WHERE ps.product_id = p.id) as shelfLocationNames
-      FROM products p 
+             (SELECT GROUP_CONCAT(sl.name) FROM product_shelves ps JOIN shelf_locations sl ON ps.shelf_id = sl.id WHERE ps.product_id = p.id) as shelfLocationNames,
+             (SELECT COUNT(*) FROM products c WHERE c.parent_id = p.id) as childCount
+      FROM products p
       LEFT JOIN warehouses w ON p.warehouse_id = w.id
       LEFT JOIN products parent ON p.parent_id = parent.id
       LEFT JOIN warehouses pw ON parent.warehouse_id = pw.id
       WHERE p.parent_id = ?
+      ORDER BY p.name
     `, [parentId]);
-    return products as any[];
+
+    return (products as any[]).map((p) => ({
+      ...p,
+      markupPercentage: p.markup_percentage === null || p.markup_percentage === undefined
+        ? null
+        : Number(p.markup_percentage),
+      childCount: Number(p.childCount ?? 0),
+      cost: p.cost === null || p.cost === undefined ? undefined : parseFloat(p.cost),
+      price: p.price === null || p.price === undefined ? undefined : parseFloat(p.price),
+      unitOfMeasure: p.unit_of_measure,
+    }));
   } catch (error) {
     console.error('Error fetching child products:', error);
     return [];
+  }
+}
+
+/**
+ * Batch-saves per-product markup overrides from the child-units dialog.
+ *
+ * markupPercentage null clears the override so the product inherits again;
+ * 0 is a real value meaning "sell at cost". This never touches products.price
+ * — markup only ever suggests a price, the user still sets the real one.
+ */
+export async function updateChildMarkups(
+  rows: { id: string; markupPercentage: number | null }[]
+): Promise<{ success: boolean; message: string }> {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { success: false, message: 'No markups to save.' };
+  }
+
+  // Validate everything BEFORE opening a transaction: one bad row rejects the
+  // whole batch, so there is nothing to roll back.
+  for (const row of rows) {
+    if (!row?.id) {
+      return { success: false, message: 'A markup row is missing its product id.' };
+    }
+    if (!isValidMarkupValue(row.markupPercentage)) {
+      return {
+        success: false,
+        message: `Invalid markup for product ${row.id}. Enter a value between 0 and ${MARKUP_MAX}, or leave it blank to inherit.`,
+      };
+    }
+  }
+
+  try {
+    await withTransaction(async (connection) => {
+      for (const row of rows) {
+        await connection.query(
+          'UPDATE products SET markup_percentage = ? WHERE id = ?',
+          [row.markupPercentage, row.id]
+        );
+      }
+    });
+    return { success: true, message: `Saved markup for ${rows.length} product(s).` };
+  } catch (error) {
+    console.error('Error updating child markups:', error);
+    return { success: false, message: 'Error saving markups.' };
   }
 }
 

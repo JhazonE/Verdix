@@ -46,6 +46,12 @@ export interface Product {
   // Parent/Child relationship
   parentId?: string | null;
   conversionFactor?: number;
+  /** Per-product markup override. null = inherit from category/brand/supplier. */
+  markupPercentage?: number | null;
+  /** Number of direct children. Populated by getProducts for the list badge. */
+  childCount?: number;
+  /** Name of this product's parent, when it has one. Drives the "↳ parent" badge. */
+  parentName?: string | null;
 
   // Conversion factors for different units
   conversionFactors?: { unit: string; factor: number }[];
