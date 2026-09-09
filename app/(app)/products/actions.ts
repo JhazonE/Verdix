@@ -1737,10 +1737,53 @@ export async function addUnitOfMeasure(name: string, abbreviation: string) {
   }
 }
 
+/**
+ * Renaming a unit has to carry the products along with it. `products.
+ * unit_of_measure` is free text with no FK — it stores the unit's name (and on
+ * older rows, its abbreviation) rather than an id — so updating only
+ * `units_of_measure` leaves every product pointing at a label that no longer
+ * exists, and the products table falls back to showing the stale raw string.
+ * Both writes share one transaction so the two can never diverge.
+ */
 export async function updateUnitOfMeasure(id: string, name: string, abbreviation: string) {
   try {
-    await query('UPDATE units_of_measure SET name = ?, abbreviation = ? WHERE id = ?', [name, abbreviation, id]);
-    return { success: true, message: 'Unit of measure updated successfully.' };
+    const productsUpdated = await withTransaction(async (connection) => {
+      const [rows]: any = await connection.query(
+        'SELECT name, abbreviation FROM units_of_measure WHERE id = ?',
+        [id]
+      );
+      const previous = rows[0];
+
+      await connection.query(
+        'UPDATE units_of_measure SET name = ?, abbreviation = ? WHERE id = ?',
+        [name, abbreviation, id]
+      );
+
+      if (!previous) return 0;
+
+      // Re-point products that referenced this unit by either of its old
+      // labels. Rows already holding the new name are left alone.
+      const oldLabels = [previous.name, previous.abbreviation].filter(
+        (label): label is string => Boolean(label)
+      );
+      if (oldLabels.length === 0) return 0;
+
+      const [result]: any = await connection.query(
+        `UPDATE products SET unit_of_measure = ?
+         WHERE unit_of_measure IN (${oldLabels.map(() => '?').join(', ')})
+           AND unit_of_measure <> ?`,
+        [name, ...oldLabels, name]
+      );
+      return result.affectedRows ?? 0;
+    });
+
+    return {
+      success: true,
+      message:
+        productsUpdated > 0
+          ? `Unit of measure updated. ${productsUpdated} product${productsUpdated === 1 ? '' : 's'} re-labelled.`
+          : 'Unit of measure updated successfully.',
+    };
   } catch (error) {
     console.error('Error updating unit of measure:', error);
     return { success: false, message: 'Error updating unit of measure.' };
