@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { getDescendantIds, getIllegalReassignTargets, type TreeProduct } from '../../lib/product-tree';
+import { getDescendantIds, getIllegalReassignTargets, getIllegalChildTargets, type TreeProduct } from '../../lib/product-tree';
 
 // Tree: A -> B -> C ; A -> D ; E (standalone)
 const products: TreeProduct[] = [
@@ -33,5 +33,41 @@ const cyclic: TreeProduct[] = [
   { id: 'Y', parentId: 'X' },
 ];
 assert.deepEqual([...getDescendantIds('X', cyclic)].sort(), ['Y'], 'cyclic data terminates');
+
+// --- getIllegalChildTargets: who may NOT become a child of X ---
+// Mirror of getIllegalReassignTargets. Walking UP from the parent, not down.
+
+// C's ancestors are B and A; adding either under C would make a loop.
+{
+  const illegal = getIllegalChildTargets('C', products);
+  assert.deepEqual([...illegal].sort(), ['A', 'B', 'C'], 'C plus its ancestors');
+}
+
+// A is a root: only A itself is illegal (nothing is above it).
+{
+  const illegal = getIllegalChildTargets('A', products);
+  assert.deepEqual([...illegal].sort(), ['A'], 'a root excludes only itself');
+}
+
+// A product cannot become its own child.
+assert.equal(getIllegalChildTargets('E', products).has('E'), true, 'self is always illegal');
+
+// DESCENDANTS ARE LEGAL: re-attaching a grandchild one level up is a real move,
+// so C must NOT be excluded as a candidate child of A.
+{
+  const illegal = getIllegalChildTargets('A', products);
+  assert.equal(illegal.has('C'), false, 'a descendant may be re-attached higher up');
+  assert.equal(illegal.has('B'), false, 'a direct child is not excluded either');
+}
+
+// Cycle-safe: malformed data (a parent loop) must terminate, not hang.
+{
+  const cyclic: TreeProduct[] = [
+    { id: 'X', parentId: 'Y' },
+    { id: 'Y', parentId: 'X' },
+  ];
+  const illegal = getIllegalChildTargets('X', cyclic);
+  assert.equal(illegal.has('X'), true, 'terminates on a cycle and includes self');
+}
 
 console.log('product-tree: all assertions passed');
