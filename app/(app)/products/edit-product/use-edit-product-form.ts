@@ -242,8 +242,12 @@ export function useEditProductForm({
   }, [isOpen]);
 
   useEffect(() => {
-    // Skip if not initialized or automation disabled
-    if (!isInitialized || !systemSettings?.enableAutomaticMarkup) {
+    // Skip if not initialized. A per-product markup is a deliberate entry
+    // (not a guess from category/brand/supplier), so it must survive
+    // enableAutomaticMarkup being off — that toggle governs only the
+    // inherited sources below it.
+    const hasOwnMarkup = product?.markupPercentage !== null && product?.markupPercentage !== undefined;
+    if (!isInitialized || (!systemSettings?.enableAutomaticMarkup && !hasOwnMarkup)) {
         setMarkupSource(null);
         return;
     }
