@@ -5,7 +5,6 @@ import { generateBatchId } from '@/lib/batch-utils';
 import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
 import { PriceLevel, Category, Brand, Supplier, Warehouse, Department, UnitOfMeasure, ShelfLocation, Account, TaxRate } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
-import { findUltimateRoot, deductFamilyStock, addFamilyStock } from '@/lib/family-sync';
 import { getIllegalReassignTargets, type TreeProduct } from '@/lib/product-tree';
 import { isValidMarkupValue, MARKUP_MAX } from '@/lib/markup-validation';
 import { updateStockAndRecordMovement } from '@/lib/stock-movements';
@@ -631,21 +630,28 @@ export async function updateProduct(id: string, formData: ProductFormData) {
 
       const legacyShelfId = formData.shelfLocationIds && formData.shelfLocationIds.length > 0 ? formData.shelfLocationIds[0] : existing.shelf_location_id;
 
-      // --- Family Stock Sync for manual stock edits ---
+      // --- Movement record for manual stock edits ---
+      // The typed figure is this product's own stock, already in base units, so
+      // the delta applies directly and signed. Nothing cascades to another
+      // product. The UPDATE below writes productData.stock outright, so this call
+      // exists to record the movement (and sync batches/shelves) — it must not be
+      // allowed to double-count, which it cannot, because it writes the same
+      // absolute figure the UPDATE then re-writes.
       if (productData.stock !== undefined) {
         const originalStock = Number(existing.stock || 0);
         const newStock = Number(productData.stock);
         const delta = newStock - originalStock;
 
-        if (delta !== 0) {
-          const { rootId, factorToRoot } = await findUltimateRoot(id, connection as any);
-          const rootDelta = delta / factorToRoot;
-
-          if (delta < 0) {
-            await deductFamilyStock(rootId, Math.abs(rootDelta), `adj_edit_${Date.now()}`, 'adjustment', `Manual edit of ${existing.name}`, connection as any);
-          } else {
-            await addFamilyStock(rootId, rootDelta, `adj_edit_${Date.now()}`, 'adjustment', `Manual edit of ${existing.name}`, connection as any);
-          }
+        if (Number.isFinite(delta) && delta !== 0) {
+          await updateStockAndRecordMovement(
+            id,
+            delta,
+            'adjustment',
+            `adj_edit_${Date.now()}`,
+            'adjustment',
+            `Manual edit of ${existing.name}`,
+            connection as any
+          );
         }
       }
 
@@ -1148,14 +1154,30 @@ export async function breakPack(
 
       const childQuantityToAdd = quantityToBreak * factor;
 
-      // 2. Perform Stock Update with Family Sync
-      const { rootId: sourceRootId, factorToRoot: sourceFactorToRoot } = await findUltimateRoot(parentId, connection as any);
-      const sourceRootQty = quantityToBreak / sourceFactorToRoot;
-      await deductFamilyStock(sourceRootId, sourceRootQty, repackagingId, 'adjustment', `Repackaging: Break Pack from ${parentId}`, connection as any);
+      // 2. Perform the stock move: out of the source product, into the target.
+      // These are two independent stock holders; `factor` (already applied to get
+      // childQuantityToAdd) is the repack conversion the operator entered, and it
+      // stays. What disappears is the old root-unit round trip — each product's
+      // stock is its own figure in its own base units, with nothing to cascade.
+      await updateStockAndRecordMovement(
+        parentId,
+        -quantityToBreak,
+        'adjustment',
+        repackagingId,
+        'adjustment',
+        `Repackaging: Break Pack from ${parentId}`,
+        connection as any
+      );
 
-      const { rootId: destRootId, factorToRoot: destFactorToRoot } = await findUltimateRoot(resolvedChildId, connection as any);
-      const destRootQty = childQuantityToAdd / destFactorToRoot;
-      await addFamilyStock(destRootId, destRootQty, repackagingId, 'adjustment', `Repackaging: Produced from ${parentId}`, connection as any);
+      await updateStockAndRecordMovement(
+        resolvedChildId!,
+        childQuantityToAdd,
+        'adjustment',
+        repackagingId,
+        'adjustment',
+        `Repackaging: Produced from ${parentId}`,
+        connection as any
+      );
 
       // 4. Record repackaging logs
 
@@ -1416,15 +1438,30 @@ export async function consolidatePack(
 
       const bulkQtyToAdd = packQtyUsed / factor;
 
-      // 2. Deduct pack stock
-      // 2. Perform Stock Update with Family Sync
-      const { rootId: packRootId, factorToRoot: packFactorToRoot } = await findUltimateRoot(packId, connection as any);
-      const packRootQty = packQtyUsed / packFactorToRoot;
-      await deductFamilyStock(packRootId, packRootQty, repackagingId, 'adjustment', `Consolidation: Used ${packQtyUsed} of ${packId}`, connection as any);
+      // 2. Perform the stock move: out of the packs, into the bulk product.
+      // `factor` (already applied to get bulkQtyToAdd) is the consolidation
+      // conversion the operator entered and stays; the old root-unit round trip
+      // disappears, because each product's stock is its own figure in its own
+      // base units with nothing to cascade.
+      await updateStockAndRecordMovement(
+        packId,
+        -packQtyUsed,
+        'adjustment',
+        repackagingId,
+        'adjustment',
+        `Consolidation: Used ${packQtyUsed} of ${packId}`,
+        connection as any
+      );
 
-      const { rootId: bulkRootId, factorToRoot: bulkFactorToRoot } = await findUltimateRoot(resolvedBulkId, connection as any);
-      const bulkRootQty = bulkQtyToAdd / bulkFactorToRoot;
-      await addFamilyStock(bulkRootId, bulkRootQty, repackagingId, 'adjustment', `Consolidation: Produced from ${packId}`, connection as any);
+      await updateStockAndRecordMovement(
+        resolvedBulkId!,
+        bulkQtyToAdd,
+        'adjustment',
+        repackagingId,
+        'adjustment',
+        `Consolidation: Produced from ${packId}`,
+        connection as any
+      );
 
       // 4. Record stock movements
       const movementId1 = `mov_cons_p_${Date.now()}`;

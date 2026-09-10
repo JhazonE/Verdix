@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, withTransaction, getNextMCNumber } from '@/lib/mysql';
-import { addFamilyStock, findUltimateRoot } from '@/lib/family-sync';
+import { baseQuantity, getBaseUnit } from '@/lib/selling-units';
+import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 import { saveEJournalFiles } from '@/lib/ejournal/ejournal-writer';
 
 export async function POST(request: NextRequest) {
@@ -73,16 +74,18 @@ export async function POST(request: NextRequest) {
 
       const insertItemSql = `
         INSERT INTO pos_transaction_items (
-          id, pos_transaction_id, sale_item_id, product_id, product_name, 
-          quantity, unit_price, line_total, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+          id, pos_transaction_id, sale_item_id, product_id, product_name,
+          quantity, unit_price, line_total,
+          selling_unit_id, selling_unit_name, selling_unit_factor, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
       `;
 
       // First, create sale_items for this return transaction
       const insertSaleItemSql = `
         INSERT INTO sale_items (
-          id, sale_id, product_id, product_name, quantity, price, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, NOW())
+          id, sale_id, product_id, product_name, quantity, price,
+          selling_unit_id, selling_unit_name, selling_unit_factor, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
       `;
 
       for (let i = 0; i < items.length; i++) {
@@ -90,14 +93,67 @@ export async function POST(request: NextRequest) {
         const saleItemId = `${posTransId}-ITEM-${i + 1}`;
         const posItemId = `${posTransId}-DETAIL-${i + 1}`;
 
+        const returnedQty = Number(item.quantity);
+        if (!Number.isFinite(returnedQty)) {
+          throw new Error(`Invalid return quantity for product ${item.productId}: ${item.quantity}`);
+        }
+
+        // --- SELLING UNIT RESOLUTION ---
+        // A return must give back exactly what the sale took, so the unit comes
+        // from the ORIGINAL sale line wherever we can find it — not from the
+        // product's units as they stand today. A unit edited since the sale must
+        // not change how much stock the return restores.
+        //
+        // Fallbacks, in order: the caller's explicit unit (an operator returning
+        // in a different unit on purpose), then the product's base unit, then
+        // factor 1. A pre-selling-unit sale line has NULL, which means 1.
+        let unitId: string | null = null;
+        let unitName: string | null = null;
+        let factor = 0;
+
+        const [originalLine]: any = await connection.query(
+          `SELECT selling_unit_id, selling_unit_name, selling_unit_factor
+           FROM sale_items
+           WHERE sale_id = ? AND product_id = ? AND quantity > 0
+           ORDER BY created_at ASC LIMIT 1`,
+          [saleId, item.productId]
+        );
+        if (originalLine && originalLine.length > 0) {
+          unitId = originalLine[0].selling_unit_id ?? null;
+          unitName = originalLine[0].selling_unit_name ?? null;
+          factor = Number(originalLine[0].selling_unit_factor ?? 1);
+        }
+
+        if (!Number.isFinite(factor) || factor <= 0) {
+          unitId = item.sellingUnitId ?? null;
+          unitName = item.sellingUnitName ?? null;
+          factor = Number(item.sellingUnitFactor ?? 0);
+        }
+        if (!Number.isFinite(factor) || factor <= 0) {
+          const base = await getBaseUnit(item.productId, connection);
+          if (base) {
+            unitId = base.id;
+            unitName = base.name;
+            factor = base.factor;
+          } else {
+            unitId = null;
+            unitName = null;
+            factor = 1;
+          }
+        }
+        // --- END SELLING UNIT RESOLUTION ---
+
         // Create sale_item entry
         await connection.query(insertSaleItemSql, [
           saleItemId,
           saleId,
           item.productId,
           item.productName,
-          -item.quantity, // Negative for returns
-          item.price
+          -returnedQty, // Negative for returns
+          item.price,
+          unitId,
+          unitName,
+          factor
         ]);
 
         // Create pos_transaction_item entry referencing the sale_item
@@ -107,37 +163,34 @@ export async function POST(request: NextRequest) {
           saleItemId, // Reference the sale_item we just created
           item.productId,
           item.productName,
-          -item.quantity, // Negative quantity
+          -returnedQty, // Negative quantity
           item.price,
-          -(item.quantity * item.price)
+          -(returnedQty * item.price),
+          unitId,
+          unitName,
+          factor
         ]);
 
-        // --- Recursive Inventory Addition (Full Ancestor + Descendant Hierarchy) ---
+        // --- Inventory Addition ---
+        // One product, one stock figure, in base units. A selling unit only says
+        // how many base units one of it is worth, so a return is a single add —
+        // there is no family to cascade through any more.
         const [soldProdResult]: any = await connection.query(
-          'SELECT id, parent_id, unit_of_measure, name, stock FROM products WHERE id = ?',
+          'SELECT id, name FROM products WHERE id = ?',
           [item.productId]
         );
-        
+
         if (soldProdResult && soldProdResult.length > 0) {
           const soldProd = soldProdResult[0];
-
-          // Walk ALL the way up the ancestor chain
-          const { rootId, factorToRoot } = await findUltimateRoot(soldProd.id, connection);
-
-          if (factorToRoot > 1 || rootId !== soldProd.id) {
-            // Returned a child - convert to root units and add from root downward
-            const rootQty = Number(item.quantity) / factorToRoot;
-            await addFamilyStock(
-              rootId, rootQty, posTransId, 'return',
-              `Return for Sale: ${saleId} (returned: ${soldProd.name})`, connection
-            );
-          } else {
-            // Returned a root - add and propagate
-            await addFamilyStock(
-              soldProd.id, Number(item.quantity), posTransId, 'return',
-              `Return for Sale: ${saleId}`, connection
-            );
-          }
+          await updateStockAndRecordMovement(
+            soldProd.id,
+            baseQuantity(returnedQty, factor),
+            'return',
+            posTransId,
+            'return',
+            `Return for Sale: ${saleId}${factor !== 1 ? ` (${returnedQty} × ${unitName})` : ''}`,
+            connection
+          );
         }
       }
 

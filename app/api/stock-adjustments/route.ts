@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { withTransaction, query } from '@/lib/mysql';
-import { addFamilyStock, deductFamilyStock, findUltimateRoot } from '@/lib/family-sync';
+import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 import { isService } from '@/lib/product-type';
 
 // GET endpoint to fetch stock adjustments
@@ -95,18 +95,27 @@ export async function POST(request: NextRequest) {
         throw new Error('Services do not carry stock and cannot be adjusted');
       }
       const currentStock = Number(product.stock || 0);
-      const newStock = currentStock + quantity;
-
-      // --- Family Stock Sync ---
-      const { rootId, factorToRoot } = await findUltimateRoot(productId, connection as any);
-      const rootQuantity = Math.abs(quantity) / factorToRoot;
+      const adjustQty = Number(quantity);
+      if (!Number.isFinite(adjustQty)) {
+        throw new Error(`Invalid adjustment quantity for product ${productId}: ${quantity}`);
+      }
+      const newStock = currentStock + adjustQty;
 
       const adjustmentId = uuidv4();
 
-      if (quantity < 0) {
-        await deductFamilyStock(rootId, rootQuantity, adjustmentId, 'adjustment', reason, connection as any);
-      } else if (quantity > 0) {
-        await addFamilyStock(rootId, rootQuantity, adjustmentId, 'adjustment', reason, connection as any);
+      // An adjustment is entered against this product's own stock figure, which
+      // is already in base units. One product, one stock figure — nothing
+      // cascades to another product any more.
+      if (adjustQty !== 0) {
+        await updateStockAndRecordMovement(
+          productId,
+          adjustQty,
+          'adjustment',
+          adjustmentId,
+          'adjustment',
+          reason,
+          connection as any
+        );
       } else {
         // If qty is 0, still update the product to refresh its timestamp
         await connection.query('UPDATE products SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [productId]);

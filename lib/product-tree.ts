@@ -27,7 +27,7 @@ export function getDescendantIds(rootId: string, products: TreeProduct[]): Set<s
 /**
  * The set of product ids that may NOT become `childId`'s new parent:
  * the child itself (a product can't parent itself) plus all its descendants
- * (which would create a parent_id loop and break findUltimateRoot).
+ * (which would create a parent_id loop and break every walk of the tree).
  */
 export function getIllegalReassignTargets(childId: string, products: TreeProduct[]): Set<string> {
   const illegal = getDescendantIds(childId, products);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withTransaction } from '@/lib/mysql';
-import { addFamilyStock, findUltimateRoot } from '@/lib/family-sync';
+import { baseQuantity } from '@/lib/selling-units';
+import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 
 export async function POST(
     request: NextRequest,
@@ -22,20 +23,32 @@ export async function POST(
             }
 
             // 2. Fetch items to reverse stock
-            const [items]: any = await connection.query('SELECT product_id, quantity FROM sales_invoice_items WHERE sales_invoice_id = ?', [invoiceId]);
+            const [items]: any = await connection.query(
+                'SELECT product_id, quantity, selling_unit_factor FROM sales_invoice_items WHERE sales_invoice_id = ?',
+                [invoiceId]
+            );
 
             if (items && items.length > 0) {
                 for (const item of items) {
-                    // --- Inventory Addition (Reversal) using recursive family sync ---
-                    const { rootId, factorToRoot } = await findUltimateRoot(item.product_id, connection as any);
-                    const quantityToAddInRootUnits = item.quantity / factorToRoot;
-                    
-                    await addFamilyStock(
-                        rootId, 
-                        quantityToAddInRootUnits, 
-                        invoiceId, 
-                        'adjustment', 
-                        `Voiding of Sales Invoice: ${invoiceId}`, 
+                    // Give back exactly the base units the invoice took. The factor
+                    // is the one RECORDED on the line — a unit edited since the sale
+                    // must not change how much a void restores. NULL means factor 1
+                    // (rows written before selling units existed).
+                    const factor = Number(item.selling_unit_factor ?? 1);
+                    const qty = Number(item.quantity);
+                    if (!Number.isFinite(qty)) {
+                        throw new Error(
+                            `Invalid quantity on invoice item for product ${item.product_id}: ${item.quantity}`
+                        );
+                    }
+
+                    await updateStockAndRecordMovement(
+                        item.product_id,
+                        baseQuantity(qty, factor),
+                        'adjustment',
+                        invoiceId,
+                        'adjustment',
+                        `Voiding of Sales Invoice: ${invoiceId}`,
                         connection as any
                     );
                 }

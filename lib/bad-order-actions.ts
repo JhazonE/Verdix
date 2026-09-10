@@ -1,6 +1,6 @@
 import { query, withTransaction } from './mysql';
 import { v4 as uuidv4 } from 'uuid';
-import { findUltimateRoot, deductFamilyStock } from './family-sync';
+import { updateStockAndRecordMovement } from './stock-movements';
 
 export async function processBadOrderCreation(body: any, userId: string) {
   try {
@@ -85,17 +85,17 @@ export async function processBadOrderCreation(body: any, userId: string) {
                 item.description || null,
             ]);
 
-            // Sync stock deduction across the entire product family
-            const { rootId, factorToRoot } = await findUltimateRoot(item.productId, connection);
-            const quantityAdded = parseFloat(item.quantity) || 0;
-            const quantityInRootUnits = quantityAdded / factorToRoot;
+            // Write off this product's own stock, which is already in base units.
+            // One product, one stock figure — nothing cascades to another product.
+            const quantityRemoved = parseFloat(item.quantity) || 0;
 
-            if (quantityInRootUnits > 0) {
-                await deductFamilyStock(
-                    rootId,
-                    quantityInRootUnits,
-                    badOrderId,
+            if (quantityRemoved > 0) {
+                await updateStockAndRecordMovement(
+                    item.productId,
+                    -quantityRemoved,
                     'adjustment', // Using adjustment as the movement type for bad orders
+                    badOrderId,
+                    'adjustment',
                     `Bad Order: ${item.reason || 'Not specified'} (${badOrderId})`,
                     connection
                 );

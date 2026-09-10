@@ -2,7 +2,7 @@ import { withTransaction } from './mysql';
 import { generateBatchId } from './batch-utils';
 import { calculatePurchaseCosts } from './purchase-utils';
 import { toSafeNumber } from './utils';
-import { findUltimateRoot, addFamilyStock } from './family-sync';
+import { updateStockAndRecordMovement } from './stock-movements';
 
 function parseDueDays(paymentTerms: string | undefined | null): number {
   if (!paymentTerms) return 0;
@@ -220,13 +220,13 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
       }
       // --- END BATCH COSTING ---
 
-      // Sync stock across the entire product family
-      const { rootId, factorToRoot } = await findUltimateRoot(receivedItem.productId, connection);
-      const quantityInRootUnits = quantityAdded / factorToRoot;
-
-      await addFamilyStock(
-        rootId,
-        quantityInRootUnits,
+      // Receive into this product's own stock, in base units — the same figure
+      // the inventory_batches row above was written with, so batches and
+      // products.stock can never drift apart. Nothing cascades to a family.
+      await updateStockAndRecordMovement(
+        receivedItem.productId,
+        quantityAdded,
+        'purchase',
         orderId,
         'purchase',
         `Received Purchase: ${orderId}`,

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withTransaction, query } from '@/lib/mysql';
-import { syncFamilyStockDuringTransfer } from '@/lib/family-sync';
 import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
 import { processTransferStock } from '@/lib/transfer-actions';
 
