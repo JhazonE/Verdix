@@ -959,6 +959,36 @@ git commit -m "feat: create selling units from the product form"
 
 ---
 
+### Task 7c: Resolve the `cost_at_sale` unit mismatch (BLOCKS the POS UI sending units)
+
+**Status:** identified during Task 5, deliberately not fixed there. **Do this before the POS UI can
+send a non-base selling unit.**
+
+**The problem.** `sale_items.cost_at_sale` is written as `weightedAvgCost` from
+`deductFromBatches`, which is a **per-BASE-unit** figure. `sale_items.price` is **per SELLING unit**.
+On a factor-12 line those are 60 and 1200 — different units in adjacent columns.
+
+Any profit report doing `(price - cost_at_sale) × quantity` therefore misstates margin the moment a
+real non-base sale ships. It is dormant today only because every product's factor is 1, which makes
+the two units coincidentally identical.
+
+**Why it was not fixed in Task 5.** Choosing between per-line and per-unit semantics changes what
+existing reports mean, and there are **141 historical `sales_invoice_items` rows** plus 147
+`sale_items` rows already written under the old (factor-1) assumption. That is a decision about
+reporting, not a checkout bug, and it deserves its own review surface.
+
+**What this task must decide and then implement:**
+
+1. Should `cost_at_sale` be per selling unit (multiply by factor at write time) or stay per base
+   unit (and every reader divides)? Pick one and state why.
+2. Whichever is chosen, historical rows were written when factor was always 1, so both readings agree
+   for them — confirm that and record it, so no backfill is needed.
+3. Update every reader. Find them with:
+   `grep -rn "cost_at_sale" app/ lib/ --include=*.ts --include=*.tsx`
+4. Add a unit test asserting margin is correct for a factor-12 line — the case that is wrong today.
+
+---
+
 ### Task 8: Document the new model
 
 **Files:**
