@@ -2336,7 +2336,7 @@ export async function setPrimarySupplier(productId: string, mappingId: string) {
 export async function getChildProducts(parentId: string) {
   try {
     const products = await query(`
-      SELECT p.*, p.parent_id as parentId, p.conversion_factor as conversionFactor,
+      SELECT p.*, p.parent_id as parentId, cf.factor as conversionFactor,
              COALESCE(w.name, pw.name) as warehouseName,
              (SELECT GROUP_CONCAT(sl.name) FROM product_shelves ps JOIN shelf_locations sl ON ps.shelf_id = sl.id WHERE ps.product_id = p.id) as shelfLocationNames,
              (SELECT COUNT(*) FROM products c WHERE c.parent_id = p.id) as childCount
@@ -2344,6 +2344,7 @@ export async function getChildProducts(parentId: string) {
       LEFT JOIN warehouses w ON p.warehouse_id = w.id
       LEFT JOIN products parent ON p.parent_id = parent.id
       LEFT JOIN warehouses pw ON parent.warehouse_id = pw.id
+      LEFT JOIN conversion_factors cf ON cf.product_id = p.parent_id AND cf.unit = p.unit_of_measure
       WHERE p.parent_id = ?
       ORDER BY p.name
     `, [parentId]);
@@ -2374,6 +2375,9 @@ export async function getChildProducts(parentId: string) {
       cost: p.cost === null || p.cost === undefined ? undefined : parseFloat(p.cost),
       price: p.price === null || p.price === undefined ? undefined : parseFloat(p.price),
       unitOfMeasure: p.unit_of_measure,
+      conversionFactor: p.conversionFactor === null || p.conversionFactor === undefined
+        ? undefined
+        : parseFloat(p.conversionFactor),
       conversionFactors: cfMap.get(p.id) || [],
     }));
   } catch (error) {
