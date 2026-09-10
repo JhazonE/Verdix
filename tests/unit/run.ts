@@ -60,3 +60,4 @@ import './product-markup-resolution.test';
 import './markup-validation.test';
 import './clear-stock-and-reassign.test';
 import './child-conversions.test';
+import './selling-units.test';
