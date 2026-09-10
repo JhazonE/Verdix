@@ -41,7 +41,6 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { formatCurrency, cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-import { MARKUP_MAX } from '@/lib/markup-validation';
 import type { Product } from '@/lib/types';
 
 import { useChildUnits, type ChildUnitRow } from './use-child-units';
@@ -72,8 +71,6 @@ export function ChildUnitsDialog({
     rawChildren,
     isLoading,
     refetch,
-    inheritedFor,
-    suggestedPrice,
     drillInto,
     goBack,
     canGoBack,
@@ -81,15 +78,14 @@ export function ChildUnitsDialog({
     setDraft,
     draftValue,
     isRowValid,
-    hasChanges,
-    allValid,
+    unitCounts,
     isSaving,
     save,
   } = useChildUnits({ product, open, productOptions });
 
-  // rawChildren carries the category/subcategory/brand/supplier fields that
-  // inheritedFor needs but ChildUnitRow doesn't, keyed by id so row order
-  // drift (e.g. after a refetch) can't misalign row <-> raw.
+  // rawChildren carries fields ChildUnitRow doesn't (e.g. conversionFactors,
+  // used by the move picker), keyed by id so row order drift (e.g. after a
+  // refetch) can't misalign row <-> raw.
   const rawById: Record<string, any> = {};
   for (const r of rawChildren) {
     if (r?.id) rawById[r.id] = r;
@@ -124,18 +120,24 @@ export function ChildUnitsDialog({
     }
   };
 
+  const hasEdits = Object.keys(drafts).length > 0;
   const handleClose = () => {
-    if (hasChanges && !window.confirm('Discard unsaved markup changes?')) return;
+    if (hasEdits && !window.confirm('Discard unsaved conversion changes?')) return;
     onOpenChange(false);
   };
 
   const handleSave = async () => {
     const result = await save();
+    if (result.message) {
+      toast({
+        variant: result.success ? undefined : 'destructive',
+        title: result.success ? 'Conversions Saved' : 'Error Saving Conversions',
+        description: result.message,
+      });
+    }
     if (result.success) {
-      toast({ title: 'Markups Saved', description: result.message });
       onSaved?.();
-    } else if (result.message) {
-      toast({ variant: 'destructive', title: 'Error Saving Markups', description: result.message });
+      onOpenChange(false);
     }
   };
 
@@ -176,8 +178,6 @@ export function ChildUnitsDialog({
                     <TableHead className="text-center">Conversion</TableHead>
                     <TableHead className="text-center">Stock</TableHead>
                     <TableHead className="text-right">Cost</TableHead>
-                    <TableHead className="text-center">Markup %</TableHead>
-                    <TableHead className="text-right">Suggested</TableHead>
                     <TableHead className="text-right">Current Price</TableHead>
                     <TableHead className="w-10" />
                   </TableRow>
@@ -186,7 +186,7 @@ export function ChildUnitsDialog({
                   {isLoading &&
                     Array.from({ length: 3 }).map((_, i) => (
                       <TableRow key={i}>
-                        <TableCell colSpan={9} className="h-12 text-center text-muted-foreground">
+                        <TableCell colSpan={7} className="h-12 text-center text-muted-foreground">
                           Loading…
                         </TableCell>
                       </TableRow>
@@ -197,12 +197,11 @@ export function ChildUnitsDialog({
                         key={row.id}
                         row={row}
                         raw={rawById[row.id]}
-                        inheritedFor={inheritedFor}
-                        suggestedPrice={suggestedPrice}
                         onDrillInto={drillInto}
-                        draftText={drafts[row.id]}
+                        drafts={drafts}
                         draftValue={draftValue(row)}
                         isValid={isRowValid(row)}
+                        unitCounts={unitCounts}
                         setDraft={setDraft}
                         onMove={() => setMoveTarget(rawById[row.id] ?? row)}
                         onRemove={() => setRemoveTarget(rawById[row.id] ?? row)}
@@ -210,7 +209,7 @@ export function ChildUnitsDialog({
                     ))}
                   {!isLoading && rows.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center h-24 text-muted-foreground">
+                      <TableCell colSpan={7} className="text-center h-24 text-muted-foreground">
                         No child units yet.
                       </TableCell>
                     </TableRow>
@@ -219,6 +218,10 @@ export function ChildUnitsDialog({
               </Table>
             </CardContent>
           </Card>
+          <p className="text-xs text-muted-foreground mt-2">
+            Changing a conversion factor affects future stock syncs only — it does not
+            adjust quantities already recorded.
+          </p>
         </div>
         <DialogFooter className="sm:justify-between">
           <div>
@@ -279,8 +282,8 @@ export function ChildUnitsDialog({
             <Button variant="ghost" onClick={handleClose}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={!hasChanges || !allValid || isSaving}>
-              {isSaving ? 'Saving…' : 'Save Markups'}
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? 'Saving…' : 'Save Conversions'}
             </Button>
           </div>
         </DialogFooter>
@@ -307,31 +310,29 @@ export function ChildUnitsDialog({
 function ChildUnitTableRow({
   row,
   raw,
-  inheritedFor,
-  suggestedPrice,
   onDrillInto,
-  draftText,
+  drafts,
   draftValue,
   isValid,
+  unitCounts,
   setDraft,
   onMove,
   onRemove,
 }: {
   row: ChildUnitRow;
   raw?: any;
-  inheritedFor: (row: ChildUnitRow, raw: any) => { markup: number; source?: string };
-  suggestedPrice: (cost: number | undefined, markup: number) => number | undefined;
   onDrillInto: (child: any) => void;
-  draftText: string | undefined;
+  drafts: Record<string, string>;
   draftValue: number | null;
   isValid: boolean;
-  setDraft: (id: string, text: string) => void;
+  unitCounts: Map<string, number>;
+  setDraft: (unit: string, text: string) => void;
   onMove: () => void;
   onRemove: () => void;
 }) {
-  const effective = draftValue === null ? inheritedFor(row, raw).markup : draftValue;
-  const suggested = suggestedPrice(row.cost, effective);
-  const changed = draftText !== undefined && draftValue !== row.markupPercentage;
+  const unit = row.unitOfMeasure ?? '';
+  const draftText = drafts[unit];
+  const changed = draftText !== undefined && draftValue !== (row.conversionFactor ?? null);
 
   return (
     <TableRow className={cn(changed && 'bg-muted/40')}>
@@ -350,36 +351,35 @@ function ChildUnitTableRow({
         </div>
       </TableCell>
       <TableCell>{row.unitOfMeasure ?? '—'}</TableCell>
-      <TableCell className="text-center">{row.conversionFactor ?? '—'}</TableCell>
-      <TableCell className="text-center">{row.stock ?? '—'}</TableCell>
-      <TableCell className="text-right">
-        {typeof row.cost === 'number' ? formatCurrency(row.cost) : '—'}
-      </TableCell>
-      <TableCell>
+      <TableCell className="text-center">
         <Input
           type="number"
           step="0.01"
           min={0}
-          max={MARKUP_MAX}
-          className={cn('w-24', !isValid && 'border-destructive')}
-          placeholder="inherit"
-          value={draftText ?? (row.markupPercentage === null ? '' : String(row.markupPercentage))}
-          onChange={(e) => setDraft(row.id, e.target.value)}
+          className={cn('w-24 mx-auto text-center', !isValid && 'border-destructive')}
+          placeholder="none"
+          value={
+            drafts[row.unitOfMeasure ?? ''] ??
+            (row.conversionFactor === null || row.conversionFactor === undefined
+              ? ''
+              : String(row.conversionFactor))
+          }
+          onChange={(e) => setDraft(row.unitOfMeasure ?? '', e.target.value)}
         />
-        {draftValue === null && (
+        {(unitCounts.get(row.unitOfMeasure ?? '') ?? 0) > 1 && (
           <div className="text-xs text-muted-foreground mt-1">
-            inherits {inheritedFor(row, raw).markup}%
-            {inheritedFor(row, raw).source ? ` (${inheritedFor(row, raw).source})` : ''}
+            shared with {(unitCounts.get(row.unitOfMeasure ?? '') ?? 1) - 1} other unit
           </div>
         )}
         {!isValid && (
           <div className="text-xs text-destructive mt-1">
-            Enter 0–{MARKUP_MAX}, or leave blank to inherit.
+            Enter a number greater than 0, or leave it blank.
           </div>
         )}
       </TableCell>
+      <TableCell className="text-center">{row.stock ?? '—'}</TableCell>
       <TableCell className="text-right">
-        {typeof suggested === 'number' ? formatCurrency(suggested) : '—'}
+        {typeof row.cost === 'number' ? formatCurrency(row.cost) : '—'}
       </TableCell>
       <TableCell className="text-right">
         {typeof row.price === 'number' ? formatCurrency(row.price) : '—'}

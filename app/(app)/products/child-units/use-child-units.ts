@@ -1,12 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getChildProducts, updateChildMarkups } from '../actions';
-import { calculateMarkupPercentage, calculateSuggestedPrice } from '@/lib/purchase-utils';
-import { getApiUrl } from '@/lib/api-config';
-import { isValidMarkupValue } from '@/lib/markup-validation';
-import type { Product, SystemSettings } from '@/lib/types';
+import { getChildProducts, updateChildConversions } from '../actions';
+import type { Product } from '@/lib/types';
 
 export type ChildUnitRow = {
   id: string;
@@ -30,22 +27,6 @@ export function useChildUnits({
   open: boolean;
   productOptions?: any;
 }) {
-  // The products page has neither systemSettings nor priceLevels in scope, so
-  // this hook sources them the same way use-edit-product-form.ts does: price
-  // levels ride along on productOptions, settings are fetched here.
-  const priceLevels: any[] = productOptions?.priceLevels ?? [];
-
-  // Same fetch as use-edit-product-form.ts:103 — one settings endpoint, one shape.
-  const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
-  useEffect(() => {
-    fetch(getApiUrl('/pos-settings'))
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) setSystemSettings(data.data);
-      })
-      .catch(err => console.error('Failed to fetch settings', err));
-  }, []);
-
   // The dialog can re-target itself at a child that has its own children, so
   // the parent being viewed is state, not just the prop. `trail` is the way
   // back up.
@@ -77,82 +58,72 @@ export function useChildUnits({
     markupPercentage: c.markupPercentage ?? null,
   }));
 
-  /**
-   * What this row would inherit if its override were cleared — shown as a hint
-   * under an empty markup field so the user knows what "blank" actually means.
-   */
-  const inheritedFor = useCallback(
-    (row: ChildUnitRow, raw: any) => {
-      const { markup, source } = calculateMarkupPercentage(
-        {
-          markupPercentage: null, // deliberately ignore the override
-          category: raw?.category,
-          subcategory: raw?.subcategory,
-          brand: raw?.brand,
-          supplierId: raw?.supplier_id,
-        },
-        systemSettings,
-        productOptions?.categories ?? [],
-        productOptions?.subcategories ?? [],
-        productOptions?.brands ?? [],
-        productOptions?.suppliers ?? []
-      );
-      return { markup, source };
-    },
-    [systemSettings, productOptions]
-  );
-
-  /** Suggested price for a given markup. Never written to products.price. */
-  const suggestedPrice = useCallback(
-    (cost: number | undefined, markup: number) => {
-      if (cost === undefined || cost === null) return undefined;
-      const defaultLevel = (priceLevels ?? []).find((l: any) => l.isDefault) ?? (priceLevels ?? [])[0];
-      return calculateSuggestedPrice(cost, markup, 0, defaultLevel);
-    },
-    [priceLevels]
-  );
-
-  /** productId -> raw input text. Absent = untouched. '' = cleared to inherit. */
+  /** unit -> raw input text. Absent = untouched. '' = cleared (delete the factor). */
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (open) setDrafts({});
   }, [open, viewedParent?.id]);
 
-  const setDraft = useCallback((id: string, text: string) => {
-    setDrafts((d) => ({ ...d, [id]: text }));
+  const setDraft = useCallback((unit: string, text: string) => {
+    setDrafts((d) => ({ ...d, [unit]: text }));
   }, []);
 
-  /** The value a row would save: null when blank, else the parsed number. */
+  /** The value a unit would save: null when blank, else the parsed number. */
   const draftValue = useCallback((row: ChildUnitRow): number | null => {
-    const text = drafts[row.id];
-    if (text === undefined) return row.markupPercentage;
+    const unit = row.unitOfMeasure ?? '';
+    const text = drafts[unit];
+    if (text === undefined) return row.conversionFactor ?? null;
     if (text.trim() === '') return null;
     return Number(text);
   }, [drafts]);
 
-  const isRowValid = useCallback(
-    (row: ChildUnitRow) => isValidMarkupValue(draftValue(row)),
-    [draftValue]
-  );
+  const isRowValid = useCallback((row: ChildUnitRow) => {
+    const v = draftValue(row);
+    if (v === null) return true;
+    return Number.isFinite(v) && v > 0;
+  }, [draftValue]);
 
-  const changedRows = rows.filter((r) => {
-    const text = drafts[r.id];
-    if (text === undefined) return false;
-    return draftValue(r) !== r.markupPercentage;
-  });
-
-  const hasChanges = changedRows.length > 0;
   const allValid = rows.every(isRowValid);
+
+  /** unit -> how many rows use it. Anything > 1 shares a single factor row. */
+  const unitCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const unit = row.unitOfMeasure ?? '';
+      if (!unit) continue;
+      counts.set(unit, (counts.get(unit) ?? 0) + 1);
+    }
+    return counts;
+  }, [rows]);
 
   const [isSaving, setIsSaving] = useState(false);
 
   const save = useCallback(async () => {
-    if (!hasChanges || !allValid) return { success: false, message: '' };
+    if (!allValid) {
+      return { success: false, message: 'Fix the highlighted conversion factors first.' };
+    }
+
+    // One entry per CHANGED unit (not per row) — two rows sharing a unit are
+    // one factor, so sending both would write the same row twice.
+    const byUnit = new Map<string, number | null>();
+    for (const row of rows) {
+      const unit = row.unitOfMeasure ?? '';
+      if (!unit) continue;
+      const text = drafts[unit];
+      if (text === undefined) continue;
+      const next = draftValue(row);
+      if (next !== (row.conversionFactor ?? null)) byUnit.set(unit, next);
+    }
+
+    // Saving with nothing changed is a normal success — the button is always enabled.
+    if (byUnit.size === 0) return { success: true, message: '' };
+
     setIsSaving(true);
     try {
-      const result = await updateChildMarkups(
-        changedRows.map((r) => ({ id: r.id, markupPercentage: draftValue(r) }))
+      const result = await updateChildConversions(
+        viewedParent!.id,
+        [...byUnit.entries()].map(([unit, factor]) => ({ unit, factor })),
       );
       if (result.success) {
         setDrafts({});
@@ -162,7 +133,7 @@ export function useChildUnits({
     } finally {
       setIsSaving(false);
     }
-  }, [hasChanges, allValid, changedRows, draftValue, refetch]);
+  }, [allValid, rows, drafts, draftValue, viewedParent, refetch]);
 
   const drillInto = useCallback((child: Product) => {
     setTrail((t) => [...t, viewedParent!].filter(Boolean) as Product[]);
@@ -184,8 +155,6 @@ export function useChildUnits({
     rawChildren: children as any[],
     isLoading,
     refetch,
-    inheritedFor,
-    suggestedPrice,
     drillInto,
     goBack,
     canGoBack: trail.length > 0,
@@ -193,7 +162,7 @@ export function useChildUnits({
     setDraft,
     draftValue,
     isRowValid,
-    hasChanges,
+    unitCounts,
     allValid,
     isSaving,
     save,
