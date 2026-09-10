@@ -352,29 +352,40 @@ function ChildUnitTableRow({
       </TableCell>
       <TableCell>{row.unitOfMeasure ?? '—'}</TableCell>
       <TableCell className="text-center">
-        <Input
-          type="number"
-          step="0.01"
-          min={0}
-          className={cn('w-24 mx-auto text-center', !isValid && 'border-destructive')}
-          placeholder="none"
-          value={
-            drafts[row.unitOfMeasure ?? ''] ??
-            (row.conversionFactor === null || row.conversionFactor === undefined
-              ? ''
-              : String(row.conversionFactor))
-          }
-          onChange={(e) => setDraft(row.unitOfMeasure ?? '', e.target.value)}
-        />
-        {(unitCounts.get(row.unitOfMeasure ?? '') ?? 0) > 1 && (
-          <div className="text-xs text-muted-foreground mt-1">
-            shared with {(unitCounts.get(row.unitOfMeasure ?? '') ?? 1) - 1} other unit
-          </div>
-        )}
-        {!isValid && (
-          <div className="text-xs text-destructive mt-1">
-            Enter a number greater than 0, or leave it blank.
-          </div>
+        {row.unitOfMeasure ? (
+          <>
+            <Input
+              type="number"
+              step="0.01"
+              min={0}
+              className={cn('w-24 mx-auto text-center', !isValid && 'border-destructive')}
+              placeholder="none"
+              value={
+                drafts[row.unitOfMeasure ?? ''] ??
+                (row.conversionFactor === null || row.conversionFactor === undefined
+                  ? ''
+                  : String(row.conversionFactor))
+              }
+              onChange={(e) => setDraft(row.unitOfMeasure ?? '', e.target.value)}
+            />
+            {(unitCounts.get(row.unitOfMeasure ?? '') ?? 0) > 1 && (
+              <div className="text-xs text-muted-foreground mt-1">
+                shared with {(unitCounts.get(row.unitOfMeasure ?? '') ?? 1) - 1} other unit
+              </div>
+            )}
+            {!isValid && (
+              <div className="text-xs text-destructive mt-1">
+                Enter a number greater than 0, or leave it blank.
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="text-center">—</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              No unit set — a conversion factor is keyed by the child&apos;s unit, so it can&apos;t be set until this product has one.
+            </div>
+          </>
         )}
       </TableCell>
       <TableCell className="text-center">{row.stock ?? '—'}</TableCell>

@@ -109,6 +109,10 @@ export function useChildUnits({
     const byUnit = new Map<string, number | null>();
     for (const row of rows) {
       const unit = row.unitOfMeasure ?? '';
+      // ChildUnitsDialog renders the Conversion cell read-only for a row with
+      // no unit, so this should be unreachable via the UI. Kept as a backstop
+      // (a factor is keyed by unit, so an empty key must never be written) —
+      // do not remove even though the dialog already prevents the case.
       if (!unit) continue;
       const text = drafts[unit];
       if (text === undefined) continue;
