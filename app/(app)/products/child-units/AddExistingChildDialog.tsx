@@ -16,17 +16,37 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/lib/utils';
 import { clearStockAndReassign, reassignParent } from '../actions';
-import { getIllegalChildTargets, type TreeProduct } from '@/lib/product-tree';
+import { getIllegalChildTargets, getIllegalReassignTargets, type TreeProduct } from '@/lib/product-tree';
 import { buildProductQuery, PRODUCT_SEARCH_DEBOUNCE_MS } from '@/lib/product-search';
 import { getApiUrl } from '@/lib/api-config';
 
+/**
+ * Two framings share this one picker:
+ *
+ * - 'add' (default): `subject` is the PARENT. We're picking a product to
+ *   attach as its child. Illegal targets = the parent + its ancestors
+ *   (getIllegalChildTargets), because attaching an ancestor under its own
+ *   descendant would create a loop. The candidate may already carry stock,
+ *   which clearStockAndReassign must zero before it can become a child.
+ * - 'move': `subject` is the CHILD being relocated. We're picking a new
+ *   parent for it. Illegal targets = the child + its descendants
+ *   (getIllegalReassignTargets), for the same loop reason mirrored. The
+ *   subject is already a child, so its stock is already zero (enforced
+ *   server-side when it first became a child) — clearStockAndReassign is
+ *   never needed here, reassignParent alone is correct.
+ *
+ * Either way the conversion factor means the same thing: how many of the
+ * FIXED side's unit equal one unit of the OTHER (candidate) side.
+ */
 export function AddExistingChildDialog({
-  parentProduct,
+  subject,
+  mode = 'add',
   open,
   onOpenChange,
   onAdded,
 }: {
-  parentProduct: Product;
+  subject: Product;
+  mode?: 'add' | 'move';
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAdded: () => void;
@@ -65,7 +85,7 @@ export function AddExistingChildDialog({
     return () => clearTimeout(timer);
   }, [search, open]);
 
-  // Reset local state whenever the dialog is (re)opened for a parent, so a
+  // Reset local state whenever the dialog is (re)opened for a subject, so a
   // stale selection from a previous open doesn't survive into this one.
   useEffect(() => {
     if (!open) return;
@@ -74,23 +94,29 @@ export function AddExistingChildDialog({
     setSelectedId('');
     setFactor('');
     setAutoDetected(false);
-  }, [open, parentProduct.id]);
+  }, [open, subject.id]);
 
   // Convenience filter only, over one page of search results — not an
-  // authority. getIllegalChildTargets walks ancestors from what's on the
-  // page, so a true ancestor absent from this page won't be caught here;
-  // reassignParent/clearStockAndReassign re-run the real check server-side
-  // against the full table and reject with a clear message if this filter
-  // missed something.
+  // authority. Both helpers walk ancestors/descendants from what's on the
+  // page, so a true illegal target absent from this page won't be caught
+  // here; reassignParent/clearStockAndReassign re-run the real check
+  // server-side against the full table and reject with a clear message if
+  // this filter missed something.
   const legalCandidates = useMemo(() => {
     const treeProducts: TreeProduct[] = candidates.map((p) => ({ id: p.id, parentId: p.parentId }));
-    const illegal = getIllegalChildTargets(parentProduct.id, treeProducts);
+    const illegal =
+      mode === 'move'
+        ? getIllegalReassignTargets(subject.id, treeProducts)
+        : getIllegalChildTargets(subject.id, treeProducts);
     return candidates
       .filter((p) => !illegal.has(p.id))
-      // Already a direct child of this parent — it's in the table already.
-      .filter((p) => p.parentId !== parentProduct.id)
+      // In 'add' mode, a product already a direct child of this parent is
+      // already in the table — no need to offer it again. In 'move' mode the
+      // subject's current parent is a legal (if pointless) target, so this
+      // filter doesn't apply.
+      .filter((p) => mode === 'move' || p.parentId !== subject.id)
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [candidates, parentProduct.id]);
+  }, [candidates, subject.id, mode]);
 
   const selected = useMemo(
     () => candidates.find((p) => p.id === selectedId) ?? null,
@@ -100,9 +126,18 @@ export function AddExistingChildDialog({
   const handleSelect = (id: string) => {
     setSelectedId(id);
     const product = candidates.find((p) => p.id === id);
-    const match = product?.unitOfMeasure
-      ? parentProduct.conversionFactors?.find((cf) => cf.unit === product.unitOfMeasure)
-      : undefined;
+    // 'add': the candidate is the future child — look up its unit among the
+    // (fixed) parent's known conversion factors.
+    // 'move': the candidate is the future parent — look up the (fixed)
+    // child's unit among the candidate's conversion factors.
+    const match =
+      mode === 'move'
+        ? subject.unitOfMeasure
+          ? product?.conversionFactors?.find((cf) => cf.unit === subject.unitOfMeasure)
+          : undefined
+        : product?.unitOfMeasure
+          ? subject.conversionFactors?.find((cf) => cf.unit === product.unitOfMeasure)
+          : undefined;
     if (match) {
       setFactor(String(match.factor));
       setAutoDetected(true);
@@ -112,7 +147,11 @@ export function AddExistingChildDialog({
     }
   };
 
-  const hasStock = (selected?.stock ?? 0) > 0;
+  // Stock only matters in 'add' mode: the candidate there may be any product
+  // and could be holding stock. In 'move' mode the subject is already a
+  // child, so its stock is already zero (enforced server-side when it first
+  // became a child) — there's nothing to clear.
+  const hasStock = mode === 'add' && (selected?.stock ?? 0) > 0;
   const canSave = selected !== null && Number(factor) > 0;
 
   const resetAndClose = () => {
@@ -128,15 +167,22 @@ export function AddExistingChildDialog({
     if (!selected || !canSave) return;
     setIsSaving(true);
     try {
-      const result = hasStock
-        ? await clearStockAndReassign(selected.id, parentProduct.id, Number(factor))
-        : await reassignParent(selected.id, parentProduct.id, Number(factor));
+      const result =
+        mode === 'move'
+          ? await reassignParent(subject.id, selected.id, Number(factor))
+          : hasStock
+            ? await clearStockAndReassign(selected.id, subject.id, Number(factor))
+            : await reassignParent(selected.id, subject.id, Number(factor));
       if (result.success) {
-        toast({ title: 'Added', description: result.message });
+        toast({ title: mode === 'move' ? 'Moved' : 'Added', description: result.message });
         onAdded();
         resetAndClose();
       } else {
-        toast({ variant: 'destructive', title: 'Could not add child', description: result.message });
+        toast({
+          variant: 'destructive',
+          title: mode === 'move' ? 'Could not move product' : 'Could not add child',
+          description: result.message,
+        });
       }
     } finally {
       setIsSaving(false);
@@ -147,10 +193,18 @@ export function AddExistingChildDialog({
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(next) : resetAndClose())}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add Existing Product</DialogTitle>
+          <DialogTitle>{mode === 'move' ? 'Move to Another Parent' : 'Add Existing Product'}</DialogTitle>
           <DialogDescription>
-            Attach an existing product as a child of{' '}
-            <span className="font-medium">{parentProduct.name}</span>.
+            {mode === 'move' ? (
+              <>
+                Move <span className="font-medium">{subject.name}</span> under a different parent product.
+              </>
+            ) : (
+              <>
+                Attach an existing product as a child of{' '}
+                <span className="font-medium">{subject.name}</span>.
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -209,8 +263,17 @@ export function AddExistingChildDialog({
 
               <div className="space-y-2">
                 <Label htmlFor="add-existing-factor">
-                  Conversion factor ({selected.unitOfMeasure ?? 'unit'} per 1 {parentProduct.unitOfMeasure} of{' '}
-                  {parentProduct.name})
+                  {mode === 'move' ? (
+                    <>
+                      Conversion factor ({subject.unitOfMeasure ?? 'unit'} per 1 {selected.unitOfMeasure ?? 'unit'} of{' '}
+                      {selected.name})
+                    </>
+                  ) : (
+                    <>
+                      Conversion factor ({selected.unitOfMeasure ?? 'unit'} per 1 {subject.unitOfMeasure} of{' '}
+                      {subject.name})
+                    </>
+                  )}
                 </Label>
                 <Input
                   id="add-existing-factor"
@@ -226,7 +289,7 @@ export function AddExistingChildDialog({
                 />
                 {autoDetected && (
                   <p className="text-xs text-muted-foreground">
-                    Auto-detected from {parentProduct.name}. You can override it.
+                    Auto-detected from {mode === 'move' ? selected.name : subject.name}. You can override it.
                   </p>
                 )}
               </div>
@@ -241,9 +304,11 @@ export function AddExistingChildDialog({
           <Button onClick={handleConfirm} disabled={!canSave || isSaving}>
             {isSaving
               ? 'Saving...'
-              : hasStock
-                ? 'Clear stock and add as child'
-                : 'Add as child'}
+              : mode === 'move'
+                ? 'Move'
+                : hasStock
+                  ? 'Clear stock and add as child'
+                  : 'Add as child'}
           </Button>
         </DialogFooter>
       </DialogContent>

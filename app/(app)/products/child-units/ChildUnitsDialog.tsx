@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowLeft, ChevronDown, PlusCircle } from 'lucide-react';
+import { ArrowLeft, ChevronDown, MoreVertical, PlusCircle } from 'lucide-react';
 
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -21,6 +21,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -37,6 +47,7 @@ import type { Product } from '@/lib/types';
 import { useChildUnits, type ChildUnitRow } from './use-child-units';
 import { QuickAddChildDialog } from '../quick-add-child/quick-add-child-dialog';
 import { AddExistingChildDialog } from './AddExistingChildDialog';
+import { reassignParent } from '../actions';
 
 export function ChildUnitsDialog({
   product,
@@ -83,6 +94,35 @@ export function ChildUnitsDialog({
   for (const r of rawChildren) {
     if (r?.id) rawById[r.id] = r;
   }
+
+  // Row being moved (opens the move picker) / removed (opens the confirm).
+  // Holding the raw child record, not just an id, because the move picker
+  // needs a full Product-shaped `subject` (unitOfMeasure, conversionFactors).
+  const [moveTarget, setMoveTarget] = useState<any | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<any | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
+
+  const afterRowAction = () => {
+    refetch();
+    onSaved?.();
+  };
+
+  const handleRemoveConfirm = async () => {
+    if (!removeTarget) return;
+    setIsRemoving(true);
+    try {
+      const result = await reassignParent(removeTarget.id, null, 0);
+      if (result.success) {
+        toast({ title: 'Removed', description: result.message });
+        afterRowAction();
+        setRemoveTarget(null);
+      } else {
+        toast({ variant: 'destructive', title: 'Could not remove', description: result.message });
+      }
+    } finally {
+      setIsRemoving(false);
+    }
+  };
 
   const handleClose = () => {
     if (hasChanges && !window.confirm('Discard unsaved markup changes?')) return;
@@ -139,13 +179,14 @@ export function ChildUnitsDialog({
                     <TableHead className="text-center">Markup %</TableHead>
                     <TableHead className="text-right">Suggested</TableHead>
                     <TableHead className="text-right">Current Price</TableHead>
+                    <TableHead className="w-10" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isLoading &&
                     Array.from({ length: 3 }).map((_, i) => (
                       <TableRow key={i}>
-                        <TableCell colSpan={8} className="h-12 text-center text-muted-foreground">
+                        <TableCell colSpan={9} className="h-12 text-center text-muted-foreground">
                           Loading…
                         </TableCell>
                       </TableRow>
@@ -163,11 +204,13 @@ export function ChildUnitsDialog({
                         draftValue={draftValue(row)}
                         isValid={isRowValid(row)}
                         setDraft={setDraft}
+                        onMove={() => setMoveTarget(rawById[row.id] ?? row)}
+                        onRemove={() => setRemoveTarget(rawById[row.id] ?? row)}
                       />
                     ))}
                   {!isLoading && rows.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center h-24 text-muted-foreground">
+                      <TableCell colSpan={9} className="text-center h-24 text-muted-foreground">
                         No child units yet.
                       </TableCell>
                     </TableRow>
@@ -210,13 +253,25 @@ export function ChildUnitsDialog({
             />
             {viewedParent && (
               <AddExistingChildDialog
-                parentProduct={viewedParent}
+                subject={viewedParent}
+                mode="add"
                 open={addExistingOpen}
                 onOpenChange={setAddExistingOpen}
                 onAdded={() => {
                   refetch();
                   onSaved?.();
                 }}
+              />
+            )}
+            {moveTarget && (
+              <AddExistingChildDialog
+                subject={moveTarget}
+                mode="move"
+                open={!!moveTarget}
+                onOpenChange={(next) => {
+                  if (!next) setMoveTarget(null);
+                }}
+                onAdded={afterRowAction}
               />
             )}
           </div>
@@ -230,6 +285,21 @@ export function ChildUnitsDialog({
           </div>
         </DialogFooter>
       </DialogContent>
+
+      <AlertDialog open={!!removeTarget} onOpenChange={(next) => !next && setRemoveTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {removeTarget?.name} from this family?</AlertDialogTitle>
+            <AlertDialogDescription>It becomes a top-level product.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRemoving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemoveConfirm} disabled={isRemoving}>
+              {isRemoving ? 'Removing…' : 'Remove'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }
@@ -244,6 +314,8 @@ function ChildUnitTableRow({
   draftValue,
   isValid,
   setDraft,
+  onMove,
+  onRemove,
 }: {
   row: ChildUnitRow;
   raw?: any;
@@ -254,6 +326,8 @@ function ChildUnitTableRow({
   draftValue: number | null;
   isValid: boolean;
   setDraft: (id: string, text: string) => void;
+  onMove: () => void;
+  onRemove: () => void;
 }) {
   const effective = draftValue === null ? inheritedFor(row, raw).markup : draftValue;
   const suggested = suggestedPrice(row.cost, effective);
@@ -309,6 +383,20 @@ function ChildUnitTableRow({
       </TableCell>
       <TableCell className="text-right">
         {typeof row.price === 'number' ? formatCurrency(row.price) : '—'}
+      </TableCell>
+      <TableCell className="text-right">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="h-8 w-8 p-0">
+              <span className="sr-only">Open menu</span>
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onMove}>Move to another parent</DropdownMenuItem>
+            <DropdownMenuItem onClick={onRemove}>Remove from family</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </TableCell>
     </TableRow>
   );
