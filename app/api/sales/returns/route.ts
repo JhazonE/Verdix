@@ -99,36 +99,98 @@ export async function POST(request: NextRequest) {
         }
 
         // --- SELLING UNIT RESOLUTION ---
-        // A return must give back exactly what the sale took, so the unit comes
-        // from the ORIGINAL sale line wherever we can find it — not from the
-        // product's units as they stand today. A unit edited since the sale must
-        // not change how much stock the return restores.
+        // Resolution order, most authoritative first:
         //
-        // Fallbacks, in order: the caller's explicit unit (an operator returning
-        // in a different unit on purpose), then the product's base unit, then
-        // factor 1. A pre-selling-unit sale line has NULL, which means 1.
-        let unitId: string | null = null;
-        let unitName: string | null = null;
-        let factor = 0;
+        //   1. The unit the CALLER named. Naming a unit is a deliberate act by an
+        //      operator holding the physical goods; the sale line is only an
+        //      inference about what they probably meant. So an explicit unit wins
+        //      even when it differs from how the item was sold — returning three
+        //      loose pieces of something sold as a case is a real thing to do.
+        //   2. The unit RECORDED on the original sale line. Recorded, not the
+        //      unit's current factor: a unit edited since the sale must not change
+        //      how much stock the return restores.
+        //   3. The product's base unit, then factor 1. A pre-selling-unit sale
+        //      line has NULL, which also means 1.
+        //
+        // When the caller names a unit we look the original line up BY THAT UNIT,
+        // so its recorded factor is the one that actually applies — never some
+        // other line's. Only the id is trusted from the caller; the factor comes
+        // from the recorded line where one exists.
+        let unitId: string | null = item.sellingUnitId ?? null;
+        let unitName: string | null = item.sellingUnitName ?? null;
+        let factor = Number(item.sellingUnitFactor ?? 0);
 
-        const [originalLine]: any = await connection.query(
-          `SELECT selling_unit_id, selling_unit_name, selling_unit_factor
-           FROM sale_items
-           WHERE sale_id = ? AND product_id = ? AND quantity > 0
-           ORDER BY created_at ASC LIMIT 1`,
-          [saleId, item.productId]
-        );
-        if (originalLine && originalLine.length > 0) {
-          unitId = originalLine[0].selling_unit_id ?? null;
-          unitName = originalLine[0].selling_unit_name ?? null;
-          factor = Number(originalLine[0].selling_unit_factor ?? 1);
+        const [originalLines]: any = unitId
+          ? await connection.query(
+              `SELECT selling_unit_id, selling_unit_name, selling_unit_factor
+               FROM sale_items
+               WHERE sale_id = ? AND product_id = ? AND quantity > 0
+                 AND selling_unit_id = ?
+               ORDER BY created_at ASC`,
+              [saleId, item.productId, unitId]
+            )
+          : await connection.query(
+              `SELECT selling_unit_id, selling_unit_name, selling_unit_factor
+               FROM sale_items
+               WHERE sale_id = ? AND product_id = ? AND quantity > 0
+               ORDER BY created_at ASC`,
+              [saleId, item.productId]
+            );
+
+        if (originalLines && originalLines.length > 0) {
+          // With no unit named by the caller, the same product can appear on the
+          // sale more than once in DIFFERENT units (1 Case + 3 Piece). Picking the
+          // oldest is then a guess, so say so rather than restoring a silently
+          // wrong quantity — an operator needs a trail when the numbers look odd.
+          if (!unitId) {
+            const distinctFactors = Array.from(
+              new Set(originalLines.map((r: any) => Number(r.selling_unit_factor ?? 1)))
+            );
+            if (distinctFactors.length > 1) {
+              console.warn(
+                `[Returns] Ambiguous selling unit for product ${item.productId} on sale ${saleId}: ` +
+                `the sale has lines in ${distinctFactors.length} different units (factors ` +
+                `${distinctFactors.join(', ')}). No sellingUnitId was supplied, so the OLDEST line ` +
+                `(factor ${Number(originalLines[0].selling_unit_factor ?? 1)}) was used to restore stock. ` +
+                `Supply sellingUnitId on the return line to choose explicitly.`
+              );
+            }
+          }
+
+          const line = originalLines[0];
+          const recordedFactor = Number(line.selling_unit_factor ?? 1);
+          if (Number.isFinite(recordedFactor) && recordedFactor > 0) {
+            unitId = line.selling_unit_id ?? unitId;
+            unitName = line.selling_unit_name ?? unitName;
+            factor = recordedFactor;
+          }
         }
 
-        if (!Number.isFinite(factor) || factor <= 0) {
-          unitId = item.sellingUnitId ?? null;
-          unitName = item.sellingUnitName ?? null;
-          factor = Number(item.sellingUnitFactor ?? 0);
+        // The caller named a unit that is not on this sale (returning in a unit the
+        // item was not sold in) and gave no factor. Resolve THAT unit rather than
+        // falling through to the base unit — quietly substituting a different unit
+        // would restore a different quantity than the operator asked for.
+        if ((!Number.isFinite(factor) || factor <= 0) && unitId) {
+          const [namedUnit]: any = await connection.query(
+            'SELECT id, name, factor FROM product_selling_units WHERE id = ? AND product_id = ? LIMIT 1',
+            [unitId, item.productId]
+          );
+          if (namedUnit && namedUnit.length > 0) {
+            const namedFactor = Number(namedUnit[0].factor);
+            if (Number.isFinite(namedFactor) && namedFactor > 0) {
+              unitName = namedUnit[0].name ?? unitName;
+              factor = namedFactor;
+            }
+          } else {
+            // A unit id that belongs to no unit of this product is a caller error,
+            // not something to paper over with the base unit: it would silently
+            // restore the wrong quantity under a unit name that never existed.
+            throw new Error(
+              `Unknown selling unit ${unitId} for product ${item.productId} on return for sale ${saleId}`
+            );
+          }
         }
+
         if (!Number.isFinite(factor) || factor <= 0) {
           const base = await getBaseUnit(item.productId, connection);
           if (base) {
@@ -136,8 +198,8 @@ export async function POST(request: NextRequest) {
             unitName = base.name;
             factor = base.factor;
           } else {
-            unitId = null;
-            unitName = null;
+            unitId = unitId ?? null;
+            unitName = unitName ?? null;
             factor = 1;
           }
         }
