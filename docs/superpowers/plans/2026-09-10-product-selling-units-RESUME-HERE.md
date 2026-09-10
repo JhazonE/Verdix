@@ -8,6 +8,13 @@ session by user decision, because they rewrite POS checkout — BIR-significant 
 - **Spec:** `docs/superpowers/specs/2026-09-10-product-selling-units-design.md`
 - **Commits from this run:** `2759fbd..0ce871e` (4 commits, 296 insertions / 0 deletions)
 
+**A task was added after the run: Task 7b.** The user pointed out that the plan removes the family
+model from the *runtime* (Tasks 5–7) but never touches the place a user *creates* one — the Add
+Product form's **Conversion Factors** tab, which has an "Auto-create Child Unit" switch and rows
+carrying only a unit name and quantity. Task 7b turns that tab into **Selling Units** (unit name,
+quantity, barcode, cost, price) and deletes the child-creating switch. Without it, the UI would still
+offer to build a model the backend no longer honours.
+
 ## What state things are actually in
 
 The database is at **migration 120**.

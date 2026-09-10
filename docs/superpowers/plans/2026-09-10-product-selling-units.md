@@ -859,6 +859,106 @@ git commit -m "refactor: remove the parent/child family model"
 
 ---
 
+### Task 7b: Replace the Add/Edit Product "Conversion Factors" tab with Selling Units
+
+**Files:**
+- Modify: `app/(app)/products/add-product/tabs/conversion-tab.tsx`
+- Modify: `app/(app)/products/edit-product/tabs/conversion-tab.tsx`
+- Modify: `app/(app)/products/add-product/use-add-product-form.ts`
+- Modify: `app/(app)/products/edit-product/use-edit-product-form.ts`
+- Modify: `app/(app)/products/add-product/product-schema.ts`
+- Modify: `app/(app)/products/actions.ts` — `addProduct`'s child-creation branch (~line 554)
+
+**Interfaces:**
+- Consumes: `product_selling_units` (Task 1), `baseQuantity`/`getBaseUnit` (Task 3).
+- Produces: products created with their selling units in one step.
+
+**Why this task exists.** The user asked for it directly: *"wala man nimu gtangal ang parent ug child
+na features then pulihanan atong sa conversion factor nga naa sa add products."* Tasks 5–7 remove the
+family model from the *runtime*, but the Add Product form is where a user actually *creates* one —
+leaving it untouched would mean the UI still offers to build a model the backend no longer honours.
+
+**What the tab does today** (read it before editing):
+- An **"Auto-create Child Unit"** switch. When on, `addProduct` inserts a second product with
+  `parentId` set (`actions.ts:554`, via `formData.__childProduct`) — this is the family model's
+  creation path and it goes away entirely.
+- A **Conversion Factors** list where each row has only **Unit Name** and **Quantity**. There is
+  nowhere to enter a barcode, a cost, or a price — which is exactly why packaging ended up encoded in
+  product names.
+
+**What it becomes:** a **Selling Units** tab. Each row: **Unit Name**, **Quantity** (the factor),
+**Barcode**, **Cost**, **Price**. The "Auto-create Child Unit" switch is deleted — there is no child
+to create. The product's own unit becomes its base unit (factor 1) automatically, as Task 2's
+backfill already does for existing products.
+
+- [ ] **Step 1: Rework the add-product tab**
+
+Rename the section heading to **Selling Units** and delete the "Auto-create Child Unit" block
+outright (the `Switch`, its `Label`, and the `autoCreateChild` state feeding it).
+
+Extend each row from two fields to five. Keep the existing `useFieldArray` wiring and the unit-name
+`Select`; add three inputs bound to `sellingUnits.${index}.barcode`, `.cost`, and `.price`.
+
+Rename the field array from `conversionFactors` to `sellingUnits` in the form, the schema, and the
+tab, so nothing still calls these "conversion factors" — the name is what made them feel like a
+property of the parent rather than a thing you sell.
+
+- [ ] **Step 2: Validate each row**
+
+Per row: unit name required and unique within the product; **factor > 0** (reject `0` — a zero factor
+would make every synced quantity zero); price required and `>= 0`; cost optional; barcode optional.
+
+A duplicate barcode must be caught and surfaced clearly: `product_selling_units.barcode` is UNIQUE
+across the whole table and already holds ~16,000 values from the base-unit backfill, so a collision
+is likely, not theoretical. Catch `ER_DUP_ENTRY` and name the offending barcode — never let it
+surface as a raw SQL error.
+
+- [ ] **Step 3: Write the units in `addProduct`**
+
+Replace the `__childProduct` branch (`actions.ts:~554`) — which inserted a second product with a
+`parentId` — with an insert of one `product_selling_units` row per entered unit, inside the same
+transaction that creates the product.
+
+Also insert the **base unit** for the new product: name from its `unit_of_measure`, `factor = 1`,
+`is_base = 1`, carrying its own barcode/cost/price. Every product must have one, exactly as Task 2
+guarantees for existing products.
+
+Do the equivalent in the edit-product path: added units insert, removed units delete, changed units
+update. The base unit may have its barcode/cost/price edited but its `factor` stays 1 and its
+`is_base` stays 1.
+
+- [ ] **Step 4: Verify against the database**
+
+Create a product through the form with two extra selling units. Then confirm directly:
+
+```bash
+npx tsx -e "
+const {query}=require('./lib/mysql');
+(async()=>{
+  const rows = await query(\"SELECT name, barcode, factor, cost, price, is_base FROM product_selling_units WHERE product_id = ? ORDER BY is_base DESC\", ['<the new product id>']);
+  console.table(rows); process.exit(0);
+})();"
+```
+Expected: exactly one `is_base = 1, factor = 1` row plus the two you entered, each with its own
+barcode/cost/price. No second row in `products` — the family model created one; this must not.
+
+- [ ] **Step 5: Confirm no child product was created**
+
+```bash
+npx tsx -e "require('./lib/mysql').query('SELECT COUNT(*) n FROM products WHERE parent_id IS NOT NULL').then(r=>{console.log('children:', r[0].n); process.exit(0)})"
+```
+Expected: `0` once Task 7 has dropped `parent_id`; before that, unchanged from its prior value. Either
+way it must NOT have grown from creating a product through the reworked form.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add "app/(app)/products/add-product" "app/(app)/products/edit-product" "app/(app)/products/actions.ts"
+git commit -m "feat: create selling units from the product form"
+```
+
+---
+
 ### Task 8: Document the new model
 
 **Files:**
