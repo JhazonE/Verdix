@@ -22,24 +22,29 @@ import {
  *    a read-only "↳ <parent name>" badge under its name.
  *
  * Fixture choice: PERISHABLE_FAMILY_PARENT / _CHILD is used for the dialog and
- * markup tests because no other spec mutates that pair (product-reassign.spec.ts
- * moves the REASSIGN_* families around, so their parentage is execution-order
- * dependent). REASSIGN_TOP_MOVER_CHILD is only READ here (search badge), and
- * stays under REASSIGN_TOP_MOVER even after that spec runs — its subtree moves
- * intact.
+ * conversion tests because no other spec mutates that pair
+ * (product-reassign.spec.ts moves the REASSIGN_* families around, so their
+ * parentage is execution-order dependent). REASSIGN_TOP_MOVER_CHILD is only
+ * READ here (search badge), and stays under REASSIGN_TOP_MOVER even after that
+ * spec runs — its subtree moves intact.
  *
- * Selector notes verified against the real rendered markup (captured from a
- * live page snapshot, not assumed from the source):
+ * Selector notes verified against the real rendered markup:
  *  - The badge is a shadcn <Badge>, i.e. a plain <div> with no ARIA role, so it
  *    is targeted by its text within the product's row.
  *  - The dialog's accessible name is "Manage Child Units — <parent name>".
- *  - The Markup % cell is a bare <input type="number"> with placeholder
- *    "inherit" and no Label wiring — targeted positionally within its row.
- *  - Conversion renders "—" for these fixtures: products.conversion_factor is
- *    NULL on the child (the 12/box factor lives in conversion_factors, keyed to
- *    the PARENT), and Cost/Suggested render "—" because the family fixtures are
- *    seeded without a cost. Those are seed-data facts, not UI defects, so this
- *    spec does not assert numbers the fixtures never provide.
+ *  - The Conversion cell is a bare <input type="number"> with placeholder
+ *    "none" and no Label wiring — targeted positionally within its row. It is
+ *    the ONLY number input in a row now that Markup % is gone.
+ *  - Cost renders "—" because the family fixtures are seeded without a cost.
+ *    That is a seed-data fact, not a UI defect, so this spec does not assert
+ *    numbers the fixtures never provide.
+ *  - The perishable family DOES have a conversion factor: prepare-test-db.ts
+ *    seeds conversion_factors(PERISHABLE_FAMILY_PARENT, 'Piece', 12), and
+ *    getChildProducts joins it on (parent_id, unit_of_measure). So the child's
+ *    Conversion input starts populated. The conversion tests below never
+ *    hardcode that starting value — they read it, write something different,
+ *    and restore it — so they are independent of each other's execution order
+ *    and of whatever a previous run left behind.
  *
  * Timeouts: the Playwright webServer runs `next dev`, so the FIRST navigation
  * of a run pays a cold Turbopack compile that can exceed the default 30s test
@@ -85,11 +90,39 @@ async function openPerishableDialog(page: Page) {
   return dialog;
 }
 
-/** The Markup % input on the dialog row for `childName`. */
-function markupInput(page: Page, childName: string) {
+/** The Conversion factor input on the dialog row for `childName`. */
+function conversionInput(page: Page, childName: string) {
   return childUnitsDialog(page)
     .getByRole('row', { name: new RegExp(childName) })
     .locator('input[type="number"]');
+}
+
+/** The dialog's save button. Re-resolved per call: the dialog remounts on reopen. */
+function saveConversionsButton(page: Page) {
+  return childUnitsDialog(page).getByRole('button', { name: 'Save Conversions' });
+}
+
+/**
+ * A toast, matched on its TITLE element.
+ *
+ * The toast provider renders each toast twice: the visible card, and an
+ * aria-live <span role="status"> announcer that concatenates title + description
+ * ("Notification Error Saving ConversionsFix the high…"). A bare getByText()
+ * therefore hits two elements and dies on strict mode, so this matches the title
+ * exactly — which excludes the concatenated announcer string.
+ */
+function toastTitle(page: Page, title: string) {
+  return page.getByText(title, { exact: true });
+}
+
+/**
+ * Reload /products and reopen the perishable dialog. Used between a write and a
+ * read so a passing assertion proves a server round trip, never component state.
+ */
+async function reloadAndReopen(page: Page) {
+  await page.reload();
+  await showAllRows(page);
+  return openPerishableDialog(page);
 }
 
 test.describe('Child units badge', () => {
@@ -119,8 +152,6 @@ test.describe('Child units badge', () => {
       'Conversion',
       'Stock',
       'Cost',
-      'Markup %',
-      'Suggested',
       'Current Price',
     ]) {
       await expect(dialog.getByRole('columnheader', { name: header, exact: true })).toBeVisible();
@@ -141,115 +172,135 @@ test.describe('Child units badge', () => {
   });
 });
 
-test.describe('Child units markups', () => {
-  test('a markup edit persists across save, close and reopen', async ({ page }) => {
+test.describe('Child units conversions', () => {
+  /**
+   * The markup UI was removed from this dialog: the Markup % and Suggested
+   * columns and the "Save Markups" button are gone, and Conversion became the
+   * editable column. This test is the guard against any of that quietly coming
+   * back — and it checks the dialog still RENDERS its rows, so it cannot pass
+   * on a dialog that simply failed to load anything at all.
+   */
+  test('the markup UI is gone and the dialog still renders its rows', async ({ page }) => {
     await gotoProducts(page);
     const dialog = await openPerishableDialog(page);
 
-    const input = markupInput(page, PERISHABLE_FAMILY_CHILD.name);
-    await expect(input).toBeVisible();
+    // The dialog is real and populated, not an empty shell.
+    await expect(
+      dialog.getByRole('row', { name: new RegExp(PERISHABLE_FAMILY_CHILD.name) }),
+    ).toBeVisible();
+    await expect(dialog.getByRole('columnheader', { name: 'Conversion', exact: true })).toBeVisible();
 
-    const saveButton = dialog.getByRole('button', { name: 'Save Markups' });
-    // Nothing has changed yet, so saving must be impossible.
-    await expect(saveButton).toBeDisabled();
+    // ...and the markup surface is gone from it.
+    await expect(dialog.getByRole('columnheader', { name: 'Markup %', exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole('columnheader', { name: 'Suggested', exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Save Markups' })).toHaveCount(0);
 
-    // A blank markup means "inherit", and the row says where it inherits from.
-    if ((await input.inputValue()) === '') {
-      await expect(dialog.getByText(/inherits \d/)).toBeVisible();
-    }
+    // The replacement button exists and is enabled with nothing edited.
+    await expect(saveConversionsButton(page)).toBeEnabled();
 
-    await input.fill('37.5');
-    await expect(saveButton).toBeEnabled();
+    // The footnote about stock syncs is present.
+    await expect(dialog.getByText(/affects future stock syncs only/i)).toBeVisible();
+  });
 
-    // Out-of-range input must block the save (MARKUP_MAX guard).
-    await input.fill('99999');
-    await expect(saveButton).toBeDisabled();
-
-    await input.fill('37.5');
-    await expect(saveButton).toBeEnabled();
-    await saveButton.click();
-
-    await expect(page.getByText('Markups Saved')).toBeVisible({ timeout: 30_000 });
-
-    // Reload and reopen — the saved value must come back from the server, not
-    // from leftover component state.
-    await page.reload();
-    await showAllRows(page);
+  /**
+   * The core write path. Self-contained: it reads the child's current factor,
+   * saves a DIFFERENT one, proves the new value survives a full page reload,
+   * then restores the original so the fixture is left as found (this spec's
+   * other tests, and product-reassign.spec.ts, share the database).
+   */
+  test('a conversion factor edit persists across save, reload and reopen', async ({ page }) => {
+    await gotoProducts(page);
     await openPerishableDialog(page);
 
-    await expect(markupInput(page, PERISHABLE_FAMILY_CHILD.name)).toHaveValue('37.5', {
+    const original = await conversionInput(page, PERISHABLE_FAMILY_CHILD.name).inputValue();
+    // The seed gives this pair a factor; a blank here would mean the join broke.
+    expect(original, 'the seeded 12/Piece factor must be pre-filled').not.toBe('');
+
+    const edited = original === '7' ? '9' : '7';
+
+    await conversionInput(page, PERISHABLE_FAMILY_CHILD.name).fill(edited);
+    await saveConversionsButton(page).click();
+    await expect(toastTitle(page, 'Conversions Saved')).toBeVisible({ timeout: 30_000 });
+
+    await reloadAndReopen(page);
+    await expect(conversionInput(page, PERISHABLE_FAMILY_CHILD.name)).toHaveValue(edited, {
+      timeout: 30_000,
+    });
+
+    // --- restore, and prove the restore round-tripped too --------------------
+    await conversionInput(page, PERISHABLE_FAMILY_CHILD.name).fill(original);
+    await saveConversionsButton(page).click();
+    await expect(toastTitle(page, 'Conversions Saved')).toBeVisible({ timeout: 30_000 });
+
+    await reloadAndReopen(page);
+    await expect(conversionInput(page, PERISHABLE_FAMILY_CHILD.name)).toHaveValue(original, {
       timeout: 30_000,
     });
   });
-});
 
-test.describe('Child units markup NULL vs 0', () => {
   /**
-   * The single most fragile property of this feature, and the one the whole
-   * design rests on: a BLANK markup means "inherit" (SQL NULL) while a typed
-   * `0` means "sell at cost" (SQL 0). They are different values with different
-   * behaviour, and every layer below the UI has been verified for the
-   * distinction (the resolver has unit tests, Task 8 proved the DB round trip).
-   *
-   * Nothing proved it survives the browser. One `||` or truthiness slip in the
-   * input's `value=` expression or in the draft-parsing path would silently
-   * collapse `0` into blank, and no other test in this suite would notice —
-   * both the persistence test above and the resolver tests use non-zero values.
-   *
-   * This test drives the round trip BOTH ways through the real UI, with a full
-   * `page.reload()` between write and read so nothing can pass on surviving
-   * component state:
-   *   0     → save → reload → still `0`, and NO inherit hint (0 is an override)
-   *   blank → save → reload → still blank, and the inherit hint IS back
-   *
-   * It is deliberately self-contained: it does not care what markup the child
-   * starts with, so it is independent of the persistence test's execution order.
+   * The save button is ALWAYS enabled — there is no "nothing changed" disabled
+   * state any more. Saving an untouched dialog must write nothing and close
+   * cleanly: no error toast, and the factor unchanged afterwards.
    */
-  test('a typed 0 persists as 0 and does not collapse into blank/inherit', async ({ page }) => {
+  test('saving with nothing changed closes the dialog without an error', async ({ page }) => {
     await gotoProducts(page);
-    let dialog = await openPerishableDialog(page);
+    await openPerishableDialog(page);
 
-    const childRowName = new RegExp(PERISHABLE_FAMILY_CHILD.name);
-    const input = markupInput(page, PERISHABLE_FAMILY_CHILD.name);
-    const saveButton = () => childUnitsDialog(page).getByRole('button', { name: 'Save Markups' });
-    // Scope the inherit-hint check to the CHILD'S OWN ROW — a hint belonging to
-    // some other row must never be able to satisfy or defeat this assertion.
-    const inheritHint = () =>
-      childUnitsDialog(page).getByRole('row', { name: childRowName }).getByText(/inherits\s+\d/);
+    const before = await conversionInput(page, PERISHABLE_FAMILY_CHILD.name).inputValue();
 
-    // --- direction 1: an explicit 0 must survive as 0 -----------------------
-    await input.fill('0');
-    await expect(saveButton()).toBeEnabled();
-    await saveButton().click();
-    await expect(page.getByText('Markups Saved')).toBeVisible({ timeout: 30_000 });
+    const save = saveConversionsButton(page);
+    await expect(save).toBeEnabled();
+    await save.click();
 
-    await page.reload();
-    await showAllRows(page);
-    dialog = await openPerishableDialog(page);
+    // The dialog closes...
+    await expect(childUnitsDialog(page)).toHaveCount(0, { timeout: 30_000 });
+    // ...and nothing complained. Checked after the close so a toast raised by
+    // the click has had its chance to appear.
+    await expect(toastTitle(page, 'Error Saving Conversions')).toHaveCount(0);
+    await expect(page.getByText(/Fix the highlighted conversion factors/i)).toHaveCount(0);
 
-    // THE assertion: 0 came back as "0", not as "".
-    await expect(markupInput(page, PERISHABLE_FAMILY_CHILD.name)).toHaveValue('0', {
+    // A no-op save must not have altered the stored factor.
+    await reloadAndReopen(page);
+    await expect(conversionInput(page, PERISHABLE_FAMILY_CHILD.name)).toHaveValue(before, {
       timeout: 30_000,
     });
-    // A real 0 is an override, so the row must NOT advertise an inherited value.
-    await expect(inheritHint()).toHaveCount(0);
+  });
 
-    // --- direction 2: clearing back to blank must restore inheritance -------
-    const input2 = markupInput(page, PERISHABLE_FAMILY_CHILD.name);
-    await input2.fill('');
-    await expect(saveButton()).toBeEnabled();
-    await saveButton().click();
-    await expect(page.getByText('Markups Saved')).toBeVisible({ timeout: 30_000 });
+  /**
+   * `0` is not a legal factor (dividing by it is meaningless), and blank — not
+   * zero — is how "no factor" is expressed. So a typed 0 must be rejected
+   * inline, must not be written, and must leave the stored value alone.
+   */
+  test('a zero conversion factor is rejected and never reaches the server', async ({ page }) => {
+    await gotoProducts(page);
+    const dialog = await openPerishableDialog(page);
 
-    await page.reload();
-    await showAllRows(page);
-    dialog = await openPerishableDialog(page);
+    const original = await conversionInput(page, PERISHABLE_FAMILY_CHILD.name).inputValue();
+    expect(original, 'this test needs a stored factor to prove it survives').not.toBe('');
+    expect(original).not.toBe('0');
 
-    // Blank came back blank, and the inherit hint is back on this row.
-    await expect(markupInput(page, PERISHABLE_FAMILY_CHILD.name)).toHaveValue('', {
+    await conversionInput(page, PERISHABLE_FAMILY_CHILD.name).fill('0');
+
+    // The inline error appears on the offending row itself.
+    await expect(
+      dialog
+        .getByRole('row', { name: new RegExp(PERISHABLE_FAMILY_CHILD.name) })
+        .getByText('Enter a number greater than 0, or leave it blank.'),
+    ).toBeVisible();
+
+    // Attempting to save is refused rather than silently ignored, and the
+    // dialog stays open so the user can fix the value.
+    await saveConversionsButton(page).click();
+    await expect(toastTitle(page, 'Error Saving Conversions')).toBeVisible({ timeout: 30_000 });
+    await expect(childUnitsDialog(page)).toBeVisible();
+
+    // Nothing was written: the original factor is still what the server holds.
+    // page.reload() discards the rejected draft entirely.
+    await reloadAndReopen(page);
+    await expect(conversionInput(page, PERISHABLE_FAMILY_CHILD.name)).toHaveValue(original, {
       timeout: 30_000,
     });
-    await expect(inheritHint()).toBeVisible();
   });
 });
 
