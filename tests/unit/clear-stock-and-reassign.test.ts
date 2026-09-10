@@ -59,27 +59,31 @@ async function cleanup() {
     // Reset the child to standalone with stock again.
     await query('UPDATE products SET parent_id = NULL, stock = 8 WHERE id = ?', [CHILD_ID]);
 
-    // Attaching the PARENT under its own CHILD is a loop — the attach must fail.
-    const bad = await clearStockAndReassign(PARENT_ID, PARENT_ID, 2);
-    assert.equal(bad.success, false, 'a product cannot become its own child');
-
-    // And the child we did not touch still holds its stock.
-    assert.equal(await stockOf(CHILD_ID), 8, 'unrelated stock untouched');
-
-    // Now the real rollback case: give the parent stock, then fail its attach.
-    await query('UPDATE products SET stock = 5 WHERE id = ?', [PARENT_ID]);
-    const before = await stockOf(PARENT_ID);
-    const failed = await clearStockAndReassign(PARENT_ID, 'no_such_parent_id_zzz', 2);
-    assert.equal(failed.success, false, 'attach to a missing parent fails');
+    // clearStockAndReassign's own child/parent-exist guards run BEFORE the stock
+    // clear, so a rejection there (e.g. a missing parent id) never reaches the
+    // clear at all and proves nothing about rollback. The self-parent rejection
+    // is different: clearStockAndReassign looks up CHILD_ID as both the child
+    // and the "parent" (same row, so both of its own guards pass), clears
+    // CHILD_ID's stock, and only THEN calls reassignParentOnConnection, which
+    // rejects on its `childId === newParentId` check. That rejection is raised
+    // strictly after the clear, inside the same transaction — exactly the path
+    // the ReassignRejectedError fix exists to roll back.
+    const before = await stockOf(CHILD_ID);
+    const bad = await clearStockAndReassign(CHILD_ID, CHILD_ID, 2);
+    assert.equal(bad.success, false, 'a product cannot become its own parent');
     assert.equal(
-      await stockOf(PARENT_ID),
+      await stockOf(CHILD_ID),
       before,
       'ROLLBACK: a failed attach must leave stock exactly as it was',
     );
 
     console.log('✅ clear-stock-and-reassign tests passed');
-  } finally {
+  } catch (error) {
+    console.error('❌ clear-stock-and-reassign tests FAILED');
+    console.error(error);
     await cleanup();
-    process.exit(0);
+    process.exit(1);
   }
+  await cleanup();
+  process.exit(0);
 })();
