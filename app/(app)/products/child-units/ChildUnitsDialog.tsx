@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowLeft, PlusCircle } from 'lucide-react';
+import { ArrowLeft, ChevronDown, PlusCircle } from 'lucide-react';
 
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -20,6 +20,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -30,6 +36,7 @@ import type { Product } from '@/lib/types';
 
 import { useChildUnits, type ChildUnitRow } from './use-child-units';
 import { QuickAddChildDialog } from '../quick-add-child/quick-add-child-dialog';
+import { AddExistingChildDialog } from './AddExistingChildDialog';
 
 export function ChildUnitsDialog({
   product,
@@ -46,6 +53,7 @@ export function ChildUnitsDialog({
 }) {
   const { toast } = useToast();
   const [addChildOpen, setAddChildOpen] = useState(false);
+  const [addExistingOpen, setAddExistingOpen] = useState(false);
 
   const {
     viewedParent,
@@ -171,9 +179,25 @@ export function ChildUnitsDialog({
         </div>
         <DialogFooter className="sm:justify-between">
           <div>
-            <Button variant="outline" onClick={() => setAddChildOpen(true)}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Add Child Unit
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <PlusCircle className="mr-2 h-4 w-4" /> Add Child Unit
+                  <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem onClick={() => setAddChildOpen(true)}>
+                  Create new
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={!viewedParent}
+                  onClick={() => setAddExistingOpen(true)}
+                >
+                  Add existing product
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <QuickAddChildDialog
               parentProduct={viewedParent ?? undefined}
               products={[]}
@@ -184,6 +208,17 @@ export function ChildUnitsDialog({
                 onSaved?.();
               }}
             />
+            {viewedParent && (
+              <AddExistingChildDialog
+                parentProduct={viewedParent}
+                open={addExistingOpen}
+                onOpenChange={setAddExistingOpen}
+                onAdded={() => {
+                  refetch();
+                  onSaved?.();
+                }}
+              />
+            )}
           </div>
           <div className="flex gap-2">
             <Button variant="ghost" onClick={handleClose}>
