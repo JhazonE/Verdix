@@ -115,30 +115,99 @@ selling unit carrying its `barcode`/`cost`/`price` and the `conversion_factors` 
 4 currently holds `stock = -624`; negative stock must be carried across unchanged, not silently
 corrected — an inventory number nobody explained is not this migration's to fix.
 
-**The 6,095 name-encoded products are NOT migrated automatically.** Deciding that "Nescafe … 1cs 60s"
-is a selling unit of "Nescafe …" and not its own product is a judgement about the user's catalogue,
-and a wrong guess merges two products' stock irreversibly. Those are converted by hand, or by a
-separate opt-in tool with a preview — never as a side effect of this migration.
+**No name-encoded product is merged automatically.** Deciding that "Nescafe … 1cs 60s" is a selling
+unit of "Nescafe …" rather than its own product is a judgement about the user's catalogue, and a
+wrong guess merges two products' stock irreversibly.
+
+Per §5.1 the catalogue is too large to convert by hand, so this happens through the **bulk Excel
+import** — but as an explicit, previewed operation the user reviews and confirms, never as a side
+effect of the schema migration. The migration itself only creates one `is_base` unit per existing
+product; it never merges two products.
 
 Duplicate barcodes must be reported before the `UNIQUE` index is added, with the offending rows
 listed, so the user resolves them deliberately.
 
-## 5. Before this is built
+## 5. Answered: the three open questions
 
-**This spec should not go straight to an implementation plan.** Three things are unresolved, and
-each changes the design:
+The user answered these on 2026-09-10. They are requirements now, not open points.
 
-1. **Which products actually need this.** 6,095 have packaging in their names, but that count comes
-   from a name regex, not from the user. The real number — and whether promo bundles ("2s Free1
-   SkyFlakes") count — decides whether the by-hand conversion in §4 is an afternoon or a month.
-2. **What happens to the 6,095 names.** Does "Nescafe Classic Refill 20g 1cs 60s" keep its name as a
-   selling unit label, or does the product become plain "Nescafe Classic Refill 20g" with a "Case of
-   60" unit? This affects every report and receipt the user reads.
-3. **How reporting should treat units.** Does a sales report show 1 case or 60 pieces? Both are
-   defensible; the answer shapes the query layer.
+### 5.1 Scope — effectively the whole catalogue
 
-It also touches POS checkout and returns, which are BIR-significant. That work deserves a fresh
-session with a full context budget — not the tail end of one that has already shipped three plans.
+*"naa sa 15981 ka producto peru kini na data is sample palang ni."* Nearly every product needs
+selling units, and the present 15,987 rows are only sample data — the real catalogue is larger.
 
-**Recommendation:** confirm §5's three questions with the user, then write the implementation plan
-in a new session.
+This kills the by-hand conversion floated in §4. One-at-a-time does not survive 15,000+ products,
+let alone a bigger production set. **Selling units must be creatable in bulk**, through the existing
+Excel import path (`lib/price-list-import.ts` already handles 15,000-row uploads at ~18s), and the
+schema must assume most products carry more than one unit.
+
+It also makes the base-unit backfill non-optional: **every product needs an `is_base = 1` row on day
+one**, or checkout has nothing to resolve. That is a migration over the entire table, not a nudge to
+4 rows.
+
+### 5.2 Names stay exactly as they are
+
+*"magpabili lang ni nga ngalan."* "Nescafe Classic Refill 20g 1cs 60s" keeps that name. The migration
+rewrites no product names, and no report or receipt changes wording.
+
+This is the safest of the available answers — nothing already printed or filed shifts — and it
+removes the biggest risk in the original draft. It does allow a product's name and its selling-unit
+label to disagree (a row named "… 1cs 60s" holding a "Piece" unit); that is accepted, because the
+name is what staff already recognise.
+
+### 5.3 Sell in units, deduct in base — and the ledger must record which
+
+*"sa sales report 1case ni siya peru pagabot sa inventory 60 ka piraso ang maminus."*
+
+One case sells as **1 case** on the sales report and deducts **60 pieces** from inventory. This is
+the sharpest of the three requirements, and it exposes something the original draft missed.
+
+**`pos_transaction_items` records `product_id`, `quantity`, and `unit_price` — but no selling unit.**
+I checked the live schema. Without a new column, "1 case" and "1 piece" are indistinguishable in
+sales history, so the report cannot honour this requirement even when the deduction is correct.
+
+The line-item tables therefore gain a nullable `selling_unit_id`, plus a denormalised
+`selling_unit_name` and `factor` captured **at sale time** — so later editing a unit's factor cannot
+retroactively change what a past receipt meant. Reports group by the recorded unit; inventory keeps
+moving in base units.
+
+Affected: `pos_transaction_items`, `sale_items`, `sales_invoice_items`, `sales_order_items`. Existing
+rows stay `NULL`, meaning "base unit", so no historical sale changes meaning.
+
+---
+
+## 6. What §5's answers changed about the shape of this work
+
+The three answers did not just fill blanks — two of them made the work bigger, and one made it
+safer. Recorded here so the implementation plan starts from the real size.
+
+**Bigger, from 5.1:** the original draft assumed a small conversion (4 families, plus optional
+hand-conversion of ~6,000). The answer is "effectively all of them, and this is only sample data".
+So the plan needs a full-table base-unit backfill and a bulk import path for units — not a dialog
+someone clicks 15,000 times.
+
+**Bigger, from 5.3:** the line-item tables need new columns, including two BIR-facing ones
+(`sales_invoice_items`, `sale_items`). The original draft touched no sales tables at all. Capturing
+`factor` at sale time is what keeps a past receipt's meaning fixed when a unit is later edited —
+without it, editing a factor silently rewrites history.
+
+**Safer, from 5.2:** names are untouched, so no printed or filed document changes. This removes the
+riskiest part of the original draft.
+
+## 7. Why this is not being implemented in the same session as the spec
+
+Three plans shipped in this session already (the parent/child reorg, membership management, and
+conversion editing). This work is larger than all three combined and, unlike them, it edits POS
+checkout and returns — logic `CLAUDE.md` marks as BIR-significant, where a mistake shows up in tax
+filings rather than in a test.
+
+The specific risks a fresh session should hold full context for:
+
+- A full-table migration that must add an `is_base` row per product without touching `products.stock`.
+- Adding `UNIQUE (barcode)` when `products.barcode` has no unique index today — duplicates must be
+  reported for the user to resolve, never auto-merged.
+- The `-624` stock row (§4) carried across unchanged rather than quietly corrected.
+- Deleting `lib/family-sync.ts` and rewriting twelve call sites that currently cascade through it.
+
+**Recommendation:** start the implementation plan in a new session, from this spec. Nothing here is
+blocked — the three shipped plans are committed, working, and unaffected by waiting.
