@@ -104,6 +104,19 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
         ? 'Low Stock'
         : 'In Stock';
 
+  // The view-product dialog shows a CHILD product, so it only has the
+  // parent's name (product.parentName), not the parent's own Product object
+  // that ChildUnitsDialog needs for its header. Resolve by id via getProducts
+  // (the row's own `products` prop is just the current paginated page and
+  // can't be trusted to contain the parent — see the same caveat that used
+  // to live in ReassignParentDialog) and hand the resolved product to the
+  // same onManageChildren setter the "N children" badge and dropdown use.
+  const handleManageFamily = async (child: Product) => {
+    if (!child.parentId || !onManageChildren) return;
+    const [parent] = await getProducts(1, 0, { id: child.parentId });
+    if (parent) onManageChildren(parent);
+  };
+
   const handleDeleteConfirm = async () => {
     const result = await deleteProduct(product.id);
     if (result.success) {
@@ -238,6 +251,7 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
                 onChildAdded={onProductDeleted}
                 productOptions={productOptions}
                 onOptionsRefresh={onOptionsRefresh}
+                onManageFamily={onManageChildren ? handleManageFamily : undefined}
             />
             <EditProductDialog 
                 open={editDialogOpen}

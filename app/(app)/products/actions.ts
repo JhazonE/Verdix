@@ -62,6 +62,10 @@ export type ProductFilters = {
   warehouse?: string;
   shelfLocation?: string;
   status?: 'in-stock' | 'low-stock' | 'out-of-stock' | 'all' | string;
+  /** Exact product id. Used to resolve a single product (e.g. a parent looked
+   * up by id from the view-product dialog) without pulling in the
+   * `parent_id IS NULL` top-level restriction that unfiltered paging applies. */
+  id?: string;
 };
 
 export async function getProducts(limit?: number, offset?: number, filters?: ProductFilters) {
@@ -98,10 +102,15 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
       (filters.warehouse && filters.warehouse !== 'all') ||
       (filters.shelfLocation && filters.shelfLocation !== 'all') ||
       (filters.status && filters.status !== 'all') ||
-      filters.search
+      filters.search ||
+      filters.id
     );
 
     if (filters) {
+      if (filters.id) {
+        whereClauses.push(`p.id = ?`);
+        params.push(filters.id);
+      }
       if (filters.search) {
         whereClauses.push(`(p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?)`);
         const searchParam = `%${filters.search}%`;

@@ -22,7 +22,6 @@ import { cn, formatQuantity } from '@/lib/utils';
 import { EditProductDialog } from '../edit-product/edit-product-dialog';
 import { QuickAddChildDialog } from '../quick-add-child/quick-add-child-dialog';
 import { BreakPackDialog } from '../break-pack/break-pack-dialog';
-import { ReassignParentDialog } from '../reassign-parent/reassign-parent-dialog';
 import { DetailItem } from './detail-item';
 import { SectionHeader } from './section-header';
 
@@ -35,7 +34,8 @@ export function ViewProductDialog({
     onOptionsRefresh,
     trigger,
     open: externalOpen,
-    onOpenChange: externalOnOpenChange
+    onOpenChange: externalOnOpenChange,
+    onManageFamily
 }: {
     product: Product;
     onProductUpdated?: () => void;
@@ -46,6 +46,9 @@ export function ViewProductDialog({
     trigger?: React.ReactNode;
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
+    /** Opens the PARENT's child-units dialog. Optional — when absent, the
+     * "Child of X" line renders as plain read-only text with no Manage link. */
+    onManageFamily?: (product: Product) => void;
 }) {
     const [internalOpen, setInternalOpen] = useState(false);
     const isOpen = externalOpen !== undefined ? externalOpen : internalOpen;
@@ -279,7 +282,19 @@ export function ViewProductDialog({
                 </div>
 
                 <DialogFooter className="sticky bottom-0 bg-background p-6 border-t sm:justify-between flex items-center gap-4">
-                     <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded">ID: {product.id}</p>
+                     <div className="flex flex-col gap-1">
+                        <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded w-fit">ID: {product.id}</p>
+                        {product.parentName && (
+                          <div className="text-sm text-muted-foreground">
+                            Child of <span className="font-medium text-foreground">{product.parentName}</span>
+                            {onManageFamily && (
+                              <Button variant="link" size="sm" className="px-1" onClick={() => onManageFamily(product)}>
+                                Manage
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                     </div>
                      <div className="flex items-center gap-3">
                         <Button variant="ghost" onClick={() => setIsOpen(false)} className="hover:bg-muted">Close</Button>
                         {!product.parentId && (product.conversionFactors?.length ?? 0) > 0 && products && (
@@ -315,22 +330,6 @@ export function ViewProductDialog({
                               </TooltipTrigger>
                               <TooltipContent>
                                 <p>Break this pack into smaller units</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                        {products && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <ReassignParentDialog
-                                  product={product}
-                                  products={products}
-                                  onProductUpdated={onProductUpdated}
-                                />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Move this product under a different parent</p>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
