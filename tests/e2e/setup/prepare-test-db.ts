@@ -365,9 +365,35 @@ async function seedFixtures(): Promise<void> {
     [TEST_PRICE_LEVEL.id, TEST_PRICE_LEVEL.name],
   );
 
+  // --- base selling units ---
+  // Kada produkto sa live DB adunay usa ka base unit (factor 1) — gibuhat sa
+  // migration 119. Ang POS checkout mo-resolve ana nga unit para mahibal-an
+  // kung pila ka base units ang usa ka sale mo-deduct, ug mo-fail ang sale kung
+  // wala. Mao nga i-mirror nato dinhi ang 119, human sa TANANG product inserts,
+  // aron ang bag-ong fixtures automatic maapil.
+  const [psuResult]: any = await conn.query(`
+    INSERT INTO product_selling_units
+      (id, product_id, name, barcode, factor, cost, price, is_base)
+    SELECT
+      CONCAT('psu_base_', p.id),
+      p.id,
+      COALESCE(NULLIF(TRIM(p.unit_of_measure), ''), 'Piece'),
+      NULLIF(TRIM(p.barcode), ''),
+      1,
+      p.cost,
+      COALESCE(p.price, 0),
+      1
+    FROM products p
+    WHERE NOT EXISTS (
+      SELECT 1 FROM product_selling_units u
+      WHERE u.product_id = p.id AND u.is_base = 1
+    )
+  `);
+
   await conn.end();
   console.log(
     `✅ Seeded: ${Object.keys(TEST_USERS).length} users, ${TEST_PRODUCTS.length + 3} products, ` +
+      `${psuResult.affectedRows} base selling units, ` +
       `1 terminal, 1 payment method, 1 supplier, 1 warehouse, ` +
       `1 brand/category/unit/price-level, pos_settings, transaction_references`,
   );

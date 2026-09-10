@@ -251,6 +251,20 @@ export async function POST(request: NextRequest) {
           factor = 1;
         }
         resolvedUnits[i] = { id: unitId, name: unitName, factor };
+
+        // Everything downstream that touches inventory — the FIFO batch
+        // deduction and the stock movement — works in BASE units. Compute it
+        // once, here, so the two can never disagree.
+        //
+        // baseQuantity() does not validate quantity, so guard it first: a
+        // NaN/undefined quantity would otherwise write NaN into stock.
+        const soldQty = Number(item.quantity);
+        if (!Number.isFinite(soldQty)) {
+          throw new Error(
+            `Invalid quantity for product ${item.id}: ${item.quantity}`
+          );
+        }
+        const qtyInBase = baseQuantity(soldQty, factor);
         // --- END SELLING UNIT RESOLUTION ---
 
         // --- BATCH COSTING: FIFO deduction & cost recording ---
@@ -266,9 +280,14 @@ export async function POST(request: NextRequest) {
         } else {
           try {
             const bcs = await getBCS();
+            // Batches hold BASE units (purchase receipts stock them that way),
+            // so a sale must consume qtyInBase — not the line quantity, which
+            // is expressed in whatever selling unit was sold. Passing the line
+            // quantity would let inventory_batches and products.stock drift
+            // apart on every non-base sale.
             const deduction = await deductFromBatches(
               item.id,
-              item.quantity,
+              qtyInBase,
               bcs.oversellBlock,
               connection as any
             );
@@ -321,17 +340,7 @@ export async function POST(request: NextRequest) {
             // One product, one stock figure, in base units. A selling unit only
             // says how many base units one of it is worth, so a sale is a single
             // deduction — there is no family to cascade through any more.
-            //
-            // baseQuantity() does not validate quantity, so guard it here: a
-            // NaN/undefined quantity would otherwise write NaN into stock.
-            const soldQty = Number(item.quantity);
-            if (!Number.isFinite(soldQty)) {
-              throw new Error(
-                `Invalid quantity for product ${soldProd.id}: ${item.quantity}`
-              );
-            }
-
-            const qtyInBase = baseQuantity(soldQty, factor);
+            // qtyInBase is the same figure the batch deduction above consumed.
             await updateStockAndRecordMovement(
               soldProd.id,
               -qtyInBase,
