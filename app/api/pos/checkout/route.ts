@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withTransaction, getNextReference, getNextReceiptNumber, getNextSINumber, getNextBirOrNumber, formatSINumber } from '@/lib/mysql';
-import { deductFamilyStock, findUltimateRoot } from '@/lib/family-sync';
+import { baseQuantity, getBaseUnit } from '@/lib/selling-units';
+import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 import { deductFromBatches, getBatchCostingSettings } from '@/lib/batch-deduction';
 import { ensureCustomerCreditColumn } from '@/lib/ensure-customer-credit';
 import { query } from '@/lib/mysql';
@@ -191,6 +192,12 @@ export async function POST(request: NextRequest) {
         return _batchSettings;
       };
 
+      // The selling unit actually used for each line, resolved once in the loop
+      // below and reused verbatim by both line-item inserts. Recording the
+      // resolved values (rather than re-reading product_selling_units later)
+      // means a future edit to a unit can never change what a past receipt meant.
+      const resolvedUnits: { id: string | null; name: string | null; factor: number }[] = [];
+
       // 2. Deduct batches + stock and insert sale_items (cost folded into the
       //    insert — no separate UPDATE per item).
       for (let i = 0; i < items.length; i++) {
@@ -210,6 +217,41 @@ export async function POST(request: NextRequest) {
 
         const soldProd = soldProdResult?.[0];
         const itemIsService = soldProd ? isService(soldProd) : false;
+
+        // --- SELLING UNIT RESOLUTION ---
+        // One product, one stock figure, held in base units. A selling unit only
+        // says how many base units one of it is worth. Resolve it here, once, so
+        // the stock deduction and both line-item inserts all agree.
+        //
+        // The POS UI does not send a selling unit yet, so an absent (or
+        // unusable) unit falls back to the product's base unit — factor 1,
+        // identical arithmetic to the pre-selling-unit behaviour.
+        let unitId: string | null = item.sellingUnitId ?? null;
+        let unitName: string | null = item.sellingUnitName ?? null;
+        let factor = Number(item.sellingUnitFactor ?? 0);
+
+        if (soldProd && !itemIsService) {
+          if (!unitId || !Number.isFinite(factor) || factor <= 0) {
+            const base = await getBaseUnit(soldProd.id, connection);
+            if (!base) {
+              // Silently deducting nothing would leave stock quietly wrong, so
+              // fail the whole sale and name the product instead.
+              throw new Error(
+                `Product ${soldProd.id} has no base selling unit — cannot record this sale.`
+              );
+            }
+            unitId = base.id;
+            unitName = base.name;
+            factor = base.factor;
+          }
+        } else if (!Number.isFinite(factor) || factor <= 0) {
+          // Services (and unknown products) carry no stock; record factor 1.
+          unitId = unitId ?? null;
+          unitName = unitName ?? null;
+          factor = 1;
+        }
+        resolvedUnits[i] = { id: unitId, name: unitName, factor };
+        // --- END SELLING UNIT RESOLUTION ---
 
         // --- BATCH COSTING: FIFO deduction & cost recording ---
         let costAtSale: number | null = null;
@@ -245,8 +287,9 @@ export async function POST(request: NextRequest) {
 
         await connection.query(`
           INSERT INTO sale_items (
-            id, sale_id, product_id, product_name, quantity, price, cost_at_sale, batch_source, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            id, sale_id, product_id, product_name, quantity, price, cost_at_sale, batch_source,
+            selling_unit_id, selling_unit_name, selling_unit_factor, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
         `, [
           itemId,
           saleId,
@@ -255,7 +298,10 @@ export async function POST(request: NextRequest) {
           item.quantity,
           item.price * (1 - (item.discount || 0) / 100),
           costAtSale,
-          batchSource
+          batchSource,
+          unitId,
+          unitName,
+          factor
         ]);
 
         // --- Stock Deduction with Full Hierarchy Sync & Loyalty Calculation ---
@@ -270,46 +316,31 @@ export async function POST(request: NextRequest) {
              console.log(`Item ${item.name} excluded from points. Markup: ${soldProd.markup_percentage}, Earns: ${soldProd.earns_points}`);
           }
 
-          // Services carry no stock and belong to no family — nothing to sync.
+          // Services carry no stock — nothing to deduct.
           if (!itemIsService) {
-            // Walk the FULL ancestor chain to find the ultimate root and the
-            // cumulative factor (handles grandchildren, great-grandchildren, etc.)
-            // Products with no parent ARE the root — skip the walk entirely.
+            // One product, one stock figure, in base units. A selling unit only
+            // says how many base units one of it is worth, so a sale is a single
+            // deduction — there is no family to cascade through any more.
             //
-            // Example — selling Sugar 500g (grandchild):
-            //   findUltimateRoot(Sugar500g)
-            //     → rootId = Sugar25kg, factorToRoot = 50
-            //   rootQty = 10 Sugar500g / 50 = 0.2 Sugar25kg
-            //   deductFamilyStock(Sugar25kg, 0.2) then cascades:
-            //     → deduct 0.2 from Sugar25kg
-            //     → find Sugar1kg (factor 25) → deduct 5 from Sugar1kg
-            //         → find Sugar500g (factor 2) → deduct 10 from Sugar500g ✓
-            const { rootId, factorToRoot } = soldProd.parent_id
-              ? await findUltimateRoot(soldProd.id, connection)
-              : { rootId: soldProd.id, factorToRoot: 1 };
-
-            if (factorToRoot > 1 || rootId !== soldProd.id) {
-              // Sold item is NOT the root — convert qty to root units and deduct from root down
-              const rootQty = item.quantity / factorToRoot;
-              await deductFamilyStock(
-                rootId,
-                rootQty,
-                saleId,
-                'sale',
-                `POS Sale: ${saleId} (sold: ${soldProd.name}, syncing full tree)`,
-                connection
-              );
-            } else {
-              // Sold item IS the root — deduct and propagate to all descendants
-              await deductFamilyStock(
-                soldProd.id,
-                item.quantity,
-                saleId,
-                'sale',
-                `POS Sale: ${saleId}`,
-                connection
+            // baseQuantity() does not validate quantity, so guard it here: a
+            // NaN/undefined quantity would otherwise write NaN into stock.
+            const soldQty = Number(item.quantity);
+            if (!Number.isFinite(soldQty)) {
+              throw new Error(
+                `Invalid quantity for product ${soldProd.id}: ${item.quantity}`
               );
             }
+
+            const qtyInBase = baseQuantity(soldQty, factor);
+            await updateStockAndRecordMovement(
+              soldProd.id,
+              -qtyInBase,
+              'sale',
+              saleId,
+              'sale',
+              `POS Sale: ${saleId}${factor !== 1 ? ` (${soldQty} × ${unitName})` : ''}`,
+              connection
+            );
           }
         }
 
@@ -446,6 +477,9 @@ export async function POST(request: NextRequest) {
 
         const effectiveTaxType = resolveEffectiveTaxType(item.taxType || 'VAT', item.discountType, discountPercent);
 
+        // Reuse exactly what the deduction loop resolved — never a fresh lookup.
+        const unit = resolvedUnits[i] ?? { id: null, name: null, factor: 1 };
+
         posItemRows.push([
           posItemId, posTransId, itemId, item.id, item.name,
           item.quantity, originalPrice, discountPercent, discAmount,
@@ -453,7 +487,8 @@ export async function POST(request: NextRequest) {
           item.discountIdNumber || null,
           item.discountHolderName || null,
           effectiveTaxType,
-          lTotal
+          lTotal,
+          unit.id, unit.name, unit.factor
         ]);
       }
 
@@ -467,8 +502,9 @@ export async function POST(request: NextRequest) {
         INSERT INTO pos_transaction_items (
           id, pos_transaction_id, sale_item_id, product_id, product_name,
           quantity, unit_price, discount_percentage, discount_amount,
-          discount_type, discount_id_number, discount_holder_name, tax_type, line_total, created_at
-        ) VALUES ${posItemRows.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())').join(', ')}
+          discount_type, discount_id_number, discount_holder_name, tax_type, line_total,
+          selling_unit_id, selling_unit_name, selling_unit_factor, created_at
+        ) VALUES ${posItemRows.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())').join(', ')}
       `, posItemRows.flat());
 
       // 6. Insert payment details
