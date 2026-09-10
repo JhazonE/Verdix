@@ -14,7 +14,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatQuantity } from '@/lib/utils';
 import { clearStockAndReassign, reassignParent } from '../actions';
 import { getIllegalChildTargets, getIllegalReassignTargets, type TreeProduct } from '@/lib/product-tree';
 import { buildProductQuery, PRODUCT_SEARCH_DEBOUNCE_MS } from '@/lib/product-search';
@@ -254,7 +254,7 @@ export function AddExistingChildDialog({
                 <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
                   ⚠️ <strong>{selected.name}</strong> has{' '}
                   <strong>
-                    {selected.stock} {selected.unitOfMeasure}
+                    {formatQuantity(selected.stock, selected.unitOfMeasure)} {selected.unitOfMeasure}
                   </strong>{' '}
                   in stock. Adding it as a child clears that stock, because a child&apos;s stock is
                   derived from its parent.
