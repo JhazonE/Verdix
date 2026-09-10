@@ -754,9 +754,29 @@ git commit -m "feat: convert stock movements to selling-unit base quantities"
 - Consumes: Task 6 having removed every family-sync caller.
 - Produces: a codebase with one stock model.
 
-**Do this task LAST and only when Task 6's grep is clean.** Deleting earlier breaks the build.
+**Do this task only when Task 6's grep is clean.** Deleting earlier breaks the build.
 
-**Order matters:** delete the code first, get a clean typecheck, and only then drop the columns. A dropped column with code still reading it is a runtime error rather than a compile error.
+> ### ⚠️ SCOPE CHANGE — the column drop is NOT part of this task any more
+>
+> **Do NOT create or run migration 121. Do NOT drop `products.parent_id` or `conversion_factors`.**
+> Skip Step 4 and Step 5's migration run entirely; do everything else.
+>
+> **Why.** This task's safety rested on "delete the code, get a clean typecheck, then drop the
+> columns" — the typecheck being the gate that proves nothing still reads them. That gate is blind
+> here. `src/infrastructure/services/TransferStockService.ts` is a **hand-copied duplicate** of
+> `lib/family-sync.ts` (its own comment says "Logic adapted from lib/family-sync.ts") that reads
+> `parent_id` and `conversion_factors` in raw SQL and never imports family-sync. A wider grep found
+> **nine** such files. `TransferStockService` is live behind `app/api/inventory/transfer/route.ts`,
+> `lib/transfer-actions.ts`, `app/api/inventory/transfer/bulk/route.ts` and
+> `app/api/approvals/process/route.ts` — every transfer path.
+>
+> Dropping the columns would break warehouse transfers at **runtime**, which is precisely the failure
+> this task's ordering was designed to prevent.
+>
+> The drop moves to **Task 7d** below, which audits all nine files first.
+
+**Order matters:** delete the code first and get a clean typecheck. Leaving the columns in place is
+harmless — once the code is gone, nothing writes them.
 
 - [ ] **Step 1: Delete the UI and library files**
 
@@ -955,6 +975,80 @@ way it must NOT have grown from creating a product through the reworked form.
 ```bash
 git add "app/(app)/products/add-product" "app/(app)/products/edit-product" "app/(app)/products/actions.ts"
 git commit -m "feat: create selling units from the product form"
+```
+
+---
+
+### Task 7d: Convert `TransferStockService`, then drop the family columns
+
+**Status:** split out of Task 7 mid-run. **Nothing else in this plan is blocked by it** — the columns
+sitting unused is harmless once the code that wrote them is gone.
+
+**Why this is its own task.** Task 7's safety gate was the typecheck: delete the code, prove nothing
+references it, then drop the columns. That gate cannot see raw SQL. **Nine files read `parent_id` or
+`conversion_factors` directly without importing `lib/family-sync.ts`**, so a column drop would break
+them at runtime.
+
+The live one is `src/infrastructure/services/TransferStockService.ts` — a hand-copied duplicate of
+family-sync ("Logic adapted from lib/family-sync.ts") that walks `parent_id`, divides by
+`conversion_factors`, and writes every family member. It is reached from **every** transfer path:
+`app/api/inventory/transfer/route.ts`, `lib/transfer-actions.ts`,
+`app/api/inventory/transfer/bulk/route.ts`, `app/api/approvals/process/route.ts`.
+
+- [ ] **Step 1: Re-run the audit — do not trust this list**
+
+```bash
+grep -rln "parent_id\|conversion_factors" app/ lib/ src/ --include=*.ts --include=*.tsx \
+  | xargs grep -Ln "family-sync"
+```
+
+At the time of writing this returned nine files: `TransferStockService.ts`, `InventorySyncService.ts`,
+`MySqlProductRepository.ts`, `lib/scheduler.ts`, `app/(app)/inventory/history/actions.ts`,
+`app/api/data-management/import/products/legacy.ts`, `app/api/data-management/reset/route.ts`,
+`app/api/pos/checkout/route.ts`, `lib/product-tree.ts`.
+
+For each, classify: **live stock logic** (must convert), **read-only/display** (must stop selecting
+the column), or **comment only** (nothing to do). Record the classification per file in your report —
+a file you did not classify is a file you did not check.
+
+- [ ] **Step 2: Convert `TransferStockService` to a single move**
+
+A transfer moves ONE product's stock between warehouses: `baseQuantity(quantity, factor)` out of the
+source and the same into the destination. Delete the family walk, the `conversion_factors` lookup,
+and the per-member loop.
+
+Take the factor from the transfer line if it records one, else the product's base unit
+(`getBaseUnit`). Guard NaN quantity before calling `baseQuantity` — it validates only the factor.
+
+- [ ] **Step 3: Clear the remaining readers**
+
+Stop selecting `parent_id` / `conversion_factors` in the read-only sites (a stale column in a SELECT
+list becomes a hard error the moment it is dropped). Convert any other live stock logic the audit
+found.
+
+- [ ] **Step 4: Prove the transfer path still works before touching the schema**
+
+Run in the FOREGROUND: `npm run test:e2e:db`, then any transfer-related spec (`ls tests/e2e | grep -i transfer`).
+Then exercise a real transfer through the route and assert the source drops and the destination rises
+by the same base quantity, and that **no other product's stock moved** — that last assertion is the
+one that proves the cascade is gone.
+
+- [ ] **Step 5: Only now, drop the columns**
+
+Create `scripts/migrations/121_drop_product_family_columns.ts` using the code in Task 7's original
+Step 4 (it drops the `products_ibfk_1` foreign key before the column, which is required and verified
+to exist). Register it, run it, then confirm the app boots and `/products`, `/inventory`, and a
+transfer all still work.
+
+`down()` is deliberately not reversible: the family relationships and their factors are gone, and the
+selling units that replaced them carry no `parent_id` to rebuild from. Say so in the migration.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/infrastructure/services/TransferStockService.ts scripts/migrations/121_drop_product_family_columns.ts scripts/migrations/index.ts
+# plus whatever Step 3 touched, by explicit path
+git commit -m "refactor: convert transfers to selling units and drop the family columns"
 ```
 
 ---
