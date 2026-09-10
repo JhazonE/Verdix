@@ -2426,6 +2426,79 @@ export async function updateChildMarkups(
   }
 }
 
+/**
+ * Saves conversion factors for a parent's child units.
+ *
+ * Rows are keyed by UNIT, not by child id: conversion_factors lives on the
+ * PARENT with UNIQUE (product_id, unit), so two children of the same parent
+ * sharing a unit of measure share ONE row. A per-child signature would hide
+ * that; this one makes it explicit.
+ *
+ * A numeric factor upserts; a null factor DELETES the row (meaning "no factor
+ * set"). null and 0 are different: 0 is invalid, because a zero factor would
+ * make every synced quantity for that family member zero.
+ *
+ * Changing a factor does not recompute stock already synced under the old one.
+ */
+export async function updateChildConversions(
+  parentId: string,
+  rows: { unit: string; factor: number | null }[],
+): Promise<{ success: boolean; message: string }> {
+  if (!parentId) {
+    return { success: false, message: 'A parent product is required.' };
+  }
+  if (!Array.isArray(rows) || rows.length === 0) {
+    // Saving with nothing changed is a normal, successful no-op — the dialog's
+    // Save button is always enabled by design.
+    return { success: true, message: 'No conversion changes to save.' };
+  }
+
+  // Validate everything BEFORE opening a transaction: one bad row rejects the
+  // whole batch, so there is nothing partial to undo.
+  for (const row of rows) {
+    if (!row?.unit) {
+      return { success: false, message: 'A conversion row is missing its unit.' };
+    }
+    if (row.factor !== null) {
+      const n = Number(row.factor);
+      if (!Number.isFinite(n) || n <= 0) {
+        return {
+          success: false,
+          message: `Invalid conversion factor for "${row.unit}". Enter a number greater than 0, or leave it blank to remove it.`,
+        };
+      }
+    }
+  }
+
+  try {
+    await withTransaction(async (connection) => {
+      for (const row of rows) {
+        if (row.factor === null) {
+          await connection.query(
+            'DELETE FROM conversion_factors WHERE product_id = ? AND unit = ?',
+            [parentId, row.unit],
+          );
+          continue;
+        }
+
+        // unique_product_unit (product_id, unit) makes this idempotent — the
+        // same upsert reassignParent uses.
+        const cfId = `${parentId}-cf-${row.unit}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        await connection.query(
+          `INSERT INTO conversion_factors (id, product_id, unit, factor)
+           VALUES (?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE factor = VALUES(factor)`,
+          [cfId, parentId, row.unit, Number(row.factor)],
+        );
+      }
+    });
+    return { success: true, message: `Saved ${rows.length} conversion factor(s).` };
+  } catch (error) {
+    console.error('Error updating child conversions:', error);
+    return { success: false, message: 'Error saving conversion factors.' };
+  }
+}
+
 export async function getTaxRates(): Promise<TaxRate[]> {
   try {
     const rates = await query('SELECT * FROM tax_rates ORDER BY name');
