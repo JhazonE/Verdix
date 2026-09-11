@@ -64,6 +64,7 @@ export type SellingUnitInput = {
   barcode?: string;
   cost?: number;
   price: number;
+  priceLevels?: { levelId: string; price: number; minQuantity?: number }[];
 };
 
 /** Thrown for a selling-unit problem we can describe to the user by name. */
@@ -148,6 +149,32 @@ function rethrowSellingUnitDupe(error: any): never {
 }
 
 /**
+ * Replace a single selling unit's price-level rows: delete whatever is there,
+ * then reinsert what was submitted. Used by updateProduct for every unit
+ * present in the submitted form data — a unit the user deleted is handled by
+ * the selling-units deletion logic instead, whose ON DELETE CASCADE cleans up
+ * its price-level rows automatically.
+ */
+async function replaceSellingUnitPriceLevels(
+  connection: any,
+  sellingUnitId: string,
+  priceLevels: { levelId: string; price: number; minQuantity?: number }[] | undefined,
+) {
+  await connection.query(
+    'DELETE FROM product_selling_unit_price_levels WHERE selling_unit_id = ?',
+    [sellingUnitId],
+  );
+  if (priceLevels && priceLevels.length > 0) {
+    for (const pl of priceLevels) {
+      await connection.query(
+        'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)',
+        [sellingUnitId, pl.levelId, pl.price, pl.minQuantity || 0],
+      );
+    }
+  }
+}
+
+/**
  * Write the base unit plus every extra selling unit for a product.
  *
  * The base unit always exists and always has factor 1 — checkout resolves
@@ -161,21 +188,33 @@ async function writeSellingUnits(
   baseCost: number | null,
   baseBarcode: string | null,
   extras: SellingUnitInput[],
+  basePriceLevels?: { levelId: string; price: number; minQuantity?: number }[],
 ) {
   const baseName = String(baseUnitName ?? '').trim() || 'Piece';
   try {
+    const baseUnitId = `psu_base_${productId}`;
     await connection.query(
       `INSERT INTO product_selling_units (id, product_id, name, barcode, factor, cost, price, is_base)
        VALUES (?, ?, ?, ?, 1, ?, ?, 1)`,
-      [`psu_base_${productId}`, productId, baseName, baseBarcode || null, baseCost, basePrice],
+      [baseUnitId, productId, baseName, baseBarcode || null, baseCost, basePrice],
     );
 
+    if (basePriceLevels && basePriceLevels.length > 0) {
+      for (const pl of basePriceLevels) {
+        await connection.query(
+          'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)',
+          [baseUnitId, pl.levelId, pl.price, pl.minQuantity || 0],
+        );
+      }
+    }
+
     for (const unit of extras) {
+      const sellingUnitId = `psu_${uuidv4()}`;
       await connection.query(
         `INSERT INTO product_selling_units (id, product_id, name, barcode, factor, cost, price, is_base)
          VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
         [
-          `psu_${uuidv4()}`,
+          sellingUnitId,
           productId,
           unit.name,
           unit.barcode ? unit.barcode : null,
@@ -184,6 +223,15 @@ async function writeSellingUnits(
           unit.price,
         ],
       );
+
+      if (unit.priceLevels && unit.priceLevels.length > 0) {
+        for (const pl of unit.priceLevels) {
+          await connection.query(
+            'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)',
+            [sellingUnitId, pl.levelId, pl.price, pl.minQuantity || 0],
+          );
+        }
+      }
     }
   } catch (error) {
     rethrowSellingUnitDupe(error);
@@ -318,33 +366,32 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
       });
     });
 
-    const priceLevelsSql = `SELECT * FROM product_price_levels`;
-    const allPriceLevels = await query(priceLevelsSql);
-    
-    const plMap = new Map();
-    allPriceLevels.forEach((pl: any) => {
-      if (!plMap.has(pl.product_id)) {
-        plMap.set(pl.product_id, []);
-      }
-      plMap.get(pl.product_id).push({
-        levelId: pl.price_level_id,
-        price: parseFloat(pl.price),
-        minQuantity: pl.min_quantity ? parseInt(pl.min_quantity) : 0
+    const sulpSql = `SELECT * FROM product_selling_unit_price_levels`;
+    const allSulp = await query(sulpSql);
+    const sulpByUnit = new Map<string, any[]>();
+    for (const row of allSulp) {
+      if (!sulpByUnit.has(row.selling_unit_id)) sulpByUnit.set(row.selling_unit_id, []);
+      sulpByUnit.get(row.selling_unit_id)!.push({
+        levelId: row.price_level_id,
+        price: Number(row.price),
+        minQuantity: row.min_quantity ?? 0,
       });
-    });
+    }
 
     const defaultPriceLevelSql = `SELECT id FROM price_levels WHERE is_default = 1 LIMIT 1`;
     const defaultPriceLevelResult = await query(defaultPriceLevelSql);
     const defaultLevelId = defaultPriceLevelResult.length > 0 ? defaultPriceLevelResult[0].id : 'retail-level';
 
     return products.map((product: any) => {
-      const productPriceLevels = plMap.get(product.id) || [];
-      const retailPriceOverrides = productPriceLevels
+      const productSellingUnits: any[] = suMap.get(product.id) || [];
+      const baseUnit = productSellingUnits.find((su: any) => su.isBase);
+      const basePriceLevels = (baseUnit ? sulpByUnit.get(baseUnit.id) : undefined) || [];
+      const retailPriceOverrides = basePriceLevels
         .filter((pl: any) => pl.levelId === defaultLevelId)
         .sort((a: any, b: any) => (a.minQuantity || 0) - (b.minQuantity || 0));
-      
-      const effectivePrice = retailPriceOverrides.length > 0 
-        ? retailPriceOverrides[0].price 
+
+      const effectivePrice = retailPriceOverrides.length > 0
+        ? retailPriceOverrides[0].price
         : (parseFloat(product.price) || 0);
 
       return {
@@ -372,9 +419,10 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
           : Number(product.markup_percentage),
         conversionFactor: product.conversion_factor,
         conversionFactors: cfMap.get(product.id) || [],
-        // Base unit excluded: it is edited through the product's own
-        // unit/price/cost fields, not as a row in the Selling Units tab.
-        sellingUnits: (suMap.get(product.id) || []).filter((su: any) => !su.isBase),
+        sellingUnits: productSellingUnits.map((su: any) => ({
+          ...su,
+          priceLevels: sulpByUnit.get(su.id) ?? [],
+        })),
         incomeAccount: product.income_account,
         expenseAccount: product.expense_account,
         supplier: product.primary_supplier_id || product.supplier_id,
@@ -382,7 +430,6 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
         warehouse: product.inherited_warehouse_id || product.warehouse_id,
         warehouseId: product.inherited_warehouse_id || product.warehouse_id,
         warehouseName: product.warehouse_name,
-        priceLevels: productPriceLevels,
         vatStatus: product.inherited_vat_status || product.vat_status,
         availability: product.availability,
         earns_points: product.earns_points === 1,
@@ -663,14 +710,13 @@ export async function addProduct(
         }
       }
 
-      if (formData.priceLevels && formData.priceLevels.length > 0) {
-        for (const pl of formData.priceLevels) {
-          await connection.query('INSERT INTO product_price_levels (product_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)', [productId, pl.levelId, pl.price, pl.minQuantity || 0]);
-        }
-      }
-
       // Every product needs its base selling unit, or checkout has nothing to
-      // resolve a scan to and the product cannot be sold at all.
+      // resolve a scan to and the product cannot be sold at all. Price levels
+      // are now per selling unit (product_selling_unit_price_levels), not
+      // per product: the base unit's own overrides still come from
+      // formData.priceLevels (the field the product's own price/cost form
+      // controls populate), and each extra unit carries its own on
+      // sellingUnits[i].priceLevels.
       await writeSellingUnits(
         connection,
         productId,
@@ -679,6 +725,7 @@ export async function addProduct(
         productData.cost,
         productData.barcode,
         sellingUnits,
+        formData.priceLevels,
       );
 
       if (formData.supplierMappings && formData.supplierMappings.length > 0) {
@@ -841,13 +888,6 @@ export async function updateProduct(id: string, formData: ProductFormData) {
         }
       }
 
-      await connection.query('DELETE FROM product_price_levels WHERE product_id = ?', [id]);
-      if (formData.priceLevels && formData.priceLevels.length > 0) {
-        for (const pl of formData.priceLevels) {
-          await connection.query('INSERT INTO product_price_levels (product_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)', [id, pl.levelId, pl.price, pl.minQuantity || 0]);
-        }
-      }
-
       // --- Selling units ---
       // The base row is never deleted or re-keyed: line items reference it, and
       // a product without one cannot be sold. Its barcode/cost/price follow the
@@ -908,6 +948,12 @@ export async function updateProduct(id: string, formData: ProductFormData) {
           );
         }
 
+        // Price levels are per selling unit now, not per product. The base
+        // unit's own overrides still come from formData.priceLevels (the
+        // field the product's own price/cost form controls populate).
+        const baseUnitId = baseRows.length > 0 ? baseRows[0].id : `psu_base_${id}`;
+        await replaceSellingUnitPriceLevels(connection, baseUnitId, formData.priceLevels);
+
         if (managesSellingUnits) {
           const [existingExtras]: any = await connection.query(
             'SELECT id FROM product_selling_units WHERE product_id = ? AND is_base = 0',
@@ -934,12 +980,15 @@ export async function updateProduct(id: string, formData: ProductFormData) {
                  WHERE id = ? AND is_base = 0`,
                 [unit.name, barcode, unit.factor, cost, unit.price, unit.id],
               );
+              await replaceSellingUnitPriceLevels(connection, String(unit.id), unit.priceLevels);
             } else {
+              const sellingUnitId = `psu_${uuidv4()}`;
               await connection.query(
                 `INSERT INTO product_selling_units (id, product_id, name, barcode, factor, cost, price, is_base)
                  VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
-                [`psu_${uuidv4()}`, id, unit.name, barcode, unit.factor, cost, unit.price],
+                [sellingUnitId, id, unit.name, barcode, unit.factor, cost, unit.price],
               );
+              await replaceSellingUnitPriceLevels(connection, sellingUnitId, unit.priceLevels);
             }
           }
         }
@@ -974,8 +1023,10 @@ export async function deleteProduct(id: string) {
     await withTransaction(async (connection) => {
       await connection.query('DELETE FROM product_shelves WHERE product_id = ?', [id]);
       await connection.query('DELETE FROM conversion_factors WHERE product_id = ?', [id]);
-      await connection.query('DELETE FROM product_price_levels WHERE product_id = ?', [id]);
       await connection.query('DELETE FROM supplier_product_mapping WHERE product_id = ?', [id]);
+      // product_selling_units (and, via its own ON DELETE CASCADE,
+      // product_selling_unit_price_levels) clean up automatically: both carry
+      // ON DELETE CASCADE back to this row.
       await connection.query('DELETE FROM products WHERE id = ?', [id]);
     });
     return { success: true, message: 'Product deleted successfully.' };
@@ -992,21 +1043,37 @@ export async function updateProductPrice(id: string, newPrice: number) {
     const defaultLevelId = defaultPriceLevelResult.length > 0 ? defaultPriceLevelResult[0].id : 'retail-level';
 
     await withTransaction(async (connection) => {
-      const checkSql = `SELECT * FROM product_price_levels WHERE product_id = ? AND price_level_id = ? AND (min_quantity IS NULL OR min_quantity = 0)`;
-      const existing = await connection.query(checkSql, [id, defaultLevelId]);
+      // Price levels are per selling unit now. products.price has always
+      // described the BASE unit, so the default-tier override this function
+      // maintains belongs to that unit's own price-level rows.
+      const [baseRows]: any = await connection.query(
+        'SELECT id FROM product_selling_units WHERE product_id = ? AND is_base = 1 LIMIT 1',
+        [id],
+      );
+      const baseUnitId = baseRows.length > 0 ? baseRows[0].id : null;
 
-      if (existing.length > 0) {
-        await connection.query(
-          'UPDATE product_price_levels SET price = ? WHERE product_id = ? AND price_level_id = ? AND (min_quantity IS NULL OR min_quantity = 0)',
-          [newPrice, id, defaultLevelId]
-        );
-      } else {
-        await connection.query(
-          'INSERT INTO product_price_levels (product_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, 0)',
-          [id, defaultLevelId, newPrice]
-        );
+      if (baseUnitId) {
+        // Preserve a manually-edited default-tier row rather than blindly
+        // overwriting it: only UPDATE an existing (min_quantity IS NULL OR 0)
+        // row, else INSERT one. See
+        // docs/superpowers/plans/2026-08-04-price-level-row-no-auto-recalc.md
+        // for the bug this check prevents.
+        const checkSql = `SELECT * FROM product_selling_unit_price_levels WHERE selling_unit_id = ? AND price_level_id = ? AND (min_quantity IS NULL OR min_quantity = 0)`;
+        const existing = await connection.query(checkSql, [baseUnitId, defaultLevelId]);
+
+        if (existing.length > 0) {
+          await connection.query(
+            'UPDATE product_selling_unit_price_levels SET price = ? WHERE selling_unit_id = ? AND price_level_id = ? AND (min_quantity IS NULL OR min_quantity = 0)',
+            [newPrice, baseUnitId, defaultLevelId]
+          );
+        } else {
+          await connection.query(
+            'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, 0)',
+            [baseUnitId, defaultLevelId, newPrice]
+          );
+        }
       }
-      
+
       await connection.query('UPDATE products SET price = ? WHERE id = ?', [newPrice, id]);
     });
 

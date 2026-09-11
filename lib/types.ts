@@ -49,7 +49,7 @@ export interface Product {
 
   // Conversion factors for different units
   conversionFactors?: { unit: string; factor: number }[];
-  /** Extra ways this product is sold. Excludes the base unit. */
+  /** Every way this product is sold, including the base unit (factor 1, is_base). */
   sellingUnits?: {
     id?: string;
     name: string;
@@ -57,6 +57,9 @@ export interface Product {
     barcode?: string;
     cost?: number;
     price: number;
+    isBase?: boolean;
+    /** This unit's own price-level overrides — never another unit's. */
+    priceLevels?: { levelId: string; price: number; minQuantity?: number }[];
   }[];
 
   // Timestamps
