@@ -20,7 +20,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { cn, formatQuantity } from '@/lib/utils';
 
 import { EditProductDialog } from '../edit-product/edit-product-dialog';
-import { QuickAddChildDialog } from '../quick-add-child/quick-add-child-dialog';
 import { BreakPackDialog } from '../break-pack/break-pack-dialog';
 import { DetailItem } from './detail-item';
 import { SectionHeader } from './section-header';
@@ -29,7 +28,6 @@ export function ViewProductDialog({
     product,
     onProductUpdated,
     products,
-    onChildAdded,
     productOptions,
     onOptionsRefresh,
     trigger,
@@ -39,7 +37,6 @@ export function ViewProductDialog({
     product: Product;
     onProductUpdated?: () => void;
     products?: Product[];
-    onChildAdded?: () => void;
     productOptions?: any;
     onOptionsRefresh?: () => void;
     trigger?: React.ReactNode;
@@ -271,26 +268,6 @@ export function ViewProductDialog({
                      </div>
                      <div className="flex items-center gap-3">
                         <Button variant="ghost" onClick={() => setIsOpen(false)} className="hover:bg-muted">Close</Button>
-                        {(product.conversionFactors?.length ?? 0) > 0 && products && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <QuickAddChildDialog
-                                  parentProduct={product}
-                                  baseStock={undefined}
-                                  onChildAdded={() => {
-                                    onChildAdded?.();
-                                    onProductUpdated?.();
-                                  }}
-                                  products={products}
-                                />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Add child unit</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>

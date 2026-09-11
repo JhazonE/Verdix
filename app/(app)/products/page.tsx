@@ -214,7 +214,6 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
                 product={product}
                 onProductUpdated={onProductUpdated}
                 products={products}
-                onChildAdded={onProductDeleted}
                 productOptions={productOptions}
                 onOptionsRefresh={onOptionsRefresh}
             />

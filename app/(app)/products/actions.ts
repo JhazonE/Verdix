@@ -853,19 +853,52 @@ export async function updateProduct(id: string, formData: ProductFormData) {
       // a product without one cannot be sold. Its barcode/cost/price follow the
       // product's own fields, but its factor stays 1 and is_base stays 1.
       const [baseRows]: any = await connection.query(
-        'SELECT id FROM product_selling_units WHERE product_id = ? AND is_base = 1 LIMIT 1',
+        'SELECT id, barcode FROM product_selling_units WHERE product_id = ? AND is_base = 1 LIMIT 1',
         [id],
       );
       const baseName = String(productData.unit_of_measure ?? '').trim() || 'Piece';
 
       try {
         if (baseRows.length > 0) {
-          await connection.query(
-            `UPDATE product_selling_units
-             SET name = ?, barcode = ?, cost = ?, price = ?, factor = 1, is_base = 1
-             WHERE id = ?`,
-            [baseName, productData.barcode || null, productData.cost, productData.price, baseRows[0].id],
-          );
+          // Only touch the base barcode when it actually changed. Rewriting it
+          // unconditionally made an unrelated save (one that never opened the
+          // Selling Units tab) fail with ER_DUP_ENTRY whenever some other
+          // product's unit already held the same barcode.
+          const currentBarcode = baseRows[0].barcode ?? null;
+          const nextBarcode = productData.barcode || null;
+
+          if (currentBarcode === nextBarcode) {
+            await connection.query(
+              `UPDATE product_selling_units
+               SET name = ?, cost = ?, price = ?, factor = 1, is_base = 1
+               WHERE id = ?`,
+              [baseName, productData.cost, productData.price, baseRows[0].id],
+            );
+          } else {
+            // A genuine change. Name the conflict rather than reporting it as a
+            // generic selling-unit failure, since the user edited the product's
+            // own barcode field, not a row in the Selling Units tab.
+            if (nextBarcode) {
+              const [clash]: any = await connection.query(
+                `SELECT u.product_id, p.name AS product_name
+                 FROM product_selling_units u
+                 JOIN products p ON p.id = u.product_id
+                 WHERE u.barcode = ? AND u.id <> ? LIMIT 1`,
+                [nextBarcode, baseRows[0].id],
+              );
+              if (clash.length > 0) {
+                throw new SellingUnitError(
+                  `Barcode "${nextBarcode}" is already used by "${clash[0].product_name}". Barcodes must be unique across all products and their selling units.`,
+                );
+              }
+            }
+            await connection.query(
+              `UPDATE product_selling_units
+               SET name = ?, barcode = ?, cost = ?, price = ?, factor = 1, is_base = 1
+               WHERE id = ?`,
+              [baseName, nextBarcode, productData.cost, productData.price, baseRows[0].id],
+            );
+          }
         } else {
           // A product predating the backfill, or one whose base row was lost.
           await connection.query(
@@ -2159,38 +2192,6 @@ export async function deleteShelfLocation(id: string) {
   } catch (error) {
     console.error('Error deleting shelf location:', error);
     return { success: false, message: 'Error deleting shelf location.' };
-  }
-}
-
-export async function addChildProduct(parentId: string, data: any) {
-  try {
-    const id = `product_${Date.now()}`;
-    await withTransaction(async (connection) => {
-      const productSql = `
-        INSERT INTO products (
-          id, name, brand, sku, barcode, description, category, subcategory, 
-          unit_of_measure, stock, reorder_point, price, cost, parent_id,
-          conversion_factor, warehouse_id, department, supplier_id, vat_status, income_account, expense_account
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `;
-      await connection.query(productSql, [
-        id, data.name, data.brand, data.sku, data.barcode || null, 
-        data.description, data.category, data.subcategory || null,
-        data.unitOfMeasure, data.stock || 0, data.reorderPoint || 0, 
-        data.price, data.cost, parentId,
-        data.conversionFactor || 1,
-        data.warehouseId || null,
-        data.department || null,
-        data.supplierId || null,
-        data.vatStatus || 'YES (Subject to 12% VAT)',
-        data.incomeAccount || null,
-        data.expenseAccount || null
-      ]);
-    });
-    return { success: true, message: 'Child product added successfully.' };
-  } catch (error) {
-    console.error('Error adding child product:', error);
-    return { success: false, message: 'Error adding child product.' };
   }
 }
 
