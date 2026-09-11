@@ -21,7 +21,7 @@ import { useEditProductForm } from './use-edit-product-form';
 import { EditProductFormProvider } from './edit-product-form-context';
 import { BasicInfoTab } from './tabs/basic-info-tab';
 import { InventoryTab } from './tabs/inventory-tab';
-import { ConversionTab } from './tabs/conversion-tab';
+import { SellingUnitsTab } from './tabs/conversion-tab';
 import { PriceLevelsTab } from './tabs/price-levels-tab';
 import { LoyaltyTab } from './tabs/loyalty-tab';
 
@@ -121,7 +121,7 @@ export function EditProductDialog({
                             value="conversion"
                             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
                           >
-                            Conversion
+                            Selling Units
                             {tabErrors.conversion && <span className="ml-1.5 inline-flex h-2 w-2 rounded-full bg-destructive" />}
                           </TabsTrigger>
                         )}
@@ -140,7 +140,7 @@ export function EditProductDialog({
                       </TabsContent>
                       {product?.type !== 'service' && (
                         <TabsContent value="conversion" className="space-y-4 p-6">
-                          <ConversionTab />
+                          <SellingUnitsTab />
                         </TabsContent>
                       )}
                       <TabsContent value="price-levels" className="space-y-4 p-6">

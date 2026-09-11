@@ -48,8 +48,147 @@ export type ProductFormData = {
   earnsPoints?: boolean;
   isPerishable?: boolean;
   itemType?: 'standard' | 'service';
-  __childProduct?: ProductFormData;
+  /**
+   * Extra ways this product is sold, beyond its base unit. The base unit is not
+   * listed here — it is derived from unitOfMeasure/price/cost and written with
+   * factor 1, is_base 1, matching what migration 119 gave every existing product.
+   */
+  sellingUnits?: SellingUnitInput[];
 };
+
+export type SellingUnitInput = {
+  /** Present only when editing an existing row. */
+  id?: string;
+  name: string;
+  factor: number;
+  barcode?: string;
+  cost?: number;
+  price: number;
+};
+
+/** Thrown for a selling-unit problem we can describe to the user by name. */
+class SellingUnitError extends Error {}
+
+/**
+ * Validate the selling units the form submitted, before any SQL runs.
+ *
+ * Rejects a zero or negative factor outright: a 0 factor would convert every
+ * quantity to zero, so a sale of that unit would deduct no stock at all.
+ */
+function validateSellingUnits(units: SellingUnitInput[] | undefined, baseUnitName: string) {
+  if (!units || units.length === 0) return [];
+
+  const cleaned = units
+    .map(u => ({
+      ...u,
+      name: String(u.name ?? '').trim(),
+      barcode: String(u.barcode ?? '').trim(),
+    }))
+    .filter(u => u.name !== '');
+
+  const seenNames = new Set<string>();
+  const seenBarcodes = new Set<string>();
+  const base = String(baseUnitName ?? '').trim().toLowerCase();
+
+  for (const u of cleaned) {
+    const key = u.name.toLowerCase();
+    if (key === base) {
+      throw new SellingUnitError(
+        `"${u.name}" is already this product's base unit. Remove it from the selling units list — the base unit is added automatically.`,
+      );
+    }
+    if (seenNames.has(key)) {
+      throw new SellingUnitError(`Duplicate selling unit "${u.name}". Each unit name must be unique for a product.`);
+    }
+    seenNames.add(key);
+
+    if (!Number.isFinite(u.factor) || u.factor <= 0) {
+      throw new SellingUnitError(`Selling unit "${u.name}" must have a quantity greater than 0.`);
+    }
+    if (!Number.isFinite(u.price) || u.price < 0) {
+      throw new SellingUnitError(`Selling unit "${u.name}" must have a price of 0 or more.`);
+    }
+    if (u.cost !== undefined && u.cost !== null && (!Number.isFinite(u.cost) || u.cost < 0)) {
+      throw new SellingUnitError(`Selling unit "${u.name}" must have a cost of 0 or more.`);
+    }
+
+    if (u.barcode) {
+      if (seenBarcodes.has(u.barcode)) {
+        throw new SellingUnitError(`Barcode "${u.barcode}" is used by more than one selling unit on this product.`);
+      }
+      seenBarcodes.add(u.barcode);
+    }
+  }
+
+  return cleaned;
+}
+
+/**
+ * Turn a UNIQUE-barcode collision into a message naming the offending barcode.
+ *
+ * product_selling_units.barcode is UNIQUE across all ~16,000 rows, so a
+ * collision with another product's unit is likely rather than theoretical. It
+ * must never reach the user as a raw SQL error, and must never be dropped.
+ */
+function rethrowSellingUnitDupe(error: any): never {
+  if (error?.code === 'ER_DUP_ENTRY') {
+    const message = String(error.message || '');
+    if (message.includes('uniq_selling_unit_barcode')) {
+      const match = message.match(/Duplicate entry '([^']*)'/);
+      const barcode = match ? match[1] : 'this barcode';
+      throw new SellingUnitError(
+        `Barcode "${barcode}" is already assigned to another selling unit. Barcodes must be unique across all products.`,
+      );
+    }
+    if (message.includes('uniq_product_unit_name')) {
+      throw new SellingUnitError('This product already has a selling unit with that name.');
+    }
+  }
+  throw error;
+}
+
+/**
+ * Write the base unit plus every extra selling unit for a product.
+ *
+ * The base unit always exists and always has factor 1 — checkout resolves
+ * quantities through it, so a product without one is unsellable.
+ */
+async function writeSellingUnits(
+  connection: any,
+  productId: string,
+  baseUnitName: string,
+  basePrice: number,
+  baseCost: number | null,
+  baseBarcode: string | null,
+  extras: SellingUnitInput[],
+) {
+  const baseName = String(baseUnitName ?? '').trim() || 'Piece';
+  try {
+    await connection.query(
+      `INSERT INTO product_selling_units (id, product_id, name, barcode, factor, cost, price, is_base)
+       VALUES (?, ?, ?, ?, 1, ?, ?, 1)`,
+      [`psu_base_${productId}`, productId, baseName, baseBarcode || null, baseCost, basePrice],
+    );
+
+    for (const unit of extras) {
+      await connection.query(
+        `INSERT INTO product_selling_units (id, product_id, name, barcode, factor, cost, price, is_base)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+        [
+          `psu_${uuidv4()}`,
+          productId,
+          unit.name,
+          unit.barcode ? unit.barcode : null,
+          unit.factor,
+          unit.cost ?? null,
+          unit.price,
+        ],
+      );
+    }
+  } catch (error) {
+    rethrowSellingUnitDupe(error);
+  }
+}
 
 export type ProductFilters = {
   search?: string;
@@ -161,6 +300,24 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
       });
     });
     
+    const allSellingUnits = await query(
+      `SELECT id, product_id, name, barcode, factor, cost, price, is_base
+       FROM product_selling_units ORDER BY product_id, is_base DESC, name`,
+    );
+    const suMap = new Map<string, any[]>();
+    allSellingUnits.forEach((su: any) => {
+      if (!suMap.has(su.product_id)) suMap.set(su.product_id, []);
+      suMap.get(su.product_id)!.push({
+        id: su.id,
+        name: su.name,
+        barcode: su.barcode ?? '',
+        factor: Number(su.factor),
+        cost: su.cost === null || su.cost === undefined ? undefined : Number(su.cost),
+        price: Number(su.price),
+        isBase: su.is_base === 1,
+      });
+    });
+
     const priceLevelsSql = `SELECT * FROM product_price_levels`;
     const allPriceLevels = await query(priceLevelsSql);
     
@@ -215,6 +372,9 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
           : Number(product.markup_percentage),
         conversionFactor: product.conversion_factor,
         conversionFactors: cfMap.get(product.id) || [],
+        // Base unit excluded: it is edited through the product's own
+        // unit/price/cost fields, not as a row in the Selling Units tab.
+        sellingUnits: (suMap.get(product.id) || []).filter((su: any) => !su.isBase),
         incomeAccount: product.income_account,
         expenseAccount: product.expense_account,
         supplier: product.primary_supplier_id || product.supplier_id,
@@ -375,6 +535,15 @@ export async function addProduct(
       }
     }
 
+    // Validate before opening the transaction so a bad row costs nothing.
+    let sellingUnits: SellingUnitInput[];
+    try {
+      sellingUnits = validateSellingUnits(formData.sellingUnits, formData.unitOfMeasure);
+    } catch (error: any) {
+      if (error instanceof SellingUnitError) return { success: false, message: error.message };
+      throw error;
+    }
+
     const productId = `${formData.sku}-${Date.now()}`;
     const isServiceProduct = formData.itemType === 'service';
 
@@ -500,6 +669,18 @@ export async function addProduct(
         }
       }
 
+      // Every product needs its base selling unit, or checkout has nothing to
+      // resolve a scan to and the product cannot be sold at all.
+      await writeSellingUnits(
+        connection,
+        productId,
+        formData.unitOfMeasure,
+        productData.price,
+        productData.cost,
+        productData.barcode,
+        sellingUnits,
+      );
+
       if (formData.supplierMappings && formData.supplierMappings.length > 0) {
         for (const mapping of formData.supplierMappings) {
           const mappingId = `${productId}-sm-${mapping.supplierId}-${Date.now()}`;
@@ -508,23 +689,15 @@ export async function addProduct(
       }
     });
 
-    // On finalization of an approved queue item, create the auto-child too (single approval covers both).
-    let childWarning = '';
-    if (isInternalFinalization && formData.__childProduct) {
-      const childResult = await addProduct(
-        { ...formData.__childProduct, parentId: productId },
-        userId,
-        true,
-      );
-      if (!childResult.success) {
-        console.warn('Failed to auto-create child product on finalization:', childResult.message);
-        childWarning = ` (WARNING: child unit was not created: ${childResult.message})`;
-      }
-    }
-
-    return { success: true, message: `${formData.name} has been added to the inventory.${childWarning}`, productId };
+    // No auto-child is created any more. Extra ways to sell this product are
+    // rows in product_selling_units against this one product, written inside the
+    // transaction above — there is no second product, and no stock to keep in sync.
+    return { success: true, message: `${formData.name} has been added to the inventory.`, productId };
   } catch (error: any) {
     console.error('Error saving product:', error);
+    if (error instanceof SellingUnitError) {
+      return { success: false, message: error.message };
+    }
     if (error.code === 'ER_DUP_ENTRY' && error.message.includes('unique_product_unit')) {
       return { success: false, message: 'A conversion factor with this unit already exists for this product.' };
     }
@@ -539,6 +712,20 @@ export async function updateProduct(id: string, formData: ProductFormData) {
       const uniqueUnits = new Set(units);
       if (units.length !== uniqueUnits.size) {
         return { success: false, message: 'Duplicate conversion factor units detected. Each unit must be unique.' };
+      }
+    }
+
+    // Validate before opening the transaction so a bad row costs nothing.
+    // `undefined` means the caller did not manage selling units at all, and the
+    // existing rows are left untouched; an empty array means "remove the extras".
+    const managesSellingUnits = formData.sellingUnits !== undefined;
+    let sellingUnits: SellingUnitInput[] = [];
+    if (managesSellingUnits) {
+      try {
+        sellingUnits = validateSellingUnits(formData.sellingUnits, formData.unitOfMeasure);
+      } catch (error: any) {
+        if (error instanceof SellingUnitError) return { success: false, message: error.message };
+        throw error;
       }
     }
 
@@ -661,6 +848,72 @@ export async function updateProduct(id: string, formData: ProductFormData) {
         }
       }
 
+      // --- Selling units ---
+      // The base row is never deleted or re-keyed: line items reference it, and
+      // a product without one cannot be sold. Its barcode/cost/price follow the
+      // product's own fields, but its factor stays 1 and is_base stays 1.
+      const [baseRows]: any = await connection.query(
+        'SELECT id FROM product_selling_units WHERE product_id = ? AND is_base = 1 LIMIT 1',
+        [id],
+      );
+      const baseName = String(productData.unit_of_measure ?? '').trim() || 'Piece';
+
+      try {
+        if (baseRows.length > 0) {
+          await connection.query(
+            `UPDATE product_selling_units
+             SET name = ?, barcode = ?, cost = ?, price = ?, factor = 1, is_base = 1
+             WHERE id = ?`,
+            [baseName, productData.barcode || null, productData.cost, productData.price, baseRows[0].id],
+          );
+        } else {
+          // A product predating the backfill, or one whose base row was lost.
+          await connection.query(
+            `INSERT INTO product_selling_units (id, product_id, name, barcode, factor, cost, price, is_base)
+             VALUES (?, ?, ?, ?, 1, ?, ?, 1)`,
+            [`psu_base_${id}`, id, baseName, productData.barcode || null, productData.cost, productData.price],
+          );
+        }
+
+        if (managesSellingUnits) {
+          const [existingExtras]: any = await connection.query(
+            'SELECT id FROM product_selling_units WHERE product_id = ? AND is_base = 0',
+            [id],
+          );
+          const existingIds = new Set<string>(existingExtras.map((r: any) => String(r.id)));
+          const keptIds = new Set<string>(
+            sellingUnits.map(u => (u.id ? String(u.id) : '')).filter(v => v !== '' && existingIds.has(v)),
+          );
+
+          for (const rowId of Array.from(existingIds)) {
+            if (!keptIds.has(rowId)) {
+              await connection.query('DELETE FROM product_selling_units WHERE id = ?', [rowId]);
+            }
+          }
+
+          for (const unit of sellingUnits) {
+            const barcode = unit.barcode ? unit.barcode : null;
+            const cost = unit.cost ?? null;
+            if (unit.id && existingIds.has(String(unit.id))) {
+              await connection.query(
+                `UPDATE product_selling_units
+                 SET name = ?, barcode = ?, factor = ?, cost = ?, price = ?
+                 WHERE id = ? AND is_base = 0`,
+                [unit.name, barcode, unit.factor, cost, unit.price, unit.id],
+              );
+            } else {
+              await connection.query(
+                `INSERT INTO product_selling_units (id, product_id, name, barcode, factor, cost, price, is_base)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+                [`psu_${uuidv4()}`, id, unit.name, barcode, unit.factor, cost, unit.price],
+              );
+            }
+          }
+        }
+      } catch (error) {
+        rethrowSellingUnitDupe(error);
+      }
+
       if (formData.supplierMappings) {
         await connection.query('DELETE FROM supplier_product_mapping WHERE product_id = ?', [id]);
         for (const mapping of formData.supplierMappings) {
@@ -673,6 +926,9 @@ export async function updateProduct(id: string, formData: ProductFormData) {
     return { success: true, message: `${formData.name} has been updated.` };
   } catch (error: any) {
     console.error('Error updating product:', error);
+    if (error instanceof SellingUnitError) {
+      return { success: false, message: error.message };
+    }
     if (error.code === 'ER_DUP_ENTRY' && error.message.includes('unique_product_unit')) {
       return { success: false, message: 'A conversion factor with this unit already exists for this product.' };
     }

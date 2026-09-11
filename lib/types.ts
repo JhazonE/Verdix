@@ -49,6 +49,15 @@ export interface Product {
 
   // Conversion factors for different units
   conversionFactors?: { unit: string; factor: number }[];
+  /** Extra ways this product is sold. Excludes the base unit. */
+  sellingUnits?: {
+    id?: string;
+    name: string;
+    factor: number;
+    barcode?: string;
+    cost?: number;
+    price: number;
+  }[];
 
   // Timestamps
   createdAt?: string;

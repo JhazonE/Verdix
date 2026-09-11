@@ -147,6 +147,7 @@ export function useEditProductForm({
       unitOfMeasure: product.unitOfMeasure ?? '', // Handle null
       conversionFactor: product.conversionFactor ?? 1, // Handle null/0 by defaulting to 1
       conversionFactors: product.conversionFactors || [],
+      sellingUnits: product.sellingUnits || [],
       priceLevels: product.priceLevels || [],
       vatStatus: product.vatStatus || 'YES (Subject to 12% VAT)',
       availability: product.availability || 'Available',
@@ -159,6 +160,11 @@ export function useEditProductForm({
   const { fields: conversionFactorFields, append: appendConversionFactor, remove: removeConversionFactor } = useFieldArray({
     control: form.control,
     name: 'conversionFactors',
+  });
+
+  const { fields: sellingUnitFields, append: appendSellingUnit, remove: removeSellingUnit } = useFieldArray({
+    control: form.control,
+    name: 'sellingUnits',
   });
 
   const { fields: priceLevelFields, append: appendPriceLevel, remove: removePriceLevel } = useFieldArray({
@@ -179,7 +185,7 @@ export function useEditProductForm({
     basic: !!(formErrors.name || formErrors.brand || formErrors.sku || formErrors.description || formErrors.category),
     inventory: !!(formErrors.unitOfMeasure),
     priceLevels: !!(formErrors.priceLevels),
-    conversion: !!(formErrors.conversionFactors),
+    conversion: !!(formErrors.conversionFactors || formErrors.sellingUnits),
   };
 
   // State for selected price level (for automatic price calculation)
@@ -204,6 +210,7 @@ export function useEditProductForm({
           unitOfMeasure: product.unitOfMeasure ?? '', // Handle null
           conversionFactor: product.conversionFactor ?? 1, // Handle null/0 by defaulting to 1
           conversionFactors: product.conversionFactors || [],
+          sellingUnits: product.sellingUnits || [],
           priceLevels: seedDefaultPriceLevel(product.priceLevels || [], priceLevels, product.price),
           vatStatus: product.vatStatus || 'YES (Subject to 12% VAT)',
           availability: product.availability || 'Available',
@@ -465,6 +472,7 @@ export function useEditProductForm({
 
     // field arrays
     conversionFactorFields, appendConversionFactor, removeConversionFactor,
+    sellingUnitFields, appendSellingUnit, removeSellingUnit,
     priceLevelFields, appendPriceLevel, removePriceLevel,
 
     // watched / derived values
