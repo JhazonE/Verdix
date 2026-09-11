@@ -490,22 +490,32 @@ git commit -m "feat: read and write price levels per selling unit"
 - Modify: `app/(app)/products/edit-product/edit-product-dialog.tsx` (same)
 
 **Interfaces:**
-- Consumes: `actions.ts`'s `sellingUnits[i].priceLevels` shape (Task 3), `calculateEffectivePriceForUnit` (Task 2, for any live price preview in the form).
-- Produces: a `sellingUnits` field on both product schemas where each entry carries `{ name, factor, barcode, cost, price, isBase, priceLevels: { levelId, price, minQuantity }[] }`.
+- Consumes: `actions.ts`'s `sellingUnits[i].priceLevels` shape for every EXTRA (non-base) unit, and the existing top-level `formData.priceLevels` field for the base unit's own overrides (Task 3 — see note below), plus `calculateEffectivePriceForUnit` (Task 2, for any live price preview in the form).
+- Produces: a `sellingUnits` field on both product schemas where each EXTRA-unit entry carries `{ name, factor, barcode, cost, price, isBase, priceLevels: { levelId, price, minQuantity }[] }`. The base unit's row is NOT a `sellingUnits` array entry with a `priceLevels` sub-field in the submitted payload — its price/cost/barcode already post through the form's existing top-level product fields, and Task 3 wired its price-level overrides to the existing top-level `priceLevels` field the same way (see Note below).
 
-**Read first:** `app/(app)/products/add-product/tabs/conversion-tab.tsx` (the current Selling Units tab, built by the prior plan) and `app/(app)/products/add-product/tabs/price-levels-tab.tsx` (the tab being retired — read its `PriceLevelsTab` component, shown in the spec's exploration, for the row-add/remove UI pattern to reuse inside each selling-unit row).
+**Note — base unit price levels are NOT symmetric with extra units (ruling, 2026-09-11):** Task 3's implementation (commit `6b773a4`) reads/writes the base unit's price-level overrides from the top-level `formData.priceLevels` field — the same field the old standalone Price Levels tab used — not from an entry inside `sellingUnits[]`. Every OTHER selling unit uses `sellingUnits[i].priceLevels` as originally planned. This was a deliberate choice made after Task 3 shipped: reworking Task 3 to force symmetry was rejected in favor of treating the base unit as one more structural special case in the form (it already gets a locked factor and no delete button, per Step 1 below). **Build the UI accordingly:**
+- The base row's price-level sub-table binds its price inputs to the top-level `priceLevels.${levelIndex}.price` field (the same field/array the deleted `PriceLevelsTab` used to bind to) — reuse that binding, not a new `sellingUnits[baseIndex].priceLevels` one.
+- Every extra unit's row binds to `sellingUnits.${unitIndex}.priceLevels.${levelIndex}.price` as described in Step 2 below.
+- Both the base row's sub-table and each extra unit's sub-table should look and behave identically to the user (same "one line per system price level, blank = no override" UI) — only the underlying form-state path differs, and that difference is internal to this task's wiring.
+
+**Read first:** `app/(app)/products/add-product/tabs/conversion-tab.tsx` (the current Selling Units tab, built by the prior plan) and `app/(app)/products/add-product/tabs/price-levels-tab.tsx` (the tab being retired — read its `PriceLevelsTab` component, shown in the spec's exploration, for the row-add/remove UI pattern to reuse inside each selling-unit row, AND for its existing top-level `priceLevels` field binding, which the base row's sub-table now reuses directly).
 
 - [ ] **Step 1: Show the base unit as a row**
 
-In `conversion-tab.tsx` (both add and edit), the selling-units field array currently only lists units the user has explicitly added. Add the base unit as a permanent, non-removable first row: its `factor` input becomes `disabled` and its displayed value locked to `1`; its row carries a "Base" badge instead of a delete button. Its barcode/cost/price inputs remain editable, same as any other row.
+In `conversion-tab.tsx` (both add and edit), the selling-units field array currently only lists units the user has explicitly added. Add the base unit as a permanent, non-removable first row: its `factor` input becomes `disabled` and its displayed value locked to `1`; its row carries a "Base" badge instead of a delete button. Its barcode/cost/price inputs remain editable, same as any other row — bind these to the form's existing top-level base price/cost/barcode fields (the ones `productData.price`/`productData.cost`/`productData.barcode` already post through in `actions.ts`), NOT to a new `sellingUnits[]` entry, since the base unit is not stored as one in the submitted payload.
 
-Where the array is seeded on form load (for edit) or on submit (for add), ensure exactly one entry has `isBase: true` and `factor: 1` — reuse whatever mechanism the prior plan's Task 7b already uses to guarantee this on the server (`actions.ts`), so the client and server agree on which row is the base.
+Where the array is seeded on form load (for edit) or on submit (for add), the base row is rendered from the top-level fields plus whichever `sellingUnits` (or server-returned) entry has `isBase: true` (for display of its current price levels — see Step 2) — ensure exactly one entry has `isBase: true` and `factor: 1` where the server returns it, so the client and server agree on which row is the base.
 
 - [ ] **Step 2: Add the per-row price-level sub-table**
 
-Each selling-unit row (base included) gets an expandable section listing one line per system price level (fetched the same way the old `PriceLevelsTab` did — via `priceLevels` / `isLoadingPriceLevels` from the form context), with a price input bound to `sellingUnits.${unitIndex}.priceLevels.${levelIndex}.price`. A blank input means no override for that unit/level — it must NOT default to `0` or to the unit's own price; leave it genuinely empty in form state so Task 3's write logic knows to skip it (an empty/undefined price for a level means: do not write a row for that level at all).
+Each selling-unit row gets an expandable section listing one line per system price level (fetched the same way the old `PriceLevelsTab` did — via `priceLevels` / `isLoadingPriceLevels` from the form context).
 
-Add a helper in `product-schema.ts` for the nested shape:
+- For the base row: bind each price input to `priceLevels.${levelIndex}.price` — the same top-level field array the old `PriceLevelsTab` used. Reuse that field array/hook wiring rather than inventing a new one.
+- For every extra unit's row: bind each price input to `sellingUnits.${unitIndex}.priceLevels.${levelIndex}.price`, as before.
+
+In both cases a blank input means no override for that unit/level — it must NOT default to `0` or to the unit's own price; leave it genuinely empty in form state so Task 3's write logic knows to skip it (an empty/undefined price for a level means: do not write a row for that level at all).
+
+Add a helper in `product-schema.ts` for the nested shape (used by extra units; the base row continues using the existing top-level `priceLevels` schema field, unchanged):
 
 ```typescript
 priceLevels: z.array(z.object({
