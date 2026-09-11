@@ -180,13 +180,15 @@ const {query}=require('./lib/mysql');
 ```
 Expected: the row count matches Step 3's number exactly, and 0 orphans.
 
-- [ ] **Step 6: Prove `down()` and re-apply**
+- [ ] **Step 6: (DO NOT RUN AGAINST THE LIVE DATABASE) `down()`'s honesty was already proven in Step 4/5**
 
-Run: `npm run migrate:down`
-Expected: `✅ dropped product_selling_unit_price_levels` (and the "not reversible past…" note, which is honest, not a bug).
+**This step previously instructed running `migrate:down` then `migrate` again against the live database to "prove reversibility." Do not do that — it destroys real data and there is no way to get it back from inside the migration itself.**
 
-Run: `npm run migrate`
-Expected: the table is recreated, but since `product_price_levels` is already gone by now, expect `⏭️  product_price_levels already gone, nothing to migrate or drop`. **This is expected** — the data migration is one-way once the source table is dropped, exactly as `down()`'s comment says. Do not treat an empty table here as a bug; it is the honest consequence of `down()` being irreversible past that point, which the migration itself declares.
+Trace why: `up()` both migrates `product_price_levels`'s rows onto `product_selling_units` AND drops `product_price_levels` in the same call. Step 4/5 already ran `up()` once and proved it correctly migrated every row (pre-count matched post-count, 0 orphans) — that is the entire property worth proving. Running `migrate:down` afterward deletes the new table, and running `up()` a second time cannot repopulate it, because the source table `up()` read from no longer exists — it was dropped by the run that already succeeded. The second `up()` will report `⏭️  product_price_levels already gone, nothing to migrate or drop` and leave the table **empty**. That is not a bug in the code; it is data loss caused by testing a live, data-consuming migration as if it were a pure schema change.
+
+**What to do instead:** nothing further. Step 4/5's successful `up()` run, with matching pre/post counts and 0 orphans, is the complete verification this migration needs. `down()`'s own code comment already documents the irreversibility honestly — that comment is the proof; you do not additionally need to trigger the data loss to confirm the comment is accurate.
+
+If you want to confirm `down()` and a repeat `up()` behave as documented WITHOUT touching live data, do it against a disposable copy: `mysqldump` the two tables involved into a scratch database, run the cycle there, and discard it — never against `verdix`.
 
 - [ ] **Step 7: Commit**
 
