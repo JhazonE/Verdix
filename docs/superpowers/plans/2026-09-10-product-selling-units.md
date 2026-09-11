@@ -1002,10 +1002,22 @@ grep -rln "parent_id\|conversion_factors" app/ lib/ src/ --include=*.ts --includ
   | xargs grep -Ln "family-sync"
 ```
 
-At the time of writing this returned nine files: `TransferStockService.ts`, `InventorySyncService.ts`,
-`MySqlProductRepository.ts`, `lib/scheduler.ts`, `app/(app)/inventory/history/actions.ts`,
-`app/api/data-management/import/products/legacy.ts`, `app/api/data-management/reset/route.ts`,
-`app/api/pos/checkout/route.ts`, `lib/product-tree.ts`.
+**Recounted after Tasks 7/7b landed — this returns TEN files**, and the set is not what the earlier
+note said. `lib/product-tree.ts` is gone (deleted in Task 7), and
+`app/(app)/products/add-product/product-schema.ts` joined the list:
+
+1. `src/infrastructure/services/TransferStockService.ts` — **the live one**
+2. `src/infrastructure/services/InventorySyncService.ts`
+3. `src/infrastructure/repositories/MySqlProductRepository.ts`
+4. `lib/scheduler.ts`
+5. `app/(app)/products/actions.ts`
+6. `app/(app)/products/add-product/product-schema.ts`
+7. `app/(app)/inventory/history/actions.ts`
+8. `app/api/data-management/import/products/legacy.ts`
+9. `app/api/data-management/reset/route.ts`
+10. `app/api/pos/checkout/route.ts`
+
+Re-run the grep yourself before starting — this list ages every time a task lands.
 
 For each, classify: **live stock logic** (must convert), **read-only/display** (must stop selecting
 the column), or **comment only** (nothing to do). Record the classification per file in your report —
