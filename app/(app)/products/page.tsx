@@ -51,9 +51,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useLiveRefresh, dispatchStockUpdate } from '@/hooks/use-live-refresh';
-import { ChildUnitsDialog } from './child-units/ChildUnitsDialog';
 
-function ProductRow({ product, onProductDeleted, onProductUpdated, products, productOptions, onOptionsRefresh, lowStockThreshold, onManageChildren }: {
+function ProductRow({ product, onProductDeleted, onProductUpdated, products, productOptions, onOptionsRefresh, lowStockThreshold }: {
   product: Product;
   onProductDeleted?: () => void;
   onProductUpdated?: () => void;
@@ -61,7 +60,6 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
   productOptions?: any;
   onOptionsRefresh?: () => void;
   lowStockThreshold?: number;
-  onManageChildren?: (product: Product) => void;
 }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -104,19 +102,6 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
         ? 'Low Stock'
         : 'In Stock';
 
-  // The view-product dialog shows a CHILD product, so it only has the
-  // parent's name (product.parentName), not the parent's own Product object
-  // that ChildUnitsDialog needs for its header. Resolve by id via getProducts
-  // (the row's own `products` prop is just the current paginated page and
-  // can't be trusted to contain the parent — see the same caveat that used
-  // to live in ReassignParentDialog) and hand the resolved product to the
-  // same onManageChildren setter the "N children" badge and dropdown use.
-  const handleManageFamily = async (child: Product) => {
-    if (!child.parentId || !onManageChildren) return;
-    const [parent] = await getProducts(1, 0, { id: child.parentId });
-    if (parent) onManageChildren(parent);
-  };
-
   const handleDeleteConfirm = async () => {
     const result = await deleteProduct(product.id);
     if (result.success) {
@@ -143,20 +128,6 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
         </TableCell>
         <TableCell className="font-medium">
           {product.name}
-          {(product.childCount ?? 0) > 0 && (
-            <Badge
-              variant="secondary"
-              className="ml-2 cursor-pointer hover:bg-secondary/80"
-              onClick={(e) => { e.stopPropagation(); onManageChildren?.(product); }}
-            >
-              {product.childCount} {product.childCount === 1 ? 'child' : 'children'}
-            </Badge>
-          )}
-          {product.parentName && (
-            <div className="text-xs text-muted-foreground mt-0.5">
-              ↳ {product.parentName}
-            </div>
-          )}
           {product.expirationDate && (
             <div className="text-[10px] text-orange-600 font-medium flex items-center gap-1 mt-0.5">
               <span className="w-1.5 h-1.5 rounded-full bg-orange-600" />
@@ -219,11 +190,6 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
                   </DropdownMenuItem>
               )}
 
-              <DropdownMenuItem onSelect={() => setTimeout(() => onManageChildren?.(product), 0)}>
-                <Copy className="mr-2 h-4 w-4" />
-                <span>Manage Child Units</span>
-              </DropdownMenuItem>
-
               <DropdownMenuSeparator />
               <DropdownMenuItem 
                 className="text-red-600 focus:text-red-600"
@@ -251,7 +217,6 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
                 onChildAdded={onProductDeleted}
                 productOptions={productOptions}
                 onOptionsRefresh={onOptionsRefresh}
-                onManageFamily={onManageChildren ? handleManageFamily : undefined}
             />
             <EditProductDialog 
                 open={editDialogOpen}
@@ -358,8 +323,6 @@ function ProductsContent() {
   const [isUnitOfMeasureOpen, setIsUnitOfMeasureOpen] = useState(false);
   const [isWarehousesOpen, setIsWarehousesOpen] = useState(false);
   const [isBulkPriceUpdateOpen, setIsBulkPriceUpdateOpen] = useState(false);
-  // Task 7 renders the Manage Child Units dialog from this state.
-  const [manageChildrenProduct, setManageChildrenProduct] = useState<Product | null>(null);
 
   const filters = {
     search: debouncedSearchTerm || undefined,
@@ -863,7 +826,6 @@ function ProductsContent() {
                     productOptions={productOptions}
                     onOptionsRefresh={loadProductOptions}
                     lowStockThreshold={lowStockThreshold}
-                    onManageChildren={setManageChildrenProduct}
                   />
                 ))
               )}
@@ -934,13 +896,6 @@ function ProductsContent() {
         )}
       </div>
       </Card>
-      <ChildUnitsDialog
-        product={manageChildrenProduct}
-        open={!!manageChildrenProduct}
-        onOpenChange={(open) => { if (!open) setManageChildrenProduct(null); }}
-        productOptions={productOptions}
-        onSaved={() => refetch()}
-      />
     </div>
   );
 }

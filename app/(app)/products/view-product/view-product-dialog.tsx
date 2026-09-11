@@ -35,7 +35,6 @@ export function ViewProductDialog({
     trigger,
     open: externalOpen,
     onOpenChange: externalOnOpenChange,
-    onManageFamily
 }: {
     product: Product;
     onProductUpdated?: () => void;
@@ -46,9 +45,6 @@ export function ViewProductDialog({
     trigger?: React.ReactNode;
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
-    /** Opens the PARENT's child-units dialog. Optional — when absent, the
-     * "Child of X" line renders as plain read-only text with no Manage link. */
-    onManageFamily?: (product: Product) => void;
 }) {
     const [internalOpen, setInternalOpen] = useState(false);
     const isOpen = externalOpen !== undefined ? externalOpen : internalOpen;
@@ -239,11 +235,8 @@ export function ViewProductDialog({
 
                                     {(() => {
                                         const hasConversionFactors = product.conversionFactors && product.conversionFactors.length > 0;
-                                        const isChildProduct = product.parentId && products;
-                                        const parentProduct = isChildProduct ? products?.find(p => p.id === product.parentId) : null;
-                                        const childConversion = parentProduct?.conversionFactors?.find(cf => cf.unit === product.unitOfMeasure);
 
-                                        if (hasConversionFactors || childConversion) {
+                                        if (hasConversionFactors) {
                                             return (
                                                 <div className="space-y-4">
                                                     <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
@@ -260,15 +253,6 @@ export function ViewProductDialog({
                                                                 <Badge variant="outline" className="font-semibold px-2 py-0 bg-primary/10 text-primary border-primary/20">1 = {cf.factor}</Badge>
                                                             </div>
                                                         ))}
-                                                        {childConversion && parentProduct && (
-                                                            <div className="flex justify-between items-center p-3 bg-card rounded-lg border border-emerald-500/20 shadow-sm bg-emerald-500/5 col-span-full">
-                                                                <span className="text-sm font-medium flex items-center gap-2">
-                                                                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                                                                    {parentProduct.unitOfMeasure} to {product.unitOfMeasure}
-                                                                </span>
-                                                                <Badge variant="outline" className="font-semibold bg-emerald-500/10 text-emerald-600 border-emerald-500/20">1 = {childConversion.factor}</Badge>
-                                                            </div>
-                                                        )}
                                                     </div>
                                                 </div>
                                             );
@@ -284,20 +268,10 @@ export function ViewProductDialog({
                 <DialogFooter className="sticky bottom-0 bg-background p-6 border-t sm:justify-between flex items-center gap-4">
                      <div className="flex flex-col gap-1">
                         <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded w-fit">ID: {product.id}</p>
-                        {product.parentName && (
-                          <div className="text-sm text-muted-foreground">
-                            Child of <span className="font-medium text-foreground">{product.parentName}</span>
-                            {onManageFamily && (
-                              <Button variant="link" size="sm" className="px-1" onClick={() => onManageFamily(product)}>
-                                Manage
-                              </Button>
-                            )}
-                          </div>
-                        )}
                      </div>
                      <div className="flex items-center gap-3">
                         <Button variant="ghost" onClick={() => setIsOpen(false)} className="hover:bg-muted">Close</Button>
-                        {!product.parentId && (product.conversionFactors?.length ?? 0) > 0 && products && (
+                        {(product.conversionFactors?.length ?? 0) > 0 && products && (
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -317,23 +291,21 @@ export function ViewProductDialog({
                             </Tooltip>
                           </TooltipProvider>
                         )}
-                        {!product.parentId && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <BreakPackDialog
-                                  parentProduct={product}
-                                  onPackBroken={() => {
-                                    onProductUpdated?.();
-                                  }}
-                                />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Break this pack into smaller units</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <BreakPackDialog
+                                parentProduct={product}
+                                onPackBroken={() => {
+                                  onProductUpdated?.();
+                                }}
+                              />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Break this pack into smaller units</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                         <EditProductDialog
                           product={product}
                           onProductUpdated={onProductUpdated}

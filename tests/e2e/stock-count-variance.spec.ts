@@ -132,23 +132,26 @@ test.describe('Stock count variance', () => {
   });
 
   /**
-   * Duha ka produkto sa PAREHONG PAMILYA sulod sa usa ka count.
+   * Duha ka produkto sulod sa usa ka count, diin ang usa may tinuod nga
+   * variance ug ang usa giihap nga eksakto.
    *
-   * Kung ma-apply ang variance sa una, mo-cascade ang family-sync ngadto sa
-   * tanang sakop — apil ang ikaduha nga item nga wala pa ma-proseso. Kung
-   * basahon ang live stock sa sulod sa loop, makita sa ikaduha kanang bag-ong
-   * gisulat nga stock, samtang ang iyang movement sums mo-exclude niini (kay
-   * gi-tag man sa reference_id niining count). Mo-trigger dayon ang fallback
-   * bisan himsog ang log, ug mo-imbento ug variance sa linya nga husto man ang
-   * pagkaihap.
+   * Kaniadto kining duha managsoon (parent/child) ug ang variance sa usa
+   * mo-cascade ngadto sa usa pa. Wala na ang family model: ang tagsa-tagsa ka
+   * produkto may kaugalingong stock, mao nga ang variance sa usa ka linya
+   * DILI na gyud angay motandog sa laing produkto.
    *
-   * Ang pag-ihap sa parent ug child nga magkauban kay MAO ang normal — walay
-   * family filter ang count query.
+   * Mao gihapon ang gibantayan nga bug: kung basahon ang live stock sulod sa
+   * mutation loop, ang ikaduha nga linya mahimong makakita ug bag-ong gisulat
+   * nga stock samtang ang iyang movement sums mo-exclude niini (gi-tag man sa
+   * reference_id niining count), ug motungha ang phantom variance. Ang linya
+   * nga giihap ug eksakto kinahanglan dili gyud mausab.
    */
-  test('parehong pamilya sa usa ka count: walay phantom variance', async ({ request }) => {
+  test('duha ka produkto sa usa ka count: walay phantom variance', async ({ request }) => {
+    // Kaniadto parent/child kini nga duha; karon duha na lang ka bulag nga
+    // produkto. Gipabilin ang mga id kay mao gihapon ang fixture.
     const PARENT = 'test-perishable-family-parent';
     const CHILD = 'test-perishable-family-child';
-    const FACTOR = 12; // 1 Box = 12 Piece
+    const SHORTAGE = 12;
 
     const stockOf = async (id: string) =>
       Number((await testQuery('SELECT stock FROM products WHERE id = ?', [id]))[0].stock);
@@ -166,32 +169,27 @@ test.describe('Stock count variance', () => {
       'SELECT id, product_id, snapshot_quantity FROM stock_count_items WHERE stock_count_id = ? AND product_id IN (?, ?)',
       [data.id, PARENT, CHILD]
     );
-    expect(rows.length, 'apil ang parent ug child sa count').toBe(2);
+    expect(rows.length, 'apil ang duha ka produkto sa count').toBe(2);
 
     const parentRow = rows.find((r: any) => r.product_id === PARENT);
     const childRow = rows.find((r: any) => r.product_id === CHILD);
 
-    // Ang CHILD kulang ug 12 Piece — tinuod ni nga variance, mao nga modagan gyud
-    // ang family-sync ug mo-cascade sa PARENT (-1 Box).
+    // Ang CHILD kulang ug 12 — tinuod ni nga variance ug maka-adjust gyud.
     //
     // Ang PARENT giihap nga EKSAKTO sa iyang snapshot: sa panahon nga giihap siya,
     // 10 gyud ang naa, busa dili siya angay ug kaugalingong adjustment. Kung
-    // basahon ang live stock sulod sa mutation loop, makita niya ang 9 nga gisulat
-    // sa cascade samtang ang iyang movement sums mo-exclude niini (gi-tag man sa
-    // reference_id niining count) — motungha ang fallback ug mo-imbento ug +1 nga
-    // phantom variance, nga mo-cascade balik ug mo-undo sa tinuod nga adjustment.
+    // basahon ang live stock sulod sa mutation loop imbes ang snapshot ug ang
+    // movement sums, motungha ang fallback ug mo-imbento ug phantom variance
+    // sa linya nga husto man ang pagkaihap.
     //
     // TIMAN-I ang order: ang itemsQuery walay ORDER BY, mao nga ang storage order
     // ang mosunod, ug sa niining fixture ang CHILD mauna. Busa gibutang ang
-    // variance sa CHILD — aron ang cascade niini moigo sa PARENT nga wala pa
-    // ma-proseso. Kung mabalhin kanang order, kini nga test mahimong dili na
-    // mosulay sa gituyo nga direksyon (mopasar gihapon, apan walay pulos).
-    // Ayaw butangi ug variance ang DUHA: lahi na kana nga senaryo (duha ka
-    // bulag nga -1 Box, sakto nga resulta 8) ug dili na mosulay niini nga bug.
+    // variance sa unang linya — aron kung may pagtulo sa laing linya, ang
+    // PARENT nga wala pa ma-proseso maoy maigo.
     const put = await request.put(`${BASE}/${data.id}/items`, {
       data: {
         items: [
-          { id: childRow.id, counted_quantity: Number(childRow.snapshot_quantity) - FACTOR },
+          { id: childRow.id, counted_quantity: Number(childRow.snapshot_quantity) - SHORTAGE },
           { id: parentRow.id, counted_quantity: Number(parentRow.snapshot_quantity) },
         ],
       },
@@ -200,8 +198,10 @@ test.describe('Stock count variance', () => {
 
     await complete(request, data.id);
 
-    // Ang -12 Piece ra ang angay ma-apply, ug ang cascade niini (-1 Box) sa parent.
-    expect(await stockOf(CHILD), 'ang -12 Piece ra').toBe(120 - FACTOR);
-    expect(await stockOf(PARENT), 'cascade ra sa -12 Piece, walay phantom').toBe(9);
+    // Usa ka produkto, usa ka stock: ang -12 moigo SA CHILD RA. Walay cascade
+    // na, mao nga ang PARENT magpabilin sa iyang 10 — kining ikaduhang assert
+    // mao ang nagpamatuod nga wala nay family sync.
+    expect(await stockOf(CHILD), 'ang -12 ra sa giihap nga produkto').toBe(120 - SHORTAGE);
+    expect(await stockOf(PARENT), 'walay cascade ug walay phantom').toBe(10);
   });
 });

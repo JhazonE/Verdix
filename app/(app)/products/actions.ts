@@ -5,7 +5,6 @@ import { generateBatchId } from '@/lib/batch-utils';
 import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
 import { PriceLevel, Category, Brand, Supplier, Warehouse, Department, UnitOfMeasure, ShelfLocation, Account, TaxRate } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
-import { getIllegalReassignTargets, type TreeProduct } from '@/lib/product-tree';
 import { isValidMarkupValue, MARKUP_MAX } from '@/lib/markup-validation';
 import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 
@@ -61,9 +60,7 @@ export type ProductFilters = {
   warehouse?: string;
   shelfLocation?: string;
   status?: 'in-stock' | 'low-stock' | 'out-of-stock' | 'all' | string;
-  /** Exact product id. Used to resolve a single product (e.g. a parent looked
-   * up by id from the view-product dialog) without pulling in the
-   * `parent_id IS NULL` top-level restriction that unfiltered paging applies. */
+  /** Exact product id. Used to resolve a single product without paging. */
   id?: string;
 };
 
@@ -79,31 +76,16 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
              spm.supplier_id as primary_supplier_id,
              spm.supplier_specific_rop as primary_supplier_rop,
              s_primary.name as primary_supplier_name,
-             EXISTS (SELECT 1 FROM approval_queue aq WHERE (JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.productId')) = p.id OR JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.sourceProductId')) = p.id) AND aq.status = 'Pending') as has_pending_approval,
-             (SELECT COUNT(*) FROM products c WHERE c.parent_id = p.id) AS child_count,
-             parent_p.name AS parent_name
+             EXISTS (SELECT 1 FROM approval_queue aq WHERE (JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.productId')) = p.id OR JSON_UNQUOTE(JSON_EXTRACT(aq.transaction_data, '$.sourceProductId')) = p.id) AND aq.status = 'Pending') as has_pending_approval
       FROM products p
       LEFT JOIN suppliers s_legacy ON p.supplier_id = s_legacy.id
       LEFT JOIN warehouses w ON p.warehouse_id = w.id
       LEFT JOIN supplier_product_mapping spm ON p.id = spm.product_id AND spm.is_primary = 1
       LEFT JOIN suppliers s_primary ON spm.supplier_id = s_primary.id
-      LEFT JOIN products parent_p ON p.parent_id = parent_p.id
     `;
 
     const whereClauses: string[] = [];
     const params: any[] = [];
-
-    const hasActiveFilters = filters && (
-      (filters.brand && filters.brand !== 'all') ||
-      (filters.category && filters.category !== 'all') ||
-      (filters.department && filters.department !== 'all') ||
-      (filters.supplier && filters.supplier !== 'all') ||
-      (filters.warehouse && filters.warehouse !== 'all') ||
-      (filters.shelfLocation && filters.shelfLocation !== 'all') ||
-      (filters.status && filters.status !== 'all') ||
-      filters.search ||
-      filters.id
-    );
 
     if (filters) {
       if (filters.id) {
@@ -148,10 +130,6 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
            whereClauses.push(`p.stock > 0 AND p.stock >= p.reorder_point AND p.stock >= (SELECT COALESCE(low_stock_threshold, 0) FROM pos_settings LIMIT 1)`);
         }
       }
-    }
-
-    if (!hasActiveFilters && limit !== undefined && offset !== undefined) {
-      whereClauses.push(`p.parent_id IS NULL`);
     }
 
     if (whereClauses.length > 0) {
@@ -232,12 +210,9 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
         imageUrl: product.image_url,
         imageHint: product.image_hint,
         unitOfMeasure: product.unit_of_measure,
-        parentId: product.parent_id,
         markupPercentage: product.markup_percentage === null || product.markup_percentage === undefined
           ? null
           : Number(product.markup_percentage),
-        childCount: Number(product.child_count ?? 0),
-        parentName: product.parent_name ?? null,
         conversionFactor: product.conversion_factor,
         conversionFactors: cfMap.get(product.id) || [],
         incomeAccount: product.income_account,
@@ -314,21 +289,6 @@ export async function getProductsCount(filters?: ProductFilters) {
            whereClauses.push(`p.stock > 0 AND p.stock >= p.reorder_point AND p.stock >= (SELECT COALESCE(low_stock_threshold, 0) FROM pos_settings LIMIT 1)`);
         }
       }
-    }
-
-    const hasActiveFilters = filters && (
-      (filters.brand && filters.brand !== 'all') ||
-      (filters.category && filters.category !== 'all') ||
-      (filters.department && filters.department !== 'all') ||
-      (filters.supplier && filters.supplier !== 'all') ||
-      (filters.warehouse && filters.warehouse !== 'all') ||
-      (filters.shelfLocation && filters.shelfLocation !== 'all') ||
-      (filters.status && filters.status !== 'all') ||
-      filters.search
-    );
-
-    if (!hasActiveFilters) {
-      whereClauses.push(`p.parent_id IS NULL`);
     }
 
     if (whereClauses.length > 0) {
@@ -717,216 +677,6 @@ export async function updateProduct(id: string, formData: ProductFormData) {
       return { success: false, message: 'A conversion factor with this unit already exists for this product.' };
     }
     return { success: false, message: 'There was an error updating the product.' };
-  }
-}
-
-/**
- * Shared attach/detach body for reassignParent, extracted so callers that
- * already hold a transaction connection (e.g. clearStockAndReassign) can
- * join it instead of opening a second, separate transaction.
- *
- * Runs the same guards reassignParent has always run (self-parent, stock,
- * cycle via getIllegalReassignTargets, parent existence) and performs the
- * same parent_id update plus conversion_factors upsert. Behaviour is
- * identical to reassignParent's previous inline body — only the connection
- * is now a parameter instead of being opened here.
- */
-async function reassignParentOnConnection(
-  childId: string,
-  newParentId: string | null,
-  conversionFactor: number,
-  connection: any,
-): Promise<{ success: boolean; message: string }> {
-  // Validate factor up front when attaching to a parent.
-  if (newParentId !== null) {
-    if (childId === newParentId) {
-      return { success: false, message: 'A product cannot be its own parent.' };
-    }
-    if (!Number.isFinite(conversionFactor) || conversionFactor <= 0) {
-      return { success: false, message: 'Conversion factor must be a number greater than 0.' };
-    }
-  }
-
-  // Load the child.
-  const [childRows]: any = await connection.query(
-    'SELECT id, name, unit_of_measure, parent_id, stock, cost, price FROM products WHERE id = ?',
-    [childId],
-  );
-  const child = childRows?.[0];
-  if (!child) {
-    return { success: false, message: 'Product not found.' };
-  }
-
-  // Prevent reassignment if product has existing inventory.
-  if (newParentId !== null && child.stock > 0) {
-    return {
-      success: false,
-      message: `Cannot assign "${child.name}" to a parent while it has ${child.stock} units in stock. Please adjust or clear the inventory first, then reassign.`,
-    };
-  }
-
-  if (newParentId !== null) {
-    // Cycle guard: the new parent must not be the child or one of its descendants.
-    // Build the full id/parent map from the DB and reuse the pure helper.
-    const [allRows]: any = await connection.query(
-      'SELECT id, parent_id FROM products',
-    );
-    const treeProducts: TreeProduct[] = (allRows as any[]).map((r) => ({
-      id: r.id,
-      parentId: r.parent_id,
-    }));
-    const illegal = getIllegalReassignTargets(childId, treeProducts);
-    if (illegal.has(newParentId)) {
-      return { success: false, message: 'Cannot reassign: that would create a parent loop.' };
-    }
-
-    // Confirm the target parent exists.
-    const [parentRows]: any = await connection.query(
-      'SELECT id, name FROM products WHERE id = ?',
-      [newParentId],
-    );
-    const newParent = parentRows?.[0];
-    if (!newParent) {
-      return { success: false, message: 'Target parent product not found.' };
-    }
-
-    // Update parentage.
-    await connection.query(
-      'UPDATE products SET parent_id = ? WHERE id = ?',
-      [newParentId, childId],
-    );
-
-    // Upsert the conversion factor on the NEW parent, keyed by the child's unit.
-    // unique_product_unit (product_id, unit) makes this idempotent.
-    const cfId = `${newParentId}-cf-${child.unit_of_measure}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    await connection.query(
-      `INSERT INTO conversion_factors (id, product_id, unit, factor)
-       VALUES (?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE factor = VALUES(factor)`,
-      [cfId, newParentId, child.unit_of_measure, conversionFactor],
-    );
-
-    console.log(`[reassignParent] ${childId} moved under ${newParentId} (factor ${conversionFactor}, unit ${child.unit_of_measure})`);
-    return { success: true, message: `${child.name} moved under ${newParent.name}.` };
-  }
-
-  // Detach: clear parent_id, leave conversion_factors untouched.
-  await connection.query(
-    'UPDATE products SET parent_id = NULL WHERE id = ?',
-    [childId],
-  );
-  console.log(`[reassignParent] ${childId} detached to top-level`);
-  return { success: true, message: `${child.name} is now a top-level product.` };
-}
-
-export async function reassignParent(
-  childId: string,
-  newParentId: string | null,
-  conversionFactor: number,
-): Promise<{ success: boolean; message: string }> {
-  try {
-    return await withTransaction(async (connection) => {
-      return await reassignParentOnConnection(childId, newParentId, conversionFactor, connection);
-    });
-  } catch (error: any) {
-    console.error('Error in reassignParent:', error);
-    return { success: false, message: 'There was an error reassigning the product.' };
-  }
-}
-
-/**
- * Attaches a product as a child AFTER zeroing its stock.
- *
- * reassignParent refuses a product holding stock, because a child's stock is
- * derived from its parent by lib/family-sync.ts. This backs the UI's explicit
- * "Clear stock and add as child" confirmation, so the user has already been told
- * the stock will go.
- *
- * The clear and the attach share ONE transaction: if the attach fails (a loop, a
- * missing parent) the stock adjustment rolls back with it. Splitting them would
- * destroy inventory without producing a child.
- */
-/**
- * Signals a logical (business-rule) rejection from inside clearStockAndReassign's
- * transaction callback. withTransaction only rolls back when the callback
- * throws — a normal `{success:false}` return still commits — so a rejected
- * attach (cycle, missing parent, self-parent, bad factor) must be raised as
- * an error to undo the stock clear that already ran. Caught in the outer
- * catch below and converted back into the { success:false, message } shape
- * the UI expects, so this never leaks past clearStockAndReassign itself.
- */
-class ReassignRejectedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ReassignRejectedError';
-  }
-}
-
-export async function clearStockAndReassign(
-  childId: string,
-  newParentId: string,
-  conversionFactor: number,
-): Promise<{ success: boolean; message: string }> {
-  if (!newParentId) {
-    return { success: false, message: 'A target parent is required.' };
-  }
-  if (!Number.isFinite(conversionFactor) || conversionFactor <= 0) {
-    return { success: false, message: 'Conversion factor must be a number greater than 0.' };
-  }
-
-  try {
-    return await withTransaction(async (connection) => {
-      const [rows]: any = await connection.query(
-        'SELECT id, name, stock FROM products WHERE id = ?',
-        [childId],
-      );
-      const child = rows?.[0];
-      if (!child) {
-        return { success: false, message: 'Product not found.' };
-      }
-
-      const [parentRows]: any = await connection.query(
-        'SELECT id, name FROM products WHERE id = ?',
-        [newParentId],
-      );
-      const parent = parentRows?.[0];
-      if (!parent) {
-        return { success: false, message: 'Target parent product not found.' };
-      }
-
-      const currentStock = Number(child.stock || 0);
-      if (currentStock > 0) {
-        await updateStockAndRecordMovement(
-          childId,
-          -currentStock,
-          'adjustment',
-          childId,
-          'adjustment',
-          `Stock cleared to attach as child of ${parent.name}`,
-          connection,
-        );
-      }
-
-      // Attach within the SAME transaction as the stock clear above: both run
-      // through this one withTransaction connection. reassignParentOnConnection
-      // signals a rejected attach by RETURNING success:false rather than
-      // throwing (it's shared with reassignParent, which must keep that
-      // contract). withTransaction commits on any normal resolution, so a
-      // returned rejection here would otherwise commit the stock clear above
-      // with no attach to show for it — throw instead so the whole
-      // transaction (stock clear included) rolls back together.
-      const result = await reassignParentOnConnection(childId, newParentId, conversionFactor, connection);
-      if (!result.success) {
-        throw new ReassignRejectedError(result.message);
-      }
-      return result;
-    });
-  } catch (error) {
-    if (error instanceof ReassignRejectedError) {
-      return { success: false, message: error.message };
-    }
-    console.error('Error in clearStockAndReassign:', error);
-    return { success: false, message: 'There was an error adding the product as a child.' };
   }
 }
 
@@ -2367,176 +2117,6 @@ export async function setPrimarySupplier(productId: string, mappingId: string) {
   } catch (error) {
     console.error('Error setting primary supplier:', error);
     return { success: false, message: 'Error setting primary supplier.' };
-  }
-}
-
-export async function getChildProducts(parentId: string) {
-  try {
-    const products = await query(`
-      SELECT p.*, p.parent_id as parentId, cf.factor as conversionFactor,
-             COALESCE(w.name, pw.name) as warehouseName,
-             (SELECT GROUP_CONCAT(sl.name) FROM product_shelves ps JOIN shelf_locations sl ON ps.shelf_id = sl.id WHERE ps.product_id = p.id) as shelfLocationNames,
-             (SELECT COUNT(*) FROM products c WHERE c.parent_id = p.id) as childCount
-      FROM products p
-      LEFT JOIN warehouses w ON p.warehouse_id = w.id
-      LEFT JOIN products parent ON p.parent_id = parent.id
-      LEFT JOIN warehouses pw ON parent.warehouse_id = pw.id
-      LEFT JOIN conversion_factors cf ON cf.product_id = p.parent_id AND cf.unit = p.unit_of_measure
-      WHERE p.parent_id = ?
-      ORDER BY p.name
-    `, [parentId]);
-
-    const childIds = (products as any[]).map((p) => p.id);
-    const cfMap = new Map<string, { unit: string; factor: number }[]>();
-    if (childIds.length > 0) {
-      const placeholders = childIds.map(() => '?').join(', ');
-      const conversionFactorsSql = `SELECT * FROM conversion_factors WHERE product_id IN (${placeholders}) ORDER BY product_id, created_at`;
-      const childConversionFactors = await query(conversionFactorsSql, childIds);
-      (childConversionFactors as any[]).forEach((cf) => {
-        if (!cfMap.has(cf.product_id)) {
-          cfMap.set(cf.product_id, []);
-        }
-        cfMap.get(cf.product_id)!.push({
-          unit: cf.unit,
-          factor: cf.factor,
-        });
-      });
-    }
-
-    return (products as any[]).map((p) => ({
-      ...p,
-      markupPercentage: p.markup_percentage === null || p.markup_percentage === undefined
-        ? null
-        : Number(p.markup_percentage),
-      childCount: Number(p.childCount ?? 0),
-      cost: p.cost === null || p.cost === undefined ? undefined : parseFloat(p.cost),
-      price: p.price === null || p.price === undefined ? undefined : parseFloat(p.price),
-      unitOfMeasure: p.unit_of_measure,
-      conversionFactor: p.conversionFactor === null || p.conversionFactor === undefined
-        ? undefined
-        : parseFloat(p.conversionFactor),
-      conversionFactors: cfMap.get(p.id) || [],
-    }));
-  } catch (error) {
-    console.error('Error fetching child products:', error);
-    return [];
-  }
-}
-
-/**
- * Batch-saves per-product markup overrides from the child-units dialog.
- *
- * markupPercentage null clears the override so the product inherits again;
- * 0 is a real value meaning "sell at cost". This never touches products.price
- * — markup only ever suggests a price, the user still sets the real one.
- */
-export async function updateChildMarkups(
-  rows: { id: string; markupPercentage: number | null }[]
-): Promise<{ success: boolean; message: string }> {
-  if (!Array.isArray(rows) || rows.length === 0) {
-    return { success: false, message: 'No markups to save.' };
-  }
-
-  // Validate everything BEFORE opening a transaction: one bad row rejects the
-  // whole batch, so there is nothing to roll back.
-  for (const row of rows) {
-    if (!row?.id) {
-      return { success: false, message: 'A markup row is missing its product id.' };
-    }
-    if (!isValidMarkupValue(row.markupPercentage)) {
-      return {
-        success: false,
-        message: `Invalid markup for product ${row.id}. Enter a value between 0 and ${MARKUP_MAX}, or leave it blank to inherit.`,
-      };
-    }
-  }
-
-  try {
-    await withTransaction(async (connection) => {
-      for (const row of rows) {
-        await connection.query(
-          'UPDATE products SET markup_percentage = ? WHERE id = ?',
-          [row.markupPercentage, row.id]
-        );
-      }
-    });
-    return { success: true, message: `Saved markup for ${rows.length} product(s).` };
-  } catch (error) {
-    console.error('Error updating child markups:', error);
-    return { success: false, message: 'Error saving markups.' };
-  }
-}
-
-/**
- * Saves conversion factors for a parent's child units.
- *
- * Rows are keyed by UNIT, not by child id: conversion_factors lives on the
- * PARENT with UNIQUE (product_id, unit), so two children of the same parent
- * sharing a unit of measure share ONE row. A per-child signature would hide
- * that; this one makes it explicit.
- *
- * A numeric factor upserts; a null factor DELETES the row (meaning "no factor
- * set"). null and 0 are different: 0 is invalid, because a zero factor would
- * make every synced quantity for that family member zero.
- *
- * Changing a factor does not recompute stock already synced under the old one.
- */
-export async function updateChildConversions(
-  parentId: string,
-  rows: { unit: string; factor: number | null }[],
-): Promise<{ success: boolean; message: string }> {
-  if (!parentId) {
-    return { success: false, message: 'A parent product is required.' };
-  }
-  if (!Array.isArray(rows) || rows.length === 0) {
-    // Saving with nothing changed is a normal, successful no-op — the dialog's
-    // Save button is always enabled by design.
-    return { success: true, message: 'No conversion changes to save.' };
-  }
-
-  // Validate everything BEFORE opening a transaction: one bad row rejects the
-  // whole batch, so there is nothing partial to undo.
-  for (const row of rows) {
-    if (!row?.unit) {
-      return { success: false, message: 'A conversion row is missing its unit.' };
-    }
-    if (row.factor !== null) {
-      const n = Number(row.factor);
-      if (!Number.isFinite(n) || n <= 0) {
-        return {
-          success: false,
-          message: `Invalid conversion factor for "${row.unit}". Enter a number greater than 0, or leave it blank to remove it.`,
-        };
-      }
-    }
-  }
-
-  try {
-    await withTransaction(async (connection) => {
-      for (const row of rows) {
-        if (row.factor === null) {
-          await connection.query(
-            'DELETE FROM conversion_factors WHERE product_id = ? AND unit = ?',
-            [parentId, row.unit],
-          );
-          continue;
-        }
-
-        // unique_product_unit (product_id, unit) makes this idempotent — the
-        // same upsert reassignParent uses.
-        const cfId = `${parentId}-cf-${row.unit}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        await connection.query(
-          `INSERT INTO conversion_factors (id, product_id, unit, factor)
-           VALUES (?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE factor = VALUES(factor)`,
-          [cfId, parentId, row.unit, Number(row.factor)],
-        );
-      }
-    });
-    return { success: true, message: `Saved ${rows.length} conversion factor(s).` };
-  } catch (error) {
-    console.error('Error updating child conversions:', error);
-    return { success: false, message: 'Error saving conversion factors.' };
   }
 }
 

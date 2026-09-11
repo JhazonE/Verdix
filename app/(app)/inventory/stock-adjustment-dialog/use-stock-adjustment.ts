@@ -8,7 +8,6 @@ import { useToast } from '@/hooks/use-toast';
 import { toSafeNumber } from '@/lib/utils';
 import type { Product } from '@/lib/types';
 
-import { getProducts } from '../../products/actions';
 import { adjustStock } from '../history/actions';
 
 export interface UseStockAdjustmentProps {
@@ -49,8 +48,6 @@ export function useStockAdjustment({
 
   const [physicalCount, setPhysicalCount] = useState<number | null>(null);
 
-  const [childProducts, setChildProducts] = useState<Product[]>([]);
-  const [isLoadingChildren, setIsLoadingChildren] = useState(false);
 
   const isPhysicalCountMode = defaultReason === 'Physical Count';
 
@@ -92,27 +89,6 @@ export function useStockAdjustment({
     remove: ['Damage', 'Expired', 'Lost/Theft', 'Internal Use', 'Stock Correction', 'Other']
   };
 
-  const loadChildProducts = async () => {
-    setIsLoadingChildren(true);
-    try {
-      const allProducts = await getProducts();
-      const children = allProducts.filter((p: Product) => p.parentId === product.id);
-      setChildProducts(children);
-    } catch (error) {
-      console.error('Failed to load child products:', error);
-      setChildProducts([]);
-    } finally {
-      setIsLoadingChildren(false);
-    }
-  };
-
-  // Load child products when dialog opens
-  useEffect(() => {
-    if (isOpen && !isPhysicalCountMode) {
-      loadChildProducts();
-    }
-  }, [isOpen, isPhysicalCountMode]);
-
   useEffect(() => {
     if (isOpen) {
       setReason(defaultReason || '');
@@ -120,7 +96,6 @@ export function useStockAdjustment({
       setQuantity(0);
       setAdjustmentType('add');
       setPhysicalCount(Number(product.stock));
-      setChildProducts([]);
       setExpirationDate('');
     }
   }, [isOpen, defaultReason, product.stock]);

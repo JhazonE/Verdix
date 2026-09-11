@@ -37,13 +37,13 @@ async function batchByReason(productId: string, reason: string) {
 }
 
 /**
- * Same idea as batchByReason, apan para sa mga batch nga gimugna pinaagi sa
- * family cascade (addFamilyStock/deductFamilyStock). Ang cascaded nodes
- * (depth > 0) mo-apend ug " (Depth N family sync)" sa notes — mao nga LIKE
- * prefix match ang gigamit imbes exact match, aron makuha ang batch bisan sa
- * unsang depth nahimutang ang product sulod sa family walk.
+ * Same idea as batchByReason, apan LIKE prefix match ang gigamit imbes exact
+ * match, aron makuha ang batch bisan unsa pa ang gi-apend sa notes. Gigamit
+ * kini aron mapamatud-an nga ang usa ka produkto WALAY batch — ang LIKE mao
+ * ang pinakalapad nga pangita, mao nga ang null nga resulta tinuod gyud nga
+ * walay batch bisan unsa ang notes.
  */
-async function familyBatchByReason(productId: string, reason: string) {
+async function batchByReasonPrefix(productId: string, reason: string) {
   const rows = await testQuery(
     `SELECT id, quantity_in, DATE_FORMAT(expiration_date, '%Y-%m-%d') AS expiration_date
      FROM inventory_batches
@@ -220,10 +220,10 @@ test.describe('Adjustment expiration dates', () => {
     expect(body.items.some((i: any) => i.productId === PERISHABLE_PRODUCT.id)).toBeTruthy();
   });
 
-  test('family adjustment: ang expiry mo-adto sa CHILD nga gi-adjust, dili sa PARENT', async ({ request }) => {
-    // Gi-adjust ang CHILD (dili ang root/parent). Ang addFamilyStock mo-cascade
-    // paingon sa PARENT (12 pcs/box factor), apan ang expiry kinahanglan lang
-    // motungha sa batch sa CHILD — ang PARENT dapat NULL ang expiration_date.
+  test('adjustment: ang batch ug expiry mo-adto SA GI-ADJUST RA nga produkto', async ({ request }) => {
+    // Wala nay family cascade. Ang pag-adjust sa usa ka produkto mo-mugna ug
+    // batch para NIYA RA — ang laing produkto (kaniadto iyang parent) dili na
+    // gyud angay makadawat ug batch.
     const res = await request.post('/api/inventory/adjust/bulk', {
       data: {
         adjustments: [{
@@ -239,13 +239,14 @@ test.describe('Adjustment expiration dates', () => {
     expect(res.ok()).toBeTruthy();
 
     await expect(async () => {
-      const childBatch = await familyBatchByReason(PERISHABLE_FAMILY_CHILD.id, 'E2E family expiry target');
-      expect(childBatch, 'naay batch nga na-create para sa child').toBeTruthy();
-      expect(childBatch.expiration_date).toBe('2027-11-11');
-
-      const parentBatch = await familyBatchByReason(PERISHABLE_FAMILY_PARENT.id, 'E2E family expiry target');
-      expect(parentBatch, 'naay cascaded batch para sa parent').toBeTruthy();
-      expect(parentBatch.expiration_date).toBeNull();
+      const adjustedBatch = await batchByReasonPrefix(PERISHABLE_FAMILY_CHILD.id, 'E2E family expiry target');
+      expect(adjustedBatch, 'naay batch para sa gi-adjust nga produkto').toBeTruthy();
+      expect(adjustedBatch.expiration_date).toBe('2027-11-11');
     }).toPass({ timeout: 10_000 });
+
+    // Kini ang assert nga nagpamatuod nga wala nay cascade: ang laing produkto
+    // walay batch gikan niining adjustment.
+    const otherBatch = await batchByReasonPrefix(PERISHABLE_FAMILY_PARENT.id, 'E2E family expiry target');
+    expect(otherBatch, 'walay cascaded batch para sa laing produkto').toBeNull();
   });
 });
