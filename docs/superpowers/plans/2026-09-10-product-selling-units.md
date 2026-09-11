@@ -1006,8 +1006,15 @@ grep -rln "parent_id\|conversion_factors" app/ lib/ src/ --include=*.ts --includ
 note said. `lib/product-tree.ts` is gone (deleted in Task 7), and
 `app/(app)/products/add-product/product-schema.ts` joined the list:
 
-1. `src/infrastructure/services/TransferStockService.ts` — **the live one**
-2. `src/infrastructure/services/InventorySyncService.ts`
+1. `src/infrastructure/services/TransferStockService.ts` — **MUST CONVERT. Live cascade.**
+2. `src/infrastructure/services/InventorySyncService.ts` — **MUST CONVERT. Live cascade, and worse
+   than #1.** This is a *second* hand-copied family-sync. It walks
+   `WHERE id = ? OR parent_id = ?` (line 27), reads `conversion_factors` (line 35), and then
+   **force-writes every family member's stock** to `Math.floor(anchorNewStock * factor)` (line 50) —
+   it does not apply a delta, it overwrites. It is reachable from `POST /api/sales` via
+   `app/api/sales/route.ts:5` → `CreateSaleUseCase`. Three of the four legacy `parent_id` rows have a
+   matching `conversion_factors` entry, so this walk fires on real data rather than being dormant.
+   **Do not mistake it for an inert column reader.**
 3. `src/infrastructure/repositories/MySqlProductRepository.ts`
 4. `lib/scheduler.ts`
 5. `app/(app)/products/actions.ts`
