@@ -1,9 +1,6 @@
 'use client';
 
-import { Wand2 } from 'lucide-react';
-
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -22,7 +19,6 @@ export function BasicInfoTab() {
     subcategories,
     setSelects,
     selects,
-    generateBarcode,
     refreshBrands,
     refreshCategories,
     refreshSubcategories,
@@ -103,39 +99,6 @@ export function BasicInfoTab() {
                 <Input {...field} value={field.value ?? ''} readOnly className="bg-muted" />
               </FormControl>
               <FormDescription>SKU cannot be changed after creation.</FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name="barcode"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Barcode (EAN-8)</FormLabel>
-              <div className="relative">
-                <FormControl>
-                  <Input
-                    placeholder="e.g., 123456789012"
-                    {...field}
-                    value={field.value ?? ''}
-                    className="pr-10"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') e.preventDefault();
-                    }}
-                  />
-                </FormControl>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
-                  onClick={generateBarcode}
-                >
-                  <Wand2 className="h-4 w-4" />
-                  <span className="sr-only">Generate Barcode</span>
-                </Button>
-              </div>
               <FormMessage />
             </FormItem>
           )}

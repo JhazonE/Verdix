@@ -23,7 +23,6 @@ export function BasicInfoTab() {
     refreshCategories,
     refreshSubcategories,
     generateSku,
-    generateBarcode,
   } = useAddProductFormContext();
 
   return (
@@ -105,32 +104,6 @@ export function BasicInfoTab() {
           </FormItem>
         )}
       />
-      <FormField
-        control={form.control}
-        name="barcode"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>Barcode (EAN-8)</FormLabel>
-            <div className="relative">
-              <FormControl>
-                <Input placeholder="e.g., 123456789012" {...field} className="pr-10" />
-              </FormControl>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
-                onClick={generateBarcode}
-              >
-                <Wand2 className="h-4 w-4" />
-                <span className="sr-only">Generate Barcode</span>
-              </Button>
-            </div>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-
       {/* Row 3: Description and Additional Description */}
       <FormField
         control={form.control}

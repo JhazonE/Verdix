@@ -13,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { UnitOfMeasure } from '@/lib/types';
 
 import { useAddProductFormContext } from '../add-product-form-context';
+import { InlineEditableSelect } from '../../components/inline-editable-select';
+import { addUnitOfMeasure, updateUnitOfMeasure } from '../../actions';
 
 /**
  * One line per system price level, for one selling unit's row. A blank price
@@ -129,12 +131,14 @@ export function SellingUnitsTab() {
     form,
     sellingUnitFields, appendSellingUnit, removeSellingUnit,
     priceLevelFields, appendPriceLevel, removePriceLevel,
-    unitsOfMeasure, isLoadingUnits,
+    unitsOfMeasure, isLoadingUnits, refreshUnits,
     selectedUnitOfMeasure,
+    generateBarcode,
   } = useAddProductFormContext();
 
   const [baseExpanded, setBaseExpanded] = useState(false);
   const [expandedUnits, setExpandedUnits] = useState<Record<number, boolean>>({});
+  const [uomSelectOpen, setUomSelectOpen] = useState(false);
 
   const newUnit = { name: '', factor: 1, barcode: '', cost: undefined, price: 0, priceLevels: [] };
 
@@ -197,8 +201,42 @@ export function SellingUnitsTab() {
 
               <div className="p-3 flex items-start gap-3 flex-wrap">
                 <div className="flex-1 min-w-[150px]">
-                  <Label className="text-xs">Unit Name</Label>
-                  <Input value={selectedUnitOfMeasure || ''} disabled className="bg-muted/50 text-foreground disabled:opacity-100" />
+                  <FormField
+                    control={form.control}
+                    name="unitOfMeasure"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs">Unit of Measure</FormLabel>
+                        <InlineEditableSelect
+                          items={unitsOfMeasure}
+                          isLoading={isLoadingUnits}
+                          value={field.value}
+                          onChange={field.onChange}
+                          open={uomSelectOpen}
+                          onOpenChange={setUomSelectOpen}
+                          placeholder="Select a unit"
+                          addLabel="Add Unit"
+                          emptyLabel="No units found"
+                          getId={(u: UnitOfMeasure) => u.id}
+                          getValue={(u: UnitOfMeasure) => u.name}
+                          getOptionLabel={(u: UnitOfMeasure) => `${u.name} (${u.abbreviation})`}
+                          getName={(u: UnitOfMeasure) => u.name}
+                          onAdd={async (name) => {
+                            const r = await addUnitOfMeasure(name, name);
+                            if (r.success) { await refreshUnits(); return name; }
+                            return undefined;
+                          }}
+                          onRename={async (id, name) => {
+                            const existing = unitsOfMeasure.find((u: UnitOfMeasure) => u.id === id);
+                            const r = await updateUnitOfMeasure(id, name, existing?.abbreviation ?? name);
+                            if (r.success) { await refreshUnits(); return name; }
+                            return undefined;
+                          }}
+                        />
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
 
                 <div className="w-[130px]">
@@ -215,9 +253,21 @@ export function SellingUnitsTab() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="text-xs">Barcode</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Optional" value={field.value ?? ''} onChange={field.onChange} />
-                        </FormControl>
+                        <div className="relative">
+                          <FormControl>
+                            <Input placeholder="Optional" value={field.value ?? ''} onChange={field.onChange} className="pr-9" />
+                          </FormControl>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="absolute right-0.5 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
+                            onClick={generateBarcode}
+                          >
+                            <Wand2 className="h-4 w-4" />
+                            <span className="sr-only">Generate Barcode</span>
+                          </Button>
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}

@@ -275,10 +275,10 @@ export function InventoryTab() {
         )}
       </div>
 
-      {/* Warehouse and Shelf are stock-only, leaving Unit of Measure alone here
-          for a service. Two columns keeps it the same width as the fields
-          above rather than shrinking it to a third. */}
-      <div className={`grid grid-cols-1 gap-4 ${itemType === 'standard' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
+      {/* Warehouse and Shelf are stock-only — a service skips both. Unit of
+          Measure moved to the Selling Units tab for standard items (it has
+          no equivalent for a service, which has no selling units at all). */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {itemType === 'standard' && (
           <FormField
             control={form.control}
@@ -363,42 +363,6 @@ export function InventoryTab() {
           />
         )}
 
-        <FormField
-          control={form.control}
-          name="unitOfMeasure"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{productType === 'parent' ? 'Base Unit of Measure' : 'Unit of Measure'}</FormLabel>
-              <InlineEditableSelect
-                items={unitsOfMeasure}
-                isLoading={isLoadingUnits}
-                value={field.value}
-                onChange={field.onChange}
-                open={selects.units}
-                onOpenChange={(o) => setSelects((p) => ({ ...p, units: o }))}
-                placeholder="Select a unit"
-                addLabel="Add Unit"
-                emptyLabel="No units found"
-                getId={(u: UnitOfMeasure) => u.id}
-                getValue={(u: UnitOfMeasure) => u.name}
-                getOptionLabel={(u: UnitOfMeasure) => `${u.name} (${u.abbreviation})`}
-                getName={(u: UnitOfMeasure) => u.name}
-                onAdd={async (name) => {
-                  const r = await addUnitOfMeasure(name, name);
-                  if (r.success) { await refreshUnits(); return name; }
-                  return undefined;
-                }}
-                onRename={async (id, name) => {
-                  const existing = unitsOfMeasure.find((u: UnitOfMeasure) => u.id === id);
-                  const r = await updateUnitOfMeasure(id, name, existing?.abbreviation ?? name);
-                  if (r.success) { await refreshUnits(); return name; }
-                  return undefined;
-                }}
-              />
-              <FormMessage />
-            </FormItem>
-          )}
-        />
       </div>
 
       {itemType === 'standard' && productType === 'child' && (
