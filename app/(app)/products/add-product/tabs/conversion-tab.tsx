@@ -261,7 +261,7 @@ export function SellingUnitsTab() {
                   />
                 </div>
 
-                <div>
+                <div className="space-y-2">
                   <Label className="text-xs">
                     Qty in {selectedUnitOfMeasure || 'base units'}
                   </Label>
