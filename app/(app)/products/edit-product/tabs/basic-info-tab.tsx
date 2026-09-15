@@ -52,6 +52,22 @@ export function BasicInfoTab() {
 
         <FormField
           control={form.control}
+          name="sku"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>SKU</FormLabel>
+              <FormControl>
+                <Input {...field} value={field.value ?? ''} readOnly className="bg-muted" />
+              </FormControl>
+              <FormDescription>SKU cannot be changed after creation.</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <FormField
+          control={form.control}
           name="brand"
           render={({ field }) => (
             <FormItem>
@@ -83,22 +99,6 @@ export function BasicInfoTab() {
                   return undefined;
                 }}
               />
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField
-          control={form.control}
-          name="sku"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>SKU</FormLabel>
-              <FormControl>
-                <Input {...field} value={field.value ?? ''} readOnly className="bg-muted" />
-              </FormControl>
-              <FormDescription>SKU cannot be changed after creation.</FormDescription>
               <FormMessage />
             </FormItem>
           )}

@@ -27,7 +27,7 @@ export function BasicInfoTab() {
 
   return (
     <div className="space-y-4">
-      {/* Row 1: Name and Brand. Each row is its own grid so a tall field
+      {/* Row 1: Name and SKU. Each row is its own grid so a tall field
           (e.g. a textarea) never stretches an unrelated row's fields to
           match its height — CSS grid rows spanning one flat container share
           a row track height with whatever else auto-flowed into that row. */}
@@ -45,6 +45,35 @@ export function BasicInfoTab() {
             </FormItem>
           )}
         />
+        <FormField
+          control={form.control}
+          name="sku"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>SKU</FormLabel>
+              <div className="relative">
+                <FormControl>
+                  <Input placeholder="e.g., COKE-PC" {...field} className="pr-10" />
+                </FormControl>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
+                  onClick={generateSku}
+                >
+                  <Wand2 className="h-4 w-4" />
+                  <span className="sr-only">Generate SKU</span>
+                </Button>
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+
+      {/* Row 2: Brand and Category */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField
           control={form.control}
           name="brand"
@@ -77,35 +106,6 @@ export function BasicInfoTab() {
                   return undefined;
                 }}
               />
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-      </div>
-
-      {/* Row 2: SKU and Category */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField
-          control={form.control}
-          name="sku"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>SKU</FormLabel>
-              <div className="relative">
-                <FormControl>
-                  <Input placeholder="e.g., COKE-PC" {...field} className="pr-10" />
-                </FormControl>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
-                  onClick={generateSku}
-                >
-                  <Wand2 className="h-4 w-4" />
-                  <span className="sr-only">Generate SKU</span>
-                </Button>
-              </div>
               <FormMessage />
             </FormItem>
           )}
