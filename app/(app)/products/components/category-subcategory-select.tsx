@@ -1,18 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { PlusCircle, Pencil, Check, X, Loader2, ChevronRight } from 'lucide-react';
+import { PlusCircle, Pencil, Check, X, Loader2, ChevronRight, ChevronsUpDown } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormControl } from '@/components/ui/form';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import type { Category } from '@/lib/types';
 
 type Subcategory = Category & { categoryId: string | null };
@@ -36,17 +32,23 @@ export interface CategorySubcategorySelectProps {
 }
 
 /**
- * One dropdown for both Category and Subcategory, instead of two separate
- * pickers. Categories list as top-level, selectable rows; each category's
- * subcategories are indented directly beneath it, also selectable. Picking
- * either sets both `category`/`subcategory` on the form — a subcategory pick
- * resolves its own parent category automatically, a category pick clears
- * subcategory.
+ * One searchable dropdown for both Category and Subcategory, instead of two
+ * separate pickers. Categories list as top-level, selectable rows; each
+ * category's subcategories are indented directly beneath it, also
+ * selectable. Picking either sets both `category`/`subcategory` on the
+ * form — a subcategory pick resolves its own parent category automatically,
+ * a category pick clears subcategory.
  *
- * Internally, Select values are prefixed ("cat:<id>" / "sub:<id>") so a
- * category and a subcategory can never collide on the same value string;
- * this encoding never leaves the component — onChange always hands back the
- * plain (categoryName, subcategoryName) pair the form actually stores.
+ * Built on Popover+Command (cmdk), not Radix's <Select>, specifically for
+ * the search box: cmdk filters items against the typed query as you type,
+ * matching the pattern InlineEditableMultiSelect already uses elsewhere in
+ * this codebase — Select has no equivalent built-in filtering mechanism.
+ *
+ * Each CommandItem's `value` is its display name (what cmdk's default
+ * filter matches against); its `key`/select-handler carry the real
+ * category/subcategory id separately, since two different subcategories in
+ * different categories can share a name (see the migration that made
+ * subcategory names unique only within their own category, not globally).
  */
 export function CategorySubcategorySelect({
   categories,
@@ -82,17 +84,23 @@ export function CategorySubcategorySelect({
   };
 
   const selectedCategory = categories.find((c) => c.name === categoryValue);
-  const currentValue = subcategoryValue
+  const selectedSubcategory = subcategoryValue
     ? subcategories.find((s) => s.name === subcategoryValue && s.categoryId === selectedCategory?.id)
-      ? `sub:${subcategories.find((s) => s.name === subcategoryValue && s.categoryId === selectedCategory?.id)!.id}`
-      : ''
-    : selectedCategory
-      ? `cat:${selectedCategory.id}`
-      : '';
+    : undefined;
 
   const displayLabel = subcategoryValue && categoryValue
     ? `${categoryValue} > ${subcategoryValue}`
     : categoryValue || '';
+
+  const selectCategory = (c: Category) => {
+    onChange(c.name, '');
+    onOpenChange(false);
+  };
+  const selectSubcategory = (s: Subcategory) => {
+    const c = categories.find((c) => c.id === s.categoryId);
+    onChange(c?.name ?? '', s.name);
+    onOpenChange(false);
+  };
 
   const commitAddCategory = async () => {
     const name = addDraft.trim();
@@ -154,276 +162,246 @@ export function CategorySubcategorySelect({
 
   const unassigned = subcategories.filter((s) => !s.categoryId);
 
-  return (
-    <Select
-      open={open}
-      onOpenChange={onOpenChange}
-      onValueChange={(v) => {
-        if (!v) return;
-        if (v.startsWith('cat:')) {
-          const id = v.slice(4);
-          const c = categories.find((c) => c.id === id);
-          if (c) onChange(c.name, '');
-        } else if (v.startsWith('sub:')) {
-          const id = v.slice(4);
-          const s = subcategories.find((s) => s.id === id);
-          const c = s ? categories.find((c) => c.id === s.categoryId) : undefined;
-          if (s) onChange(c?.name ?? '', s.name);
-        }
-      }}
-      value={currentValue}
-    >
-      <FormControl>
-        <SelectTrigger>
-          {/* Not Radix's <SelectValue> here: passing plain-text children into
-              it conflicts with the ref it forwards internally ("Cannot use a
-              ref... if that element also sets children text content").
-              SelectTrigger only needs *a* child preceding the chevron icon —
-              a plain span with the same line-clamp styling Select applies to
-              its default child covers both the matched case (Radix's normal
-              value→label lookup would show) and the orphan case (a saved
-              value no longer in the live lists, which Radix's own lookup
-              would render as blank). */}
-          <span className={displayLabel ? 'line-clamp-1' : 'text-muted-foreground line-clamp-1'}>
-            {displayLabel || 'Select a category'}
-          </span>
-        </SelectTrigger>
-      </FormControl>
-      <SelectContent className="max-h-96">
-        {isLoading ? (
-          <SelectItem value="loading" disabled>Loading...</SelectItem>
-        ) : categories.length === 0 ? (
-          <SelectItem value="none" disabled>No categories found</SelectItem>
-        ) : (
-          categories.map((c) => {
-            const catSubs = subcategories.filter((s) => s.categoryId === c.id);
-            const isRenamingThis = renaming?.kind === 'category' && renaming.id === c.id;
-            return (
-              <div key={c.id}>
-                {isRenamingThis ? (
-                  <div className="flex items-center gap-1 px-2 py-1" onPointerDown={stop}>
-                    <Input
-                      autoFocus
-                      value={renameDraft}
-                      onChange={(e) => setRenameDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        e.stopPropagation();
-                        if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
-                        else if (e.key === 'Escape') { e.preventDefault(); resetRename(); }
-                      }}
-                      className="h-8"
-                    />
-                    <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-green-600"
-                      disabled={isSaving || !renameDraft.trim()}
-                      onClick={(e) => { e.preventDefault(); commitRename(); }}>
-                      {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                    </Button>
-                    <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-muted-foreground"
-                      onClick={(e) => { e.preventDefault(); resetRename(); }}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="relative">
-                    <SelectItem value={`cat:${c.id}`} className={cn('pr-9 font-medium')}>
-                      {c.name}
-                    </SelectItem>
-                    <button
-                      type="button"
-                      aria-label={`Rename ${c.name}`}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); startRenameCategory(c); }}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
+  const renameRow = (
+    <div className="flex items-center gap-1 px-2 py-1" onPointerDown={stop}>
+      <Input
+        autoFocus
+        value={renameDraft}
+        onChange={(e) => setRenameDraft(e.target.value)}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+          else if (e.key === 'Escape') { e.preventDefault(); resetRename(); }
+        }}
+        className="h-8"
+      />
+      <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-green-600"
+        disabled={isSaving || !renameDraft.trim()}
+        onClick={(e) => { e.preventDefault(); commitRename(); }}>
+        {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+      </Button>
+      <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-muted-foreground"
+        onClick={(e) => { e.preventDefault(); resetRename(); }}>
+        <X className="h-4 w-4" />
+      </Button>
+    </div>
+  );
 
-                {catSubs.map((s) => {
-                  const isRenamingSub = renaming?.kind === 'subcategory' && renaming.id === s.id;
-                  return isRenamingSub ? (
-                    <div key={s.id} className="flex items-center gap-1 pl-6 pr-2 py-1" onPointerDown={stop}>
-                      <Input
-                        autoFocus
-                        value={renameDraft}
-                        onChange={(e) => setRenameDraft(e.target.value)}
-                        onKeyDown={(e) => {
-                          e.stopPropagation();
-                          if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
-                          else if (e.key === 'Escape') { e.preventDefault(); resetRename(); }
-                        }}
-                        className="h-8"
-                      />
-                      <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-green-600"
-                        disabled={isSaving || !renameDraft.trim()}
-                        onClick={(e) => { e.preventDefault(); commitRename(); }}>
-                        {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                      </Button>
-                      <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-muted-foreground"
-                        onClick={(e) => { e.preventDefault(); resetRename(); }}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div key={s.id} className="relative">
-                      <SelectItem value={`sub:${s.id}`} className="pl-6 pr-9">
-                        <span className="flex items-center gap-1 text-muted-foreground">
-                          <ChevronRight className="h-3 w-3" />
-                          <span className="text-foreground">{s.name}</span>
-                        </span>
-                      </SelectItem>
-                      <button
-                        type="button"
-                        aria-label={`Rename ${s.name}`}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); startRenameSubcategory(s); }}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <FormControl>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            role="combobox"
+            className={cn(
+              'flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm font-normal ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+              !displayLabel && 'text-muted-foreground'
+            )}
+          >
+            <span className="line-clamp-1 text-left">{displayLabel || 'Select a category'}</span>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+      </FormControl>
+      <PopoverContent className="w-full min-w-[320px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search categories..." />
+          <CommandList className="max-h-96">
+            {isLoading ? (
+              <div className="py-6 text-center text-sm text-muted-foreground">Loading...</div>
+            ) : categories.length === 0 ? (
+              <CommandEmpty>No categories found</CommandEmpty>
+            ) : (
+              <>
+                <CommandEmpty>No matches found</CommandEmpty>
+                {categories.map((c) => {
+                  const catSubs = subcategories.filter((s) => s.categoryId === c.id);
+                  const isRenamingThis = renaming?.kind === 'category' && renaming.id === c.id;
+                  return (
+                    <CommandGroup key={c.id}>
+                      {isRenamingThis ? renameRow : (
+                        <div className="relative">
+                          <CommandItem
+                            value={c.name}
+                            // The category row stays visible (and its group
+                            // open) whenever the search matches ANY of its
+                            // subcategories, not just its own name — without
+                            // this, typing "Phones" would hide "Electronics"
+                            // and its "Phones" child would lose its visual
+                            // parent context.
+                            keywords={catSubs.map((s) => s.name)}
+                            className="pr-9 font-medium"
+                            onSelect={() => selectCategory(c)}
+                          >
+                            <Check className={cn('mr-2 h-4 w-4', selectedCategory?.id === c.id && !selectedSubcategory ? 'opacity-100' : 'opacity-0')} />
+                            {c.name}
+                          </CommandItem>
+                          <button
+                            type="button"
+                            aria-label={`Rename ${c.name}`}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); startRenameCategory(c); }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      {catSubs.map((s) => {
+                        const isRenamingSub = renaming?.kind === 'subcategory' && renaming.id === s.id;
+                        return isRenamingSub ? (
+                          <div key={s.id} className="pl-6">{renameRow}</div>
+                        ) : (
+                          <div key={s.id} className="relative">
+                            <CommandItem
+                              value={s.name}
+                              className="pl-8 pr-9"
+                              onSelect={() => selectSubcategory(s)}
+                            >
+                              <Check className={cn('mr-2 h-4 w-4', selectedSubcategory?.id === s.id ? 'opacity-100' : 'opacity-0')} />
+                              <ChevronRight className="mr-1 h-3 w-3 text-muted-foreground" />
+                              {s.name}
+                            </CommandItem>
+                            <button
+                              type="button"
+                              aria-label={`Rename ${s.name}`}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                              onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); startRenameSubcategory(s); }}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        );
+                      })}
+
+                      {addingUnderCategoryId === c.id ? (
+                        <div className="flex items-center gap-1 pl-8 pr-2 py-1" onPointerDown={stop}>
+                          <Input
+                            autoFocus
+                            value={addDraft}
+                            placeholder="New subcategory..."
+                            onChange={(e) => setAddDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              e.stopPropagation();
+                              if (e.key === 'Enter') { e.preventDefault(); commitAddSubcategory(c.id, c.name); }
+                              else if (e.key === 'Escape') { e.preventDefault(); resetAdd(); }
+                            }}
+                            className="h-8"
+                          />
+                          <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-green-600"
+                            disabled={isSaving || !addDraft.trim()}
+                            onClick={(e) => { e.preventDefault(); commitAddSubcategory(c.id, c.name); }}>
+                            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                          </Button>
+                          <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-muted-foreground"
+                            onClick={(e) => { e.preventDefault(); resetAdd(); }}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="w-full flex items-center gap-1 pl-8 pr-2 py-1 h-7 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-sm"
+                          onPointerDown={stop}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            resetRename();
+                            setAddingCategory(false);
+                            setAddingUnderCategoryId(c.id);
+                          }}
+                        >
+                          <PlusCircle className="h-3 w-3" />
+                          Add Subcategory
+                        </button>
+                      )}
+                    </CommandGroup>
                   );
                 })}
 
-                {addingUnderCategoryId === c.id ? (
-                  <div className="flex items-center gap-1 pl-6 pr-2 py-1" onPointerDown={stop}>
-                    <Input
-                      autoFocus
-                      value={addDraft}
-                      placeholder="New subcategory..."
-                      onChange={(e) => setAddDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        e.stopPropagation();
-                        if (e.key === 'Enter') { e.preventDefault(); commitAddSubcategory(c.id, c.name); }
-                        else if (e.key === 'Escape') { e.preventDefault(); resetAdd(); }
-                      }}
-                      className="h-8"
-                    />
-                    <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-green-600"
-                      disabled={isSaving || !addDraft.trim()}
-                      onClick={(e) => { e.preventDefault(); commitAddSubcategory(c.id, c.name); }}>
-                      {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                    </Button>
-                    <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-muted-foreground"
-                      onClick={(e) => { e.preventDefault(); resetAdd(); }}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    className="w-full flex items-center gap-1 pl-6 pr-2 py-1 h-7 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-sm"
-                    onPointerDown={stop}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      resetRename();
-                      setAddingCategory(false);
-                      setAddingUnderCategoryId(c.id);
-                    }}
-                  >
-                    <PlusCircle className="h-3 w-3" />
-                    Add Subcategory
-                  </button>
+                {unassigned.length > 0 && (
+                  <CommandGroup heading="Unassigned">
+                    {unassigned.map((s) => {
+                      const isRenamingSub = renaming?.kind === 'subcategory' && renaming.id === s.id;
+                      return isRenamingSub ? (
+                        <div key={s.id} className="pl-6">{renameRow}</div>
+                      ) : (
+                        <div key={s.id} className="relative">
+                          <CommandItem
+                            value={s.name}
+                            className="pl-8 pr-9 text-muted-foreground"
+                            onSelect={() => selectSubcategory(s)}
+                          >
+                            <Check className={cn('mr-2 h-4 w-4', selectedSubcategory?.id === s.id ? 'opacity-100' : 'opacity-0')} />
+                            {s.name}
+                          </CommandItem>
+                          <button
+                            type="button"
+                            aria-label={`Rename ${s.name}`}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); startRenameSubcategory(s); }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </CommandGroup>
                 )}
+              </>
+            )}
+          </CommandList>
+
+          <div className="border-t mt-1 pt-1 px-1">
+            {addingCategory ? (
+              <div className="flex items-center gap-1 px-1 py-1" onPointerDown={stop}>
+                <Input
+                  autoFocus
+                  value={addDraft}
+                  placeholder="New category..."
+                  onChange={(e) => setAddDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') { e.preventDefault(); commitAddCategory(); }
+                    else if (e.key === 'Escape') { e.preventDefault(); resetAdd(); }
+                  }}
+                  className="h-8"
+                />
+                <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-green-600"
+                  disabled={isSaving || !addDraft.trim()}
+                  onClick={(e) => { e.preventDefault(); commitAddCategory(); }}>
+                  {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                </Button>
+                <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-muted-foreground"
+                  onClick={(e) => { e.preventDefault(); resetAdd(); }}>
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
-            );
-          })
-        )}
-
-        {unassigned.length > 0 && (
-          <div className="border-t mt-1 pt-1">
-            <div className="px-2 py-1 text-xs font-medium text-muted-foreground">Unassigned</div>
-            {unassigned.map((s) => {
-              const isRenamingSub = renaming?.kind === 'subcategory' && renaming.id === s.id;
-              return isRenamingSub ? (
-                <div key={s.id} className="flex items-center gap-1 pl-6 pr-2 py-1" onPointerDown={stop}>
-                  <Input
-                    autoFocus
-                    value={renameDraft}
-                    onChange={(e) => setRenameDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      e.stopPropagation();
-                      if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
-                      else if (e.key === 'Escape') { e.preventDefault(); resetRename(); }
-                    }}
-                    className="h-8"
-                  />
-                  <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-green-600"
-                    disabled={isSaving || !renameDraft.trim()}
-                    onClick={(e) => { e.preventDefault(); commitRename(); }}>
-                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                  </Button>
-                  <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-muted-foreground"
-                    onClick={(e) => { e.preventDefault(); resetRename(); }}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <div key={s.id} className="relative">
-                  <SelectItem value={`sub:${s.id}`} className="pl-6 pr-9 text-muted-foreground">
-                    {s.name}
-                  </SelectItem>
-                  <button
-                    type="button"
-                    aria-label={`Rename ${s.name}`}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); startRenameSubcategory(s); }}
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="border-t mt-1 pt-1 px-1">
-          {addingCategory ? (
-            <div className="flex items-center gap-1 px-1 py-1" onPointerDown={stop}>
-              <Input
-                autoFocus
-                value={addDraft}
-                placeholder="New category..."
-                onChange={(e) => setAddDraft(e.target.value)}
-                onKeyDown={(e) => {
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full justify-start h-8 px-2 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
-                  if (e.key === 'Enter') { e.preventDefault(); commitAddCategory(); }
-                  else if (e.key === 'Escape') { e.preventDefault(); resetAdd(); }
+                  resetRename();
+                  setAddingUnderCategoryId(null);
+                  setAddingCategory(true);
                 }}
-                className="h-8"
-              />
-              <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-green-600"
-                disabled={isSaving || !addDraft.trim()}
-                onClick={(e) => { e.preventDefault(); commitAddCategory(); }}>
-                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              >
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Add Category
               </Button>
-              <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0 text-muted-foreground"
-                onClick={(e) => { e.preventDefault(); resetAdd(); }}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ) : (
-            <Button
-              type="button"
-              variant="ghost"
-              className="w-full justify-start h-8 px-2 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                resetRename();
-                setAddingUnderCategoryId(null);
-                setAddingCategory(true);
-              }}
-            >
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Add Category
-            </Button>
-          )}
-        </div>
-      </SelectContent>
-    </Select>
+            )}
+          </div>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
