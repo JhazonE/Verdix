@@ -212,8 +212,8 @@ export function SellingUnitsTab() {
               </CollapsibleTrigger>
             </div>
 
-            <div className="p-3 flex items-start gap-3 flex-wrap">
-              <div className="flex-1 min-w-[150px]">
+            <div className="p-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div>
                 <FormField
                   control={form.control}
                   name="unitOfMeasure"
@@ -252,14 +252,14 @@ export function SellingUnitsTab() {
                 />
               </div>
 
-              <div className="w-[130px]">
+              <div>
                 <Label className="text-xs">
                   Qty in {selectedUnitOfMeasure || 'base units'}
                 </Label>
                 <Input type="number" value={1} disabled className="bg-muted/50 text-foreground disabled:opacity-100" />
               </div>
 
-              <div className="w-[160px]">
+              <div>
                 <FormField
                   control={form.control}
                   name="barcode"
@@ -295,7 +295,7 @@ export function SellingUnitsTab() {
                 />
               </div>
 
-              <div className="w-[110px]">
+              <div>
                 <FormField
                   control={form.control}
                   name="cost"
@@ -386,8 +386,8 @@ export function SellingUnitsTab() {
                       </Button>
                     </div>
                   </div>
-                  <div className="p-3 flex items-start gap-3 flex-wrap">
-                    <div className="flex-1 min-w-[150px]">
+                  <div className="p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    <div className="lg:col-span-1">
                       <FormField
                         control={form.control}
                         name={`sellingUnits.${index}.name`}
@@ -439,7 +439,7 @@ export function SellingUnitsTab() {
                       />
                     </div>
 
-                    <div className="w-[130px]">
+                    <div>
                       <FormField
                         control={form.control}
                         name={`sellingUnits.${index}.factor`}
@@ -467,7 +467,7 @@ export function SellingUnitsTab() {
                       />
                     </div>
 
-                    <div className="w-[160px]">
+                    <div>
                       <FormField
                         control={form.control}
                         name={`sellingUnits.${index}.barcode`}
@@ -483,7 +483,7 @@ export function SellingUnitsTab() {
                       />
                     </div>
 
-                    <div className="w-[110px]">
+                    <div>
                       <FormField
                         control={form.control}
                         name={`sellingUnits.${index}.cost`}
@@ -509,7 +509,7 @@ export function SellingUnitsTab() {
                       />
                     </div>
 
-                    <div className="w-[110px]">
+                    <div>
                       <FormField
                         control={form.control}
                         name={`sellingUnits.${index}.price`}
