@@ -319,22 +319,36 @@ export async function applyMatchedItems(
             // base price it mirrors. Never creates one.
             if (defaultLevelId) {
               await connection.query(
-                'UPDATE product_price_levels SET price = ? WHERE product_id = ? AND price_level_id = ?',
+                `UPDATE product_selling_unit_price_levels sulp
+                 JOIN product_selling_units su ON su.id = sulp.selling_unit_id
+                 SET sulp.price = ?
+                 WHERE su.product_id = ? AND su.is_base = 1 AND sulp.price_level_id = ?`,
                 [newValue, item.productId, defaultLevelId],
               );
             }
           } else if (item.field === 'cost') {
             await connection.query('UPDATE products SET cost = ? WHERE id = ?', [newValue, item.productId]);
           } else if (item.field === 'priceLevel' && item.priceLevelId) {
-            // Upsert on the real PK (product_id, price_level_id); min_quantity is
+            // Upsert on the real PK (selling_unit_id, price_level_id); min_quantity is
             // not part of it, so an existence check filtered on min_quantity can
-            // miss a row and hit a duplicate-PK error.
-            await connection.query(
-              `INSERT INTO product_price_levels (product_id, price_level_id, price, min_quantity)
-               VALUES (?, ?, ?, 0)
-               ON DUPLICATE KEY UPDATE price = VALUES(price)`,
-              [item.productId, item.priceLevelId, newValue],
+            // miss a row and hit a duplicate-PK error. Price levels are per selling
+            // unit now (product_selling_unit_price_levels); write onto the product's
+            // base selling unit, matching every other write path in this codebase.
+            const [baseUnitRows]: any = await connection.query(
+              'SELECT id FROM product_selling_units WHERE product_id = ? AND is_base = 1 LIMIT 1',
+              [item.productId],
             );
+            if (baseUnitRows.length > 0) {
+              await connection.query(
+                `INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity)
+                 VALUES (?, ?, ?, 0)
+                 ON DUPLICATE KEY UPDATE price = VALUES(price)`,
+                [baseUnitRows[0].id, item.priceLevelId, newValue],
+              );
+            } else {
+              skipped.push({ productId: item.productId, productName: item.productName, reason: 'Product has no base selling unit' });
+              continue;
+            }
           }
           applied++;
         }

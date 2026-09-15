@@ -234,13 +234,23 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
       );
 
       // Update default price level — use finalPrice so it stays consistent with the
-      // master products.price under the "highest wins" rule.
+      // master products.price under the "highest wins" rule. Price levels are per
+      // selling unit now (product_selling_unit_price_levels); this writes onto the
+      // product's BASE selling unit, matching how every other write path in this
+      // codebase treats "the product's own price level" after the selling-units
+      // migration.
       if (defaultLevelId && finalPrice > 0) {
-        await connection.query(`
-          INSERT INTO product_price_levels (product_id, price_level_id, price, min_quantity)
-          VALUES (?, ?, ?, 0)
-          ON DUPLICATE KEY UPDATE price = VALUES(price)
-        `, [receivedItem.productId, defaultLevelId, finalPrice]);
+        const [baseUnitRows]: any = await connection.query(
+          'SELECT id FROM product_selling_units WHERE product_id = ? AND is_base = 1 LIMIT 1',
+          [receivedItem.productId],
+        );
+        if (baseUnitRows.length > 0) {
+          await connection.query(`
+            INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity)
+            VALUES (?, ?, ?, 0)
+            ON DUPLICATE KEY UPDATE price = VALUES(price)
+          `, [baseUnitRows[0].id, defaultLevelId, finalPrice]);
+        }
       }
     }
 
