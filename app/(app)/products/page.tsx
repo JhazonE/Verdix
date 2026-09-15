@@ -256,37 +256,30 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
       {unitsExpanded && extraSellingUnits.length > 0 && (
         <TableRow className="bg-muted/30 hover:bg-muted/30">
           <TableCell colSpan={12} className="p-0">
-            <table className="w-full">
-              <tbody>
-                {extraSellingUnits.map((unit, idx) => (
-                  <tr key={unit.id || idx} className="border-b last:border-b-0 border-border/50">
-                    <td className="hidden sm:table-cell w-10"></td>
-                    <td className="py-2 pl-6 pr-2 text-sm text-muted-foreground">
-                      <span className="text-foreground">{unit.name}</span>
-                      {typeof unit.factor === 'number' && (
-                        <span className="ml-1 text-xs text-muted-foreground">(×{unit.factor})</span>
-                      )}
-                    </td>
-                    <td className="hidden md:table-cell"></td>
-                    <td className="hidden lg:table-cell py-2 text-sm text-muted-foreground">
-                      {unit.barcode || '—'}
-                    </td>
-                    <td></td>
-                    <td className="hidden sm:table-cell"></td>
-                    <td></td>
-                    <td className="hidden md:table-cell py-2 text-right text-sm text-muted-foreground">
-                      {typeof unit.cost === 'number' ? `₱${unit.cost.toFixed(2)}` : '—'}
-                    </td>
-                    <td className="hidden md:table-cell py-2 text-right text-sm text-muted-foreground">
-                      {typeof unit.price === 'number' ? `₱${unit.price.toFixed(2)}` : '—'}
-                    </td>
-                    <td className="hidden md:table-cell"></td>
-                    <td className="hidden md:table-cell"></td>
-                    <td></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="divide-y divide-border/50">
+              {extraSellingUnits.map((unit, idx) => (
+                <div
+                  key={unit.id || idx}
+                  className="flex flex-wrap items-center gap-x-6 gap-y-1 py-2 pl-10 pr-4 text-sm"
+                >
+                  <span className="font-medium">
+                    {unit.name}
+                    {typeof unit.factor === 'number' && (
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">(×{unit.factor})</span>
+                    )}
+                  </span>
+                  <span className="text-muted-foreground">
+                    Barcode: <span className="text-foreground">{unit.barcode || '—'}</span>
+                  </span>
+                  <span className="text-muted-foreground">
+                    Cost: <span className="text-foreground">{typeof unit.cost === 'number' ? `₱${unit.cost.toFixed(2)}` : '—'}</span>
+                  </span>
+                  <span className="text-muted-foreground">
+                    Retail: <span className="text-foreground">{typeof unit.price === 'number' ? `₱${unit.price.toFixed(2)}` : '—'}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
           </TableCell>
         </TableRow>
       )}
