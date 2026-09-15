@@ -394,12 +394,14 @@ export function useEditProductForm({
     }
   }, [selectedPriceLevelId, priceLevels, priceLevelFields, form, categories, subcategories, brands, systemSettings]);
 
-  const generateBarcode = () => {
+  const generateBarcode = (
+    fieldPath: 'barcode' | `sellingUnits.${number}.barcode` = 'barcode',
+  ) => {
     // EAN-8: 7 random digits + 1 check digit
     const digits = Array.from({ length: 7 }, () => Math.floor(Math.random() * 10));
     const sum = digits.reduce((acc, d, i) => acc + d * (i % 2 === 0 ? 3 : 1), 0);
     const check = (10 - (sum % 10)) % 10;
-    form.setValue('barcode', [...digits, check].join(''));
+    form.setValue(fieldPath, [...digits, check].join(''));
   };
 
   const saveChanges = async (values: ProductFormValues) => {

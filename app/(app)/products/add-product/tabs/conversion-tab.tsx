@@ -284,7 +284,7 @@ export function SellingUnitsTab() {
                             variant="ghost"
                             size="icon"
                             className="absolute right-0.5 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
-                            onClick={generateBarcode}
+                            onClick={() => generateBarcode()}
                           >
                             <Wand2 className="h-4 w-4" />
                             <span className="sr-only">Generate Barcode</span>
@@ -454,9 +454,21 @@ export function SellingUnitsTab() {
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel className="text-xs">Barcode</FormLabel>
-                              <FormControl>
-                                <Input placeholder="Optional" value={field.value ?? ''} onChange={field.onChange} />
-                              </FormControl>
+                              <div className="relative">
+                                <FormControl>
+                                  <Input placeholder="Optional" value={field.value ?? ''} onChange={field.onChange} className="pr-9" />
+                                </FormControl>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="absolute right-0.5 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
+                                  onClick={() => generateBarcode(`sellingUnits.${index}.barcode`)}
+                                >
+                                  <Wand2 className="h-4 w-4" />
+                                  <span className="sr-only">Generate Barcode</span>
+                                </Button>
+                              </div>
                               <FormMessage />
                             </FormItem>
                           )}
