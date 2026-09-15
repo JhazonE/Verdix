@@ -250,14 +250,33 @@ export class MySqlProductRepository implements ProductRepository {
       product.stock || 0, product.price, product.cost, product.sku, product.barcode, 0, 0
     ]);
 
-    // `create` is unreachable from live app code today (product creation goes
-    // through app/(app)/products/actions.ts's server actions, not POST
-    // /api/products) — the product_price_levels INSERT that used to run here
-    // wrote to a table Task 1 dropped. Removed rather than ported: price
-    // levels are now per-selling-unit (product_selling_unit_price_levels),
-    // and this method has no selling-unit rows to key them against yet. Port
-    // properly if this method ever gains a real caller with a priceLevels
-    // payload to test against.
+    // POST /api/products (CreateProductUseCase) IS a live, E2E-tested caller
+    // of this method — it is not the app's primary product-creation path
+    // (that's app/(app)/products/actions.ts's addProduct server action), but
+    // it is reachable, and its request DTO still declares an optional
+    // priceLevels field. The old `INSERT INTO product_price_levels` here
+    // wrote to a table Task 1 dropped; price levels are now per-selling-unit
+    // (product_selling_unit_price_levels), which requires an existing
+    // selling_unit_id (FK). Every product needs a base selling unit anyway
+    // (factor 1, is_base = 1) or it is unsellable and reads back with an
+    // empty sellingUnits array — create it unconditionally here, then attach
+    // any submitted price levels to it, so a priceLevels payload from this
+    // path is no longer silently dropped.
+    const baseUnitId = `psu_base_${id}`;
+    await query(
+      `INSERT INTO product_selling_units (id, product_id, name, barcode, factor, cost, price, is_base)
+       VALUES (?, ?, ?, ?, 1, ?, ?, 1)`,
+      [baseUnitId, id, product.unitOfMeasure || 'Piece', product.barcode || null, product.cost, product.price],
+    );
+
+    if (product.priceLevels && product.priceLevels.length > 0) {
+      for (const pl of product.priceLevels) {
+        await query(
+          'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)',
+          [baseUnitId, pl.levelId, pl.price, pl.minQuantity || 0],
+        );
+      }
+    }
 
     if (product.shelfLocationIds && product.shelfLocationIds.length > 0) {
       for (let i = 0; i < product.shelfLocationIds.length; i++) {
