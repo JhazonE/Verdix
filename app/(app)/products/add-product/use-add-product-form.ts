@@ -433,6 +433,16 @@ export function useAddProductForm({
       // just no longer typed directly; it mirrors the Retail row instead.
       values.price = retailPrice;
 
+      // Same story per EXTRA selling unit: no standalone Price field there
+      // either — each unit's own Retail price-level entry (required, same as
+      // the base unit's) IS that unit's price, and sellingUnits[i].price
+      // stays the schema/backend fallback for when this unit has no override
+      // for the active level.
+      values.sellingUnits = (values.sellingUnits || []).map((unit) => {
+        const unitRetailEntry = (unit.priceLevels || []).find((pl) => pl.levelId === defaultLevelDef?.id);
+        return { ...unit, price: unitRetailEntry?.price ?? 0 };
+      });
+
       // No child product is built any more. Extra ways to sell this product are
       // selling units on the product itself, written by addProduct in the same
       // transaction — one product, one stock figure, nothing to keep in sync.

@@ -406,17 +406,6 @@ export function useEditProductForm({
     console.log('EditProductDialog saveChanges called with values:', values);
     // Filter out conversion factors with empty units to avoid schema validation errors
     values.conversionFactors = values.conversionFactors?.filter(cf => cf.unit.trim() !== '') || [];
-    // The per-unit price-level sub-table (conversion-tab.tsx) never stores an
-    // entry with a blank price — a blank input splices the row out entirely,
-    // so `price` is always a concrete number by the time it lands here. This
-    // narrows the type to match actions.ts's SellingUnitInput, which expects
-    // exactly that.
-    const sellingUnitsForSubmit = values.sellingUnits?.map(unit => ({
-      ...unit,
-      priceLevels: (unit.priceLevels || []).filter(
-        (pl): pl is { levelId: string; price: number; minQuantity?: number } => pl.price !== undefined,
-      ),
-    }));
     // There is no standalone "price" field any more — the default (Retail)
     // price-level row IS the product's price. products.price stays in the
     // schema/backend (it's the fallback price when a selling unit has no
@@ -426,6 +415,24 @@ export function useEditProductForm({
     if (retailEntry?.price !== undefined) {
       values.price = retailEntry.price;
     }
+    // The per-unit price-level sub-table (conversion-tab.tsx) never stores an
+    // entry with a blank price — a blank input splices the row out entirely,
+    // so `price` is always a concrete number by the time it lands here. This
+    // narrows the type to match actions.ts's SellingUnitInput, which expects
+    // exactly that. Same story as the product-level Retail derivation above:
+    // no standalone Price field per extra unit any more — each unit's own
+    // Retail price-level entry IS that unit's price.
+    const sellingUnitsForSubmit = values.sellingUnits?.map(unit => {
+      const unitPriceLevels = (unit.priceLevels || []).filter(
+        (pl): pl is { levelId: string; price: number; minQuantity?: number } => pl.price !== undefined,
+      );
+      const unitRetailEntry = unitPriceLevels.find((pl) => pl.levelId === defaultLevelDef?.id);
+      return {
+        ...unit,
+        price: unitRetailEntry?.price ?? unit.price ?? 0,
+        priceLevels: unitPriceLevels,
+      };
+    });
     try {
       setIsSubmitting(true);
 

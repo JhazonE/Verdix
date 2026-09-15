@@ -489,31 +489,6 @@ export function SellingUnitsTab() {
                         />
                       </div>
 
-                      <div>
-                        <FormField
-                          control={form.control}
-                          name={`sellingUnits.${index}.price`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-xs">Price</FormLabel>
-                              <FormControl>
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  placeholder="0.00"
-                                  value={field.value ?? ''}
-                                  onChange={(e) => {
-                                    const parsed = parseFloat(e.target.value);
-                                    field.onChange(Number.isNaN(parsed) ? undefined : parsed);
-                                  }}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
                     </div>
                     <CollapsibleContent>
                       <div className="border-t px-3 pb-3 pt-2">
@@ -522,6 +497,7 @@ export function SellingUnitsTab() {
                           basePath={`sellingUnits.${index}.priceLevels`}
                           values={unitPriceLevels}
                           onChange={(next) => form.setValue(`sellingUnits.${index}.priceLevels`, next, { shouldDirty: true })}
+                          requireDefaultLevel
                         />
                       </div>
                     </CollapsibleContent>
