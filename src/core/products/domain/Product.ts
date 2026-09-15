@@ -23,6 +23,16 @@ export interface ProductEntity {
   createdAt?: string;
   updatedAt?: string;
   priceLevels?: ProductPriceLevel[];
+  sellingUnits?: {
+    id?: string;
+    name: string;
+    factor: number;
+    barcode?: string;
+    cost?: number;
+    price: number;
+    isBase?: boolean;
+    priceLevels?: { levelId: string; price: number; minQuantity?: number }[];
+  }[];
 }
 
 export interface ProductPriceLevel {
