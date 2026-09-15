@@ -141,7 +141,20 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
           <Badge variant={badgeVariant}>{badgeText}</Badge>
         </TableCell>
         <TableCell className="hidden sm:table-cell text-center text-muted-foreground">
-          {product.unitOfMeasure}
+          <div>{product.unitOfMeasure}</div>
+          {(() => {
+            const extraUnits = (product.sellingUnits || []).filter((u) => !u.isBase);
+            if (extraUnits.length === 0) return null;
+            return (
+              <div className="flex flex-wrap gap-1 justify-center mt-1">
+                {extraUnits.map((u) => (
+                  <Badge key={u.id ?? u.name} variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                    {u.name}
+                  </Badge>
+                ))}
+              </div>
+            );
+          })()}
         </TableCell>
         <TableCell className="text-center font-bold">
           {formatStockQuantity(product.stock)}
