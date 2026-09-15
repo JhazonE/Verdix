@@ -120,18 +120,46 @@ export class TransferStockService {
           ]
         );
 
-        // Copy price levels
-        const [priceLevels]: any = await connection.query(
-            'SELECT price_level_id, price, min_quantity FROM product_price_levels WHERE product_id = ?',
+        // Copy price levels. product_price_levels (per-product) was dropped
+        // when price levels moved to being per-selling-unit; overrides now
+        // live on product_selling_unit_price_levels, keyed by the SOURCE
+        // member's base selling unit (that table's FK requires an existing
+        // selling_unit_id, so the newly created target product needs its own
+        // base selling unit row before any price levels can attach to it —
+        // same "psu_base_<productId>" convention actions.ts uses).
+        const [sourceBaseUnits]: any = await connection.query(
+            'SELECT id FROM product_selling_units WHERE product_id = ? AND is_base = 1 LIMIT 1',
             [sourceMember.id]
         );
-        
-        if (priceLevels && priceLevels.length > 0) {
-            for (const pl of priceLevels) {
+
+        if (sourceBaseUnits && sourceBaseUnits.length > 0) {
+            const sourceBaseUnitId = sourceBaseUnits[0].id;
+            const [priceLevels]: any = await connection.query(
+                'SELECT price_level_id, price, min_quantity FROM product_selling_unit_price_levels WHERE selling_unit_id = ?',
+                [sourceBaseUnitId]
+            );
+
+            if (priceLevels && priceLevels.length > 0) {
+                const targetBaseUnitId = `psu_base_${targetMemberId}`;
                 await connection.query(
-                    'INSERT INTO product_price_levels (product_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)',
-                    [targetMemberId, pl.price_level_id, pl.price, pl.min_quantity]
+                    `INSERT INTO product_selling_units (id, product_id, name, barcode, factor, cost, price, is_base)
+                     VALUES (?, ?, ?, ?, 1, ?, ?, 1)`,
+                    [
+                        targetBaseUnitId,
+                        targetMemberId,
+                        sourceMember.unit_of_measure || 'Piece',
+                        null,
+                        sourceMember.cost,
+                        sourceMember.price,
+                    ]
                 );
+
+                for (const pl of priceLevels) {
+                    await connection.query(
+                        'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)',
+                        [targetBaseUnitId, pl.price_level_id, pl.price, pl.min_quantity]
+                    );
+                }
             }
         }
       }
