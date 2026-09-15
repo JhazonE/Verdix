@@ -38,7 +38,7 @@ const standardProductSchema = baseProductSchema.extend({
   shelfLocationIds: z.array(z.string()).optional(),
   stock: z.coerce.number().int().nonnegative('Initial stock must be a non-negative integer'),
   reorderPoint: z.coerce.number().int().nonnegative().optional().default(0),
-  cost: z.coerce.number().nonnegative('Cost must be non-negative').optional(),
+  cost: z.coerce.number().positive('Cost is required and must be a positive number'),
   parentId: z.string().optional(),
   conversionFactor: z.coerce.number().positive('Conversion factor must be positive').optional(),
   /**
@@ -64,7 +64,7 @@ const standardProductSchema = baseProductSchema.extend({
     name: z.string().min(1, 'Unit name is required'),
     factor: z.coerce.number().positive('Quantity must be greater than 0'),
     barcode: z.string().optional(),
-    cost: z.coerce.number().nonnegative('Cost must be non-negative').optional(),
+    cost: z.coerce.number().positive('Cost is required and must be a positive number'),
     price: z.coerce.number().nonnegative('Price must be non-negative'),
     /**
      * This unit's own price-level overrides. A blank price on the form means
@@ -83,11 +83,10 @@ const standardProductSchema = baseProductSchema.extend({
 /**
  * Services — no stock, no batches, no family.
  *
- * `cost` is REQUIRED here even though it is optional for standard products:
- * standard products fall back to FIFO batch cost, services have no such
- * fallback, and a blank cost would write NULL to sale_items.cost_at_sale and
- * break profit reporting. Zero is allowed — a pure-margin service is valid,
- * the user just has to say so explicitly.
+ * `cost` is required here too (same as standard products), but unlike a
+ * standard product's cost it is allowed to be 0 — a pure-margin service with
+ * no input cost is a real, valid case, the user just has to say so
+ * explicitly rather than leave the field blank.
  *
  * Stock and family fields are pinned to constants rather than omitted so a
  * service with stock is unrepresentable even if the UI is bypassed.

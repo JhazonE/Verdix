@@ -24,7 +24,7 @@ import {
   getShelfLocations,
   getDepartments,
 } from '../actions';
-import { productSchema, type ProductFormValues } from './product-schema';
+import { buildProductSchema, type ProductFormValues } from './product-schema';
 
 /**
  * Calculate the price for a price level override.
@@ -129,7 +129,7 @@ export function useEditProductForm({
   }, [externalProductOptions]);
 
   const form = useForm<ProductFormValues>({
-    resolver: zodResolver(productSchema),
+    resolver: zodResolver(buildProductSchema(product.type === 'service')),
     defaultValues: {
       ...product,
       category: product.category ?? '',

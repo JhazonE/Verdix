@@ -157,7 +157,13 @@ export function SellingUnitsTab() {
   const [expandedUnits, setExpandedUnits] = useState<Record<number, boolean>>({});
   const [uomSelectOpen, setUomSelectOpen] = useState(false);
 
-  const newUnit = { name: '', factor: 1, barcode: '', cost: undefined, price: 0, priceLevels: [] };
+  // `cost` is required by the schema now (a genuine number, not optional) —
+  // a freshly-appended row still starts without one, same as it always has,
+  // so it renders blank via the input's `field.value ?? ''` until the user
+  // types something. The `as any` below is that one field's real, expected
+  // "not filled in yet" state, not a type-safety workaround for anything
+  // else in this object.
+  const newUnit = { name: '', factor: 1, barcode: '', cost: undefined, price: 0, priceLevels: [] } as any;
 
   // The base row's price levels reuse the top-level `priceLevels` field array
   // (same one the old standalone Price Levels tab bound to), keyed by levelId
@@ -306,8 +312,8 @@ export function SellingUnitsTab() {
                         <Input
                           type="number"
                           step="0.01"
-                          min="0"
-                          placeholder="Optional"
+                          min="0.01"
+                          placeholder="Required"
                           value={field.value ?? ''}
                           onChange={(e) => {
                             const parsed = parseFloat(e.target.value);
@@ -514,8 +520,8 @@ export function SellingUnitsTab() {
                               <Input
                                 type="number"
                                 step="0.01"
-                                min="0"
-                                placeholder="Optional"
+                                min="0.01"
+                                placeholder="Required"
                                 value={field.value ?? ''}
                                 onChange={(e) => {
                                   const parsed = parseFloat(e.target.value);
