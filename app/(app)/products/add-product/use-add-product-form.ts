@@ -175,8 +175,13 @@ export function useAddProductForm({
   const tabErrors = {
     basic: !!(formErrors.name || formErrors.brand || formErrors.sku || formErrors.description || formErrors.category),
     inventory: !!(formErrors.unitOfMeasure || formErrors.stock),
-    priceLevels: !!(formErrors.priceLevels),
-    conversion: !!(formErrors.conversionFactors || formErrors.sellingUnits),
+    // The base selling unit's price-level overrides bind to the top-level
+    // `priceLevels` field (see product-schema.ts), but they render inside
+    // the Selling Units tab, not a standalone one — fold their errors into
+    // the same `conversion` flag extra units' sellingUnits[].priceLevels
+    // errors already use, so the tab that actually shows the problem is the
+    // one that lights up.
+    conversion: !!(formErrors.conversionFactors || formErrors.sellingUnits || formErrors.priceLevels),
   };
 
   // State for selected price level (for automatic price calculation)
