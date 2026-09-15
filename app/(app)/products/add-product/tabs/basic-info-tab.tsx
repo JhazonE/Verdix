@@ -27,10 +27,11 @@ export function BasicInfoTab() {
 
   return (
     <div className="space-y-4">
-      {/* Row 1: Name and SKU. Each row is its own grid so a tall field
-          (e.g. a textarea) never stretches an unrelated row's fields to
-          match its height — CSS grid rows spanning one flat container share
-          a row track height with whatever else auto-flowed into that row. */}
+      {/* Row 1: Name and Brand — the two "identity" fields. Each row is its
+          own grid so a tall field (e.g. a textarea) never stretches an
+          unrelated row's fields to match its height — CSS grid rows
+          spanning one flat container share a row track height with
+          whatever else auto-flowed into that row. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField
           control={form.control}
@@ -45,35 +46,6 @@ export function BasicInfoTab() {
             </FormItem>
           )}
         />
-        <FormField
-          control={form.control}
-          name="sku"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>SKU</FormLabel>
-              <div className="relative">
-                <FormControl>
-                  <Input placeholder="e.g., COKE-PC" {...field} className="pr-10" />
-                </FormControl>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
-                  onClick={generateSku}
-                >
-                  <Wand2 className="h-4 w-4" />
-                  <span className="sr-only">Generate SKU</span>
-                </Button>
-              </div>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-      </div>
-
-      {/* Row 2: Brand and Category */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField
           control={form.control}
           name="brand"
@@ -106,6 +78,35 @@ export function BasicInfoTab() {
                   return undefined;
                 }}
               />
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+
+      {/* Row 2: SKU and Category */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <FormField
+          control={form.control}
+          name="sku"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>SKU</FormLabel>
+              <div className="relative">
+                <FormControl>
+                  <Input placeholder="e.g., COKE-PC" {...field} className="pr-10" />
+                </FormControl>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
+                  onClick={generateSku}
+                >
+                  <Wand2 className="h-4 w-4" />
+                  <span className="sr-only">Generate SKU</span>
+                </Button>
+              </div>
               <FormMessage />
             </FormItem>
           )}
@@ -148,45 +149,45 @@ export function BasicInfoTab() {
         />
       </div>
 
-      {/* Row 3: Subcategory, alone — nothing else pairs with it at this point. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField
-          control={form.control}
-          name="subcategory"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Subcategory (Optional)</FormLabel>
-              <InlineEditableSelect
-                items={subcategories}
-                isLoading={isLoadingSubcategories}
-                value={field.value}
-                onChange={field.onChange}
-                open={selects.subcategories}
-                onOpenChange={(o) => setSelects((p) => ({ ...p, subcategories: o }))}
-                placeholder="Select a subcategory"
-                addLabel="Add Subcategory"
-                emptyLabel="No subcategories found"
-                getId={(s: Category) => s.id}
-                getValue={(s: Category) => s.name}
-                getOptionLabel={(s: Category) => s.name}
-                getName={(s: Category) => s.name}
-                onAdd={async (name) => {
-                  const r = await addSubcategory(name, 0);
-                  if (r.success) { await refreshSubcategories(); return name; }
-                  return undefined;
-                }}
-                onRename={async (id, name) => {
-                  const existing = subcategories.find((s: Category) => s.id === id);
-                  const r = await updateSubcategory(id, name, existing?.markupPercentage);
-                  if (r.success) { await refreshSubcategories(); return name; }
-                  return undefined;
-                }}
-              />
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-      </div>
+      {/* Row 3: Subcategory — the one field with no natural partner, so it
+          spans the full width here instead of leaving an empty half-row
+          beside it. */}
+      <FormField
+        control={form.control}
+        name="subcategory"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>Subcategory (Optional)</FormLabel>
+            <InlineEditableSelect
+              items={subcategories}
+              isLoading={isLoadingSubcategories}
+              value={field.value}
+              onChange={field.onChange}
+              open={selects.subcategories}
+              onOpenChange={(o) => setSelects((p) => ({ ...p, subcategories: o }))}
+              placeholder="Select a subcategory"
+              addLabel="Add Subcategory"
+              emptyLabel="No subcategories found"
+              getId={(s: Category) => s.id}
+              getValue={(s: Category) => s.name}
+              getOptionLabel={(s: Category) => s.name}
+              getName={(s: Category) => s.name}
+              onAdd={async (name) => {
+                const r = await addSubcategory(name, 0);
+                if (r.success) { await refreshSubcategories(); return name; }
+                return undefined;
+              }}
+              onRename={async (id, name) => {
+                const existing = subcategories.find((s: Category) => s.id === id);
+                const r = await updateSubcategory(id, name, existing?.markupPercentage);
+                if (r.success) { await refreshSubcategories(); return name; }
+                return undefined;
+              }}
+            />
+            <FormMessage />
+          </FormItem>
+        )}
+      />
 
       {/* Row 4: Description and Additional Description — both textareas. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
