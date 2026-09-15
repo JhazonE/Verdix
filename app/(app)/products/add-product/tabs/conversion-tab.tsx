@@ -181,18 +181,31 @@ export function SellingUnitsTab() {
         <div className="space-y-3">
           {/* Base unit row — always present, never removable. */}
           <Collapsible open={baseExpanded} onOpenChange={setBaseExpanded}>
-            <div className="p-3 bg-card border rounded-md shadow-sm">
-              <div className="flex items-start gap-3 flex-wrap">
+            <div className="bg-card border rounded-md shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/40 border-b">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">Base Unit</span>
+                  <Badge variant="secondary">Base</Badge>
+                </div>
+                <CollapsibleTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
+                    <ChevronDown className={`h-4 w-4 transition-transform ${baseExpanded ? 'rotate-180' : ''}`} />
+                    <span className="sr-only">Toggle price levels</span>
+                  </Button>
+                </CollapsibleTrigger>
+              </div>
+
+              <div className="p-3 flex items-start gap-3 flex-wrap">
                 <div className="flex-1 min-w-[150px]">
                   <Label className="text-xs">Unit Name</Label>
-                  <Input value={selectedUnitOfMeasure || ''} disabled />
+                  <Input value={selectedUnitOfMeasure || ''} disabled className="bg-muted/50 text-foreground disabled:opacity-100" />
                 </div>
 
                 <div className="w-[130px]">
                   <Label className="text-xs">
                     Qty in {selectedUnitOfMeasure || 'base units'}
                   </Label>
-                  <Input type="number" value={1} disabled />
+                  <Input type="number" value={1} disabled className="bg-muted/50 text-foreground disabled:opacity-100" />
                 </div>
 
                 <div className="w-[160px]">
@@ -262,22 +275,9 @@ export function SellingUnitsTab() {
                     )}
                   />
                 </div>
-
-                <div className="pt-6">
-                  <Badge variant="secondary">Base</Badge>
-                </div>
-
-                <div className="pt-6">
-                  <CollapsibleTrigger asChild>
-                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
-                      <ChevronDown className={`h-4 w-4 transition-transform ${baseExpanded ? 'rotate-180' : ''}`} />
-                      <span className="sr-only">Toggle price levels</span>
-                    </Button>
-                  </CollapsibleTrigger>
-                </div>
               </div>
               <CollapsibleContent>
-                <div className="border-t mt-3 pt-1">
+                <div className="border-t px-3 pb-3 pt-2">
                   <p className="text-xs font-medium text-muted-foreground mb-1">Price Levels</p>
                   <PriceLevelOverrides
                     basePath="priceLevels"
@@ -315,8 +315,31 @@ export function SellingUnitsTab() {
                   open={expanded}
                   onOpenChange={(open) => setExpandedUnits(prev => ({ ...prev, [index]: open }))}
                 >
-                  <div className="p-3 bg-card border rounded-md shadow-sm">
-                    <div className="flex items-start gap-3 flex-wrap">
+                  <div className="bg-card border rounded-md shadow-sm overflow-hidden">
+                    <div className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/40 border-b">
+                      <span className="text-sm font-medium">
+                        {form.watch(`sellingUnits.${index}.name`) || 'Selling Unit'}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <CollapsibleTrigger asChild>
+                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
+                            <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                            <span className="sr-only">Toggle price levels</span>
+                          </Button>
+                        </CollapsibleTrigger>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                          onClick={() => removeSellingUnit(index)}
+                        >
+                          <X className="h-4 w-4" />
+                          <span className="sr-only">Remove</span>
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="p-3 flex items-start gap-3 flex-wrap">
                       <div className="flex-1 min-w-[150px]">
                         <FormField
                           control={form.control}
@@ -444,31 +467,9 @@ export function SellingUnitsTab() {
                           )}
                         />
                       </div>
-
-                      <div className="pt-6">
-                        <CollapsibleTrigger asChild>
-                          <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
-                            <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-                            <span className="sr-only">Toggle price levels</span>
-                          </Button>
-                        </CollapsibleTrigger>
-                      </div>
-
-                      <div className="pt-6">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-destructive hover:text-destructive/90 hover:bg-destructive/10"
-                          onClick={() => removeSellingUnit(index)}
-                        >
-                          <X className="h-4 w-4" />
-                          <span className="sr-only">Remove</span>
-                        </Button>
-                      </div>
                     </div>
                     <CollapsibleContent>
-                      <div className="border-t mt-3 pt-1">
+                      <div className="border-t px-3 pb-3 pt-2">
                         <p className="text-xs font-medium text-muted-foreground mb-1">Price Levels</p>
                         <PriceLevelOverrides
                           basePath={`sellingUnits.${index}.priceLevels`}
