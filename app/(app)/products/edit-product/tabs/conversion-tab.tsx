@@ -212,7 +212,7 @@ export function SellingUnitsTab() {
               </CollapsibleTrigger>
             </div>
 
-            <div className="p-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3 grid grid-cols-2 gap-3">
               <div>
                 <FormField
                   control={form.control}
@@ -386,8 +386,8 @@ export function SellingUnitsTab() {
                       </Button>
                     </div>
                   </div>
-                  <div className="p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                    <div className="lg:col-span-1">
+                  <div className="p-3 grid grid-cols-2 gap-3">
+                    <div>
                       <FormField
                         control={form.control}
                         name={`sellingUnits.${index}.name`}
