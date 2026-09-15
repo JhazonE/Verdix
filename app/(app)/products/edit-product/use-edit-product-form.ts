@@ -147,8 +147,17 @@ export function useEditProductForm({
       unitOfMeasure: product.unitOfMeasure ?? '', // Handle null
       conversionFactor: product.conversionFactor ?? 1, // Handle null/0 by defaulting to 1
       conversionFactors: product.conversionFactors || [],
-      sellingUnits: product.sellingUnits || [],
-      priceLevels: product.priceLevels || [],
+      // The base unit is shown as a row in the Selling Units tab, but it is
+      // not a `sellingUnits[]` entry in the submitted payload — its factor
+      // stays 1 and its price/cost/barcode post through the top-level
+      // fields above. Keeping it out of this field array also matters for
+      // validation: updateProduct rejects any submitted unit whose name
+      // matches the base unit name.
+      sellingUnits: (product.sellingUnits || []).filter(su => !su.isBase),
+      // The base unit's own price-level overrides come from its
+      // `sellingUnits` entry (isBase: true), not from a top-level
+      // `product.priceLevels` field — getProducts no longer returns one.
+      priceLevels: product.sellingUnits?.find(su => su.isBase)?.priceLevels || [],
       vatStatus: product.vatStatus || 'YES (Subject to 12% VAT)',
       availability: product.availability || 'Available',
       earnsPoints: product.earnsPoints ?? true,
@@ -210,8 +219,14 @@ export function useEditProductForm({
           unitOfMeasure: product.unitOfMeasure ?? '', // Handle null
           conversionFactor: product.conversionFactor ?? 1, // Handle null/0 by defaulting to 1
           conversionFactors: product.conversionFactors || [],
-          sellingUnits: product.sellingUnits || [],
-          priceLevels: seedDefaultPriceLevel(product.priceLevels || [], priceLevels, product.price),
+          // See the defaultValues block above: the base unit is a permanent
+          // display-only row here, not a `sellingUnits[]` entry.
+          sellingUnits: (product.sellingUnits || []).filter(su => !su.isBase),
+          priceLevels: seedDefaultPriceLevel(
+            product.sellingUnits?.find(su => su.isBase)?.priceLevels || [],
+            priceLevels,
+            product.price,
+          ),
           vatStatus: product.vatStatus || 'YES (Subject to 12% VAT)',
           availability: product.availability || 'Available',
           earnsPoints: product.earnsPoints ?? true,
@@ -391,10 +406,21 @@ export function useEditProductForm({
     console.log('EditProductDialog saveChanges called with values:', values);
     // Filter out conversion factors with empty units to avoid schema validation errors
     values.conversionFactors = values.conversionFactors?.filter(cf => cf.unit.trim() !== '') || [];
+    // The per-unit price-level sub-table (conversion-tab.tsx) never stores an
+    // entry with a blank price — a blank input splices the row out entirely,
+    // so `price` is always a concrete number by the time it lands here. This
+    // narrows the type to match actions.ts's SellingUnitInput, which expects
+    // exactly that.
+    const sellingUnitsForSubmit = values.sellingUnits?.map(unit => ({
+      ...unit,
+      priceLevels: (unit.priceLevels || []).filter(
+        (pl): pl is { levelId: string; price: number; minQuantity?: number } => pl.price !== undefined,
+      ),
+    }));
     try {
       setIsSubmitting(true);
 
-      const result = await updateProduct(product.id, values);
+      const result = await updateProduct(product.id, { ...values, sellingUnits: sellingUnitsForSubmit });
 
       console.log('updateProduct result:', result);
 

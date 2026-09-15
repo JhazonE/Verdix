@@ -38,6 +38,16 @@ export const productSchema = z.object({
     barcode: z.string().optional(),
     cost: z.coerce.number().nonnegative('Cost must be non-negative').optional(),
     price: z.coerce.number().nonnegative('Price must be non-negative'),
+    /**
+     * This unit's own price-level overrides. A blank price on the form means
+     * no override at all — never a coerced 0 — so this array simply omits
+     * that level's entry rather than carrying a 0-valued row.
+     */
+    priceLevels: z.array(z.object({
+      levelId: z.string(),
+      price: z.number().min(0).optional(),
+      minQuantity: z.number().min(0).optional(),
+    })).optional(),
   })).optional(),
   priceLevels: z.array(z.object({
     levelId: z.string().min(1, 'Level is required'),

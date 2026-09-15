@@ -1,8 +1,11 @@
 'use client';
 
-import { PlusCircle, Wand2, X } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, PlusCircle, Wand2, X } from 'lucide-react';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -11,21 +14,137 @@ import { UnitOfMeasure } from '@/lib/types';
 import { useEditProductFormContext } from '../edit-product-form-context';
 
 /**
+ * One line per system price level, for one selling unit's row. A blank price
+ * input means no override for that unit/level — it is never coerced to 0 or
+ * to the unit's own price, so the write side (actions.ts) knows to skip it.
+ *
+ * Two binding modes:
+ * - Base unit: binds into the top-level `priceLevels` field array (the same
+ *   one the old standalone Price Levels tab used), via the field-array
+ *   helpers already returned by the form hook.
+ * - Extra unit: binds into `sellingUnits.${unitIndex}.priceLevels`, a plain
+ *   nested array kept in sync by hand (find the entry for this level, or
+ *   splice one in the moment the user types a value).
+ */
+function PriceLevelOverrides({
+  values,
+  onChange,
+}: {
+  values: { levelId: string; price?: number; minQuantity?: number }[];
+  onChange: (next: { levelId: string; price?: number; minQuantity?: number }[]) => void;
+}) {
+  const { priceLevels, isLoadingPriceLevels } = useEditProductFormContext();
+
+  if (isLoadingPriceLevels) {
+    return <p className="text-xs text-muted-foreground px-1 py-2">Loading price levels...</p>;
+  }
+  if (!priceLevels || priceLevels.length === 0) {
+    return <p className="text-xs text-muted-foreground px-1 py-2">No price levels configured.</p>;
+  }
+
+  const setPrice = (levelId: string, raw: string) => {
+    const next = [...values];
+    const idx = next.findIndex(v => v.levelId === levelId);
+    if (raw === '') {
+      // Blank means "no override" — remove the row entirely rather than
+      // writing an empty/0 value.
+      if (idx !== -1) next.splice(idx, 1);
+      onChange(next);
+      return;
+    }
+    const parsed = parseFloat(raw);
+    if (Number.isNaN(parsed)) return;
+    if (idx === -1) {
+      next.push({ levelId, price: parsed });
+    } else {
+      next[idx] = { ...next[idx], price: parsed };
+    }
+    onChange(next);
+  };
+
+  const setMinQuantity = (levelId: string, raw: string) => {
+    const next = [...values];
+    const idx = next.findIndex(v => v.levelId === levelId);
+    const parsed = raw === '' ? undefined : parseInt(raw, 10);
+    if (idx === -1) {
+      // No price yet — a min-quantity with no override price is meaningless,
+      // so there is nothing to store until a price is entered.
+      return;
+    }
+    next[idx] = { ...next[idx], minQuantity: Number.isNaN(parsed as number) ? undefined : parsed };
+    onChange(next);
+  };
+
+  return (
+    <div className="space-y-2 pt-2">
+      {priceLevels.map((level: any) => {
+        const entry = values.find(v => v.levelId === level.id);
+        return (
+          <div key={level.id} className="flex gap-3 items-end">
+            <div className="flex-1">
+              <FormLabel className="text-xs text-muted-foreground">{level.name}</FormLabel>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="No override"
+                value={entry?.price ?? ''}
+                onChange={(e) => setPrice(level.id, e.target.value)}
+              />
+            </div>
+            <div className="w-[100px]">
+              <FormLabel className="text-xs text-nowrap text-muted-foreground">Min Qty</FormLabel>
+              <Input
+                type="number"
+                min="0"
+                placeholder="0"
+                value={entry?.minQuantity ?? ''}
+                onChange={(e) => setMinQuantity(level.id, e.target.value)}
+                disabled={!entry}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * Selling Units — the ways this one product can be sold.
  *
- * The base unit is not listed here: it follows the product's own unit of
- * measure, price and cost, and its factor stays 1. Removing a row here deletes
- * that selling unit on save.
+ * The base unit is now shown as a permanent, non-removable first row: its
+ * factor is locked to 1, and it posts through the product's own top-level
+ * price/cost/barcode fields rather than a `sellingUnits[]` entry. Removing an
+ * extra row here deletes that selling unit on save.
  */
 export function SellingUnitsTab() {
   const {
     form,
     sellingUnitFields, appendSellingUnit, removeSellingUnit,
+    priceLevelFields, appendPriceLevel, removePriceLevel,
     units,
     selectedUnitOfMeasure,
   } = useEditProductFormContext();
 
-  const newUnit = { name: '', factor: 1, barcode: '', cost: undefined, price: 0 };
+  const [baseExpanded, setBaseExpanded] = useState(false);
+  const [expandedUnits, setExpandedUnits] = useState<Record<number, boolean>>({});
+
+  const newUnit = { name: '', factor: 1, barcode: '', cost: undefined, price: 0, priceLevels: [] };
+
+  // The base row's price levels reuse the top-level `priceLevels` field array
+  // (same one the old standalone Price Levels tab bound to), keyed by levelId
+  // rather than by array index so "blank = no row" holds here too.
+  const allPriceLevelValues = form.watch('priceLevels') || [];
+  const basePriceLevelValues: { levelId: string; price?: number; minQuantity?: number }[] =
+    allPriceLevelValues.filter((v) => !!v?.levelId) as { levelId: string; price?: number; minQuantity?: number }[];
+
+  const setBasePriceLevels = (next: { levelId: string; price?: number; minQuantity?: number }[]) => {
+    for (let i = priceLevelFields.length - 1; i >= 0; i--) {
+      removePriceLevel(i);
+    }
+    next.forEach(entry => appendPriceLevel({ levelId: entry.levelId, price: entry.price ?? 0, minQuantity: entry.minQuantity }));
+  };
 
   return (
     <div className="rounded-md border p-4">
@@ -34,7 +153,7 @@ export function SellingUnitsTab() {
           <h4 className="text-sm font-medium leading-none">Selling Units</h4>
           <p className="text-sm text-muted-foreground mt-1">
             Other ways to sell this product (e.g. 1 Case = 60 {selectedUnitOfMeasure || 'base units'}).
-            Each can have its own barcode and price. Stock stays a single figure in{' '}
+            Each can have its own barcode, price, and price-level overrides. Stock stays a single figure in{' '}
             {selectedUnitOfMeasure || 'the base unit'}.
           </p>
         </div>
@@ -49,192 +168,329 @@ export function SellingUnitsTab() {
         </Button>
       </div>
 
-      {sellingUnitFields.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-8 text-center border-2 border-dashed rounded-lg bg-muted/50">
-          <Wand2 className="h-8 w-8 text-muted-foreground mb-2" />
-          <p className="text-sm text-muted-foreground">
-            No extra selling units. This product sells by {selectedUnitOfMeasure || 'its base unit'} only.
-          </p>
-          <Button
-            type="button"
-            variant="link"
-            size="sm"
-            onClick={() => appendSellingUnit(newUnit)}
-            className="mt-1"
-          >
-            Add your first selling unit
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {sellingUnitFields.map((field, index) => (
-            <div key={field.id} className="p-3 bg-card border rounded-md shadow-sm">
-              <div className="flex items-start gap-3 flex-wrap">
-                <div className="flex-1 min-w-[150px]">
-                  <FormField
-                    control={form.control}
-                    name={`sellingUnits.${index}.name`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs">Unit Name</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select unit" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {(() => {
-                              const items = [];
-                              const currentVal = field.value;
+      <div className="space-y-3">
+        {/* Base unit row — always present, never removable. */}
+        <Collapsible open={baseExpanded} onOpenChange={setBaseExpanded}>
+          <div className="p-3 bg-card border rounded-md shadow-sm">
+            <div className="flex items-start gap-3 flex-wrap">
+              <div className="flex-1 min-w-[150px]">
+                <FormLabel className="text-xs">Unit Name</FormLabel>
+                <Input value={selectedUnitOfMeasure || ''} disabled />
+              </div>
 
-                              // Keep a unit that is no longer in Settings selectable,
-                              // so opening the dialog cannot silently blank it.
-                              if (currentVal && !units?.some(u => u.name === currentVal)) {
-                                items.push(
-                                  <SelectItem key={`orphan-${currentVal}`} value={currentVal}>
-                                    {currentVal} (Missing in Settings)
-                                  </SelectItem>
-                                );
-                              }
+              <div className="w-[130px]">
+                <FormLabel className="text-xs">
+                  Qty in {selectedUnitOfMeasure || 'base units'}
+                </FormLabel>
+                <Input type="number" value={1} disabled />
+              </div>
 
-                              if (units?.length > 0) {
-                                units.forEach((uom: UnitOfMeasure) => {
-                                  if (uom.name !== selectedUnitOfMeasure) {
+              <div className="w-[160px]">
+                <FormField
+                  control={form.control}
+                  name="barcode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">Barcode</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Optional" value={field.value ?? ''} onChange={field.onChange} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="w-[110px]">
+                <FormField
+                  control={form.control}
+                  name="cost"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">Cost</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="Optional"
+                          value={field.value ?? ''}
+                          onChange={(e) => {
+                            const parsed = parseFloat(e.target.value);
+                            field.onChange(Number.isNaN(parsed) ? undefined : parsed);
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="w-[110px]">
+                <FormField
+                  control={form.control}
+                  name="price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">Price</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={field.value ?? ''}
+                          onChange={(e) => {
+                            const parsed = parseFloat(e.target.value);
+                            field.onChange(Number.isNaN(parsed) ? undefined : parsed);
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="pt-6">
+                <Badge variant="secondary">Base</Badge>
+              </div>
+
+              <div className="pt-6">
+                <CollapsibleTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
+                    <ChevronDown className={`h-4 w-4 transition-transform ${baseExpanded ? 'rotate-180' : ''}`} />
+                    <span className="sr-only">Toggle price levels</span>
+                  </Button>
+                </CollapsibleTrigger>
+              </div>
+            </div>
+            <CollapsibleContent>
+              <div className="border-t mt-3 pt-1">
+                <p className="text-xs font-medium text-muted-foreground mb-1">Price Levels</p>
+                <PriceLevelOverrides
+                  values={basePriceLevelValues}
+                  onChange={setBasePriceLevels}
+                />
+              </div>
+            </CollapsibleContent>
+          </div>
+        </Collapsible>
+
+        {sellingUnitFields.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-8 text-center border-2 border-dashed rounded-lg bg-muted/50">
+            <Wand2 className="h-8 w-8 text-muted-foreground mb-2" />
+            <p className="text-sm text-muted-foreground">
+              No extra selling units. This product sells by {selectedUnitOfMeasure || 'its base unit'} only.
+            </p>
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              onClick={() => appendSellingUnit(newUnit)}
+              className="mt-1"
+            >
+              Add your first selling unit
+            </Button>
+          </div>
+        ) : (
+          sellingUnitFields.map((field, index) => {
+            const expanded = !!expandedUnits[index];
+            const unitPriceLevels = form.watch(`sellingUnits.${index}.priceLevels`) || [];
+            return (
+              <Collapsible
+                key={field.id}
+                open={expanded}
+                onOpenChange={(open) => setExpandedUnits(prev => ({ ...prev, [index]: open }))}
+              >
+                <div className="p-3 bg-card border rounded-md shadow-sm">
+                  <div className="flex items-start gap-3 flex-wrap">
+                    <div className="flex-1 min-w-[150px]">
+                      <FormField
+                        control={form.control}
+                        name={`sellingUnits.${index}.name`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">Unit Name</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select unit" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {(() => {
+                                  const items = [];
+                                  const currentVal = field.value;
+
+                                  // Keep a unit that is no longer in Settings selectable,
+                                  // so opening the dialog cannot silently blank it.
+                                  if (currentVal && !units?.some(u => u.name === currentVal)) {
                                     items.push(
-                                      <SelectItem key={uom.id} value={uom.name}>
-                                        {uom.name} ({uom.abbreviation})
+                                      <SelectItem key={`orphan-${currentVal}`} value={currentVal}>
+                                        {currentVal} (Missing in Settings)
                                       </SelectItem>
                                     );
                                   }
-                                });
-                              }
 
-                              return items.length > 0 ? items : (
-                                <SelectItem value="none" disabled>No units available</SelectItem>
-                              );
-                            })()}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                                  if (units?.length > 0) {
+                                    units.forEach((uom: UnitOfMeasure) => {
+                                      if (uom.name !== selectedUnitOfMeasure) {
+                                        items.push(
+                                          <SelectItem key={uom.id} value={uom.name}>
+                                            {uom.name} ({uom.abbreviation})
+                                          </SelectItem>
+                                        );
+                                      }
+                                    });
+                                  }
 
-                <div className="w-[130px]">
-                  <FormField
-                    control={form.control}
-                    name={`sellingUnits.${index}.factor`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs">
-                          Qty in {selectedUnitOfMeasure || 'base units'}
-                        </FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="Qty"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const parsed = parseFloat(e.target.value);
-                              field.onChange(Number.isNaN(parsed) ? undefined : parsed);
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                                  return items.length > 0 ? items : (
+                                    <SelectItem value="none" disabled>No units available</SelectItem>
+                                  );
+                                })()}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
 
-                <div className="w-[160px]">
-                  <FormField
-                    control={form.control}
-                    name={`sellingUnits.${index}.barcode`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs">Barcode</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Optional" value={field.value ?? ''} onChange={field.onChange} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                    <div className="w-[130px]">
+                      <FormField
+                        control={form.control}
+                        name={`sellingUnits.${index}.factor`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">
+                              Qty in {selectedUnitOfMeasure || 'base units'}
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="Qty"
+                                value={field.value ?? ''}
+                                onChange={(e) => {
+                                  const parsed = parseFloat(e.target.value);
+                                  field.onChange(Number.isNaN(parsed) ? undefined : parsed);
+                                }}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
 
-                <div className="w-[110px]">
-                  <FormField
-                    control={form.control}
-                    name={`sellingUnits.${index}.cost`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs">Cost</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="Optional"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const parsed = parseFloat(e.target.value);
-                              field.onChange(Number.isNaN(parsed) ? undefined : parsed);
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                    <div className="w-[160px]">
+                      <FormField
+                        control={form.control}
+                        name={`sellingUnits.${index}.barcode`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">Barcode</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Optional" value={field.value ?? ''} onChange={field.onChange} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
 
-                <div className="w-[110px]">
-                  <FormField
-                    control={form.control}
-                    name={`sellingUnits.${index}.price`}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs">Price</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0.00"
-                            value={field.value ?? ''}
-                            onChange={(e) => {
-                              const parsed = parseFloat(e.target.value);
-                              field.onChange(Number.isNaN(parsed) ? undefined : parsed);
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                    <div className="w-[110px]">
+                      <FormField
+                        control={form.control}
+                        name={`sellingUnits.${index}.cost`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">Cost</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="Optional"
+                                value={field.value ?? ''}
+                                onChange={(e) => {
+                                  const parsed = parseFloat(e.target.value);
+                                  field.onChange(Number.isNaN(parsed) ? undefined : parsed);
+                                }}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
 
-                <div className="pt-6">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-destructive hover:text-destructive/90 hover:bg-destructive/10"
-                    onClick={() => removeSellingUnit(index)}
-                  >
-                    <X className="h-4 w-4" />
-                    <span className="sr-only">Remove</span>
-                  </Button>
+                    <div className="w-[110px]">
+                      <FormField
+                        control={form.control}
+                        name={`sellingUnits.${index}.price`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs">Price</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={field.value ?? ''}
+                                onChange={(e) => {
+                                  const parsed = parseFloat(e.target.value);
+                                  field.onChange(Number.isNaN(parsed) ? undefined : parsed);
+                                }}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <div className="pt-6">
+                      <CollapsibleTrigger asChild>
+                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
+                          <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                          <span className="sr-only">Toggle price levels</span>
+                        </Button>
+                      </CollapsibleTrigger>
+                    </div>
+
+                    <div className="pt-6">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                        onClick={() => removeSellingUnit(index)}
+                      >
+                        <X className="h-4 w-4" />
+                        <span className="sr-only">Remove</span>
+                      </Button>
+                    </div>
+                  </div>
+                  <CollapsibleContent>
+                    <div className="border-t mt-3 pt-1">
+                      <p className="text-xs font-medium text-muted-foreground mb-1">Price Levels</p>
+                      <PriceLevelOverrides
+                        values={unitPriceLevels}
+                        onChange={(next) => form.setValue(`sellingUnits.${index}.priceLevels`, next, { shouldDirty: true })}
+                      />
+                    </div>
+                  </CollapsibleContent>
                 </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+              </Collapsible>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }

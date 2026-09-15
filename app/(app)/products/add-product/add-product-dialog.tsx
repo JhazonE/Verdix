@@ -20,7 +20,6 @@ import { AddProductFormProvider } from './add-product-form-context';
 import { BasicInfoTab } from './tabs/basic-info-tab';
 import { InventoryTab } from './tabs/inventory-tab';
 import { SellingUnitsTab } from './tabs/conversion-tab';
-import { PriceLevelsTab } from './tabs/price-levels-tab';
 import { LoyaltyTab } from './tabs/loyalty-tab';
 
 export function AddProductDialog(props: UseAddProductFormProps) {
@@ -105,13 +104,6 @@ export function AddProductDialog(props: UseAddProductFormProps) {
                         Inventory
                         {tabErrors.inventory && <span className="ml-1.5 inline-flex h-2 w-2 rounded-full bg-destructive" />}
                       </TabsTrigger>
-                      <TabsTrigger
-                        value="price-levels"
-                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
-                      >
-                        Price Levels
-                        {tabErrors.priceLevels && <span className="ml-1.5 inline-flex h-2 w-2 rounded-full bg-destructive" />}
-                      </TabsTrigger>
                       {itemType === 'standard' && (
                         <TabsTrigger
                           value="conversion"
@@ -139,9 +131,6 @@ export function AddProductDialog(props: UseAddProductFormProps) {
                         <SellingUnitsTab />
                       </TabsContent>
                     )}
-                    <TabsContent value="price-levels" className="space-y-4 p-6">
-                      <PriceLevelsTab />
-                    </TabsContent>
                     <TabsContent value="loyalty" className="space-y-4 p-6">
                       <LoyaltyTab />
                     </TabsContent>
