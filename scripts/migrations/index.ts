@@ -119,6 +119,7 @@ import './118_create_product_selling_units';
 import './119_backfill_base_selling_units';
 import './120_add_selling_unit_to_line_items';
 import './121_create_selling_unit_price_levels';
+import './122_link_subcategories_to_categories';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';
