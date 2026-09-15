@@ -30,7 +30,7 @@ import { useManageSubcategories } from './use-manage-subcategories';
 
 export function ManageSubcategoriesDialog({ trigger, onSubcategoryAdded, open, onOpenChange }: { trigger?: React.ReactNode; onSubcategoryAdded?: () => void; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const [internalOpen, setInternalOpen] = useState(false);
-  const { subcategories, isLoading, handleAddSubcategory, handleUpdateSubcategory, handleDeleteSubcategory } =
+  const { subcategories, categories, isLoading, handleAddSubcategory, handleUpdateSubcategory, handleDeleteSubcategory } =
     useManageSubcategories({ onSubcategoryAdded });
 
   const isControlled = open !== undefined;
@@ -61,7 +61,7 @@ export function ManageSubcategoriesDialog({ trigger, onSubcategoryAdded, open, o
         </DialogHeader>
         <div className="mt-4">
             <div className="flex justify-end mb-4">
-                <SubcategoryDialog onSave={handleAddSubcategory}>
+                <SubcategoryDialog categories={categories} onSave={handleAddSubcategory}>
                     <Button size="sm">
                       <PlusCircle className="mr-2 h-4 w-4" />
                       Add Subcategory
@@ -74,6 +74,7 @@ export function ManageSubcategoriesDialog({ trigger, onSubcategoryAdded, open, o
                     <TableHeader>
                         <TableRow>
                         <TableHead>Name</TableHead>
+                        <TableHead>Category</TableHead>
                         <TableHead>
                             <span className="sr-only">Actions</span>
                         </TableHead>
@@ -82,11 +83,11 @@ export function ManageSubcategoriesDialog({ trigger, onSubcategoryAdded, open, o
                     <TableBody>
                         {isLoading && Array.from({ length: 4 }).map((_, i) => <SubcategorySkeleton key={i} />)}
                         {!isLoading && subcategories.map((subcategory) => (
-                        <SubcategoryRow key={subcategory.id} subcategory={subcategory} onUpdate={handleUpdateSubcategory} onDelete={handleDeleteSubcategory} />
+                        <SubcategoryRow key={subcategory.id} subcategory={subcategory} categories={categories} onUpdate={handleUpdateSubcategory} onDelete={handleDeleteSubcategory} />
                         ))}
                          {!isLoading && subcategories.length === 0 && (
                             <TableRow>
-                                <TableCell colSpan={2} className="text-center h-24">
+                                <TableCell colSpan={3} className="text-center h-24">
                                     No subcategories found. Add a subcategory to get started.
                                 </TableCell>
                             </TableRow>

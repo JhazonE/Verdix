@@ -5,26 +5,28 @@ import { useEffect, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import type { Category } from '@/lib/types';
 
-export type SubcategorySaveHandler = (name: string) => Promise<void>;
+export type SubcategorySaveHandler = (name: string, categoryId: string | null) => Promise<void>;
 
 export interface UseSubcategoryFormProps {
-  subcategory?: Category;
+  subcategory?: Category & { categoryId?: string | null };
   onSave: SubcategorySaveHandler;
 }
 
 /**
- * Controller for the add/edit subcategory dialog form: name state,
- * reset-on-open, and the validated save flow.
+ * Controller for the add/edit subcategory dialog form: name + categoryId
+ * state, reset-on-open, and the validated save flow.
  */
 export function useSubcategoryForm({ subcategory, onSave }: UseSubcategoryFormProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState(subcategory?.name || '');
+  const [categoryId, setCategoryId] = useState<string | null>(subcategory?.categoryId ?? null);
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     if (isOpen) {
       setName(subcategory?.name || '');
+      setCategoryId(subcategory?.categoryId ?? null);
     }
   }, [isOpen, subcategory]);
 
@@ -37,15 +39,23 @@ export function useSubcategoryForm({ subcategory, onSave }: UseSubcategoryFormPr
       });
       return;
     }
+    if (!categoryId) {
+      toast({
+        variant: 'destructive',
+        title: 'Validation Error',
+        description: 'Select a category for this subcategory.',
+      });
+      return;
+    }
     setIsSaving(true);
     try {
-      await onSave(name);
+      await onSave(name, categoryId);
       toast({
         title: subcategory ? 'Subcategory Updated' : 'Subcategory Added',
         description: `Subcategory "${name}" has been successfully saved.`,
       });
       setIsOpen(false);
-      if (!subcategory) setName('');
+      if (!subcategory) { setName(''); setCategoryId(null); }
     } catch (error) {
       console.error('Failed to save subcategory', error);
       toast({
@@ -63,6 +73,8 @@ export function useSubcategoryForm({ subcategory, onSave }: UseSubcategoryFormPr
     setIsOpen,
     name,
     setName,
+    categoryId,
+    setCategoryId,
     isSaving,
     handleSave,
   };

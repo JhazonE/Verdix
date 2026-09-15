@@ -5,24 +5,26 @@ import { useEffect, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import type { Category } from '@/lib/types';
 
-import { addSubcategory, deleteSubcategory, getSubcategories, updateSubcategory } from '../actions';
+import { addSubcategory, deleteSubcategory, getCategories, getSubcategories, updateSubcategory } from '../actions';
 
 export interface UseManageSubcategoriesProps {
   onSubcategoryAdded?: () => void;
 }
 
 /**
- * Controller for the Manage Subcategories list: loads subcategories and exposes
- * the add/update/delete handlers (data + toasts).
+ * Controller for the Manage Subcategories list: loads categories +
+ * subcategories and exposes the add/update/delete handlers (data + toasts).
  */
 export function useManageSubcategories({ onSubcategoryAdded }: UseManageSubcategoriesProps) {
-  const [subcategories, setSubcategories] = useState<Category[]>([]);
+  const [subcategories, setSubcategories] = useState<(Category & { categoryId: string | null })[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
   const loadSubcategories = async () => {
-    const subs = await getSubcategories();
-    setSubcategories(subs);
+    const [subs, cats] = await Promise.all([getSubcategories(), getCategories()]);
+    setSubcategories(subs as (Category & { categoryId: string | null })[]);
+    setCategories(cats);
     setIsLoading(false);
   };
 
@@ -30,16 +32,18 @@ export function useManageSubcategories({ onSubcategoryAdded }: UseManageSubcateg
     loadSubcategories();
   }, []);
 
-  const handleAddSubcategory = async (name: string) => {
-    const result = await addSubcategory(name);
+  const handleAddSubcategory = async (name: string, categoryId: string | null) => {
+    const result = await addSubcategory(name, categoryId);
     if (result.success) {
       loadSubcategories();
       onSubcategoryAdded?.();
+    } else {
+      toast({ variant: 'destructive', title: 'Error', description: result.message });
     }
   };
 
-  const handleUpdateSubcategory = async (id: string, name: string) => {
-    const result = await updateSubcategory(id, name);
+  const handleUpdateSubcategory = async (id: string, name: string, categoryId: string | null) => {
+    const result = await updateSubcategory(id, name, categoryId);
     if (result.success) {
       toast({ title: 'Subcategory Updated', description: result.message });
       loadSubcategories();
@@ -60,6 +64,7 @@ export function useManageSubcategories({ onSubcategoryAdded }: UseManageSubcateg
 
   return {
     subcategories,
+    categories,
     isLoading,
     handleAddSubcategory,
     handleUpdateSubcategory,
