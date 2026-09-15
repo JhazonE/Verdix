@@ -12,7 +12,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from '@/components/ui/select';
 import type { Category } from '@/lib/types';
 
@@ -176,7 +175,18 @@ export function CategorySubcategorySelect({
     >
       <FormControl>
         <SelectTrigger>
-          <SelectValue placeholder="Select a category">{displayLabel || undefined}</SelectValue>
+          {/* Not Radix's <SelectValue> here: passing plain-text children into
+              it conflicts with the ref it forwards internally ("Cannot use a
+              ref... if that element also sets children text content").
+              SelectTrigger only needs *a* child preceding the chevron icon —
+              a plain span with the same line-clamp styling Select applies to
+              its default child covers both the matched case (Radix's normal
+              value→label lookup would show) and the orphan case (a saved
+              value no longer in the live lists, which Radix's own lookup
+              would render as blank). */}
+          <span className={displayLabel ? 'line-clamp-1' : 'text-muted-foreground line-clamp-1'}>
+            {displayLabel || 'Select a category'}
+          </span>
         </SelectTrigger>
       </FormControl>
       <SelectContent className="max-h-96">
