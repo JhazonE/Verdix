@@ -7,13 +7,21 @@ import { useProducts, mapApiProduct } from '@/hooks/use-api';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useCustomerDisplay } from '@/hooks/use-customer-display';
 import { useLiveRefresh, dispatchStockUpdate } from '@/hooks/use-live-refresh';
-import { calculateEffectivePrice } from '@/lib/pricing';
+import { calculateEffectivePriceForUnit } from '@/lib/pricing';
 import { resolveEffectiveTaxType } from '@/lib/tax-utils';
 import { getApiUrl } from '@/lib/api-config';
 import { formatStockQuantity } from '@/lib/utils';
 import { WALK_IN_CUSTOMER } from '../customer-account/customer-account-types';
 import { type SaleItem, type SuspendedTransaction, type QueuedOrder, mapVatStatusToTaxType } from './pos-types';
 import type { Customer, SystemSettings } from '@/lib/types';
+
+// POS has no unit-picker yet, so every cart line implicitly sells the
+// product's base unit. This resolves that unit (falling back to the
+// product's plain price only if a product is somehow missing its base
+// entry, which Task 1/3's guarantees mean should never happen).
+function baseSellingUnit(product: any) {
+  return product.sellingUnits?.find((u: any) => u.isBase) ?? { price: product.price, priceLevels: [] };
+}
 
 export function usePOS() {
   const [currentShiftId, setCurrentShiftId] = useState<string | null>(null);
@@ -570,7 +578,7 @@ export function usePOS() {
     if (!activeLevelId) return;
     setItems(currentItems => {
       if (currentItems.length === 0) return currentItems;
-      const updated = currentItems.map(item => ({ ...item, price: calculateEffectivePrice(item, item.quantity, activeLevelId, defaultLevelId) }));
+      const updated = currentItems.map(item => ({ ...item, price: calculateEffectivePriceForUnit(baseSellingUnit(item), item.quantity, activeLevelId, defaultLevelId) }));
       const changed = JSON.stringify(currentItems.map(i => i.price)) !== JSON.stringify(updated.map(i => i.price));
       return changed ? updated : currentItems;
     });
@@ -601,12 +609,12 @@ export function usePOS() {
         const existing = prevItems.find(item => item.id === product.id);
         if (existing) {
           const newQty = existing.quantity + 1;
-          const newPrice = calculateEffectivePrice(product, newQty, activeLevelId, defaultLevelId);
+          const newPrice = calculateEffectivePriceForUnit(baseSellingUnit(product), newQty, activeLevelId, defaultLevelId);
           return prevItems.map(item => item.id === product.id ? { ...item, quantity: newQty, price: newPrice } : item);
         } else {
           const newItem: SaleItem = {
             ...product, quantity: 1, discount: 0, name: product.name,
-            price: calculateEffectivePrice(product, 1, activeLevelId, defaultLevelId),
+            price: calculateEffectivePriceForUnit(baseSellingUnit(product), 1, activeLevelId, defaultLevelId),
             taxType: mapVatStatusToTaxType(product.vatStatus),
           };
           setSelectedItemId(newItem.id);
@@ -699,7 +707,7 @@ export function usePOS() {
       setItems(prevItems => prevItems.map(item => {
         if (item.id === productId) {
           const original = products?.find(p => p.id === productId);
-          return { ...item, quantity: newQuantity, price: calculateEffectivePrice(original || item, newQuantity, activeLevelId, defaultLevelId) };
+          return { ...item, quantity: newQuantity, price: calculateEffectivePriceForUnit(baseSellingUnit(original || item), newQuantity, activeLevelId, defaultLevelId) };
         }
         return item;
       }));
