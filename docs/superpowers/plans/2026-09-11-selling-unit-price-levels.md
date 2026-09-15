@@ -614,6 +614,238 @@ git commit -m "feat: resolve POS cart prices against the selling unit's own pric
 
 ---
 
+### Task 5.5: Fix `MySqlProductRepository` — POS's actual product-fetch path was broken by Task 1
+
+**Added mid-plan, not in the original design.** Task 5's implementer discovered that `GET /api/products`
+— the endpoint POS itself calls (`use-pos.ts:688`, via `hooks/use-api.ts`'s `useProducts`) — does NOT
+go through `app/(app)/products/actions.ts`'s `getProducts` (the function every earlier task in this
+plan has been correctly updating). It goes through a separate, older repository-pattern path:
+`app/api/products/route.ts` → `GetProductsUseCase` → `MySqlProductRepository`
+(`src/infrastructure/repositories/MySqlProductRepository.ts`). That repository still queries the
+`product_price_levels` table Task 1 dropped (`SELECT * FROM product_price_levels` at line 104,
+`INSERT INTO product_price_levels` at line 227) — so **every `GET /api/products` call has been
+failing with a 500 since Task 1 merged**, and this repository never returned `sellingUnits` in the
+first place, so this plan's entire per-selling-unit pricing feature (Tasks 1-5) has been inert in the
+live POS app regardless. `git log` confirms this file predates this plan's work — it is a pre-existing
+gap in both this plan and the prior selling-units migration plan, neither of which ever touched
+`src/infrastructure/` or `src/core/`.
+
+This is being fixed inside this plan, not deferred, because the severity (a production POS screen's
+product list failing outright) outweighs staying within the plan's originally-scoped file list —
+ruling recorded in the SDD ledger.
+
+**Scope decision:** `MySqlProductRepository.findAll` (→ `GET /api/products`, called by POS) is the
+only method confirmed to be live-called by application code — grepped, nothing in `app/` POSTs to
+`/api/products` (product creation/editing goes through `actions.ts`'s server actions, not this REST
+route). `create`/`update`/`delete`/`findById` on this repository are unreachable dead code from the
+app's own UI today; still fix their `product_price_levels` references for correctness (a future caller
+should not silently 500 or silently insert into a nonexistent table), but do not build out
+`sellingUnits` support for them — only `findAll` needs to return that shape.
+
+**Files:**
+- Modify: `src/infrastructure/repositories/MySqlProductRepository.ts`
+- Modify: `src/core/products/domain/Product.ts` (add `sellingUnits` to `ProductEntity`)
+- Modify: `hooks/use-api.ts` (`mapApiProduct` must carry `sellingUnits` through to the client — it
+  currently drops any field not explicitly listed)
+- Investigate, fix if broken: `src/infrastructure/services/TransferStockService.ts` (lines ~125, ~132
+  — same `product_price_levels` references; confirm whether this service is live-called before
+  deciding its fix, the way `findAll` vs `create`/`update`/`delete` was decided above)
+
+**Interfaces:**
+- Consumes: `product_selling_unit_price_levels` (Task 1), the `sellingUnits[i].priceLevels` shape
+  `actions.ts`'s `getProducts` already produces (Task 3) — this task ports the same read pattern into
+  a different file, it does not invent a new shape.
+- Produces: `MySqlProductRepository.findAll`'s returned products carry a `sellingUnits` array
+  identical in shape to what `actions.ts`'s `getProducts` returns, so `baseSellingUnit()` in
+  `use-pos.ts` (Task 5) stops hitting its fallback branch on real data.
+
+- [ ] **Step 1: Read the current broken read path**
+
+Read `src/infrastructure/repositories/MySqlProductRepository.ts` in full (286 lines). Note the
+`findAll` method's existing pattern: one query for products, one query for
+`SELECT * FROM product_price_levels WHERE product_id IN (?)`, then a JS-side loop attaching
+`product.priceLevels` and computing a default-level price override. This task replaces that middle
+query and loop with the selling-unit-keyed equivalent.
+
+- [ ] **Step 2: Replace the price-levels query with a selling-units query**
+
+In `findAll`, after the main `products` query and before the `products.forEach` loop, replace:
+
+```typescript
+const priceLevelsSql = `SELECT * FROM product_price_levels WHERE product_id IN (?)`;
+const priceLevels = await query(priceLevelsSql, [productIds]);
+```
+
+with a query for `product_selling_units` joined to `product_selling_unit_price_levels`, grouped in JS
+by `product_id` and then by `selling_unit_id` — mirroring the exact pattern `actions.ts`'s `getProducts`
+already uses (Task 3, `sulpByUnit` map):
+
+```typescript
+const suSql = `SELECT * FROM product_selling_units WHERE product_id IN (?)`;
+const sellingUnitRows = await query(suSql, [productIds]);
+const sellingUnitIds = sellingUnitRows.map((u: any) => u.id);
+
+const sulpByUnit = new Map<string, any[]>();
+if (sellingUnitIds.length > 0) {
+  const sulpSql = `SELECT * FROM product_selling_unit_price_levels WHERE selling_unit_id IN (?)`;
+  const sulpRows = await query(sulpSql, [sellingUnitIds]);
+  for (const row of sulpRows) {
+    if (!sulpByUnit.has(row.selling_unit_id)) sulpByUnit.set(row.selling_unit_id, []);
+    sulpByUnit.get(row.selling_unit_id)!.push({
+      levelId: row.price_level_id,
+      price: Number(row.price),
+      minQuantity: row.min_quantity ?? 0,
+    });
+  }
+}
+
+const suByProduct = new Map<string, any[]>();
+for (const u of sellingUnitRows) {
+  if (!suByProduct.has(u.product_id)) suByProduct.set(u.product_id, []);
+  suByProduct.get(u.product_id)!.push({
+    id: u.id,
+    name: u.name,
+    factor: Number(u.factor),
+    barcode: u.barcode ?? undefined,
+    cost: u.cost !== null ? Number(u.cost) : undefined,
+    price: Number(u.price),
+    isBase: !!u.is_base,
+    priceLevels: sulpByUnit.get(u.id) ?? [],
+  });
+}
+```
+
+Guard the `IN (?)` queries the same way the existing code implicitly relies on `productIds` being
+non-empty (the outer `if (products.length > 0)` block already covers this — keep the new queries
+inside it).
+
+- [ ] **Step 3: Attach `sellingUnits` in the per-product loop, and stop reading `product_price_levels`**
+
+Inside the existing `products.forEach((product: any) => { ... })` loop, add:
+
+```typescript
+product.sellingUnits = suByProduct.get(product.id) ?? [];
+```
+
+Remove the old `product.priceLevels = productSpecificLevels.map(...)` assignment and the
+`productSpecificLevels` variable it depended on — `product_price_levels` no longer exists, so nothing
+here can read it. The existing default-price-override block below it (the one that overwrites
+`product.price` from a matching retail-level row) must be re-derived from the BASE selling unit's
+`priceLevels` instead of the old `productSpecificLevels` array:
+
+```typescript
+if (defaultLevelId) {
+  const baseUnit = product.sellingUnits.find((u: any) => u.isBase);
+  const baseOverrides = (baseUnit?.priceLevels ?? [])
+    .filter((pl: any) => pl.levelId === defaultLevelId)
+    .sort((a: any, b: any) => (a.minQuantity || 0) - (b.minQuantity || 0));
+  if (baseOverrides.length > 0) {
+    product.price = baseOverrides[0].price;
+  }
+}
+```
+
+This keeps the pre-existing "default-level override replaces the listed price" behavior for whatever
+already consumes `findAll`'s plain `.price` field, now sourced from the base unit's own price levels
+instead of the dropped product-level table — matching the resolution rule the rest of this plan
+established (§4 of the spec: a unit falls back to its own price, an override replaces it).
+
+- [ ] **Step 4: Fix `create`, `update`, and remove the dead `priceLevels` write**
+
+In `create` (~line 224-232), the `product_price_levels` INSERT loop writes to a table that no longer
+exists. Since this repository's `create`/`update` are confirmed unreachable from live app code (see
+Scope decision above — nothing calls `POST /api/products`), remove that INSERT loop rather than
+porting it to the new schema; there being no live caller with a `priceLevels` payload to test against
+makes a real per-unit port unverifiable and out of proportion to this task. Leave a short comment
+explaining why (dead code path, `product_price_levels` no longer exists, port to per-selling-unit
+writes if this method ever gains a real caller). Do the same for any `product_price_levels` reference
+in `update` (there is none currently — confirm, don't assume).
+
+- [ ] **Step 5: Add `sellingUnits` to the `ProductEntity` domain type**
+
+In `src/core/products/domain/Product.ts`, add a field to `ProductEntity` matching the shape Step 3
+now populates:
+
+```typescript
+sellingUnits?: {
+  id?: string;
+  name: string;
+  factor: number;
+  barcode?: string;
+  cost?: number;
+  price: number;
+  isBase?: boolean;
+  priceLevels?: { levelId: string; price: number; minQuantity?: number }[];
+}[];
+```
+
+- [ ] **Step 6: Carry `sellingUnits` through the client-side mapper**
+
+In `hooks/use-api.ts`, `mapApiProduct` builds a `Product` object field-by-field and silently drops
+anything not explicitly listed — this is why `sellingUnits` was being lost even before reaching
+`use-pos.ts`. Add one line to the returned object:
+
+```typescript
+sellingUnits: item.sellingUnits || [],
+```
+
+- [ ] **Step 7: Investigate `TransferStockService.ts`**
+
+Read `src/infrastructure/services/TransferStockService.ts` around lines 125 and 132 (the
+`product_price_levels` SELECT and INSERT). Determine whether this service is actually invoked by any
+current API route or UI action (grep for its class name / import sites). If it IS live-called, its
+`product_price_levels` references are an equally real production bug — port them to
+`product_selling_unit_price_levels` following the same base-unit-keyed pattern as Step 2, scoped only
+as far as this service's existing behavior requires (do not expand its feature set). If it is NOT
+live-called (dead/unused code, same as `create`/`update`/`delete` above), state that finding in your
+report and leave it with a comment noting the dead reference, matching Step 4's treatment — do not
+silently expand this task's scope beyond what a live caller requires.
+
+- [ ] **Step 8: Typecheck**
+
+Run: `npx tsc --noEmit 2>&1 | grep -E "MySqlProductRepository|Product\.ts|use-api|TransferStockService"`
+Expected: no NEW errors naming those files.
+
+- [ ] **Step 9: Verify against the database and the running app**
+
+```bash
+npx tsx -e "
+const {query}=require('./lib/mysql');
+(async()=>{
+  const rows = await query('SELECT id FROM products LIMIT 1');
+  console.log(rows[0]);
+  process.exit(0);
+})();
+"
+```
+
+Then, with the dev server running in the FOREGROUND: hit `GET /api/products?limit=5` directly (e.g.
+`curl http://localhost:3000/api/products?limit=5` or open it in a browser) and confirm (a) the
+response is `success: true` with no 500, and (b) at least one returned product has a non-empty
+`sellingUnits` array with an `isBase: true` entry. Then open POS itself and confirm products actually
+load (this was completely broken before this task). If a product has a Wholesale override set on its
+base unit (from Task 4's verification), confirm switching to Wholesale in POS now shows that price —
+this is the point where Task 5's already-correct code finally takes effect.
+
+If you have no way to run the dev server or hit it over HTTP, say so plainly and verify as far as
+possible via the DB query and typecheck alone — do NOT claim a live pass you did not perform.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add "src/infrastructure/repositories/MySqlProductRepository.ts" "src/core/products/domain/Product.ts" "hooks/use-api.ts"
+git commit -m "fix: repoint MySqlProductRepository off the dropped product_price_levels table"
+```
+
+If Step 7 required changes to `TransferStockService.ts`, commit it separately:
+
+```bash
+git add "src/infrastructure/services/TransferStockService.ts"
+git commit -m "fix: migrate TransferStockService off the dropped product_price_levels table"
+```
+
+---
+
 ### Task 6: Document the change
 
 **Files:**
@@ -631,6 +863,16 @@ override for the active level falls back to its own `price` column — never ano
 price, never a computed multiple of one. `lib/pricing.ts:calculateEffectivePriceForUnit`
 is the resolver; the POS cart still only ever prices a line against a product's BASE unit —
 letting a cashier choose a non-base unit in the cart is not built yet.
+
+**Two separate product read paths exist, and only one was migrated to selling units.**
+`app/(app)/products/actions.ts`'s `getProducts` (used by the Products back-office pages) and
+`src/infrastructure/repositories/MySqlProductRepository.ts` (used by `GET /api/products`, which
+POS itself calls) are independent implementations that happened to diverge before this feature
+existed. This plan updated both, but be aware they are NOT the same code path — a future schema
+change to product reads must be applied to both, or POS silently falls back to stale/incomplete
+data the way it did here until Task 5.5 fixed it. `create`/`update`/`delete` on
+`MySqlProductRepository` are unreachable from the app's own UI (product writes go through
+`actions.ts`'s server actions instead) — dead code, not a second write path to keep in sync.
 ```
 
 - [ ] **Step 2: Commit**
