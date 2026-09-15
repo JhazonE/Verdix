@@ -1,6 +1,6 @@
 import { StockCountRepository } from '../domain/IStockCountRepository';
 import { PoolConnection } from 'mysql2/promise';
-import { findUltimateRoot, addFamilyStock, deductFamilyStock } from '../../../../lib/family-sync';
+import { updateStockAndRecordMovement } from '../../../../lib/stock-movements';
 import { computeTrueVariance, getNetMovementSince } from '../../../../lib/stock-count-baseline';
 
 export class CompleteStockCountUseCase {
@@ -21,15 +21,16 @@ export class CompleteStockCountUseCase {
 
       // Read every baseline input BEFORE applying any adjustment.
       //
-      // This must not move into the loop below. Applying one item's variance runs
-      // family-sync, which recursively updates the stock of every OTHER member of
-      // that product's family and writes movement rows tagged with this count's
-      // id. A later item in the same family would then read a live stock that
-      // already includes that write, while its movement sums exclude it (they
-      // filter out this count's own reference id) — the reconciliation check
-      // would trip on a perfectly healthy log and invent a phantom variance on a
-      // correctly counted line. An unfiltered count contains parents and children
-      // together, so this is the ordinary case, not an edge case.
+      // Keep it that way even though a variance now touches only its own product.
+      // Reading all baselines up front makes every line's baseline a snapshot of
+      // the same instant, which is what the count measured; interleaving reads
+      // and writes would let one line's own write bleed into another's inputs if
+      // the same product ever appears twice in a count. Historically this
+      // mattered far more: applying a variance ran family-sync, which rewrote the
+      // stock of every OTHER member of that product's family, so a later line in
+      // the same family read a live stock that already included that write while
+      // its movement sums excluded it (they filter out this count's own reference
+      // id) — inventing a phantom variance on a correctly counted line.
       const measured = new Map<string, {
         liveStock: number;
         netMovementToCount: number;
@@ -104,29 +105,18 @@ export class CompleteStockCountUseCase {
 
         if (variance === 0) continue;
 
-        // Use family-sync logic to propagate the count adjustment
-        const { rootId, factorToRoot } = await findUltimateRoot(item.productId, connection);
-        const quantityInRootUnits = Math.abs(variance) / factorToRoot;
-
-        if (variance > 0) {
-          await addFamilyStock(
-            rootId,
-            quantityInRootUnits,
-            stockCountId,
-            'adjustment',
-            item.adjustmentReason || 'System Adjustment from Stock Count',
-            connection
-          );
-        } else {
-          await deductFamilyStock(
-            rootId,
-            quantityInRootUnits,
-            stockCountId,
-            'adjustment',
-            item.adjustmentReason || 'System Adjustment from Stock Count',
-            connection
-          );
-        }
+        // The variance was computed against this product's OWN live stock, which
+        // is already in base units, so it applies directly and signed. One
+        // product, one stock figure — nothing cascades to another product.
+        await updateStockAndRecordMovement(
+          item.productId,
+          variance,
+          'adjustment',
+          stockCountId,
+          'adjustment',
+          item.adjustmentReason || 'System Adjustment from Stock Count',
+          connection
+        );
       }
 
       // 2. Mark stock count as completed

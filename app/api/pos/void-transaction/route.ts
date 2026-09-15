@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withTransaction, query } from '@/lib/mysql';
-import { addFamilyStock, findUltimateRoot } from '@/lib/family-sync';
+import { baseQuantity } from '@/lib/selling-units';
+import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 import { saveEJournalFiles } from '@/lib/ejournal/ejournal-writer';
 
 // The void_reason column can't disappear once ensured — only pay the
@@ -80,21 +81,36 @@ export async function POST(request: NextRequest) {
             }
 
             // 2. Fetch items to reverse stock
-            const [items]: any = await connection.query('SELECT product_id, product_name, quantity FROM sale_items WHERE sale_id = ?', [saleId]);
+            const [items]: any = await connection.query(
+                'SELECT product_id, product_name, quantity, selling_unit_factor FROM sale_items WHERE sale_id = ?',
+                [saleId]
+            );
             console.log('void-transaction: Found items:', items?.length || 0);
 
             if (items && items.length > 0) {
                 for (const item of items) {
-                    // --- Inventory Addition (Reversal) using recursive family sync ---
-                    const { rootId, factorToRoot } = await findUltimateRoot(item.product_id, connection as any);
-                    const quantityToAddInRootUnits = item.quantity / factorToRoot;
-                    
-                    await addFamilyStock(
-                        rootId, 
-                        quantityToAddInRootUnits, 
-                        saleId, 
-                        'adjustment', 
-                        `Voiding POS Sale: ${saleId}`, 
+                    // Restore exactly what the sale took: one product, one stock
+                    // figure, in base units — nothing cascades to a family any more.
+                    //
+                    // The factor is the one RECORDED on the line, not the unit's
+                    // current one. A unit edited since the sale must not change how
+                    // much stock voiding it gives back. Rows written before selling
+                    // units existed carry NULL, which means factor 1.
+                    const factor = Number(item.selling_unit_factor ?? 1);
+                    const qty = Number(item.quantity);
+                    if (!Number.isFinite(qty)) {
+                        throw new Error(
+                            `Invalid quantity on sale item for product ${item.product_id}: ${item.quantity}`
+                        );
+                    }
+
+                    await updateStockAndRecordMovement(
+                        item.product_id,
+                        baseQuantity(qty, factor),
+                        'adjustment',
+                        saleId,
+                        'adjustment',
+                        `Voiding POS Sale: ${saleId}`,
                         connection as any
                     );
                 }

@@ -63,9 +63,9 @@ export function computeTrueVariance(input: BaselineInput): BaselineResult {
 /**
  * Net stock movement for a product within a window.
  *
- * Queries the product's OWN product_id, not the family root: addFamilyStock and
- * deductFamilyStock recurse and write a movement row per node, so each product's
- * movements are complete under its own id.
+ * Queries the product's OWN product_id. Every stock change writes a movement row
+ * against the product whose stock actually moved, so a product's movements are
+ * complete under its own id.
  *
  * Movements referencing the stock count itself are excluded so that a count
  * completed twice (or retried after a partial failure) cannot fold its own

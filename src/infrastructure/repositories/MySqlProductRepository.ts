@@ -101,18 +101,46 @@ export class MySqlProductRepository implements ProductRepository {
       const defaultLevelId = defaultPriceLevelResult.length > 0 ? defaultPriceLevelResult[0].id : null;
 
       const productIds = products.map((p: any) => p.id);
-      const priceLevelsSql = `SELECT * FROM product_price_levels WHERE product_id IN (?)`;
-      const priceLevels = await query(priceLevelsSql, [productIds]);
-      
+
+      // product_price_levels was dropped when price levels moved to being
+      // per-selling-unit instead of per-product. Fetch selling units and their
+      // per-level overrides instead, mirroring actions.ts's getProducts.
+      const suSql = `SELECT * FROM product_selling_units WHERE product_id IN (?)`;
+      const sellingUnitRows = await query(suSql, [productIds]);
+      const sellingUnitIds = sellingUnitRows.map((u: any) => u.id);
+
+      const sulpByUnit = new Map<string, any[]>();
+      if (sellingUnitIds.length > 0) {
+        const sulpSql = `SELECT * FROM product_selling_unit_price_levels WHERE selling_unit_id IN (?)`;
+        const sulpRows = await query(sulpSql, [sellingUnitIds]);
+        for (const row of sulpRows) {
+          if (!sulpByUnit.has(row.selling_unit_id)) sulpByUnit.set(row.selling_unit_id, []);
+          sulpByUnit.get(row.selling_unit_id)!.push({
+            levelId: row.price_level_id,
+            price: Number(row.price),
+            minQuantity: row.min_quantity ?? 0,
+          });
+        }
+      }
+
+      const suByProduct = new Map<string, any[]>();
+      for (const u of sellingUnitRows) {
+        if (!suByProduct.has(u.product_id)) suByProduct.set(u.product_id, []);
+        suByProduct.get(u.product_id)!.push({
+          id: u.id,
+          name: u.name,
+          factor: Number(u.factor),
+          barcode: u.barcode ?? undefined,
+          cost: u.cost !== null ? Number(u.cost) : undefined,
+          price: Number(u.price),
+          isBase: !!u.is_base,
+          priceLevels: sulpByUnit.get(u.id) ?? [],
+        });
+      }
+
       products.forEach((product: any) => {
-        const productSpecificLevels = priceLevels.filter((pl: any) => pl.product_id === product.id);
-        
-        product.priceLevels = productSpecificLevels.map((pl: any) => ({
-            levelId: pl.price_level_id,
-            price: parseFloat(pl.price),
-            minQuantity: pl.min_quantity ? parseInt(pl.min_quantity) : 0
-          }));
-        
+        product.sellingUnits = suByProduct.get(product.id) ?? [];
+
         if (product.shelfLocationIds) {
           product.shelfLocationIds = product.shelfLocationIds.split(',');
         } else {
@@ -129,12 +157,13 @@ export class MySqlProductRepository implements ProductRepository {
         delete product.shelfQuantitiesRaw;
 
         if (defaultLevelId) {
-            const retailOverrides = productSpecificLevels
-                .filter((pl: any) => pl.price_level_id === defaultLevelId)
-                .sort((a: any, b: any) => (a.min_quantity || 0) - (b.min_quantity || 0));
-            
-            if (retailOverrides.length > 0) {
-                product.price = parseFloat(retailOverrides[0].price);
+            const baseUnit = product.sellingUnits.find((u: any) => u.isBase);
+            const baseOverrides = (baseUnit?.priceLevels ?? [])
+                .filter((pl: any) => pl.levelId === defaultLevelId)
+                .sort((a: any, b: any) => (a.minQuantity || 0) - (b.minQuantity || 0));
+
+            if (baseOverrides.length > 0) {
+                product.price = baseOverrides[0].price;
             }
         }
       });
@@ -221,13 +250,31 @@ export class MySqlProductRepository implements ProductRepository {
       product.stock || 0, product.price, product.cost, product.sku, product.barcode, 0, 0
     ]);
 
+    // POST /api/products (CreateProductUseCase) IS a live, E2E-tested caller
+    // of this method — it is not the app's primary product-creation path
+    // (that's app/(app)/products/actions.ts's addProduct server action), but
+    // it is reachable, and its request DTO still declares an optional
+    // priceLevels field. The old `INSERT INTO product_price_levels` here
+    // wrote to a table Task 1 dropped; price levels are now per-selling-unit
+    // (product_selling_unit_price_levels), which requires an existing
+    // selling_unit_id (FK). Every product needs a base selling unit anyway
+    // (factor 1, is_base = 1) or it is unsellable and reads back with an
+    // empty sellingUnits array — create it unconditionally here, then attach
+    // any submitted price levels to it, so a priceLevels payload from this
+    // path is no longer silently dropped.
+    const baseUnitId = `psu_base_${id}`;
+    await query(
+      `INSERT INTO product_selling_units (id, product_id, name, barcode, factor, cost, price, is_base)
+       VALUES (?, ?, ?, ?, 1, ?, ?, 1)`,
+      [baseUnitId, id, product.unitOfMeasure || 'Piece', product.barcode || null, product.cost, product.price],
+    );
+
     if (product.priceLevels && product.priceLevels.length > 0) {
       for (const pl of product.priceLevels) {
-        const plSql = `
-          INSERT INTO product_price_levels (product_id, price_level_id, price, min_quantity)
-          VALUES (?, ?, ?, ?)
-        `;
-        await query(plSql, [id, pl.levelId, pl.price, pl.minQuantity || 0]);
+        await query(
+          'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)',
+          [baseUnitId, pl.levelId, pl.price, pl.minQuantity || 0],
+        );
       }
     }
 

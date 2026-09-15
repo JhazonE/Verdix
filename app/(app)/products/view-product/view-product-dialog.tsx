@@ -20,9 +20,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { cn, formatQuantity } from '@/lib/utils';
 
 import { EditProductDialog } from '../edit-product/edit-product-dialog';
-import { QuickAddChildDialog } from '../quick-add-child/quick-add-child-dialog';
 import { BreakPackDialog } from '../break-pack/break-pack-dialog';
-import { ReassignParentDialog } from '../reassign-parent/reassign-parent-dialog';
 import { DetailItem } from './detail-item';
 import { SectionHeader } from './section-header';
 
@@ -30,17 +28,15 @@ export function ViewProductDialog({
     product,
     onProductUpdated,
     products,
-    onChildAdded,
     productOptions,
     onOptionsRefresh,
     trigger,
     open: externalOpen,
-    onOpenChange: externalOnOpenChange
+    onOpenChange: externalOnOpenChange,
 }: {
     product: Product;
     onProductUpdated?: () => void;
     products?: Product[];
-    onChildAdded?: () => void;
     productOptions?: any;
     onOptionsRefresh?: () => void;
     trigger?: React.ReactNode;
@@ -236,11 +232,8 @@ export function ViewProductDialog({
 
                                     {(() => {
                                         const hasConversionFactors = product.conversionFactors && product.conversionFactors.length > 0;
-                                        const isChildProduct = product.parentId && products;
-                                        const parentProduct = isChildProduct ? products?.find(p => p.id === product.parentId) : null;
-                                        const childConversion = parentProduct?.conversionFactors?.find(cf => cf.unit === product.unitOfMeasure);
 
-                                        if (hasConversionFactors || childConversion) {
+                                        if (hasConversionFactors) {
                                             return (
                                                 <div className="space-y-4">
                                                     <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
@@ -257,15 +250,6 @@ export function ViewProductDialog({
                                                                 <Badge variant="outline" className="font-semibold px-2 py-0 bg-primary/10 text-primary border-primary/20">1 = {cf.factor}</Badge>
                                                             </div>
                                                         ))}
-                                                        {childConversion && parentProduct && (
-                                                            <div className="flex justify-between items-center p-3 bg-card rounded-lg border border-emerald-500/20 shadow-sm bg-emerald-500/5 col-span-full">
-                                                                <span className="text-sm font-medium flex items-center gap-2">
-                                                                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                                                                    {parentProduct.unitOfMeasure} to {product.unitOfMeasure}
-                                                                </span>
-                                                                <Badge variant="outline" className="font-semibold bg-emerald-500/10 text-emerald-600 border-emerald-500/20">1 = {childConversion.factor}</Badge>
-                                                            </div>
-                                                        )}
                                                     </div>
                                                 </div>
                                             );
@@ -279,62 +263,26 @@ export function ViewProductDialog({
                 </div>
 
                 <DialogFooter className="sticky bottom-0 bg-background p-6 border-t sm:justify-between flex items-center gap-4">
-                     <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded">ID: {product.id}</p>
+                     <div className="flex flex-col gap-1">
+                        <p className="text-xs text-muted-foreground font-mono bg-muted px-2 py-1 rounded w-fit">ID: {product.id}</p>
+                     </div>
                      <div className="flex items-center gap-3">
                         <Button variant="ghost" onClick={() => setIsOpen(false)} className="hover:bg-muted">Close</Button>
-                        {!product.parentId && (product.conversionFactors?.length ?? 0) > 0 && products && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <QuickAddChildDialog
-                                  parentProduct={product}
-                                  baseStock={undefined}
-                                  onChildAdded={() => {
-                                    onChildAdded?.();
-                                    onProductUpdated?.();
-                                  }}
-                                  products={products}
-                                />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Add child unit</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                        {!product.parentId && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <BreakPackDialog
-                                  parentProduct={product}
-                                  onPackBroken={() => {
-                                    onProductUpdated?.();
-                                  }}
-                                />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Break this pack into smaller units</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                        {products && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <ReassignParentDialog
-                                  product={product}
-                                  products={products}
-                                  onProductUpdated={onProductUpdated}
-                                />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Move this product under a different parent</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <BreakPackDialog
+                                parentProduct={product}
+                                onPackBroken={() => {
+                                  onProductUpdated?.();
+                                }}
+                              />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Break this pack into smaller units</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                         <EditProductDialog
                           product={product}
                           onProductUpdated={onProductUpdated}

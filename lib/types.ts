@@ -43,12 +43,24 @@ export interface Product {
   shelfLocationNames?: string | null;
   shelfQuantities?: Record<string, number>;
 
-  // Parent/Child relationship
-  parentId?: string | null;
   conversionFactor?: number;
+  /** Per-product markup override. null = inherit from category/brand/supplier. */
+  markupPercentage?: number | null;
 
   // Conversion factors for different units
   conversionFactors?: { unit: string; factor: number }[];
+  /** Every way this product is sold, including the base unit (factor 1, is_base). */
+  sellingUnits?: {
+    id?: string;
+    name: string;
+    factor: number;
+    barcode?: string;
+    cost?: number;
+    price: number;
+    isBase?: boolean;
+    /** This unit's own price-level overrides — never another unit's. */
+    priceLevels?: { levelId: string; price: number; minQuantity?: number }[];
+  }[];
 
   // Timestamps
   createdAt?: string;

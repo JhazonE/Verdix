@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withTransaction } from '../../../../../lib/mysql';
-import { addFamilyStock, findUltimateRoot } from '../../../../../lib/family-sync';
+import { baseQuantity } from '@/lib/selling-units';
+import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 import { isService } from '@/lib/product-type';
 
 // Statuses for which inventory has already been deducted (deduction happens at delivery).
@@ -39,18 +40,28 @@ export async function DELETE(
                 // nothing to give back. Restoring them would invent inventory
                 // for something that has none.
                 const [items]: any = await connection.query(
-                    `SELECT soi.product_id, soi.quantity, p.type
+                    `SELECT soi.product_id, soi.quantity, soi.selling_unit_factor, p.type
                      FROM sales_order_items soi
                      LEFT JOIN products p ON p.id = soi.product_id
                      WHERE soi.sales_order_id = ?`,
                     [orderId]
                 );
                 for (const item of items.filter((i: any) => !isService(i))) {
-                    const { rootId, factorToRoot } = await findUltimateRoot(item.product_id, connection as any);
-                    const quantityToAddInRootUnits = item.quantity / factorToRoot;
-                    await addFamilyStock(
-                        rootId,
-                        quantityToAddInRootUnits,
+                    // Restore exactly the base units the delivery took. The factor
+                    // is the one RECORDED on the order line — a unit edited since
+                    // delivery must not change how much the reversal gives back.
+                    // NULL means factor 1 (rows written before selling units).
+                    const factor = Number(item.selling_unit_factor ?? 1);
+                    const qty = Number(item.quantity);
+                    if (!Number.isFinite(qty)) {
+                        throw new Error(
+                            `Invalid quantity on order item for product ${item.product_id}: ${item.quantity}`
+                        );
+                    }
+                    await updateStockAndRecordMovement(
+                        item.product_id,
+                        baseQuantity(qty, factor),
+                        'adjustment',
                         orderId,
                         'adjustment',
                         `Reversal of Sales Order: ${orderId}`,

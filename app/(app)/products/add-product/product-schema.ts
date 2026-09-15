@@ -41,9 +41,41 @@ const standardProductSchema = baseProductSchema.extend({
   cost: z.coerce.number().nonnegative('Cost must be non-negative').optional(),
   parentId: z.string().optional(),
   conversionFactor: z.coerce.number().positive('Conversion factor must be positive').optional(),
+  /**
+   * Legacy repackaging conversions. Kept because inventory repackaging and the
+   * view-product dialog still read `conversion_factors`; Task 7d retires them
+   * after auditing the raw-SQL readers.
+   */
   conversionFactors: z.array(z.object({
     unit: z.string().min(1, 'Unit is required'),
     factor: z.coerce.number().positive('Factor must be positive'),
+  })).optional(),
+  /**
+   * Extra ways this product can be sold, beyond its base unit.
+   *
+   * The base unit itself is NOT in this list — it is derived from
+   * `unitOfMeasure`/`price`/`cost` and written with factor 1 by addProduct, the
+   * same shape migration 119 gave every existing product.
+   *
+   * `factor` must be strictly positive: a 0 factor would make every quantity
+   * converted through it zero, silently deducting no stock.
+   */
+  sellingUnits: z.array(z.object({
+    name: z.string().min(1, 'Unit name is required'),
+    factor: z.coerce.number().positive('Quantity must be greater than 0'),
+    barcode: z.string().optional(),
+    cost: z.coerce.number().nonnegative('Cost must be non-negative').optional(),
+    price: z.coerce.number().nonnegative('Price must be non-negative'),
+    /**
+     * This unit's own price-level overrides. A blank price on the form means
+     * no override at all — never a coerced 0 — so this array simply omits
+     * that level's entry rather than carrying a 0-valued row.
+     */
+    priceLevels: z.array(z.object({
+      levelId: z.string(),
+      price: z.number().min(0).optional(),
+      minQuantity: z.number().min(0).optional(),
+    })).optional(),
   })).optional(),
   isPerishable: z.boolean().optional(),
 });
@@ -71,6 +103,7 @@ const serviceProductSchema = baseProductSchema.extend({
   parentId: z.undefined(),
   conversionFactor: z.undefined(),
   conversionFactors: z.undefined(),
+  sellingUnits: z.undefined(),
   isPerishable: z.undefined(),
 });
 

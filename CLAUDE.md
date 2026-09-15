@@ -83,8 +83,35 @@ Migrations in `scripts/migrations/` — numbered TypeScript files (001–088+), 
 
 **Stock / Inventory:**
 - `lib/batch-deduction.ts` — FIFO cost depletion on every sale. Each product has `inventory_batches` rows; sales pull from oldest batch first.
-- `lib/family-sync.ts` — Products can belong to a family (e.g., 1kg bag → 250g sachets). Any stock change recursively syncs all family members.
 - `lib/stock-movements.ts` — Every stock change writes a movement record for audit/history.
+
+**Product markup** — `lib/purchase-utils.ts` resolves a suggested price's markup in strict precedence: `products.markup_percentage` (a per-product override) first, then subcategory → category → brand → supplier ordered by `settings.markupPriority`, then `defaultMarkupPercentage`. The per-product override deliberately bypasses the `enableAutomaticMarkup` toggle — that toggle suppresses only *inherited* markup, since a value typed against one product is not a guess the system made. `NULL` means inherit and `0` means sell at cost; never coerce between them. Markup only ever *suggests* a price — nothing in this chain writes `products.price`.
+
+**Selling units** — a product has ONE stock figure in `products.stock`, always in base units, and one row per way it can be sold in `product_selling_units` (name, barcode, factor, cost, price; exactly one `is_base = 1` with factor 1). Selling deducts `quantity × factor` from that single figure — there is nothing to synchronise, which is why the old `lib/family-sync.ts` and `products.parent_id` were removed. Barcodes are UNIQUE across selling units so a scan resolves to exactly one. Line items record `selling_unit_id` plus a denormalised `selling_unit_name` and `selling_unit_factor` captured at sale time, so a later edit to a unit cannot change what a filed receipt meant; rows with `NULL` predate this and mean the base unit. Sales reports show the unit sold (1 case); inventory moves in base units (60 pieces). The Add/Edit Product form's **Selling Units** tab manages these rows; markup is unrelated and still lives on the Edit Product form separately. Two things remain unfinished from this migration: `products.parent_id` and `conversion_factors` still exist and are still read by several files (including `TransferStockService.ts`, which still cascades stock across a family on warehouse transfers) because dropping them is deferred to a later task, and `sale_items.cost_at_sale` is still recorded per base unit while `price` is per selling unit — harmless today because every factor is 1, but it will misstate margin once a non-base sale happens.
+
+Price levels are per SELLING UNIT, not per product: `product_selling_unit_price_levels`
+(keyed by `selling_unit_id`) replaced the old product-keyed `product_price_levels`, so a
+Case can carry a different Wholesale price than the Piece it's packed from. A unit with no
+override for the active level falls back to its own `price` column — never another unit's
+price, never a computed multiple of one. `lib/pricing.ts:calculateEffectivePriceForUnit`
+is the resolver; the POS cart still only ever prices a line against a product's BASE unit —
+letting a cashier choose a non-base unit in the cart is not built yet.
+
+**Two separate product read paths exist, and only one was migrated to selling units.**
+`app/(app)/products/actions.ts`'s `getProducts` (used by the Products back-office pages) and
+`src/infrastructure/repositories/MySqlProductRepository.ts` (used by `GET /api/products`, which
+POS itself calls) are independent implementations that happened to diverge before this feature
+existed. This plan updated both, but be aware they are NOT the same code path — a future schema
+change to product reads must be applied to both, or POS silently falls back to stale/incomplete
+data the way it did here until Task 5.5 fixed it. `MySqlProductRepository.update`/`delete` are
+unreachable from the app's own UI (product writes go through `actions.ts`'s server actions
+instead). `create` is NOT dead — `POST /api/products` reaches it via `CreateProductUseCase` and is
+exercised by `tests/e2e/purchase-order.spec.ts` — it is simply not the app's PRIMARY creation path.
+Both `create` and `TransferStockService.ts` (a live warehouse-transfer service, also fixed by this
+plan) now create a base selling unit for a newly-created product before attaching any price levels
+to it, matching the convention `actions.ts` established. `purchase-actions.ts` (PO receiving) and
+`price-list-import.ts` (bulk price-list apply) were also found writing to the dropped
+`product_price_levels` table during this plan and fixed the same way.
 
 **Approvals workflow** — A multi-level queue pattern used for purchase orders, stock counts, stock transfers, bad orders, and bulk adjustments. Items are inserted with `status='pending'`, moved through approval levels, then finalized to update actual stock/accounts.
 

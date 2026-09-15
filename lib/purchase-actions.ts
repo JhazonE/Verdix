@@ -2,7 +2,7 @@ import { withTransaction } from './mysql';
 import { generateBatchId } from './batch-utils';
 import { calculatePurchaseCosts } from './purchase-utils';
 import { toSafeNumber } from './utils';
-import { findUltimateRoot, addFamilyStock } from './family-sync';
+import { updateStockAndRecordMovement } from './stock-movements';
 
 function parseDueDays(paymentTerms: string | undefined | null): number {
   if (!paymentTerms) return 0;
@@ -220,13 +220,13 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
       }
       // --- END BATCH COSTING ---
 
-      // Sync stock across the entire product family
-      const { rootId, factorToRoot } = await findUltimateRoot(receivedItem.productId, connection);
-      const quantityInRootUnits = quantityAdded / factorToRoot;
-
-      await addFamilyStock(
-        rootId,
-        quantityInRootUnits,
+      // Receive into this product's own stock, in base units — the same figure
+      // the inventory_batches row above was written with, so batches and
+      // products.stock can never drift apart. Nothing cascades to a family.
+      await updateStockAndRecordMovement(
+        receivedItem.productId,
+        quantityAdded,
+        'purchase',
         orderId,
         'purchase',
         `Received Purchase: ${orderId}`,
@@ -234,13 +234,23 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
       );
 
       // Update default price level — use finalPrice so it stays consistent with the
-      // master products.price under the "highest wins" rule.
+      // master products.price under the "highest wins" rule. Price levels are per
+      // selling unit now (product_selling_unit_price_levels); this writes onto the
+      // product's BASE selling unit, matching how every other write path in this
+      // codebase treats "the product's own price level" after the selling-units
+      // migration.
       if (defaultLevelId && finalPrice > 0) {
-        await connection.query(`
-          INSERT INTO product_price_levels (product_id, price_level_id, price, min_quantity)
-          VALUES (?, ?, ?, 0)
-          ON DUPLICATE KEY UPDATE price = VALUES(price)
-        `, [receivedItem.productId, defaultLevelId, finalPrice]);
+        const [baseUnitRows]: any = await connection.query(
+          'SELECT id FROM product_selling_units WHERE product_id = ? AND is_base = 1 LIMIT 1',
+          [receivedItem.productId],
+        );
+        if (baseUnitRows.length > 0) {
+          await connection.query(`
+            INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity)
+            VALUES (?, ?, ?, 0)
+            ON DUPLICATE KEY UPDATE price = VALUES(price)
+          `, [baseUnitRows[0].id, defaultLevelId, finalPrice]);
+        }
       }
     }
 

@@ -25,9 +25,33 @@ export const productSchema = z.object({
     unit: z.string(),
     factor: z.coerce.number().positive('Conversion factor must be positive'),
   })).transform(arr => arr.filter(cf => cf.unit.trim() !== '')),
+  /**
+   * Extra ways this product can be sold, beyond its base unit.
+   *
+   * The base unit is excluded here and edited through the product's own
+   * unit/price/cost fields; updateProduct keeps its factor at 1 and is_base at 1.
+   */
+  sellingUnits: z.array(z.object({
+    id: z.string().optional(),
+    name: z.string().min(1, 'Unit name is required'),
+    factor: z.coerce.number().positive('Quantity must be greater than 0'),
+    barcode: z.string().optional(),
+    cost: z.coerce.number().nonnegative('Cost must be non-negative').optional(),
+    price: z.coerce.number().nonnegative('Price must be non-negative'),
+    /**
+     * This unit's own price-level overrides. A blank price on the form means
+     * no override at all — never a coerced 0 — so this array simply omits
+     * that level's entry rather than carrying a 0-valued row.
+     */
+    priceLevels: z.array(z.object({
+      levelId: z.string(),
+      price: z.number().min(0).optional(),
+      minQuantity: z.number().min(0).optional(),
+    })).optional(),
+  })).optional(),
   priceLevels: z.array(z.object({
     levelId: z.string().min(1, 'Level is required'),
-    price: z.coerce.number().positive('Price must be positive'),
+    price: z.coerce.number().nonnegative('Price must be non-negative'),
     minQuantity: z.number().min(0).optional(),
   })).optional(),
   vatStatus: z.string().default('YES (Subject to 12% VAT)'),

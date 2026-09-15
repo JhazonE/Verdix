@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withTransaction, query } from '@/lib/mysql';
 import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
-import { deductFamilyStock, addFamilyStock, findUltimateRoot } from '@/lib/family-sync';
+import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 
 /**
  * Bulk Stock Adjustment API
@@ -171,14 +171,25 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        // Sync family stock
-        const { rootId, factorToRoot } = await findUltimateRoot(productId, connection);
-
-        const syncQty = Math.abs(finalQuantity) / factorToRoot;
-        if (finalQuantity < 0) {
-          await deductFamilyStock(rootId, syncQty, adjustmentId, 'adjustment', finalReason, connection);
-        } else {
-          await addFamilyStock(rootId, syncQty, adjustmentId, 'adjustment', finalReason, connection, 0, expirationDate, productId);
+        // Apply the adjustment to this product's own stock, which is already in
+        // base units. One product, one stock figure — nothing cascades to another
+        // product any more, so the expiry now simply belongs to the batch created
+        // for the product that was actually adjusted.
+        const adjustQty = Number(finalQuantity);
+        if (!Number.isFinite(adjustQty)) {
+          throw new Error(`Invalid adjustment quantity for product ${productId}: ${finalQuantity}`);
+        }
+        if (adjustQty !== 0) {
+          await updateStockAndRecordMovement(
+            productId,
+            adjustQty,
+            'adjustment',
+            adjustmentId,
+            'adjustment',
+            finalReason,
+            connection,
+            adjustQty > 0 ? expirationDate : null
+          );
         }
 
         results.push({ productId, productName: product.name, newStock });

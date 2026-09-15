@@ -42,6 +42,7 @@ export function mapApiProduct(item: any): Product {
     incomeAccount: '',
     expenseAccount: '',
     priceLevels: item.priceLevels || [],
+    sellingUnits: item.sellingUnits || [],
     createdAt: item.created_at,
     updatedAt: item.updated_at,
   };

@@ -114,6 +114,11 @@ import './113_add_z_reading_lockout_toggle';
 import './114_add_z_reading_cashier_breakdown';
 import './115_create_license_state';
 import './116_normalize_product_unit_labels';
+import './117_add_product_markup_percentage';
+import './118_create_product_selling_units';
+import './119_backfill_base_selling_units';
+import './120_add_selling_unit_to_line_items';
+import './121_create_selling_unit_price_levels';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';

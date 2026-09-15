@@ -147,7 +147,17 @@ export function useEditProductForm({
       unitOfMeasure: product.unitOfMeasure ?? '', // Handle null
       conversionFactor: product.conversionFactor ?? 1, // Handle null/0 by defaulting to 1
       conversionFactors: product.conversionFactors || [],
-      priceLevels: product.priceLevels || [],
+      // The base unit is shown as a row in the Selling Units tab, but it is
+      // not a `sellingUnits[]` entry in the submitted payload — its factor
+      // stays 1 and its price/cost/barcode post through the top-level
+      // fields above. Keeping it out of this field array also matters for
+      // validation: updateProduct rejects any submitted unit whose name
+      // matches the base unit name.
+      sellingUnits: (product.sellingUnits || []).filter(su => !su.isBase),
+      // The base unit's own price-level overrides come from its
+      // `sellingUnits` entry (isBase: true), not from a top-level
+      // `product.priceLevels` field — getProducts no longer returns one.
+      priceLevels: product.sellingUnits?.find(su => su.isBase)?.priceLevels || [],
       vatStatus: product.vatStatus || 'YES (Subject to 12% VAT)',
       availability: product.availability || 'Available',
       earnsPoints: product.earnsPoints ?? true,
@@ -159,6 +169,11 @@ export function useEditProductForm({
   const { fields: conversionFactorFields, append: appendConversionFactor, remove: removeConversionFactor } = useFieldArray({
     control: form.control,
     name: 'conversionFactors',
+  });
+
+  const { fields: sellingUnitFields, append: appendSellingUnit, remove: removeSellingUnit } = useFieldArray({
+    control: form.control,
+    name: 'sellingUnits',
   });
 
   const { fields: priceLevelFields, append: appendPriceLevel, remove: removePriceLevel } = useFieldArray({
@@ -178,8 +193,13 @@ export function useEditProductForm({
   const tabErrors = {
     basic: !!(formErrors.name || formErrors.brand || formErrors.sku || formErrors.description || formErrors.category),
     inventory: !!(formErrors.unitOfMeasure),
-    priceLevels: !!(formErrors.priceLevels),
-    conversion: !!(formErrors.conversionFactors),
+    // The base selling unit's price-level overrides bind to the top-level
+    // `priceLevels` field (see product-schema.ts), but they render inside
+    // the Selling Units tab, not a standalone one — fold their errors into
+    // the same `conversion` flag extra units' sellingUnits[].priceLevels
+    // errors already use, so the tab that actually shows the problem is the
+    // one that lights up.
+    conversion: !!(formErrors.conversionFactors || formErrors.sellingUnits || formErrors.priceLevels),
   };
 
   // State for selected price level (for automatic price calculation)
@@ -204,7 +224,14 @@ export function useEditProductForm({
           unitOfMeasure: product.unitOfMeasure ?? '', // Handle null
           conversionFactor: product.conversionFactor ?? 1, // Handle null/0 by defaulting to 1
           conversionFactors: product.conversionFactors || [],
-          priceLevels: seedDefaultPriceLevel(product.priceLevels || [], priceLevels, product.price),
+          // See the defaultValues block above: the base unit is a permanent
+          // display-only row here, not a `sellingUnits[]` entry.
+          sellingUnits: (product.sellingUnits || []).filter(su => !su.isBase),
+          priceLevels: seedDefaultPriceLevel(
+            product.sellingUnits?.find(su => su.isBase)?.priceLevels || [],
+            priceLevels,
+            product.price,
+          ),
           vatStatus: product.vatStatus || 'YES (Subject to 12% VAT)',
           availability: product.availability || 'Available',
           earnsPoints: product.earnsPoints ?? true,
@@ -242,14 +269,19 @@ export function useEditProductForm({
   }, [isOpen]);
 
   useEffect(() => {
-    // Skip if not initialized or automation disabled
-    if (!isInitialized || !systemSettings?.enableAutomaticMarkup) {
+    // Skip if not initialized. A per-product markup is a deliberate entry
+    // (not a guess from category/brand/supplier), so it must survive
+    // enableAutomaticMarkup being off — that toggle governs only the
+    // inherited sources below it.
+    const hasOwnMarkup = product?.markupPercentage !== null && product?.markupPercentage !== undefined;
+    if (!isInitialized || (!systemSettings?.enableAutomaticMarkup && !hasOwnMarkup)) {
         setMarkupSource(null);
         return;
     }
 
     const { markup, source } = calculateMarkupPercentage(
         {
+            markupPercentage: product?.markupPercentage ?? null,
             category: watchedCategoryName,
             subcategory: watchedSubcategoryName,
             brand: watchedBrandName,
@@ -379,10 +411,21 @@ export function useEditProductForm({
     console.log('EditProductDialog saveChanges called with values:', values);
     // Filter out conversion factors with empty units to avoid schema validation errors
     values.conversionFactors = values.conversionFactors?.filter(cf => cf.unit.trim() !== '') || [];
+    // The per-unit price-level sub-table (conversion-tab.tsx) never stores an
+    // entry with a blank price — a blank input splices the row out entirely,
+    // so `price` is always a concrete number by the time it lands here. This
+    // narrows the type to match actions.ts's SellingUnitInput, which expects
+    // exactly that.
+    const sellingUnitsForSubmit = values.sellingUnits?.map(unit => ({
+      ...unit,
+      priceLevels: (unit.priceLevels || []).filter(
+        (pl): pl is { levelId: string; price: number; minQuantity?: number } => pl.price !== undefined,
+      ),
+    }));
     try {
       setIsSubmitting(true);
 
-      const result = await updateProduct(product.id, values);
+      const result = await updateProduct(product.id, { ...values, sellingUnits: sellingUnitsForSubmit });
 
       console.log('updateProduct result:', result);
 
@@ -460,6 +503,7 @@ export function useEditProductForm({
 
     // field arrays
     conversionFactorFields, appendConversionFactor, removeConversionFactor,
+    sellingUnitFields, appendSellingUnit, removeSellingUnit,
     priceLevelFields, appendPriceLevel, removePriceLevel,
 
     // watched / derived values

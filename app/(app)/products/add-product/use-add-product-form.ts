@@ -77,7 +77,6 @@ export function useAddProductForm({
   // Standard vs Service. Distinct from `productType` above, which is the
   // parent/child family selector.
   const [itemType, setItemType] = useState<ProductType>('standard');
-  const [autoCreateChild, setAutoCreateChild] = useState(true);
   const { toast } = useToast();
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -148,6 +147,7 @@ export function useAddProductForm({
       barcode: '',
       conversionFactor: 1,
       conversionFactors: [],
+      sellingUnits: [],
       priceLevels: [],
       earnsPoints: true,
       isPerishable: false,
@@ -157,6 +157,11 @@ export function useAddProductForm({
   const { fields: conversionFactorFields, append: appendConversionFactor, remove: removeConversionFactor } = useFieldArray({
     control: form.control,
     name: "conversionFactors",
+  });
+
+  const { fields: sellingUnitFields, append: appendSellingUnit, remove: removeSellingUnit } = useFieldArray({
+    control: form.control,
+    name: "sellingUnits",
   });
 
   const { fields: priceLevelFields, append: appendPriceLevel, remove: removePriceLevel } = useFieldArray({
@@ -170,8 +175,13 @@ export function useAddProductForm({
   const tabErrors = {
     basic: !!(formErrors.name || formErrors.brand || formErrors.sku || formErrors.description || formErrors.category),
     inventory: !!(formErrors.unitOfMeasure || formErrors.stock),
-    priceLevels: !!(formErrors.priceLevels),
-    conversion: !!(formErrors.conversionFactors),
+    // The base selling unit's price-level overrides bind to the top-level
+    // `priceLevels` field (see product-schema.ts), but they render inside
+    // the Selling Units tab, not a standalone one — fold their errors into
+    // the same `conversion` flag extra units' sellingUnits[].priceLevels
+    // errors already use, so the tab that actually shows the problem is the
+    // one that lights up.
+    conversion: !!(formErrors.conversionFactors || formErrors.sellingUnits || formErrors.priceLevels),
   };
 
   // State for selected price level (for automatic price calculation)
@@ -217,7 +227,6 @@ export function useAddProductForm({
       }
 
       setProductType('parent');
-      setAutoCreateChild(true);
     }
   }, [isOpen, form]);
 
@@ -257,6 +266,7 @@ export function useAddProductForm({
       form.setValue('parentId', undefined);
       form.setValue('conversionFactor', undefined);
       form.setValue('conversionFactors', undefined);
+      form.setValue('sellingUnits', undefined);
       form.setValue('isPerishable', undefined);
     }
   }, [itemType, form]);
@@ -276,6 +286,7 @@ export function useAddProductForm({
 
     const { markup, source } = calculateMarkupPercentage(
         {
+            markupPercentage: null,
             category: watchedCategoryName,
             subcategory: watchedSubcategoryName,
             brand: watchedBrandName,
@@ -422,45 +433,14 @@ export function useAddProductForm({
         return { ...pl, price: applyPriceLevelAdjustment(level.adjustmentType, level.percentageAdjustment, basePrice) };
       });
 
-      // Build the auto-child intent (if applicable) so a single approval covers parent + child.
-      let childProduct: any = undefined;
-      const willAutoChild =
-        itemType === 'standard' &&
-        productType === 'parent' &&
-        autoCreateChild &&
-        values.conversionFactors &&
-        values.conversionFactors.length > 0;
-
-      if (willAutoChild) {
-        const firstConversion = values.conversionFactors![0];
-        const childPrice = values.price / firstConversion.factor;
-        const childCost = values.cost ? values.cost / firstConversion.factor : undefined;
-        childProduct = {
-          name: `${values.name} (${firstConversion.unit})`,
-          brand: values.brand,
-          sku: `${values.sku}-${firstConversion.unit.toLowerCase().replace(/\s+/g, '')}`,
-          barcode: values.barcode ? `${values.barcode}-${firstConversion.unit.toLowerCase()}` : undefined,
-          description: `${values.description} - ${firstConversion.unit}`,
-          additionalDescription: values.additionalDescription,
-          category: values.category,
-          subcategory: values.subcategory,
-          supplier: values.supplier,
-          unitOfMeasure: firstConversion.unit,
-          stock: 0,
-          reorderPoint: 0,
-          price: childPrice,
-          cost: childCost,
-          conversionFactor: firstConversion.factor,
-          image: `https://picsum.photos/seed/${values.sku}-${firstConversion.unit}/400/300`,
-        };
-      }
-
+      // No child product is built any more. Extra ways to sell this product are
+      // selling units on the product itself, written by addProduct in the same
+      // transaction — one product, one stock figure, nothing to keep in sync.
       const result = await addProduct(
         {
           ...values,
           itemType,
           image: `https://picsum.photos/seed/${values.sku}/400/300`,
-          ...(childProduct ? { __childProduct: childProduct } : {}),
         } as any,
         uid,
       );
@@ -474,17 +454,6 @@ export function useAddProductForm({
         onProductAdded?.();
         setIsOpen(false);
       } else if (result.success) {
-        // Immediate insert path — create child directly if approval is off.
-        if (willAutoChild && result.productId) {
-          const childResult = await addProduct(
-            { ...childProduct, parentId: result.productId } as any,
-            uid,
-          );
-          if (!childResult.success) {
-            console.warn('Failed to auto-create child product:', childResult.message);
-          }
-        }
-
         // Fire and forget - don't block form submission on activity logging
         logActivity({
           action: 'CREATE',
@@ -496,7 +465,7 @@ export function useAddProductForm({
         });
         toast({
           title: 'Product Added',
-          description: `${values.name} has been successfully added.${willAutoChild ? ' Child unit auto-created.' : ''}`,
+          description: `${values.name} has been successfully added.`,
         });
         form.reset();
         onProductAdded?.();
@@ -552,7 +521,6 @@ export function useAddProductForm({
     isSubmitting,
     productType, setProductType,
     itemType, setItemType,
-    autoCreateChild, setAutoCreateChild,
     form,
 
     // option data + loading flags
@@ -573,6 +541,7 @@ export function useAddProductForm({
 
     // field arrays
     conversionFactorFields, appendConversionFactor, removeConversionFactor,
+    sellingUnitFields, appendSellingUnit, removeSellingUnit,
     priceLevelFields, appendPriceLevel, removePriceLevel,
 
     // derived values

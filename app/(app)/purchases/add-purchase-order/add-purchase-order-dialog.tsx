@@ -341,6 +341,7 @@ export function AddPurchaseOrderDialog(props: UseAddPurchaseOrderProps & { trigg
                           fields.map((field, index) => {
                             const { markup, source } = calculateMarkupPercentage(
                               {
+                                markupPercentage: controller.products.find((p) => p.id === field.productId)?.markupPercentage ?? null,
                                 category: controller.products.find((p) => p.id === field.productId)?.category,
                                 subcategory: controller.products.find((p) => p.id === field.productId)?.subcategory,
                                 brand: controller.products.find((p) => p.id === field.productId)?.brand,

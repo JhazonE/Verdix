@@ -212,7 +212,7 @@ export async function migrateAdjustmentsToMovements() {
 
 import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
 import { withTransaction } from '@/lib/mysql';
-import { deductFamilyStock, addFamilyStock, findUltimateRoot } from '@/lib/family-sync';
+import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 
 export async function adjustStock(productId: string, quantity: number, reason: string, userId: string = 'system', isInternalFinalization: boolean = false, expirationDate?: string | null) {
   try {
@@ -261,6 +261,14 @@ export async function adjustStock(productId: string, quantity: number, reason: s
     const currentStock = parseInt(productResult[0].stock);
     const productName = productResult[0].name;
     const parentId = productResult[0].parent_id;
+
+    // Guard before arithmetic: a NaN quantity makes newStock NaN, and `NaN < 0`
+    // is false, so it would sail past the negative-stock check and be written
+    // straight into products.stock.
+    if (!Number.isFinite(quantity)) {
+      return { success: false, error: 'Invalid adjustment quantity' };
+    }
+
     const newStock = currentStock + quantity;
 
     // Validate new stock is not negative
@@ -278,26 +286,23 @@ export async function adjustStock(productId: string, quantity: number, reason: s
     `;
     await query(createAdjustmentSql, [adjustmentId, productId, quantity, reason, newStock]);
 
-    // Use recursive family sync within a transaction so all levels update atomically
+    // The adjustment applies to this product's own stock figure, which is already
+    // in base units. One product, one stock figure — nothing cascades to another
+    // product, so the expiry simply belongs to the batch created for the product
+    // that was actually adjusted. Still wrapped in a transaction so the stock
+    // update, its movement row and its batch commit together.
     const result = await withTransaction(async (connection) => {
-      // Walk the FULL ancestor chain (handles grandchildren, any depth)
-      const { rootId, factorToRoot } = await findUltimateRoot(productId, connection);
-
-      if (factorToRoot > 1 || rootId !== productId) {
-        // This product is NOT the root — convert to root units and sync from root
-        const rootQty = Math.abs(quantity) / factorToRoot;
-        if (quantity < 0) {
-          await deductFamilyStock(rootId, rootQty, adjustmentId, 'adjustment', reason, connection);
-        } else {
-          await addFamilyStock(rootId, rootQty, adjustmentId, 'adjustment', reason, connection, 0, expirationDate, productId);
-        }
-      } else {
-        // This IS the root — propagate down through all descendants
-        if (quantity < 0) {
-          await deductFamilyStock(productId, Math.abs(quantity), adjustmentId, 'adjustment', reason, connection);
-        } else {
-          await addFamilyStock(productId, quantity, adjustmentId, 'adjustment', reason, connection, 0, expirationDate, productId);
-        }
+      if (quantity !== 0) {
+        await updateStockAndRecordMovement(
+          productId,
+          quantity,
+          'adjustment',
+          adjustmentId,
+          'adjustment',
+          reason,
+          connection,
+          quantity > 0 ? expirationDate : null
+        );
       }
       return { success: true, adjustmentId, newStock };
     });
