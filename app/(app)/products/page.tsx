@@ -31,7 +31,7 @@ import { ManageUnitOfMeasureDialog } from './units-of-measure/ManageUnitOfMeasur
 import { ManageWarehousesDialog } from '../sales/manage-warehouses/ManageWarehousesDialog';
 import { BulkPriceUpdateDrawer } from './bulk-price-update/BulkPriceUpdateDrawer';
 
-import { Search, Trash2, PlusCircle, Settings, ShoppingCart, MoreVertical, Edit, Eye, Copy, AlertTriangle, Printer } from 'lucide-react';
+import { Search, Trash2, PlusCircle, Settings, ShoppingCart, MoreVertical, Edit, Eye, Copy, AlertTriangle, Printer, ChevronRight, ChevronDown } from 'lucide-react';
 import { PrintBarcodeDialog } from './print-barcode/print-barcode-dialog';
 import { useState, useMemo, useEffect, useCallback, Suspense } from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -66,6 +66,9 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [restockDialogOpen, setRestockDialogOpen] = useState(false);
   const [printBarcodeOpen, setPrintBarcodeOpen] = useState(false);
+  const [unitsExpanded, setUnitsExpanded] = useState(false);
+
+  const extraSellingUnits = (product.sellingUnits || []).filter((u) => !u.isBase);
 
   const { toast } = useToast();
   // Services carry no stock, so the stock ladder does not apply — flagging one
@@ -124,7 +127,20 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
     <>
       <TableRow>
         <TableCell className="hidden sm:table-cell">
-          <div className="w-10"></div>
+          {extraSellingUnits.length > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => setUnitsExpanded((v) => !v)}
+              aria-label={unitsExpanded ? 'Collapse selling units' : 'Expand selling units'}
+            >
+              {unitsExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </Button>
+          ) : (
+            <div className="w-10"></div>
+          )}
         </TableCell>
         <TableCell className="font-medium">
           {product.name}
@@ -141,20 +157,7 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
           <Badge variant={badgeVariant}>{badgeText}</Badge>
         </TableCell>
         <TableCell className="hidden sm:table-cell text-center text-muted-foreground">
-          <div>{product.unitOfMeasure}</div>
-          {(() => {
-            const extraUnits = (product.sellingUnits || []).filter((u) => !u.isBase);
-            if (extraUnits.length === 0) return null;
-            return (
-              <div className="flex flex-wrap gap-1 justify-center mt-1">
-                {extraUnits.map((u) => (
-                  <Badge key={u.id ?? u.name} variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
-                    {u.name}
-                  </Badge>
-                ))}
-              </div>
-            );
-          })()}
+          {product.unitOfMeasure}
         </TableCell>
         <TableCell className="text-center font-bold">
           {formatStockQuantity(product.stock)}
@@ -249,6 +252,44 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
           </div>
         </TableCell>
       </TableRow>
+
+      {unitsExpanded && extraSellingUnits.length > 0 && (
+        <TableRow className="bg-muted/30 hover:bg-muted/30">
+          <TableCell colSpan={12} className="p-0">
+            <table className="w-full">
+              <tbody>
+                {extraSellingUnits.map((unit, idx) => (
+                  <tr key={unit.id || idx} className="border-b last:border-b-0 border-border/50">
+                    <td className="hidden sm:table-cell w-10"></td>
+                    <td className="py-2 pl-6 pr-2 text-sm text-muted-foreground">
+                      <span className="text-foreground">{unit.name}</span>
+                      {typeof unit.factor === 'number' && (
+                        <span className="ml-1 text-xs text-muted-foreground">(×{unit.factor})</span>
+                      )}
+                    </td>
+                    <td className="hidden md:table-cell"></td>
+                    <td className="hidden lg:table-cell py-2 text-sm text-muted-foreground">
+                      {unit.barcode || '—'}
+                    </td>
+                    <td></td>
+                    <td className="hidden sm:table-cell"></td>
+                    <td></td>
+                    <td className="hidden md:table-cell py-2 text-right text-sm text-muted-foreground">
+                      {typeof unit.cost === 'number' ? `₱${unit.cost.toFixed(2)}` : '—'}
+                    </td>
+                    <td className="hidden md:table-cell py-2 text-right text-sm text-muted-foreground">
+                      {typeof unit.price === 'number' ? `₱${unit.price.toFixed(2)}` : '—'}
+                    </td>
+                    <td className="hidden md:table-cell"></td>
+                    <td className="hidden md:table-cell"></td>
+                    <td></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableCell>
+        </TableRow>
+      )}
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
