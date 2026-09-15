@@ -1051,9 +1051,15 @@ letting a cashier choose a non-base unit in the cart is not built yet.
 POS itself calls) are independent implementations that happened to diverge before this feature
 existed. This plan updated both, but be aware they are NOT the same code path — a future schema
 change to product reads must be applied to both, or POS silently falls back to stale/incomplete
-data the way it did here until Task 5.5 fixed it. `create`/`update`/`delete` on
-`MySqlProductRepository` are unreachable from the app's own UI (product writes go through
-`actions.ts`'s server actions instead) — dead code, not a second write path to keep in sync.
+data the way it did here until Task 5.5 fixed it. `MySqlProductRepository.update`/`delete` are
+unreachable from the app's own UI (product writes go through `actions.ts`'s server actions
+instead). `create` is NOT dead — `POST /api/products` reaches it via `CreateProductUseCase` and is
+exercised by `tests/e2e/purchase-order.spec.ts` — it is simply not the app's PRIMARY creation path.
+Both `create` and `TransferStockService.ts` (a live warehouse-transfer service, also fixed by this
+plan) now create a base selling unit for a newly-created product before attaching any price levels
+to it, matching the convention `actions.ts` established. `purchase-actions.ts` (PO receiving) and
+`price-list-import.ts` (bulk price-list apply) were also found writing to the dropped
+`product_price_levels` table during this plan and fixed the same way.
 ```
 
 - [ ] **Step 2: Commit**
