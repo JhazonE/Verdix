@@ -88,21 +88,30 @@ export function BasicInfoTab() {
           )}
         />
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <FormField
-          control={form.control}
-          name="sku"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>SKU</FormLabel>
-              <FormControl>
-                <Input {...field} value={field.value ?? ''} readOnly className="bg-muted" />
-              </FormControl>
-              <FormDescription>SKU cannot be changed after creation.</FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+      {/* SKU — no partner left once Category moved into the card below, so
+          it spans the full width instead of leaving an empty half-row
+          beside it. */}
+      <FormField
+        control={form.control}
+        name="sku"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>SKU</FormLabel>
+            <FormControl>
+              <Input {...field} value={field.value ?? ''} readOnly className="bg-muted" />
+            </FormControl>
+            <FormDescription>SKU cannot be changed after creation.</FormDescription>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      {/* Category and Subcategory are independent lists under the hood (no
+          category_id link between them in the schema — see actions.ts's
+          getSubcategories), but they read as one unit for the person filling
+          the form, so they're grouped in one bordered card instead of two
+          separate rows. */}
+      <div className="rounded-lg border p-4 space-y-4">
         <FormField
           control={form.control}
           name="category"
@@ -140,46 +149,44 @@ export function BasicInfoTab() {
             </FormItem>
           )}
         />
+        <FormField
+          control={form.control}
+          name="subcategory"
+          render={({ field }) => (
+            <FormItem className="pl-4 border-l-2">
+              <FormLabel>Subcategory (Optional)</FormLabel>
+              <InlineEditableSelect
+                items={subcategories}
+                isLoading={false}
+                value={field.value}
+                onChange={field.onChange}
+                open={selects.subcategories}
+                onOpenChange={(o) => setSelects((p) => ({ ...p, subcategories: o }))}
+                placeholder="Select a subcategory"
+                addLabel="Add Subcategory"
+                emptyLabel="No subcategories found"
+                orphanLabel={(v) => `${v} (Missing in Settings)`}
+                getId={(s: Category) => s.id}
+                getValue={(s: Category) => s.name}
+                getOptionLabel={(s: Category) => s.name}
+                getName={(s: Category) => s.name}
+                onAdd={async (name) => {
+                  const r = await addSubcategory(name, 0);
+                  if (r.success) { await refreshSubcategories(); return name; }
+                  return undefined;
+                }}
+                onRename={async (id, name) => {
+                  const existing = subcategories.find((s: Category) => s.id === id);
+                  const r = await updateSubcategory(id, name, existing?.markupPercentage);
+                  if (r.success) { await refreshSubcategories(); return name; }
+                  return undefined;
+                }}
+              />
+              <FormMessage />
+            </FormItem>
+          )}
+        />
       </div>
-      {/* Subcategory has no natural partner, so it spans the full width
-          instead of leaving an empty half-row beside it. */}
-      <FormField
-        control={form.control}
-        name="subcategory"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>Subcategory (Optional)</FormLabel>
-            <InlineEditableSelect
-              items={subcategories}
-              isLoading={false}
-              value={field.value}
-              onChange={field.onChange}
-              open={selects.subcategories}
-              onOpenChange={(o) => setSelects((p) => ({ ...p, subcategories: o }))}
-              placeholder="Select a subcategory"
-              addLabel="Add Subcategory"
-              emptyLabel="No subcategories found"
-              orphanLabel={(v) => `${v} (Missing in Settings)`}
-              getId={(s: Category) => s.id}
-              getValue={(s: Category) => s.name}
-              getOptionLabel={(s: Category) => s.name}
-              getName={(s: Category) => s.name}
-              onAdd={async (name) => {
-                const r = await addSubcategory(name, 0);
-                if (r.success) { await refreshSubcategories(); return name; }
-                return undefined;
-              }}
-              onRename={async (id, name) => {
-                const existing = subcategories.find((s: Category) => s.id === id);
-                const r = await updateSubcategory(id, name, existing?.markupPercentage);
-                if (r.success) { await refreshSubcategories(); return name; }
-                return undefined;
-              }}
-            />
-            <FormMessage />
-          </FormItem>
-        )}
-      />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <FormField
           control={form.control}
