@@ -184,8 +184,8 @@ export function BasicInfoTab() {
                   return undefined;
                 }}
                 onRename={async (id, name) => {
-                  const existing = subcategories.find((s: Category) => s.id === id);
-                  const r = await updateSubcategory(id, name, existing?.markupPercentage);
+                  const existing: any = subcategories.find((s: Category) => s.id === id);
+                  const r = await updateSubcategory(id, name, existing?.categoryId ?? null, existing?.markupPercentage);
                   if (r.success) { await refreshSubcategories(); return name; }
                   return undefined;
                 }}
