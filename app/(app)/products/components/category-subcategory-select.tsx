@@ -205,8 +205,20 @@ export function CategorySubcategorySelect({
           </Button>
         </PopoverTrigger>
       </FormControl>
-      <PopoverContent className="w-full min-w-[320px] p-0" align="start">
-        <Command>
+      <PopoverContent
+        className="w-full min-w-[320px] p-0 flex flex-col"
+        style={{ maxHeight: 'var(--radix-popover-content-available-height)' }}
+        align="start"
+      >
+        {/* When the trigger sits low enough on screen that Radix flips this
+            popover to open upward, its available height above the trigger
+            can be less than CommandList's own max-h — without capping the
+            whole popover (not just the list) to Radix's own
+            --radix-popover-content-available-height, the popover overflows
+            past the top of the viewport and clips CommandInput, the first
+            child, right out of view. min-h-0 lets the flex child (Command)
+            actually shrink instead of just overflowing its flex parent. */}
+        <Command className="min-h-0">
           <CommandInput placeholder="Search categories..." />
           <CommandList className="max-h-96">
             {isLoading ? (
