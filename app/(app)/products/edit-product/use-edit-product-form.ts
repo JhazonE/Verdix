@@ -301,12 +301,20 @@ export function useEditProductForm({
           const defaultLevel = priceLevels.find((l: any) => l.isDefault) || priceLevels[0];
           const suggestedMainPrice = calculateSuggestedPrice(watchedCost, markup, 0, defaultLevel);
 
-          form.setValue('price', parseFloat(suggestedMainPrice.toFixed(2)));
+          // There is no standalone "price" field any more — the default
+          // (Retail) price-level row IS the product's price. Write the
+          // suggestion directly onto that row.
+          if (defaultLevel) {
+            const idx = priceLevelFields.findIndex((f: any) => f.levelId === defaultLevel.id);
+            if (idx !== -1) {
+              form.setValue(`priceLevels.${idx}.price`, parseFloat(suggestedMainPrice.toFixed(2)));
+            }
+          }
       }
     } else {
       setMarkupSource(null);
     }
-  }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, selectedSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, isInitialized]);
+  }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, selectedSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, isInitialized, priceLevelFields]);
 
   // Auto-update main price when a price level is selected
   useEffect(() => {
@@ -355,23 +363,10 @@ export function useEditProductForm({
 
           const basePrice = cost * (1 + markup / 100);
 
-          // Calculate price based on selected level
-          let finalPrice;
-          const selectedLevelMarkup = selectedLevel.percentageAdjustment ?? 0;
-          if (selectedLevel.calculationBase === 'cost') {
-             finalPrice = cost * (1 + selectedLevelMarkup / 100);
-          } else {
-             // Retail Base
-             if (selectedLevelMarkup === 0 && selectedLevel.name?.toLowerCase() === 'retail') {
-                 finalPrice = basePrice;
-             } else {
-                 finalPrice = basePrice * (1 + selectedLevelMarkup / 100);
-             }
-          }
-
-          form.setValue('price', parseFloat(finalPrice.toFixed(2)));
-
-          // ALSO update all price level fields automatically
+          // There is no standalone "price" field any more — every level's
+          // own row (Retail included) is written directly by the loop below,
+          // keyed by its own calculationBase/markup, not just the selected one.
+          // Update all price level fields automatically
           if (priceLevelFields.length > 0) {
             priceLevelFields.forEach((field, index) => {
               const levelDef = priceLevels.find((l: any) => l.id === field.levelId);
@@ -422,6 +417,15 @@ export function useEditProductForm({
         (pl): pl is { levelId: string; price: number; minQuantity?: number } => pl.price !== undefined,
       ),
     }));
+    // There is no standalone "price" field any more — the default (Retail)
+    // price-level row IS the product's price. products.price stays in the
+    // schema/backend (it's the fallback price when a selling unit has no
+    // override for the active level); it just mirrors the Retail row now.
+    const defaultLevelDef = priceLevels.find((l: any) => l.isDefault) || priceLevels[0];
+    const retailEntry = (values.priceLevels || []).find((pl) => pl.levelId === defaultLevelDef?.id);
+    if (retailEntry?.price !== undefined) {
+      values.price = retailEntry.price;
+    }
     try {
       setIsSubmitting(true);
 

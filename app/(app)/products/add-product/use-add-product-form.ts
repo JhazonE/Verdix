@@ -306,13 +306,21 @@ export function useAddProductForm({
           const defaultLevel = priceLevels.find((l: any) => l.isDefault) || priceLevels[0];
           const suggestedMainPrice = calculateSuggestedPrice(watchedCost, markup, 0, defaultLevel);
 
-          form.setValue('price', parseFloat(suggestedMainPrice.toFixed(2)));
+          // There is no standalone "price" field any more — the default
+          // (Retail) price-level row IS the product's price. Write the
+          // suggestion directly onto that row.
+          if (defaultLevel) {
+            const idx = priceLevelFields.findIndex((f: any) => f.levelId === defaultLevel.id);
+            if (idx !== -1) {
+              form.setValue(`priceLevels.${idx}.price`, parseFloat(suggestedMainPrice.toFixed(2)));
+            }
+          }
       }
     } else {
       setMarkupSource(null);
     }
 
-  }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, watchedSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings]);
+  }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, watchedSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, priceLevelFields]);
 
   // Auto-update main price when a price level is selected
   useEffect(() => {
@@ -361,23 +369,10 @@ export function useAddProductForm({
 
           const basePrice = cost * (1 + markup / 100);
 
-          // Calculate price based on selected level
-          let finalPrice;
-          const selectedLevelMarkup = selectedLevel.percentageAdjustment ?? 0;
-          if (selectedLevel.calculationBase === 'cost') {
-             finalPrice = cost * (1 + selectedLevelMarkup / 100);
-          } else {
-             // Retail Base
-             if (selectedLevelMarkup === 0 && selectedLevel.name?.toLowerCase() === 'retail') {
-                 finalPrice = basePrice;
-             } else {
-                 finalPrice = basePrice * (1 + selectedLevelMarkup / 100);
-             }
-          }
-
-          form.setValue('price', parseFloat(finalPrice.toFixed(2)));
-
-          // ALSO update all price level fields automatically
+          // There is no standalone "price" field any more — every level's
+          // own row (Retail included) is written directly by the loop below,
+          // keyed by its own calculationBase/markup, not just the selected one.
+          // Update all price level fields automatically
           if (priceLevelFields.length > 0) {
             priceLevelFields.forEach((field, index) => {
               const levelDef = priceLevels.find((l: any) => l.id === field.levelId);
@@ -411,27 +406,32 @@ export function useAddProductForm({
     try {
       const uid = getCurrentUid();
 
-      // The default price level is auto-appended (on productOptions load, well
-      // before the user has entered a cost) with a hardcoded price: 0 as a
-      // placeholder — there is no meaningful value to compute at that point.
-      // Now that price-level rows are no longer continuously auto-recalculated
-      // (see the removed "Apply to all price levels" effects), that
-      // placeholder would otherwise reach the DB untouched, and getProducts'
-      // effectivePrice prefers a default-level product_price_levels row over
-      // the raw products.price column — so every new product would display
-      // ₱0.00 in the Products table despite a correct products.price. Fix up
-      // only rows still sitting at that untouched 0 placeholder; a row the
-      // user edited to any nonzero value is left alone. (A deliberate,
-      // genuine ₱0 price level is indistinguishable from "untouched" with
-      // the current data model and would also get corrected here — an
-      // accepted, narrow edge case, not the scenario this fix targets.)
+      // There is no standalone "price" field any more — the default (Retail)
+      // price-level row IS the product's price, and it is REQUIRED (enforced
+      // by the schema), so it always carries a real, positive value by the
+      // time submit runs. Every other level still sitting at an untouched 0
+      // placeholder (auto-appended on productOptions load, before the user
+      // typed anything) gets fixed up from it here — a row the user edited
+      // to any nonzero value is left alone. (A deliberate, genuine ₱0 price
+      // level is indistinguishable from "untouched" with the current data
+      // model and would also get corrected here — an accepted, narrow edge
+      // case, not the scenario this fix targets.)
+      const defaultLevelDef = priceLevels.find((l: any) => l.isDefault) || priceLevels[0];
+      const retailEntry = (values.priceLevels || []).find((pl) => pl.levelId === defaultLevelDef?.id);
+      const retailPrice = retailEntry?.price ?? 0;
+
       values.priceLevels = (values.priceLevels || []).map((pl) => {
         if (pl.price !== 0) return pl;
         const level = priceLevels.find((l: any) => l.id === pl.levelId);
         if (!level) return pl;
-        const basePrice = (level.calculationBase || 'retail') === 'cost' ? (values.cost || 0) : values.price;
+        const basePrice = (level.calculationBase || 'retail') === 'cost' ? (values.cost || 0) : retailPrice;
         return { ...pl, price: applyPriceLevelAdjustment(level.adjustmentType, level.percentageAdjustment, basePrice) };
       });
+
+      // products.price stays in the schema/backend (it's the fallback price
+      // when a selling unit has no override for the active level) — it is
+      // just no longer typed directly; it mirrors the Retail row instead.
+      values.price = retailPrice;
 
       // No child product is built any more. Extra ways to sell this product are
       // selling units on the product itself, written by addProduct in the same

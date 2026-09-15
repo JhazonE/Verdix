@@ -32,9 +32,17 @@ import { addUnitOfMeasure, updateUnitOfMeasure } from '../../actions';
 function PriceLevelOverrides({
   values,
   onChange,
+  requireDefaultLevel = false,
 }: {
   values: { levelId: string; price?: number; minQuantity?: number }[];
   onChange: (next: { levelId: string; price?: number; minQuantity?: number }[]) => void;
+  /**
+   * The base unit has no standalone price any more — its default (Retail)
+   * price-level row IS the product's price, so that one row can never be
+   * blanked to "no override" the way every other row (and every extra
+   * unit's own rows) still can.
+   */
+  requireDefaultLevel?: boolean;
 }) {
   const { priceLevels, isLoadingPriceLevels } = useEditProductFormContext();
 
@@ -45,12 +53,22 @@ function PriceLevelOverrides({
     return <p className="text-xs text-muted-foreground px-1 py-2">No price levels configured.</p>;
   }
 
+  const defaultLevelId = requireDefaultLevel
+    ? (priceLevels.find((l: any) => l.isDefault) || priceLevels[0])?.id
+    : undefined;
+
   const setPrice = (levelId: string, raw: string) => {
     const next = [...values];
     const idx = next.findIndex(v => v.levelId === levelId);
     if (raw === '') {
       // Blank means "no override" — remove the row entirely rather than
-      // writing an empty/0 value.
+      // writing an empty/0 value. The required default level is the one
+      // exception: it can't disappear, since it IS the product's price.
+      if (levelId === defaultLevelId) {
+        if (idx !== -1) next[idx] = { ...next[idx], price: undefined };
+        onChange(next);
+        return;
+      }
       if (idx !== -1) next.splice(idx, 1);
       onChange(next);
       return;
@@ -82,15 +100,19 @@ function PriceLevelOverrides({
     <div className="space-y-2 pt-2">
       {priceLevels.map((level: any) => {
         const entry = values.find(v => v.levelId === level.id);
+        const isRequired = level.id === defaultLevelId;
         return (
           <div key={level.id} className="flex gap-3 items-end">
             <div className="flex-1">
-              <Label className="text-xs text-muted-foreground">{level.name}</Label>
+              <Label className="text-xs text-muted-foreground">
+                {level.name}
+                {isRequired && <span className="text-destructive"> *</span>}
+              </Label>
               <Input
                 type="number"
                 step="0.01"
                 min="0"
-                placeholder="No override"
+                placeholder={isRequired ? 'Required' : 'No override'}
                 value={entry?.price ?? ''}
                 onChange={(e) => setPrice(level.id, e.target.value)}
               />
@@ -299,31 +321,6 @@ export function SellingUnitsTab() {
                 />
               </div>
 
-              <div className="w-[110px]">
-                <FormField
-                  control={form.control}
-                  name="price"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs">Price</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0.00"
-                          value={field.value ?? ''}
-                          onChange={(e) => {
-                            const parsed = parseFloat(e.target.value);
-                            field.onChange(Number.isNaN(parsed) ? undefined : parsed);
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
 
             </div>
             <CollapsibleContent>
@@ -332,6 +329,7 @@ export function SellingUnitsTab() {
                 <PriceLevelOverrides
                   values={basePriceLevelValues}
                   onChange={setBasePriceLevels}
+                  requireDefaultLevel
                 />
               </div>
             </CollapsibleContent>
