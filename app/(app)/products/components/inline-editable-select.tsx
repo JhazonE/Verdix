@@ -35,6 +35,7 @@ export interface InlineEditableSelectProps<T> {
   onRename: (id: string, name: string) => Promise<string | undefined>;
   triggerClassName?: string;
   itemClassName?: string;
+  disabled?: boolean;
 }
 
 export function InlineEditableSelect<T>({
@@ -57,6 +58,7 @@ export function InlineEditableSelect<T>({
   onRename,
   triggerClassName,
   itemClassName,
+  disabled,
 }: InlineEditableSelectProps<T>) {
   const [adding, setAdding] = useState(false);
   const [addDraft, setAddDraft] = useState('');
@@ -112,6 +114,7 @@ export function InlineEditableSelect<T>({
 
   return (
     <Select
+      disabled={disabled}
       open={open}
       onOpenChange={onOpenChange}
       // Radix's hidden native <select> re-dispatches a change event when the

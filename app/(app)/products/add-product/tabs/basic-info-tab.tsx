@@ -25,6 +25,9 @@ export function BasicInfoTab() {
     generateSku,
   } = useAddProductFormContext();
 
+  const watchedCategoryName = form.watch('category');
+  const selectedCategoryId = categories.find((c) => c.name === watchedCategoryName)?.id ?? null;
+
   return (
     <div className="space-y-4">
       {/* Row 1: Name and Brand — the two "identity" fields. Each row is its
@@ -113,11 +116,10 @@ export function BasicInfoTab() {
         )}
       />
 
-      {/* Category and Subcategory are independent lists under the hood (no
-          category_id link between them in the schema — see actions.ts's
-          getSubcategories), but they read as one unit for the person filling
-          the form, so they're grouped in one bordered card instead of two
-          separate rows. */}
+      {/* Category and Subcategory are grouped in one bordered card since they
+          read as one unit for the person filling the form. Subcategory is
+          scoped to the selected Category via category_id (see actions.ts's
+          getSubcategories) and is disabled/cleared accordingly below. */}
       <div className="rounded-lg border p-4 space-y-4">
         <FormField
           control={form.control}
@@ -129,7 +131,7 @@ export function BasicInfoTab() {
                 items={categories}
                 isLoading={isLoadingCategories}
                 value={field.value}
-                onChange={field.onChange}
+                onChange={(v) => { field.onChange(v); form.setValue('subcategory', ''); }}
                 open={selects.categories}
                 onOpenChange={(o) => setSelects((p) => ({ ...p, categories: o }))}
                 placeholder="Select a category"
@@ -162,13 +164,14 @@ export function BasicInfoTab() {
             <FormItem className="pl-4 border-l-2">
               <FormLabel>Subcategory (Optional)</FormLabel>
               <InlineEditableSelect
-                items={subcategories}
+                items={subcategories.filter((s: any) => s.categoryId === selectedCategoryId)}
                 isLoading={isLoadingSubcategories}
                 value={field.value}
                 onChange={field.onChange}
                 open={selects.subcategories}
                 onOpenChange={(o) => setSelects((p) => ({ ...p, subcategories: o }))}
-                placeholder="Select a subcategory"
+                placeholder={selectedCategoryId ? "Select a subcategory" : "Select a Category first"}
+                disabled={!selectedCategoryId}
                 addLabel="Add Subcategory"
                 emptyLabel="No subcategories found"
                 getId={(s: Category) => s.id}
@@ -176,7 +179,7 @@ export function BasicInfoTab() {
                 getOptionLabel={(s: Category) => s.name}
                 getName={(s: Category) => s.name}
                 onAdd={async (name) => {
-                  const r = await addSubcategory(name, 0);
+                  const r = await addSubcategory(name, selectedCategoryId, 0);
                   if (r.success) { await refreshSubcategories(); return name; }
                   return undefined;
                 }}
