@@ -142,7 +142,7 @@ export function useAddProductForm({
       stock: 0,
       reorderPoint: 0,
       price: 0,
-      cost: 0,
+      cost: undefined,
       sku: '',
       barcode: '',
       conversionFactor: 1,
