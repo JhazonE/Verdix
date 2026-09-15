@@ -846,6 +846,187 @@ git commit -m "fix: migrate TransferStockService off the dropped product_price_l
 
 ---
 
+### Task 5.6: Fix two more live callers of the dropped `product_price_levels` table
+
+**Added mid-plan, same class of bug as Task 5.5.** Task 5.5's implementer swept the repo for any
+remaining reference to `product_price_levels` and found two more live, unfixed call sites, deliberately
+left out of that task's scope:
+
+- `lib/purchase-actions.ts:238-244` — inside `receivePurchaseOrder`'s per-item loop, an
+  `INSERT ... ON DUPLICATE KEY UPDATE` against `product_price_levels`, **not wrapped in a try/catch**
+  (unlike the batch-costing insert a few lines above it, which deliberately is). Since this runs inside
+  the same `withTransaction` as the rest of purchase-order receiving, this statement throwing rolls back
+  the ENTIRE receipt — stock movement, cost/price update, and PO status change all included. **Any
+  purchase order received today, for a product where a default price level exists, fails outright.**
+- `lib/price-list-import.ts:316-325` (the `price` field branch) and `:328-338` (the `priceLevel` field
+  branch) — inside the bulk price-list "apply" chunk loop. Per this file's own comment (`lines 283-289`),
+  a chunk that throws stops the whole apply immediately and reports a bare error, while earlier chunks'
+  changes have already committed — so a price-list import that touches ANY row triggering these lines
+  fails partway through, with the caller seeing an opaque error instead of a completed import.
+
+Both are genuinely production-breaking, not theoretical — confirmed live and confirmed unfixed by
+Task 5.5's implementer, independently corroborated by direct read during this plan's controller review.
+
+**Files:**
+- Modify: `lib/purchase-actions.ts`
+- Modify: `lib/price-list-import.ts`
+
+**Interfaces:**
+- Consumes: `product_selling_units` (to resolve a product's base selling unit id),
+  `product_selling_unit_price_levels` (Task 1).
+- Produces: nothing new — this task ports two existing write sites onto the schema every other task in
+  this plan already uses. No shape changes for anything downstream.
+
+- [ ] **Step 1: Fix `purchase-actions.ts`**
+
+At `lib/purchase-actions.ts:236-244`, replace the per-product `product_price_levels` upsert with a
+selling-unit-keyed one. The product's base selling unit id must be resolved first — reuse the same
+`SELECT id FROM product_selling_units WHERE product_id = ? AND is_base = 1 LIMIT 1` pattern used
+elsewhere in this plan (`actions.ts`, `TransferStockService.ts`). Since `receivePurchaseOrder` already
+runs everything inside one transaction (`connection` is already in scope in this loop), do the lookup
+on the same connection:
+
+```typescript
+// Update default price level — use finalPrice so it stays consistent with the
+// master products.price under the "highest wins" rule. Price levels are per
+// selling unit now (product_selling_unit_price_levels); this writes onto the
+// product's BASE selling unit, matching how every other write path in this
+// codebase treats "the product's own price level" after the selling-units
+// migration.
+if (defaultLevelId && finalPrice > 0) {
+  const [baseUnitRows]: any = await connection.query(
+    'SELECT id FROM product_selling_units WHERE product_id = ? AND is_base = 1 LIMIT 1',
+    [receivedItem.productId],
+  );
+  if (baseUnitRows.length > 0) {
+    await connection.query(`
+      INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity)
+      VALUES (?, ?, ?, 0)
+      ON DUPLICATE KEY UPDATE price = VALUES(price)
+    `, [baseUnitRows[0].id, defaultLevelId, finalPrice]);
+  }
+}
+```
+
+The `if (baseUnitRows.length > 0)` guard is deliberate: every product created through this codebase's
+normal paths has a base selling unit (Task 1's backfill guarantees it for existing products, `actions.ts`
+guarantees it for new ones), so this should always be true in practice — but silently skipping when it
+isn't is safer than throwing and rolling back a real purchase-order receipt over a data-consistency
+issue this task did not cause. Do not add error logging beyond what already exists in this function for
+comparable cases — check the surrounding code's own convention (e.g. the batch-costing try/catch above)
+before deciding whether this needs one; if you add one, match that existing style.
+
+- [ ] **Step 2: Fix `price-list-import.ts`'s two branches**
+
+At `lib/price-list-import.ts:316-325` (the `price` field branch), replace:
+
+```typescript
+if (defaultLevelId) {
+  await connection.query(
+    'UPDATE product_price_levels SET price = ? WHERE product_id = ? AND price_level_id = ?',
+    [newValue, item.productId, defaultLevelId],
+  );
+}
+```
+
+with a selling-unit-keyed UPDATE. This branch's original comment says "Keep an existing default-level
+price-level row in sync... Never creates one" — preserve that exact semantic (UPDATE only, no upsert)
+by scoping the UPDATE to the base unit's existing row:
+
+```typescript
+if (defaultLevelId) {
+  await connection.query(
+    `UPDATE product_selling_unit_price_levels sulp
+     JOIN product_selling_units su ON su.id = sulp.selling_unit_id
+     SET sulp.price = ?
+     WHERE su.product_id = ? AND su.is_base = 1 AND sulp.price_level_id = ?`,
+    [newValue, item.productId, defaultLevelId],
+  );
+}
+```
+
+At `lib/price-list-import.ts:328-338` (the `priceLevel` field branch), replace:
+
+```typescript
+await connection.query(
+  `INSERT INTO product_price_levels (product_id, price_level_id, price, min_quantity)
+   VALUES (?, ?, ?, 0)
+   ON DUPLICATE KEY UPDATE price = VALUES(price)`,
+  [item.productId, item.priceLevelId, newValue],
+);
+```
+
+with the base-unit-keyed upsert, resolving the base unit id first (same pattern as Step 1, on the same
+`connection`):
+
+```typescript
+const [baseUnitRows]: any = await connection.query(
+  'SELECT id FROM product_selling_units WHERE product_id = ? AND is_base = 1 LIMIT 1',
+  [item.productId],
+);
+if (baseUnitRows.length > 0) {
+  await connection.query(
+    `INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity)
+     VALUES (?, ?, ?, 0)
+     ON DUPLICATE KEY UPDATE price = VALUES(price)`,
+    [baseUnitRows[0].id, item.priceLevelId, newValue],
+  );
+} else {
+  skipped.push({ productId: item.productId, productName: item.productName, reason: 'Product has no base selling unit' });
+  continue;
+}
+```
+
+The `else` branch here differs deliberately from Step 1's silent skip: this file already has a
+`skipped` array and a `reason` field as its established pattern for "this row didn't apply, here's why"
+(see the two existing `skipped.push(...)` calls above in this same function) — use it instead of
+silently doing nothing, since a caller here is explicitly asking to see what didn't apply and why.
+
+- [ ] **Step 3: Typecheck**
+
+Run: `npx tsc --noEmit 2>&1 | grep -E "purchase-actions|price-list-import"`
+Expected: no NEW errors naming those files.
+
+- [ ] **Step 4: Verify against the database**
+
+Pick a real product with a base selling unit and a default price level configured. Simulate both paths
+directly (do not fabricate a fake purchase order or a fake price-list file if the real flow is
+reachable via a script calling these functions directly, mirroring how Task 5.5's implementer verified
+`MySqlProductRepository` — via direct in-process exercise against the local `verdix` DB, cleaning up
+test data afterward):
+
+```bash
+npx tsx -e "
+const {query}=require('./lib/mysql');
+(async()=>{
+  const rows = await query(
+    'SELECT su.id, sulp.price_level_id, sulp.price FROM product_selling_units su LEFT JOIN product_selling_unit_price_levels sulp ON sulp.selling_unit_id = su.id WHERE su.product_id = ? AND su.is_base = 1',
+    ['<a real product id>']
+  );
+  console.table(rows);
+  process.exit(0);
+})();
+"
+```
+
+Confirm: before your fix, the old code path would have thrown against a dropped table (you can confirm
+this ahead of time with `SHOW TABLES LIKE 'product_price_levels'` returning empty); after your fix, a
+receipt/apply through the real function updates `product_selling_unit_price_levels` correctly and does
+NOT throw. If you exercise the actual `receivePurchaseOrder` or the price-list apply function against
+real data, use ROLLED-BACK transactions or fully clean up afterward — this plan's branch has a
+documented prior incident of a verification step destroying live data (see the ledger); do not repeat
+that pattern. If you have no way to safely exercise the real functions, static-trace the change instead
+and say so plainly in your report.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add "lib/purchase-actions.ts" "lib/price-list-import.ts"
+git commit -m "fix: migrate purchase receiving and price-list import off the dropped product_price_levels table"
+```
+
+---
+
 ### Task 6: Document the change
 
 **Files:**
