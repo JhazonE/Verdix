@@ -1889,12 +1889,41 @@ export async function deleteBrand(id: string) {
   }
 }
 
+/**
+ * A subcategory name must be unique within its own category — or, for an
+ * unassigned (categoryId: null) subcategory, unique among other unassigned
+ * ones. MySQL's UNIQUE(category_id, name) index treats every NULL as
+ * distinct, so it alone would allow duplicate names among unassigned rows;
+ * this closes that gap explicitly.
+ */
+async function subcategoryNameConflicts(
+  name: string,
+  categoryId: string | null,
+  excludeId?: string,
+): Promise<boolean> {
+  const params: any[] = [name];
+  let sql = 'SELECT id FROM subcategories WHERE name = ?';
+  if (categoryId === null) {
+    sql += ' AND category_id IS NULL';
+  } else {
+    sql += ' AND category_id = ?';
+    params.push(categoryId);
+  }
+  if (excludeId) {
+    sql += ' AND id != ?';
+    params.push(excludeId);
+  }
+  const rows: any = await query(sql, params);
+  return rows.length > 0;
+}
+
 export async function getSubcategories() {
   try {
     const subcategories = await query('SELECT * FROM subcategories ORDER BY name');
     return subcategories.map((sub: any) => ({
       id: sub.id,
       name: sub.name,
+      categoryId: sub.category_id ?? null,
       markupPercentage: sub.markup_percentage ? parseFloat(sub.markup_percentage) : undefined
     }));
   } catch (error) {
@@ -1903,10 +1932,16 @@ export async function getSubcategories() {
   }
 }
 
-export async function addSubcategory(name: string, markupPercentage?: number) {
+export async function addSubcategory(name: string, categoryId: string | null, markupPercentage?: number) {
   try {
+    if (await subcategoryNameConflicts(name, categoryId)) {
+      return { success: false, message: `A subcategory named "${name}" already exists in this category.` };
+    }
     const id = `subcat_${Date.now()}`;
-    await query('INSERT INTO subcategories (id, name, markup_percentage) VALUES (?, ?, ?)', [id, name, markupPercentage || null]);
+    await query(
+      'INSERT INTO subcategories (id, name, category_id, markup_percentage) VALUES (?, ?, ?, ?)',
+      [id, name, categoryId, markupPercentage || null],
+    );
     return { success: true, message: 'Subcategory added successfully.' };
   } catch (error) {
     console.error('Error adding subcategory:', error);
@@ -1914,9 +1949,15 @@ export async function addSubcategory(name: string, markupPercentage?: number) {
   }
 }
 
-export async function updateSubcategory(id: string, name: string, markupPercentage?: number) {
+export async function updateSubcategory(id: string, name: string, categoryId: string | null, markupPercentage?: number) {
   try {
-    await query('UPDATE subcategories SET name = ?, markup_percentage = ? WHERE id = ?', [name, markupPercentage || null, id]);
+    if (await subcategoryNameConflicts(name, categoryId, id)) {
+      return { success: false, message: `A subcategory named "${name}" already exists in this category.` };
+    }
+    await query(
+      'UPDATE subcategories SET name = ?, category_id = ?, markup_percentage = ? WHERE id = ?',
+      [name, categoryId, markupPercentage || null, id],
+    );
     return { success: true, message: 'Subcategory updated successfully.' };
   } catch (error) {
     console.error('Error updating subcategory:', error);
