@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { UnitOfMeasure } from '@/lib/types';
 
@@ -84,7 +85,7 @@ function PriceLevelOverrides({
         return (
           <div key={level.id} className="flex gap-3 items-end">
             <div className="flex-1">
-              <FormLabel className="text-xs text-muted-foreground">{level.name}</FormLabel>
+              <Label className="text-xs text-muted-foreground">{level.name}</Label>
               <Input
                 type="number"
                 step="0.01"
@@ -95,7 +96,7 @@ function PriceLevelOverrides({
               />
             </div>
             <div className="w-[100px]">
-              <FormLabel className="text-xs text-nowrap text-muted-foreground">Min Qty</FormLabel>
+              <Label className="text-xs text-nowrap text-muted-foreground">Min Qty</Label>
               <Input
                 type="number"
                 min="0"
@@ -183,14 +184,14 @@ export function SellingUnitsTab() {
             <div className="p-3 bg-card border rounded-md shadow-sm">
               <div className="flex items-start gap-3 flex-wrap">
                 <div className="flex-1 min-w-[150px]">
-                  <FormLabel className="text-xs">Unit Name</FormLabel>
+                  <Label className="text-xs">Unit Name</Label>
                   <Input value={selectedUnitOfMeasure || ''} disabled />
                 </div>
 
                 <div className="w-[130px]">
-                  <FormLabel className="text-xs">
+                  <Label className="text-xs">
                     Qty in {selectedUnitOfMeasure || 'base units'}
-                  </FormLabel>
+                  </Label>
                   <Input type="number" value={1} disabled />
                 </div>
 
