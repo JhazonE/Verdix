@@ -382,50 +382,31 @@ export function InventoryTab() {
         />
       )}
 
-      {/* Stock and Reorder Point are standard-only, leaving Cost alone here for
-          a service — kept at two columns so it lines up with every field
-          above it. */}
-      <div className={`grid grid-cols-1 gap-4 ${itemType === 'standard' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
-        {itemType === 'standard' && (
-          <FormField
-            control={form.control}
-            name="stock"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Initial Stock</FormLabel>
-                <FormControl>
-                  <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
-        {itemType === 'standard' && (
-          <FormField
-            control={form.control}
-            name="reorderPoint"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Reorder Point</FormLabel>
-                <FormControl>
-                  <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
+      {/* Cost moved to the Selling Units tab's base row — this point is only
+          reached for a standard item (a service returns earlier above), so
+          Stock and Reorder Point get the full row to themselves now. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <FormField
           control={form.control}
-          name="cost"
+          name="stock"
           render={({ field }) => (
             <FormItem>
-              <div className="flex items-center justify-between h-6">
-                <FormLabel>{itemType === 'service' ? 'Cost (required)' : 'Cost (₱)'}</FormLabel>
-              </div>
+              <FormLabel>Initial Stock</FormLabel>
               <FormControl>
-                <Input type="number" step="0.01" placeholder="e.g., 50.00" value={field.value || ''} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
+                <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="reorderPoint"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Reorder Point</FormLabel>
+              <FormControl>
+                <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
               </FormControl>
               <FormMessage />
             </FormItem>

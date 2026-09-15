@@ -372,9 +372,10 @@ export function InventoryTab() {
 
       {/* Stock and Reorder Point are standard-only, leaving Cost alone here for
           a service — kept at two columns so it lines up with every field
-          above it. Mirrors the Add form. */}
-      <div className={`grid grid-cols-1 gap-4 ${isServiceProduct ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
-        {!isServiceProduct && (
+          above it. Cost moved to the Selling Units tab's base row — this
+          point is standard-item-only, so Stock and Reorder Point get the
+          full row now. Mirrors the Add form. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label>Initial Stock</Label>
           <div>
@@ -382,8 +383,6 @@ export function InventoryTab() {
           </div>
           <p className="text-sm text-muted-foreground">Stock is updated via transactions.</p>
         </div>
-        )}
-        {!isServiceProduct && (
         <FormField
           control={form.control}
           name="reorderPoint"
@@ -392,22 +391,6 @@ export function InventoryTab() {
               <FormLabel>Reorder Point</FormLabel>
               <FormControl>
                 <Input type="number" placeholder="0" value={field.value != null ? formatQuantity(field.value) : ''} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        )}
-        <FormField
-          control={form.control}
-          name="cost"
-          render={({ field }) => (
-            <FormItem>
-              <div className="flex items-center justify-between h-6">
-                <FormLabel>{isServiceProduct ? 'Cost (required)' : 'Cost (₱)'}</FormLabel>
-              </div>
-              <FormControl>
-                <Input type="number" step="0.01" placeholder="e.g., 50.00" value={field.value || ''} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
               </FormControl>
               <FormMessage />
             </FormItem>
