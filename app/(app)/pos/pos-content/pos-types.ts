@@ -1,4 +1,5 @@
 import type { Product } from '@/lib/types';
+import type { CartSellingUnit } from '@/lib/pos-cart-units';
 
 export type QueuedOrder = {
   id: string;
@@ -32,6 +33,12 @@ export type SaleItem = Product & {
   discountHolderName?: string;
   name: string;
   taxType?: 'VAT' | 'NON_VAT' | 'ZERO_RATED' | 'VAT_EXEMPT';
+  /**
+   * The selling unit this line is priced and will be sold as. Defaults to
+   * the product's base unit on add (see `resolveSellingUnitForAdd`).
+   * Undefined for a service line, which carries no selling units at all.
+   */
+  selectedSellingUnit?: CartSellingUnit;
 };
 
 export function mapVatStatusToTaxType(vatStatus?: string): 'VAT' | 'NON_VAT' | 'ZERO_RATED' | 'VAT_EXEMPT' {
