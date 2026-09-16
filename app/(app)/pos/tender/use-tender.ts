@@ -262,7 +262,10 @@ export function useTender({
             discountIdNumber: item.discountIdNumber,
             discountHolderName: item.discountHolderName,
             taxType: item.taxType || mapTax(item.vatStatus),
-            cost: item.cost
+            cost: item.cost,
+            sellingUnitId: item.selectedSellingUnit?.id ?? null,
+            sellingUnitName: item.selectedSellingUnit?.name ?? null,
+            sellingUnitFactor: item.selectedSellingUnit?.factor ?? null,
           })),
           customer: customer || { id: 'walk-in', name: 'Walk-in Customer' },
           status: 'completed',
