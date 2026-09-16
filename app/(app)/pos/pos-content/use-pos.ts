@@ -16,6 +16,15 @@ import { WALK_IN_CUSTOMER } from '../customer-account/customer-account-types';
 import { type SaleItem, type SuspendedTransaction, type QueuedOrder, mapVatStatusToTaxType } from './pos-types';
 import type { Customer, SystemSettings } from '@/lib/types';
 
+// Carts persisted or queued by a pre-lineId version of this app (localStorage
+// pos_current_cart, a held/suspended transaction, a queued order claimed from
+// the server) can contain SaleItems with no lineId. Every selection/void/edit
+// call site keys off lineId, so backfill one before such an array ever enters
+// items state — otherwise every line in that cart shares lineId: undefined and
+// voiding one wipes them all.
+const withLineIds = (list: SaleItem[]): SaleItem[] =>
+  (list || []).map(item => (item.lineId ? item : { ...item, lineId: crypto.randomUUID() }));
+
 export function usePOS() {
   const [currentShiftId, setCurrentShiftId] = useState<string | null>(null);
   const [showEndShiftReport, setShowEndShiftReport] = useState(false);
@@ -482,7 +491,13 @@ export function usePOS() {
       const isInput = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA' || activeElement?.hasAttribute('cmdk-input');
       const isMainInput = activeElement === inputRef.current;
       if (isInput && !isMainInput) return;
-      const isDialogOpen = document.querySelector('[role="dialog"]') !== null;
+      // Also matches an open Radix Select listbox (the selling-unit picker),
+      // not just Dialog/AlertDialog/Sheet — a cashier mid-selection there
+      // should not have F-keys or arrow keys act on the cart underneath.
+      const isDialogOpen = document.querySelector('[role="dialog"],[role="listbox"]') !== null;
+      // Blanket bailout: none of the F-key shortcuts below should fire while
+      // a dialog or the unit-picker listbox is open.
+      if (isDialogOpen) return;
 
       switch (e.key) {
         case 'F1': handleOpenEditDialog(); break;
@@ -727,25 +742,32 @@ export function usePOS() {
     setItems(prev => prev.map(item => item.lineId === itemId ? { ...item, name: newName, quantity: newQty, price: newPrice, discount: newDiscount } : item));
   };
 
-  const onUnitChange = (item: SaleItem, unitId: string) => {
-    const unit = item.sellingUnits?.find((u: any) => u.id === unitId);
-    if (!unit) return;
+  const onUnitChange = (lineId: string, unitId: string) => {
     setItems(prevItems => {
+      // Match by lineId (not object identity) — the items array can be
+      // replaced with new object references (e.g. the price-level re-pricing
+      // effect above) between when a cart row renders and when the cashier
+      // actually picks a value in the dropdown, and identity matching would
+      // silently no-op in that case.
+      const item = prevItems.find(i => i.lineId === lineId);
+      if (!item) return prevItems;
+      const unit = item.sellingUnits?.find((u: any) => u.id === unitId);
+      if (!unit) return prevItems;
       // If another line already holds this exact (product, unit) pair,
       // merge into it (sum quantity) instead of leaving two lines for the
       // same product+unit — same identity rule Task 2 applies on add.
       const target = findCartLineForUnit(prevItems, item.id, unitId);
-      if (target && target !== item) {
+      if (target && target.lineId !== item.lineId) {
         const mergedQty = target.quantity + item.quantity;
         return prevItems
-          .filter(i => i !== item)
-          .map(i => i === target
+          .filter(i => i.lineId !== item.lineId)
+          .map(i => i.lineId === target.lineId
             ? { ...i, quantity: mergedQty, price: calculateEffectivePriceForUnit(unit, mergedQty, activeLevelId, defaultLevelId) }
             : i
           );
       }
       return prevItems.map(i =>
-        i === item
+        i.lineId === item.lineId
           ? {
               ...i,
               selectedSellingUnit: unit,
@@ -863,7 +885,7 @@ export function usePOS() {
       const response = await fetch(getApiUrl(`/pos/queue?id=${orderId}`), { method: 'DELETE' });
       const result = await response.json();
       if (result.success) {
-        setItems(result.data.items);
+        setItems(withLineIds(result.data.items));
         setQueuedOrders(prev => prev.filter(o => o.id !== orderId));
         setIsQueuePanelOpen(false);
         toast({ title: `Order #${result.data.queueNumber} Loaded`, description: `From ${result.data.frontlinerName || 'frontliner'}.` });
@@ -960,7 +982,7 @@ export function usePOS() {
 
   const handleRestore = (index: number) => {
     if (items.length > 0) { toast({ title: 'Cart Not Empty', description: 'Please clear the current cart before restoring a transaction.', variant: 'destructive' }); return; }
-    setItems(heldTransactions[index].items);
+    setItems(withLineIds(heldTransactions[index].items));
     setHeldTransactions(prev => prev.filter((_, i) => i !== index));
     setIsHeldTransOpen(false);
   };
@@ -1099,7 +1121,7 @@ export function usePOS() {
     if (savedCart) {
       try {
         const parsed = JSON.parse(savedCart);
-        setItems(parsed.items || []);
+        setItems(withLineIds(parsed.items || []));
         setSelectedCustomer(parsed.selectedCustomer || WALK_IN_CUSTOMER);
         setHeldTransactions(parsed.heldTransactions || []);
       } catch {}

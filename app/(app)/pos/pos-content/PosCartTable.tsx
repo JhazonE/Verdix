@@ -17,7 +17,7 @@ type Props = {
   getSearchSuggestions: (query: string, limit?: number) => any[];
   findExactCodeMatch: (query: string) => any | undefined;
   handleAddItem: (product: any, matchedCode?: string) => void;
-  onUnitChange: (item: SaleItem, unitId: string) => void;
+  onUnitChange: (lineId: string, unitId: string) => void;
   handleDefaultTender: () => void;
   setIsProductSearchOpen: (v: boolean) => void;
   items: SaleItem[];
@@ -238,7 +238,7 @@ export function PosCartTable({
                       {(item.sellingUnits?.length ?? 0) > 1 ? (
                         <Select
                           value={item.selectedSellingUnit?.id ?? ''}
-                          onValueChange={(unitId) => onUnitChange(item, unitId)}
+                          onValueChange={(unitId) => onUnitChange(item.lineId, unitId)}
                         >
                           <SelectTrigger className="h-7 w-auto border-none bg-transparent px-1 text-sm text-muted-foreground shadow-none focus:ring-0">
                             <SelectValue />
