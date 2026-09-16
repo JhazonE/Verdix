@@ -154,14 +154,14 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
         </TableCell>
         <TableCell className="hidden md:table-cell">{product.sku}</TableCell>
         <TableCell className="hidden lg:table-cell">{product.barcode}</TableCell>
-        <TableCell>
-          <Badge variant={badgeVariant}>{badgeText}</Badge>
-        </TableCell>
         <TableCell className="hidden sm:table-cell text-center text-muted-foreground">
           {product.unitOfMeasure}
         </TableCell>
-        <TableCell className="text-center font-bold">
-          {formatStockQuantity(product.stock)}
+        <TableCell className="text-center">
+          <div className="flex flex-col items-center gap-1">
+            <span className="font-bold">{formatStockQuantity(product.stock)}</span>
+            <Badge variant={badgeVariant} className="text-[10px] px-1.5 py-0">{badgeText}</Badge>
+          </div>
         </TableCell>
         <TableCell className="hidden md:table-cell text-right">
           {product.cost && typeof product.cost === 'number' ? `₱${product.cost.toFixed(2)}` : '—'}
@@ -272,7 +272,7 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
 
       {unitsExpanded && extraSellingUnits.length > 0 && (
         <TableRow className="bg-muted/30 hover:bg-muted/30">
-          <TableCell colSpan={12} className="p-0">
+          <TableCell colSpan={11} className="p-0">
             <div className="divide-y divide-border/50">
               {extraSellingUnits.map((unit, idx) => (
                 <div
@@ -336,9 +336,8 @@ function ProductSkeleton() {
       <TableCell><Skeleton className="h-5 w-32" /></TableCell>
       <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-24" /></TableCell>
       <TableCell className="hidden lg:table-cell"><Skeleton className="h-5 w-24" /></TableCell>
-      <TableCell><Skeleton className="h-6 w-24 rounded-full" /></TableCell>
-      <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-10 mx-auto" /></TableCell>
-      <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-12 mx-auto" /></TableCell>
+      <TableCell className="hidden sm:table-cell"><Skeleton className="h-5 w-10 mx-auto" /></TableCell>
+      <TableCell><Skeleton className="h-5 w-12 mx-auto mb-1" /><Skeleton className="h-4 w-16 mx-auto rounded-full" /></TableCell>
       <TableCell className="hidden md:table-cell text-right"><Skeleton className="h-5 w-20 ml-auto" /></TableCell>
       <TableCell className="hidden md:table-cell text-right"><Skeleton className="h-5 w-20 ml-auto" /></TableCell>
       <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-20 mx-auto" /></TableCell>
@@ -870,7 +869,6 @@ function ProductsContent() {
                 <TableHead className={HEAD_CLASS}>Name</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell")}>SKU</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "hidden lg:table-cell")}>Barcode</TableHead>
-                <TableHead className={HEAD_CLASS}>Status</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "hidden sm:table-cell text-center")}>Unit</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "text-center")}>Stock</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell text-right")}>Cost</TableHead>
