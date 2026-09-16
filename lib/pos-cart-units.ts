@@ -8,8 +8,8 @@
 
 export type CartSellingUnit = {
   id?: string;
-  name?: string;
-  factor?: number;
+  name: string;
+  factor: number;
   barcode?: string;
   cost?: number;
   price: number;
@@ -30,6 +30,8 @@ type CartProduct = {
 export function baseSellingUnitOf(product: CartProduct): CartSellingUnit {
   return (
     product.sellingUnits?.find((u) => u.isBase) ?? {
+      name: '',
+      factor: 1,
       price: product.price ?? 0,
       priceLevels: [],
     }

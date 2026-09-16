@@ -9,7 +9,7 @@ const product = { id: 'prod-1', price: 25, sellingUnits: [baseUnit, packUnit] };
 assert.deepEqual(baseSellingUnitOf(product), baseUnit, 'finds the isBase unit');
 assert.deepEqual(
   baseSellingUnitOf({ price: 40 }),
-  { price: 40, priceLevels: [] },
+  { name: '', factor: 1, price: 40, priceLevels: [] },
   'falls back to product.price when sellingUnits is absent'
 );
 
