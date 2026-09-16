@@ -174,6 +174,9 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
                 return (
                   <span key={pl.levelId} className="text-xs whitespace-nowrap">
                     <span className="text-muted-foreground">{levelName}:</span> ₱{pl.price.toFixed(2)}
+                    {typeof pl.minQuantity === 'number' && pl.minQuantity > 0 && (
+                      <span className="text-muted-foreground"> (min {pl.minQuantity})</span>
+                    )}
                   </span>
                 );
               })}
