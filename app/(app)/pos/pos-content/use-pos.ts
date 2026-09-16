@@ -640,8 +640,12 @@ export function usePOS() {
       const sku = (p.sku || '').toLowerCase();
       const barcode = (p.barcode || '').toLowerCase();
       const name = (p.name || '').toLowerCase();
-      if (sku === q || barcode === q) exactCode.push(p);
+      const unitBarcodeMatch = (p.sellingUnits || []).some((u: any) => !u.isBase && (u.barcode || '').toLowerCase() === q);
+      if (sku === q || barcode === q || unitBarcodeMatch) exactCode.push(p);
       else if (name === q) exactName.push(p);
+      // Fuzzy/partial matching stays product-name/SKU/barcode only — matching
+      // partial text against every unit's barcode too would surface confusing
+      // unit-level partial hits for what should read as a product-name search.
       else if (sku.includes(q) || barcode.includes(q) || name.includes(q)) partial.push(p);
     }
     return [...exactCode, ...exactName, ...partial].slice(0, limit);
@@ -663,13 +667,18 @@ export function usePOS() {
   // instant local cache first (covers the common case with zero lag), then
   // the debounced server results so products outside the cached page still
   // auto-add once their search response lands.
+  const matchesProductOrUnitCode = (p: any, q: string) =>
+    (p.sku || '').toLowerCase() === q ||
+    (p.barcode || '').toLowerCase() === q ||
+    (p.sellingUnits || []).some((u: any) => !u.isBase && (u.barcode || '').toLowerCase() === q);
+
   const findExactCodeMatch = useCallback((query: string): any | undefined => {
     const q = query.trim().toLowerCase();
     if (!q) return undefined;
-    const inLocal = (products || []).find(p => (p.sku || '').toLowerCase() === q || (p.barcode || '').toLowerCase() === q);
+    const inLocal = (products || []).find(p => matchesProductOrUnitCode(p, q));
     if (inLocal) return inLocal;
     if (debouncedSearchQuery.trim().toLowerCase() === q) {
-      return (serverSearchResults || []).find(p => (p.sku || '').toLowerCase() === q || (p.barcode || '').toLowerCase() === q);
+      return (serverSearchResults || []).find(p => matchesProductOrUnitCode(p, q));
     }
     return undefined;
   }, [products, serverSearchResults, debouncedSearchQuery]);
@@ -682,7 +691,7 @@ export function usePOS() {
   const handleAddItemBySKU = async (sku: string) => {
     if (!sku) return;
     const local = findExactCodeMatch(sku) || getSearchSuggestions(sku, 1)[0];
-    if (local) { handleAddItem(local); return; }
+    if (local) { handleAddItem(local, sku); return; }
 
     const q = sku.trim();
     try {
@@ -690,10 +699,8 @@ export function usePOS() {
       const result = await response.json();
       if (result.success) {
         const qLower = q.toLowerCase();
-        const remote = (result.data || []).find((p: any) =>
-          (p.sku || '').toLowerCase() === qLower || (p.barcode || '').toLowerCase() === qLower
-        );
-        if (remote) { handleAddItem(mapApiProduct(remote)); return; }
+        const remote = (result.data || []).find((p: any) => matchesProductOrUnitCode(p, qLower));
+        if (remote) { handleAddItem(mapApiProduct(remote), sku); return; }
       }
     } catch {
       // Network/API failure — fall through to the "not found" toast below.

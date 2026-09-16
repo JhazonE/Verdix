@@ -15,7 +15,7 @@ type Props = {
   handleAddItemBySKU: (sku: string) => void;
   getSearchSuggestions: (query: string, limit?: number) => any[];
   findExactCodeMatch: (query: string) => any | undefined;
-  handleAddItem: (product: any) => void;
+  handleAddItem: (product: any, matchedCode?: string) => void;
   handleDefaultTender: () => void;
   setIsProductSearchOpen: (v: boolean) => void;
   items: SaleItem[];
@@ -63,7 +63,7 @@ export function PosCartTable({
     if (exactMatch) {
       setIsSuggestOpen(false);
       justAutoAddedRef.current = true;
-      handleAddItem(exactMatch);
+      handleAddItem(exactMatch, inputValue);
     }
   }, [inputValue, findExactCodeMatch, handleAddItem]);
 
