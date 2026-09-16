@@ -571,7 +571,7 @@ export function usePOS() {
     if (!activeLevelId) return;
     setItems(currentItems => {
       if (currentItems.length === 0) return currentItems;
-      const updated = currentItems.map(item => ({ ...item, price: calculateEffectivePriceForUnit(baseSellingUnitOf(item), item.quantity, activeLevelId, defaultLevelId) }));
+      const updated = currentItems.map(item => ({ ...item, price: calculateEffectivePriceForUnit(item.selectedSellingUnit ?? baseSellingUnitOf(item), item.quantity, activeLevelId, defaultLevelId) }));
       const changed = JSON.stringify(currentItems.map(i => i.price)) !== JSON.stringify(updated.map(i => i.price));
       return changed ? updated : currentItems;
     });
@@ -714,8 +714,8 @@ export function usePOS() {
     } else {
       setItems(prevItems => prevItems.map(item => {
         if (item.id === productId) {
-          const original = products?.find(p => p.id === productId);
-          return { ...item, quantity: newQuantity, price: calculateEffectivePriceForUnit(baseSellingUnitOf(original || item), newQuantity, activeLevelId, defaultLevelId) };
+          const unit = item.selectedSellingUnit ?? baseSellingUnitOf(item);
+          return { ...item, quantity: newQuantity, price: calculateEffectivePriceForUnit(unit, newQuantity, activeLevelId, defaultLevelId) };
         }
         return item;
       }));
@@ -883,7 +883,11 @@ export function usePOS() {
     if (isFrontliner) return;
     if (items.length > 0) {
       if (!enableNegativeInventory) {
-        const lowStock = items.filter(item => item.type !== 'service' && item.quantity > item.stock);
+        const lowStock = items.filter(item => {
+          if (item.type === 'service') return false;
+          const factor = item.selectedSellingUnit?.factor ?? 1;
+          return item.quantity * factor > item.stock;
+        });
         if (lowStock.length > 0) { setInsufficientItems(lowStock); setIsInsufficientStockOpen(true); return; }
       }
       setTenderMethod(method);
