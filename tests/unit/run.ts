@@ -58,4 +58,5 @@ import './license-features.test';
 import './product-markup-resolution.test';
 import './markup-validation.test';
 import './selling-units.test';
+import './pos-cart-units.test';
 import './pricing.test';
