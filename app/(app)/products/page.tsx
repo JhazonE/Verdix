@@ -258,25 +258,39 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
           <TableCell colSpan={12} className="p-0">
             <div className="divide-y divide-border/50">
               {extraSellingUnits.map((unit, idx) => (
-                <div
-                  key={unit.id || idx}
-                  className="flex flex-wrap items-center gap-x-6 gap-y-1 py-2 pl-10 pr-4 text-sm"
-                >
-                  <span className="font-medium">
-                    {unit.name}
-                    {typeof unit.factor === 'number' && (
-                      <span className="ml-1 text-xs font-normal text-muted-foreground">(×{unit.factor})</span>
-                    )}
-                  </span>
-                  <span className="text-muted-foreground">
-                    Barcode: <span className="text-foreground">{unit.barcode || '—'}</span>
-                  </span>
-                  <span className="text-muted-foreground">
-                    Cost: <span className="text-foreground">{typeof unit.cost === 'number' ? `₱${unit.cost.toFixed(2)}` : '—'}</span>
-                  </span>
-                  <span className="text-muted-foreground">
-                    Retail: <span className="text-foreground">{typeof unit.price === 'number' ? `₱${unit.price.toFixed(2)}` : '—'}</span>
-                  </span>
+                <div key={unit.id || idx} className="py-2 pl-10 pr-4 text-sm">
+                  <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
+                    <span className="font-medium">
+                      {unit.name}
+                      {typeof unit.factor === 'number' && (
+                        <span className="ml-1 text-xs font-normal text-muted-foreground">(×{unit.factor})</span>
+                      )}
+                    </span>
+                    <span className="text-muted-foreground">
+                      Barcode: <span className="text-foreground">{unit.barcode || '—'}</span>
+                    </span>
+                    <span className="text-muted-foreground">
+                      Cost: <span className="text-foreground">{typeof unit.cost === 'number' ? `₱${unit.cost.toFixed(2)}` : '—'}</span>
+                    </span>
+                    <span className="text-muted-foreground">
+                      Retail: <span className="text-foreground">{typeof unit.price === 'number' ? `₱${unit.price.toFixed(2)}` : '—'}</span>
+                    </span>
+                  </div>
+                  {unit.priceLevels && unit.priceLevels.length > 0 && (
+                    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 pl-1">
+                      {unit.priceLevels.map((pl) => {
+                        const levelName = productOptions?.priceLevels?.find((l: any) => l.id === pl.levelId)?.name || pl.levelId;
+                        return (
+                          <span key={pl.levelId} className="text-xs text-muted-foreground">
+                            {levelName}: <span className="text-foreground">₱{pl.price.toFixed(2)}</span>
+                            {typeof pl.minQuantity === 'number' && pl.minQuantity > 0 && (
+                              <span className="text-muted-foreground"> (min {pl.minQuantity})</span>
+                            )}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
