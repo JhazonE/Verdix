@@ -69,6 +69,7 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
   const [unitsExpanded, setUnitsExpanded] = useState(false);
 
   const extraSellingUnits = (product.sellingUnits || []).filter((u) => !u.isBase);
+  const baseUnitPriceLevels = product.sellingUnits?.find((u) => u.isBase)?.priceLevels || [];
 
   const { toast } = useToast();
   // Services carry no stock, so the stock ladder does not apply — flagging one
@@ -166,7 +167,20 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
           {product.cost && typeof product.cost === 'number' ? `₱${product.cost.toFixed(2)}` : '—'}
         </TableCell>
         <TableCell className="hidden md:table-cell text-right">
-          {typeof product.price === 'number' ? `₱${product.price.toFixed(2)}` : 'N/A'}
+          {baseUnitPriceLevels.length > 0 ? (
+            <div className="flex flex-wrap justify-end gap-x-2 gap-y-0.5">
+              {baseUnitPriceLevels.map((pl) => {
+                const levelName = productOptions?.priceLevels?.find((l: any) => l.id === pl.levelId)?.name || pl.levelId;
+                return (
+                  <span key={pl.levelId} className="text-xs whitespace-nowrap">
+                    <span className="text-muted-foreground">{levelName}:</span> ₱{pl.price.toFixed(2)}
+                  </span>
+                );
+              })}
+            </div>
+          ) : (
+            typeof product.price === 'number' ? `₱${product.price.toFixed(2)}` : 'N/A'
+          )}
         </TableCell>
         <TableCell className="hidden md:table-cell text-center">
           {product.warehouseName || '—'}
@@ -258,39 +272,33 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
           <TableCell colSpan={12} className="p-0">
             <div className="divide-y divide-border/50">
               {extraSellingUnits.map((unit, idx) => (
-                <div key={unit.id || idx} className="py-2 pl-10 pr-4 text-sm">
-                  <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
-                    <span className="font-medium">
-                      {unit.name}
-                      {typeof unit.factor === 'number' && (
-                        <span className="ml-1 text-xs font-normal text-muted-foreground">(×{unit.factor})</span>
-                      )}
-                    </span>
-                    <span className="text-muted-foreground">
-                      Barcode: <span className="text-foreground">{unit.barcode || '—'}</span>
-                    </span>
-                    <span className="text-muted-foreground">
-                      Cost: <span className="text-foreground">{typeof unit.cost === 'number' ? `₱${unit.cost.toFixed(2)}` : '—'}</span>
-                    </span>
-                    <span className="text-muted-foreground">
-                      Retail: <span className="text-foreground">{typeof unit.price === 'number' ? `₱${unit.price.toFixed(2)}` : '—'}</span>
-                    </span>
-                  </div>
-                  {unit.priceLevels && unit.priceLevels.length > 0 && (
-                    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 pl-1">
-                      {unit.priceLevels.map((pl) => {
-                        const levelName = productOptions?.priceLevels?.find((l: any) => l.id === pl.levelId)?.name || pl.levelId;
-                        return (
-                          <span key={pl.levelId} className="text-xs text-muted-foreground">
-                            {levelName}: <span className="text-foreground">₱{pl.price.toFixed(2)}</span>
-                            {typeof pl.minQuantity === 'number' && pl.minQuantity > 0 && (
-                              <span className="text-muted-foreground"> (min {pl.minQuantity})</span>
-                            )}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
+                <div
+                  key={unit.id || idx}
+                  className="flex flex-wrap items-center gap-x-6 gap-y-1 py-2 pl-10 pr-4 text-sm"
+                >
+                  <span className="font-medium">
+                    {unit.name}
+                    {typeof unit.factor === 'number' && (
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">(×{unit.factor})</span>
+                    )}
+                  </span>
+                  <span className="text-muted-foreground">
+                    Barcode: <span className="text-foreground">{unit.barcode || '—'}</span>
+                  </span>
+                  <span className="text-muted-foreground">
+                    Cost: <span className="text-foreground">{typeof unit.cost === 'number' ? `₱${unit.cost.toFixed(2)}` : '—'}</span>
+                  </span>
+                  {unit.priceLevels && unit.priceLevels.length > 0 && unit.priceLevels.map((pl) => {
+                    const levelName = productOptions?.priceLevels?.find((l: any) => l.id === pl.levelId)?.name || pl.levelId;
+                    return (
+                      <span key={pl.levelId} className="text-muted-foreground">
+                        {levelName}: <span className="text-foreground">₱{pl.price.toFixed(2)}</span>
+                        {typeof pl.minQuantity === 'number' && pl.minQuantity > 0 && (
+                          <span className="text-xs text-muted-foreground"> (min {pl.minQuantity})</span>
+                        )}
+                      </span>
+                    );
+                  })}
                 </div>
               ))}
             </div>
@@ -863,7 +871,7 @@ function ProductsContent() {
                 <TableHead className={cn(HEAD_CLASS, "hidden sm:table-cell text-center")}>Unit</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "text-center")}>Stock</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell text-right")}>Cost</TableHead>
-                <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell text-right")}>Retail Price</TableHead>
+                <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell text-right")}>Price Levels</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell text-center")}>Warehouse</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell text-center")}>Shelf</TableHead>
                 <TableHead className={HEAD_CLASS}>
