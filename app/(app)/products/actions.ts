@@ -280,9 +280,14 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
         params.push(filters.id);
       }
       if (filters.search) {
-        whereClauses.push(`(p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?)`);
+        // A selling unit's own barcode (e.g. a Pack of 12) lives only in
+        // product_selling_units, never on products.barcode — without this,
+        // searching by it here finds nothing.
+        whereClauses.push(`(p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ? OR EXISTS (
+          SELECT 1 FROM product_selling_units su WHERE su.product_id = p.id AND su.barcode LIKE ?
+        ))`);
         const searchParam = `%${filters.search}%`;
-        params.push(searchParam, searchParam, searchParam);
+        params.push(searchParam, searchParam, searchParam, searchParam);
       }
       if (filters.brand && filters.brand !== 'all') {
         whereClauses.push(`p.brand = ?`);
@@ -459,9 +464,14 @@ export async function getProductsCount(filters?: ProductFilters) {
 
     if (filters) {
        if (filters.search) {
-        whereClauses.push(`(p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?)`);
+        // A selling unit's own barcode (e.g. a Pack of 12) lives only in
+        // product_selling_units, never on products.barcode — without this,
+        // searching by it here finds nothing.
+        whereClauses.push(`(p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ? OR EXISTS (
+          SELECT 1 FROM product_selling_units su WHERE su.product_id = p.id AND su.barcode LIKE ?
+        ))`);
         const searchParam = `%${filters.search}%`;
-        params.push(searchParam, searchParam, searchParam);
+        params.push(searchParam, searchParam, searchParam, searchParam);
       }
       if (filters.brand && filters.brand !== 'all') {
         whereClauses.push(`p.brand = ?`);
@@ -2575,11 +2585,13 @@ export async function searchProducts(searchQuery: string) {
               FROM conversion_factors cf
               WHERE cf.product_id = p.id) as conversion_factors
       FROM products p
-      WHERE (p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?) AND p.type = 'standard'
+      WHERE (p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ? OR EXISTS (
+        SELECT 1 FROM product_selling_units su WHERE su.product_id = p.id AND su.barcode LIKE ?
+      )) AND p.type = 'standard'
       ORDER BY p.name ASC
       LIMIT 20
     `;
-    const results = await query(sql, [like, like, like]);
+    const results = await query(sql, [like, like, like, like]);
     return results.map((r: any) => ({
       id: r.id,
       name: r.name,
