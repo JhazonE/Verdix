@@ -228,7 +228,11 @@ export class ReceiptGenerator {
 
         // ─── ITEMS ────────────────────────────────────────────────────────
         items.forEach(item => {
-            const uomAbbr = this.abbreviateUOM((item as any).unitOfMeasure);
+            // A line sold as a non-base selling unit (e.g. a Pack of 12) must
+            // print that unit, not the product's base unitOfMeasure — printing
+            // "pcs" for a line actually sold as "Pack" would misstate what the
+            // customer bought.
+            const uomAbbr = this.abbreviateUOM((item as any).selectedSellingUnit?.name ?? (item as any).unitOfMeasure);
             const qtyText = `${item.quantity}${uomAbbr ? ' ' + uomAbbr : ''}`;
             
             const qty     = qtyText.length > QTY_W ? qtyText.substring(0, QTY_W) : qtyText.padEnd(QTY_W, pad);
