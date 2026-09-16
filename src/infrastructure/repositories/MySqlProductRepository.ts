@@ -53,8 +53,19 @@ export class MySqlProductRepository implements ProductRepository {
     }
 
     if (filters.search) {
-      sql += ' AND (products.name LIKE ? OR products.sku LIKE ? OR products.barcode LIKE ?)';
-      params.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
+      // A selling unit's own barcode (e.g. a Pack of 12) is invisible to a
+      // scanner otherwise — it only exists in product_selling_units, never on
+      // products.barcode itself. Without this, a scan only resolves for
+      // products already sitting in the client's small local cache page;
+      // everything else in the catalog silently fails to be found.
+      sql += ` AND (
+        products.name LIKE ? OR products.sku LIKE ? OR products.barcode LIKE ?
+        OR EXISTS (
+          SELECT 1 FROM product_selling_units su
+          WHERE su.product_id = products.id AND su.barcode LIKE ?
+        )
+      )`;
+      params.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
     }
 
     if (filters.warehouseId) {
@@ -187,8 +198,18 @@ export class MySqlProductRepository implements ProductRepository {
     }
 
     if (filters.search) {
-      countSql += ' AND (name LIKE ? OR sku LIKE ? OR barcode LIKE ?)';
-      countParams.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
+      // Mirrors findAll's search clause, including the selling-unit barcode
+      // check — otherwise a scan that resolves a product via its Pack
+      // barcode would report a total/hasMore that disagrees with the rows
+      // findAll actually returns.
+      countSql += ` AND (
+        name LIKE ? OR sku LIKE ? OR barcode LIKE ?
+        OR EXISTS (
+          SELECT 1 FROM product_selling_units su
+          WHERE su.product_id = products.id AND su.barcode LIKE ?
+        )
+      )`;
+      countParams.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
     }
 
     if (filters.warehouseId) {
