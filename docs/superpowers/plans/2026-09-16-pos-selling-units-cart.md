@@ -925,16 +925,13 @@ only to re-derive the base unit from the live product catalog; the line's own `s
 also more correct than the old code for a multi-line-per-product cart: `products?.find` by `productId`
 alone could not have told two lines of the same product apart anyway.
 
-**Caveat, not a defect to fix here:** like `handleAddItem`, `updateQuantity` is keyed by `productId`
-alone (`item.id === productId`), so if two lines of the same product (different units) both exist,
-calling `updateQuantity(productId, n)` updates BOTH. This is pre-existing behavior unrelated to this
-plan (the function has always been product-id-keyed) and no caller in this codebase passes anything
-but a specific line's own `item.id` today reasoning about a single line — `commitQty`, `requestQuantityDelta`, and `handleEditQtyAuthSuccess` all resolve one `item` first, then call
-`updateQuantity(item.id, ...)`, i.e. `productId` here is always really "the id of the one item the
-cashier is editing." Since `item.id` is the product id (not a synthetic line id — this codebase has no
-separate cart-line id), this function is unavoidably product-keyed, not line-keyed. Re-architecting
-cart lines to have independent ids is out of scope for this plan (not in the spec) — flag this as a
-known limitation in the task's completion note, do not silently fix it.
+**Caveat, addressed by Task 5.5, not this task:** like `handleAddItem`, `updateQuantity` is keyed by
+`productId` alone (`item.id === productId`), so if two lines of the same product (different units) both
+exist, calling `updateQuantity(productId, n)` updates BOTH. This task does not fix it — Task 5.5,
+immediately following, gives every cart line a synthetic `lineId` and converts every `item.id`-keyed
+selection/editing call site (in this file and in `PosCartTable.tsx`) to use it instead. Leave this
+function's `productId`-keyed body exactly as shown above for this task; do not attempt a partial fix
+here.
 
 - [ ] **Step 4: Typecheck**
 
@@ -951,6 +948,324 @@ Expected: PASS.
 ```bash
 git add "app/(app)/pos/pos-content/use-pos.ts"
 git commit -m "fix: stock check and re-pricing account for the selected selling unit's factor"
+```
+
+---
+
+### Task 5.5: Synthetic per-line id (fixes cart-line selection/editing collisions)
+
+**Why this task exists:** Task 4's review surfaced a real bug this plan's original text did not
+account for. `SaleItem.id` is the *product* id (there is no separate cart-line id anywhere in this
+codebase). Tasks 1-4 made it possible for two cart lines to share a `product.id` while differing only
+in `selectedSellingUnit` (e.g. a Piece line and a Pack line of the same product). Every place that
+selects, edits, scrolls to, or removes "the current line" — the React `key` on each row, row selection
+(`selectedItemId`), every inline-edit lock (name/qty/price), void, discount-by-id, keyboard shortcuts,
+`updateQuantity`, `removeItem` — is keyed by this shared `item.id`, so once two such lines coexist,
+acting on "the id" silently acts on **both**, or on whichever one React/`.find()` happens to resolve
+first. `onUnitChange` (Task 4) already dodges this by matching on object identity (`i === item`)
+instead of by id — this task generalizes that same fix to the rest of the file.
+
+**Files:**
+- Modify: `app/(app)/pos/pos-content/pos-types.ts`
+- Modify: `app/(app)/pos/pos-content/use-pos.ts`
+- Modify: `app/(app)/pos/pos-content/PosCartTable.tsx`
+
+**Interfaces:**
+- Consumes: nothing new from earlier tasks.
+- Produces: `SaleItem.lineId: string` (new, required, generated at add-time) — every function in
+  `use-pos.ts` that currently takes an `itemId`/`productId` parameter meaning "which cart line" now
+  means "that line's `lineId`," not its `id`. `removeItem`, `updateQuantity`, `handleUpdateItem`,
+  `handleVoidLine`/`performVoidLine`, `handleApplyDiscount`, `commitInlineName`, `commitQty`,
+  `commitInlinePrice`, `focusInlineQuantity`/`unlockInlineQty`, `unlockInlineName`, `unlockInlinePrice`,
+  `requestQuantityDelta`, `startEditName`, `requestInlinePriceEdit` all keep their existing signatures
+  (still `(itemId: string, ...)` etc.) — only what value flows into that parameter changes, from
+  `item.id` to `item.lineId`, at every call site in `PosCartTable.tsx`. `selectedItem` now resolves by
+  `lineId`, not `id`.
+
+- [ ] **Step 1: Add `lineId` to `SaleItem`**
+
+In `app/(app)/pos/pos-content/pos-types.ts`, add to the `SaleItem` type (after `selectedSellingUnit`):
+
+```ts
+export type SaleItem = Product & {
+  quantity: number;
+  discount: number;
+  discountType?: string;
+  discountIdNumber?: string;
+  discountHolderName?: string;
+  name: string;
+  taxType?: 'VAT' | 'NON_VAT' | 'ZERO_RATED' | 'VAT_EXEMPT';
+  selectedSellingUnit?: CartSellingUnit;
+  /**
+   * Unique per cart LINE, not per product — `id` is the product id and is
+   * shared by two lines of the same product on different selling units.
+   * Generated once when a line is created; never recomputed or reused.
+   */
+  lineId: string;
+};
+```
+
+- [ ] **Step 2: Generate `lineId` wherever a new `SaleItem` is constructed**
+
+In `app/(app)/pos/pos-content/use-pos.ts`, `handleAddItem`'s new-line branch constructs a `SaleItem`
+literal. Add `lineId: crypto.randomUUID()` to it:
+
+```ts
+          const newItem: SaleItem = {
+            ...product, quantity: 1, discount: 0, name: product.name,
+            selectedSellingUnit: unit,
+            lineId: crypto.randomUUID(),
+            price: calculateEffectivePriceForUnit(priceUnit, 1, activeLevelId, defaultLevelId),
+            taxType: mapVatStatusToTaxType(product.vatStatus),
+          };
+          setSelectedItemId(newItem.lineId);
+          return [...prevItems, newItem];
+```
+
+(`setSelectedItemId(newItem.id)` becomes `setSelectedItemId(newItem.lineId)` — this is the only other
+change inside `handleAddItem`.)
+
+Search the rest of `use-pos.ts` for every other place a bare `SaleItem` object literal or spread is
+constructed and added to `items`/`prevItems` via `setItems`. As of this task, the only other sites are:
+- `confirmHold`/`handleRestore`/`handleClaimQueuedOrder`: these all move EXISTING `SaleItem[]` arrays
+  (from `heldTransactions` or a queued order) back into `items` verbatim — the items already carry
+  whatever `lineId` they had when held/queued (once this task ships), so no new `lineId` generation is
+  needed at these sites. Do not add generation there.
+- `window.crypto.randomUUID()` is available in every environment this app runs in (Electron/Chromium and
+  modern browsers) — use the bare `crypto.randomUUID()` form already implied above, matching how the
+  rest of this codebase references browser globals in client components (no polyfill import needed).
+
+- [ ] **Step 3: Convert every id-keyed cart-line operation in `use-pos.ts` from `item.id` to `item.lineId`**
+
+This is the bulk of the task: a mechanical but exhaustive find able of every place a cart line is
+looked up, filtered, or mapped by what is currently `item.id`. Go through each of the following
+functions and change every `item.id === X` / `item.id !== X` / `i.id === X` comparison against a
+line-selection parameter (never against a genuine product id — see the one exception called out below)
+to compare `item.lineId`/`i.lineId` instead:
+
+```ts
+const selectedItem = useMemo(() => items.find(item => item.lineId === selectedItemId) || null, [items, selectedItemId]);
+```
+
+```ts
+  const commitInlineName = (itemId: string, rawValue: string) => {
+    const item = items.find(i => i.lineId === itemId);
+    if (item) {
+      const newName = rawValue.trim();
+      if (newName && newName !== item.name) handleUpdateItem(itemId, newName, item.quantity, item.price, item.discount);
+    }
+    setEditingNameItemId(null);
+  };
+
+  const commitQty = (itemId: string) => {
+    setEditingQtyItemId(null);
+    const item = items.find(i => i.lineId === itemId);
+    if (!item) return;
+    const q = parseFloat(qtyDraft);
+    if (isNaN(q) || q <= 0) { setQtyDraft(String(item.quantity)); return; }
+    if (q !== item.quantity) updateQuantity(itemId, q);
+  };
+```
+
+```ts
+        case '-': {
+          const isInputFocused = document.activeElement === inputRef.current;
+          const isInputEmpty = inputRef.current ? inputRef.current.value === '' : true;
+          if (selectedItemId && (!isInputFocused || isInputEmpty) && !isDialogOpen) {
+            e.preventDefault();
+            const item = items.find(i => i.lineId === selectedItemId);
+            if (item && item.quantity > 1) requestQuantityDelta(selectedItemId, -1);
+          }
+          break;
+        }
+```
+
+```ts
+        case 'ArrowUp': {
+          const isInputFocused = document.activeElement === inputRef.current;
+          const isInputEmpty = inputRef.current ? inputRef.current.value === '' : true;
+          if (items.length > 0 && (!isInputFocused || isInputEmpty) && !isDialogOpen) {
+            e.preventDefault();
+            const idx = items.findIndex(i => i.lineId === selectedItemId);
+            setSelectedItemId(items[idx <= 0 ? items.length - 1 : idx - 1].lineId);
+          }
+          break;
+        }
+        case 'ArrowDown': {
+          const isInputFocused = document.activeElement === inputRef.current;
+          const isInputEmpty = inputRef.current ? inputRef.current.value === '' : true;
+          if (items.length > 0 && (!isInputFocused || isInputEmpty) && !isDialogOpen) {
+            e.preventDefault();
+            const idx = items.findIndex(i => i.lineId === selectedItemId);
+            setSelectedItemId(items[idx >= items.length - 1 ? 0 : idx + 1].lineId);
+          }
+          break;
+        }
+```
+
+```ts
+  const updateQuantity = (lineId: string, newQuantity: number) => {
+    if (newQuantity <= 0) {
+      removeItem(lineId);
+    } else {
+      setItems(prevItems => prevItems.map(item => {
+        if (item.lineId === lineId) {
+          const unit = item.selectedSellingUnit ?? baseSellingUnitOf(item);
+          return { ...item, quantity: newQuantity, price: calculateEffectivePriceForUnit(unit, newQuantity, activeLevelId, defaultLevelId) };
+        }
+        return item;
+      }));
+    }
+  };
+```
+
+(Note: this is `updateQuantity` already incorporating Task 5's own fix from Step 3 of that task —
+Task 5 runs before this one, so by the time you reach this step `updateQuantity`'s body already reads
+as shown in Task 5's Step 3, using `item.selectedSellingUnit ?? baseSellingUnitOf(item)`. This task
+only changes its match condition from `item.id === productId` to `item.lineId === lineId`, and renames
+the parameter from `productId` to `lineId` for clarity. No other logic in this function changes.)
+
+```ts
+  const handleUpdateItem = (itemId: string, newName: string, newQty: number, newPrice: number, newDiscount: number) => {
+    setItems(prev => prev.map(item => item.lineId === itemId ? { ...item, name: newName, quantity: newQty, price: newPrice, discount: newDiscount } : item));
+  };
+```
+
+```ts
+  const handleVoidLine = (itemId: string | null) => {
+    if (!itemId) { toast({ title: 'No Item Selected', description: 'Please select an item to void.', variant: 'destructive' }); return; }
+    if (enableLineVoidAuth) { setPendingVoidItemId(itemId); setIsLineVoidAuthOpen(true); }
+    else performVoidLine(itemId);
+  };
+
+  const performVoidLine = (itemId: string) => {
+    const item = items.find(i => i.lineId === itemId);
+    if (!item) return;
+    removeItem(itemId);
+    if (selectedItemId === itemId) setSelectedItemId(null);
+    setPendingVoidItemId(null);
+    toast({ title: 'Line Voided', description: `Removed ${item.name} from the cart.` });
+  };
+```
+
+```ts
+  const requestQuantityDelta = (itemId: string, delta: number) => {
+    if (businessSettings?.enableEditQtyAuth) {
+      setSelectedItemId(itemId);
+      setPendingQtyDelta(delta);
+      setIsEditQtyAuthOpen(true);
+    } else {
+      const item = items.find(i => i.lineId === itemId);
+      if (item) updateQuantity(itemId, item.quantity + delta);
+    }
+  };
+
+  const handleEditQtyAuthSuccess = () => {
+    setIsEditQtyAuthOpen(false);
+    if (!selectedItemId) return;
+    if (pendingQtyDelta !== null) {
+      const item = items.find(i => i.lineId === selectedItemId);
+      if (item) updateQuantity(selectedItemId, item.quantity + pendingQtyDelta);
+      setPendingQtyDelta(null);
+    } else {
+      unlockInlineQty(selectedItemId);
+    }
+  };
+```
+
+```ts
+  const removeItem = (lineId: string) => {
+    setItems(items.filter(item => item.lineId !== lineId));
+  };
+```
+
+```ts
+  const handleApplyDiscount = (itemId: string | 'ALL', percentage: number, discountType?: string, discountDetails?: { idNumber?: string; holderName?: string }) => {
+    const discountIdNumber = discountDetails?.idNumber;
+    const discountHolderName = discountDetails?.holderName;
+    if (itemId === 'ALL') {
+      setItems(items.map(item => ({ ...item, discount: percentage, discountType, discountIdNumber, discountHolderName })));
+      toast({ title: 'Global Discount Applied', description: `Applied ${percentage.toFixed(2)}% discount to all items.` });
+    } else {
+      setItems(items.map(item => item.lineId === itemId ? { ...item, discount: percentage, discountType, discountIdNumber, discountHolderName } : item));
+      toast({ title: 'Discount Applied', description: `Discount updated to ${percentage.toFixed(2)}%` });
+    }
+```
+
+```ts
+  const commitInlinePrice = (itemId: string, rawValue: string) => {
+    const item = items.find(i => i.lineId === itemId);
+    if (item) {
+      const newPrice = parseFloat(rawValue);
+      if (!isNaN(newPrice) && newPrice >= 0 && newPrice !== item.price) handleUpdateItem(itemId, item.name, item.quantity, newPrice, item.discount);
+    }
+    setEditingPriceItemId(null);
+  };
+```
+
+The remaining functions in this list (`unlockInlineName`, `startEditName`, `unlockInlineQty`,
+`focusInlineQuantity`, `unlockInlinePrice`, `requestInlinePriceEdit`, `focusInlineField`) only ever take
+an `itemId: string` parameter and pass it straight through to `setSelectedItemId`/`setEditingXItemId`
+or into a DOM element id string (`` `${prefix}-${itemId}` ``) — they never compare it against
+`item.id`/`item.lineId` themselves, so their bodies do not change at all. What changes is only what
+their CALLERS pass in (Step 4 below, in `PosCartTable.tsx`).
+
+**Explicit exception — do NOT rename these:** `handleAddItem`'s and `onUnitChange`'s internal use of
+`product.id`/`item.id` to identify the PRODUCT (for the mixed-goods-services check, for
+`findCartLineForUnit(items, product.id, ...)` calls, and for `onUnitChange`'s own `item.id` argument to
+`findCartLineForUnit`) is correct as-is and must NOT be touched — those are genuinely about product
+identity, not line identity, and `findCartLineForUnit`'s signature (`productId: string`) already
+expects a product id. Only line-SELECTION and line-EDITING code (the functions listed above) changes.
+
+- [ ] **Step 4: Update `document.getElementById` scroll-target and every DOM id string keyed by line**
+
+The scroll-into-view effect and every `id={...}` attribute built from an item id must also switch from
+product id to line id, since two lines can now share a product id (making
+`document.getElementById(...)` resolve to whichever DOM node happens to match first — silently
+scrolling to or targeting the wrong line):
+
+```ts
+  useEffect(() => {
+    if (selectedItemId) {
+      document.getElementById(`pos-item-${selectedItemId}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [selectedItemId]);
+```
+
+(This one needs no code change beyond what's already there — `selectedItemId` now HOLDS a `lineId`
+value after Steps 2-3, so the string it's interpolated into is already correct. Listed here only to
+confirm you've traced it, not because its own text changes.)
+
+- [ ] **Step 5: Update `PosCartTable.tsx` to pass `lineId` instead of `id` at every call site**
+
+Every one of the 20 occurrences of `item.id` in this file's row-rendering JSX (the `key`, the row `id`
+attribute, `selectedItemId === item.id` comparisons, `editingNameItemId === item.id` /
+`editingQtyItemId === item.id` / `editingPriceItemId === item.id` comparisons, and every call into
+`setSelectedItemId`, `commitInlineName`, `startEditName`, `commitInlinePrice`, `requestInlinePriceEdit`,
+`commitQty`, `focusInlineQuantity`) becomes `item.lineId`. This is a single, uniform find-and-replace of
+`item.id` → `item.lineId` across the entire `items.map((item) => (...))` block (lines ~200-311 as of
+Task 4's HEAD) — every one of the 20 occurrences listed changes the same way, with no exceptions inside
+that block (there is no other kind of `item.id` usage inside the row-rendering JSX).
+
+- [ ] **Step 6: Typecheck**
+
+Run: `npx tsc --noEmit 2>&1 | grep -E "pos-types|use-pos|PosCartTable"`
+Expected: no output.
+
+- [ ] **Step 7: Run the relevant unit tests**
+
+Run: `npx tsx tests/unit/pos-cart-units.test.ts && npx tsx tests/unit/mixed-cart-validation.test.ts`
+Expected: both PASS. Neither test exercises `use-pos.ts`/`PosCartTable.tsx` directly (they test the
+pure `lib/pos-cart-units.ts` helpers and cart-mixing validation respectively), so this is a regression
+check confirming this task hasn't broken anything they depend on — not a test of `lineId` itself, which
+has no automated coverage (it's React state wiring, consistent with how `onUnitChange`,
+`updateQuantity`, and the rest of this hook are already untested at the unit level in this codebase).
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add "app/(app)/pos/pos-content/pos-types.ts" "app/(app)/pos/pos-content/use-pos.ts" "app/(app)/pos/pos-content/PosCartTable.tsx"
+git commit -m "fix: give cart lines a synthetic id so same-product different-unit lines never collide"
 ```
 
 ---
@@ -1056,14 +1371,20 @@ In the POS cart, type/scan the Pack unit's barcode into the main input. Confirm:
 line named after the product, Unit column shows "Pack" (not the base unit's name), quantity 1, price
 equal to the Pack's own price/price-level — not `12 × base price` and not the base unit's own price.
 
-- [ ] **Step 4: Verify the unit picker and re-pricing**
+- [ ] **Step 4: Verify the unit picker, re-pricing, and line-selection isolation (Task 5.5's fix)**
 
 Add the same product's base unit as a second, separate line (search by name and click the suggestion,
-or scan the base barcode). Confirm two distinct lines exist for the same product (Piece and Pack), each
-independently editable — changing one line's quantity must not affect the other. On the Pack line, open
-the Unit dropdown and switch it to Piece; confirm quantity resets to 1 and price updates to the Piece's
-price. Confirm this switch merges into the existing Piece line (summing quantities) rather than leaving
-two Piece lines.
+or scan the base barcode). Confirm two distinct lines exist for the same product (Piece and Pack).
+Click to select the Piece line specifically, then edit its quantity via the qty field (F6 or clicking
+the quantity) — confirm ONLY the Piece line's quantity and price change, and the Pack line is
+untouched. Then click to select the Pack line and edit ITS quantity — confirm the reverse: only Pack
+changes, Piece is untouched. (Before Task 5.5's fix, both lines shared the same underlying id, so
+editing one could silently affect the other, or the wrong line's inline-edit field could open — this
+step is specifically verifying that fix, not just that two lines can coexist.) Also confirm voiding one
+line (F2 or the void action) removes only that specific line, leaving the other intact. On the Pack
+line, open the Unit dropdown and switch it to Piece; confirm quantity resets to 1 and price updates to
+the Piece's price. Confirm this switch merges into the existing Piece line (summing quantities) rather
+than leaving two Piece lines.
 
 - [ ] **Step 5: Verify the stock-check fix blocks an oversell**
 
