@@ -6,10 +6,16 @@ import { useProducts } from '@/hooks/use-api';
 import { useLiveRefresh } from '@/hooks/use-live-refresh';
 import { useDebounce } from '@/hooks/use-debounce';
 
+export type ProductUnitRow = {
+  key: string;
+  product: Product;
+  unit?: { id?: string; name: string; factor: number; barcode?: string; cost?: number; price: number; isBase?: boolean };
+};
+
 type Options = {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelectProduct: (product: Product) => void;
+  onSelectProduct: (product: Product, explicitUnitId?: string) => void;
   activeLevelId?: string;
   warehouseId?: string;
   allProducts?: Product[];
@@ -46,6 +52,24 @@ export function useProductSearch({
     }
   }, [products, loading, error, selectedBrand, selectedCategory]);
 
+  // A product with more than one selling unit (e.g. a Pack alongside its
+  // base Piece) shows as one row per unit, so a cashier can pick exactly
+  // which one to add rather than always getting the base unit. Services
+  // carry no sellingUnits and a single-unit product's own units array has
+  // just the base entry, so both render as a single row as before.
+  const displayedRows = useMemo<ProductUnitRow[]>(() => {
+    const rows: ProductUnitRow[] = [];
+    for (const product of displayedProducts) {
+      const units = product.type === 'service' ? [] : (product.sellingUnits || []);
+      if (units.length > 1) {
+        for (const unit of units) rows.push({ key: `${product.id}:${unit.id}`, product, unit });
+      } else {
+        rows.push({ key: product.id, product, unit: units[0] });
+      }
+    }
+    return rows;
+  }, [displayedProducts]);
+
   const stableRefresh = useCallback(() => { refetchProducts(); }, [refetchProducts]);
   useLiveRefresh(stableRefresh);
 
@@ -71,13 +95,13 @@ export function useProductSearch({
     }
   }, [isOpen, onOpenChange]);
 
-  const handleSelect = useCallback((productId: string) => {
-    const product = displayedProducts.find(p => p.id === productId);
-    if (product) {
-      onSelectProduct(product);
+  const handleSelect = useCallback((rowKey: string) => {
+    const row = displayedRows.find(r => r.key === rowKey);
+    if (row) {
+      onSelectProduct(row.product, row.unit?.id);
       onOpenChange(false);
     }
-  }, [displayedProducts, onSelectProduct, onOpenChange]);
+  }, [displayedRows, onSelectProduct, onOpenChange]);
 
   const stockTone = useCallback((product: Product) => {
     if (product.stock <= 0) return 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300';
@@ -100,7 +124,7 @@ export function useProductSearch({
     searchTerm, setSearchTerm,
     selectedBrand, setSelectedBrand,
     selectedCategory, setSelectedCategory,
-    displayedProducts,
+    displayedRows,
     loading, error,
     handleSelect, stockTone,
     brands, categories,

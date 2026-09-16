@@ -594,9 +594,13 @@ export function usePOS() {
   }, [activeLevelId]);
 
   // Handlers
-  const handleAddItem = (product: any | undefined, matchedCode?: string) => {
+  const handleAddItem = (product: any | undefined, matchedCode?: string, explicitUnitId?: string) => {
     if (product) {
-      const unit = product.type === 'service' ? undefined : resolveSellingUnitForAdd(product, matchedCode);
+      const unit = product.type === 'service'
+        ? undefined
+        : explicitUnitId
+          ? product.sellingUnits?.find((u: any) => u.id === explicitUnitId) ?? resolveSellingUnitForAdd(product, matchedCode)
+          : resolveSellingUnitForAdd(product, matchedCode);
       const existing = product.type === 'service'
         ? items.find(item => item.id === product.id)
         : findCartLineForUnit(items, product.id, unit?.id);
@@ -664,7 +668,28 @@ export function usePOS() {
       // unit-level partial hits for what should read as a product-name search.
       else if (sku.includes(q) || barcode.includes(q) || name.includes(q)) partial.push(p);
     }
-    return [...exactCode, ...exactName, ...partial].slice(0, limit);
+    return [...exactCode, ...exactName, ...partial];
+  };
+
+  // Expands each ranked product into one suggestion row per selling unit, so
+  // a product with a Pack alongside its base Piece shows as two pickable
+  // rows instead of one ambiguous row that always adds the base unit.
+  // Services carry no sellingUnits, so they always render as a single row.
+  const expandToUnitSuggestions = (rankedProducts: any[], limit: number) => {
+    const rows: any[] = [];
+    for (const product of rankedProducts) {
+      const units = product.type === 'service' ? [] : (product.sellingUnits || []);
+      if (units.length > 1) {
+        for (const unit of units) {
+          rows.push({ product, unit, key: `${product.id}:${unit.id}` });
+          if (rows.length >= limit) return rows;
+        }
+      } else {
+        rows.push({ product, unit: units[0], key: product.id });
+        if (rows.length >= limit) return rows;
+      }
+    }
+    return rows;
   };
 
   // The catalog is larger than the locally-cached page, so suggestions rank
@@ -676,7 +701,7 @@ export function usePOS() {
     const source = debouncedSearchQuery.trim().toLowerCase() === q && !searchLoading
       ? serverSearchResults
       : products;
-    return rankMatches(source || [], q, limit);
+    return expandToUnitSuggestions(rankMatches(source || [], q, limit), limit);
   }, [products, serverSearchResults, searchLoading, debouncedSearchQuery]);
 
   // Scanners submit a barcode/SKU that exactly matches one product. Check the
@@ -706,8 +731,10 @@ export function usePOS() {
   // still scan correctly.
   const handleAddItemBySKU = async (sku: string) => {
     if (!sku) return;
-    const local = findExactCodeMatch(sku) || getSearchSuggestions(sku, 1)[0];
-    if (local) { handleAddItem(local, sku); return; }
+    const exactProduct = findExactCodeMatch(sku);
+    if (exactProduct) { handleAddItem(exactProduct, sku); return; }
+    const suggestion = getSearchSuggestions(sku, 1)[0];
+    if (suggestion) { handleAddItem(suggestion.product, sku, suggestion.unit?.id); return; }
 
     const q = sku.trim();
     try {
@@ -740,43 +767,6 @@ export function usePOS() {
 
   const handleUpdateItem = (itemId: string, newName: string, newQty: number, newPrice: number, newDiscount: number) => {
     setItems(prev => prev.map(item => item.lineId === itemId ? { ...item, name: newName, quantity: newQty, price: newPrice, discount: newDiscount } : item));
-  };
-
-  const onUnitChange = (lineId: string, unitId: string) => {
-    setItems(prevItems => {
-      // Match by lineId (not object identity) — the items array can be
-      // replaced with new object references (e.g. the price-level re-pricing
-      // effect above) between when a cart row renders and when the cashier
-      // actually picks a value in the dropdown, and identity matching would
-      // silently no-op in that case.
-      const item = prevItems.find(i => i.lineId === lineId);
-      if (!item) return prevItems;
-      const unit = item.sellingUnits?.find((u: any) => u.id === unitId);
-      if (!unit) return prevItems;
-      // If another line already holds this exact (product, unit) pair,
-      // merge into it (sum quantity) instead of leaving two lines for the
-      // same product+unit — same identity rule Task 2 applies on add.
-      const target = findCartLineForUnit(prevItems, item.id, unitId);
-      if (target && target.lineId !== item.lineId) {
-        const mergedQty = target.quantity + item.quantity;
-        return prevItems
-          .filter(i => i.lineId !== item.lineId)
-          .map(i => i.lineId === target.lineId
-            ? { ...i, quantity: mergedQty, price: calculateEffectivePriceForUnit(unit, mergedQty, activeLevelId, defaultLevelId) }
-            : i
-          );
-      }
-      return prevItems.map(i =>
-        i.lineId === item.lineId
-          ? {
-              ...i,
-              selectedSellingUnit: unit,
-              quantity: 1,
-              price: calculateEffectivePriceForUnit(unit, 1, activeLevelId, defaultLevelId),
-            }
-          : i
-      );
-    });
   };
 
   const handleVoidLine = (itemId: string | null) => {
@@ -1454,7 +1444,7 @@ export function usePOS() {
     // totals
     totalDue, subTotal, vatSales, vatAmount, taxDetails, numberOfItems,
     // handlers
-    handleAddItem, handleAddItemBySKU, getSearchSuggestions, findExactCodeMatch, updateQuantity, handleUpdateItem, onUnitChange,
+    handleAddItem, handleAddItemBySKU, getSearchSuggestions, findExactCodeMatch, updateQuantity, handleUpdateItem,
     handleVoidLine, performVoidLine, focusInlineQuantity,
     removeItem, handleSuccessfulSale,
     handleOpenTender, handleDefaultTender,

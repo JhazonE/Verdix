@@ -8,7 +8,7 @@ import {
   Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
 } from '@/components/ui/command';
 import { Loader2, Package2, X, Eye, EyeOff, Tag, FlaskConical } from 'lucide-react';
-import { calculateEffectivePrice } from '@/lib/pricing';
+import { calculateEffectivePriceForUnit } from '@/lib/pricing';
 import { formatStockQuantity } from '@/lib/utils';
 import { useProductSearch } from './use-product-search';
 import type { ProductSearchDialogProps } from './product-search-types';
@@ -33,7 +33,7 @@ export function ProductSearchDialog({
     searchTerm, setSearchTerm,
     selectedBrand, setSelectedBrand,
     selectedCategory, setSelectedCategory,
-    displayedProducts, loading, error,
+    displayedRows, loading, error,
     handleSelect, stockTone,
     brands, categories,
   } = useProductSearch({ isOpen, onOpenChange, onSelectProduct, activeLevelId, warehouseId, allProducts });
@@ -226,7 +226,7 @@ export function ProductSearchDialog({
                     </span>
                   )}
                   <span className="ml-auto text-[11px] text-muted-foreground tabular-nums">
-                    {displayedProducts.length} result{displayedProducts.length !== 1 ? 's' : ''}
+                    {displayedRows.length} result{displayedRows.length !== 1 ? 's' : ''}
                   </span>
                 </div>
               )}
@@ -234,20 +234,23 @@ export function ProductSearchDialog({
               {/* Product list */}
               <CommandList className="flex-1 max-h-none overflow-y-auto">
                 {error && <div className="p-4 text-center text-sm text-destructive">{error}</div>}
-                {displayedProducts.length === 0 && !loading && !error && (
+                {displayedRows.length === 0 && !loading && !error && (
                   <CommandEmpty className="flex h-32 flex-col items-center justify-center gap-2 text-muted-foreground">
                     <Package2 className="h-8 w-8 opacity-20" />
                     <span className="text-sm">No products found</span>
                   </CommandEmpty>
                 )}
                 <CommandGroup className={loading ? 'opacity-50 transition-opacity duration-200' : 'transition-opacity duration-200'}>
-                  {displayedProducts.map((product) => {
+                  {displayedRows.map(({ key, product, unit }) => {
                     const outOfStock = product.stock <= 0;
+                    const unitPrice = unit
+                      ? calculateEffectivePriceForUnit(unit, 1, activeLevelId, defaultLevelId)
+                      : calculateEffectivePriceForUnit({ price: product.price, priceLevels: [] }, 1, activeLevelId, defaultLevelId);
                     return (
                       <CommandItem
-                        key={product.id}
-                        value={`${product.name} ${product.barcode || ''} ${product.sku}`}
-                        onSelect={() => handleSelect(product.id)}
+                        key={key}
+                        value={`${product.name} ${unit?.name || ''} ${unit?.barcode || product.barcode || ''} ${product.sku}`}
+                        onSelect={() => handleSelect(key)}
                         className="group mx-2 my-0.5 flex items-center gap-3 rounded-xl px-3 py-2 cursor-pointer transition-colors data-[selected=true]:bg-accent"
                       >
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted">
@@ -260,10 +263,15 @@ export function ProductSearchDialog({
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold leading-tight">{product.name}</p>
+                          <p className="truncate text-sm font-semibold leading-tight">
+                            {product.name}
+                            {unit && !unit.isBase && (
+                              <span className="ml-1.5 text-xs font-normal text-muted-foreground">({unit.name})</span>
+                            )}
+                          </p>
                           <div className="mt-0.5 flex items-center gap-1.5">
                             <span className="text-[11px] text-muted-foreground font-mono truncate">
-                              {product.barcode || product.sku}
+                              {unit?.barcode || product.barcode || product.sku}
                             </span>
                             {product.brand && (
                               <span className="shrink-0 rounded bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-400 px-1.5 py-px text-[10px] font-medium">
@@ -286,7 +294,7 @@ export function ProductSearchDialog({
 
                         <div className="w-20 shrink-0 text-right">
                           <p className="font-mono text-sm font-bold text-primary">
-                            ₱{calculateEffectivePrice(product, 1, activeLevelId, defaultLevelId).toFixed(2)}
+                            ₱{unitPrice.toFixed(2)}
                           </p>
                           <span className="text-[10px] text-muted-foreground opacity-0 transition-opacity group-data-[selected=true]:opacity-100">
                             ↵ add

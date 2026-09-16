@@ -56,7 +56,7 @@ export function PosDialogs(pos: Props) {
       <ProductSearchDialog
         isOpen={pos.isProductSearchOpen}
         onOpenChange={(open) => { pos.setIsProductSearchOpen(open); if (!open) setTimeout(() => pos.inputRef.current?.focus(), 50); }}
-        onSelectProduct={pos.handleAddItem}
+        onSelectProduct={(product, explicitUnitId) => pos.handleAddItem(product, undefined, explicitUnitId)}
         showQuantityInSearch={pos.showQuantityInSearch}
         activeLevelId={pos.activeLevelId}
         defaultLevelId={pos.defaultLevelId}

@@ -4,7 +4,6 @@ import { RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, ShoppingCart } from 'lucide-react';
 import { formatStockQuantity } from '@/lib/utils';
 import type { SaleItem } from './pos-types';
@@ -16,8 +15,7 @@ type Props = {
   handleAddItemBySKU: (sku: string) => void;
   getSearchSuggestions: (query: string, limit?: number) => any[];
   findExactCodeMatch: (query: string) => any | undefined;
-  handleAddItem: (product: any, matchedCode?: string) => void;
-  onUnitChange: (lineId: string, unitId: string) => void;
+  handleAddItem: (product: any, matchedCode?: string, explicitUnitId?: string) => void;
   handleDefaultTender: () => void;
   setIsProductSearchOpen: (v: boolean) => void;
   items: SaleItem[];
@@ -42,7 +40,7 @@ type Props = {
 };
 
 export function PosCartTable({
-  inputRef, inputValue, setInputValue, handleAddItemBySKU, getSearchSuggestions, findExactCodeMatch, handleAddItem, onUnitChange, handleDefaultTender,
+  inputRef, inputValue, setInputValue, handleAddItemBySKU, getSearchSuggestions, findExactCodeMatch, handleAddItem, handleDefaultTender,
   setIsProductSearchOpen, items, selectedItemId, setSelectedItemId,
   editingNameItemId, setEditingNameItemId,
   editingQtyItemId, setEditingQtyItemId,
@@ -79,8 +77,8 @@ export function PosCartTable({
     setIsSuggestOpen(suggestions.length > 0);
   }, [suggestions]);
 
-  const selectSuggestion = (product: any) => {
-    handleAddItem(product);
+  const selectSuggestion = (suggestion: any) => {
+    handleAddItem(suggestion.product, undefined, suggestion.unit?.id);
     setIsSuggestOpen(false);
   };
 
@@ -147,25 +145,34 @@ export function PosCartTable({
 
           {isSuggestOpen && suggestions.length > 0 && (
             <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-popover border rounded-lg shadow-lg overflow-hidden">
-              {suggestions.map((product, index) => (
-                <button
-                  key={product.id}
-                  type="button"
-                  className={`w-full flex items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors ${index === highlightedIndex ? 'bg-primary/10' : 'hover:bg-muted/50'}`}
-                  onMouseEnter={() => setHighlightedIndex(index)}
-                  onMouseDown={(e) => { e.preventDefault(); selectSuggestion(product); }}
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="font-medium truncate">{product.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {product.sku}{product.barcode ? ` · ${product.barcode}` : ''}
+              {suggestions.map((suggestion, index) => {
+                const { product, unit } = suggestion;
+                const unitPrice = unit?.price ?? product.price;
+                return (
+                  <button
+                    key={suggestion.key}
+                    type="button"
+                    className={`w-full flex items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors ${index === highlightedIndex ? 'bg-primary/10' : 'hover:bg-muted/50'}`}
+                    onMouseEnter={() => setHighlightedIndex(index)}
+                    onMouseDown={(e) => { e.preventDefault(); selectSuggestion(suggestion); }}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">
+                        {product.name}
+                        {unit && !unit.isBase && (
+                          <span className="ml-1.5 text-xs font-normal text-muted-foreground">({unit.name})</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {unit?.barcode || product.sku}
+                      </div>
                     </div>
-                  </div>
-                  <div className="shrink-0 text-sm font-medium text-muted-foreground">
-                    ₱{Number(product.price ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                  </div>
-                </button>
-              ))}
+                    <div className="shrink-0 text-sm font-medium text-muted-foreground">
+                      ₱{Number(unitPrice ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -234,26 +241,8 @@ export function PosCartTable({
                         </div>
                       )}
                     </TableCell>
-                    <TableCell className="text-left text-sm text-muted-foreground" onClick={(e) => e.stopPropagation()}>
-                      {(item.sellingUnits?.length ?? 0) > 1 ? (
-                        <Select
-                          value={item.selectedSellingUnit?.id ?? ''}
-                          onValueChange={(unitId) => onUnitChange(item.lineId, unitId)}
-                        >
-                          <SelectTrigger className="h-7 w-auto border-none bg-transparent px-1 text-sm text-muted-foreground shadow-none focus:ring-0">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {item.sellingUnits!.map((u) => (
-                              <SelectItem key={u.id} value={u.id!}>
-                                {u.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        item.unitOfMeasure
-                      )}
+                    <TableCell className="text-left text-sm text-muted-foreground">
+                      {item.selectedSellingUnit?.name || item.unitOfMeasure}
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
                       {editingPriceItemId === item.lineId ? (
