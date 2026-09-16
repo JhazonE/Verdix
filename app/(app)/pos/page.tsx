@@ -95,6 +95,7 @@ function POSContent() {
               getSearchSuggestions={pos.getSearchSuggestions}
               findExactCodeMatch={pos.findExactCodeMatch}
               handleAddItem={pos.handleAddItem}
+              onUnitChange={pos.onUnitChange}
               handleDefaultTender={pos.handleDefaultTender}
               setIsProductSearchOpen={pos.setIsProductSearchOpen}
               items={pos.items}

@@ -726,6 +726,36 @@ export function usePOS() {
     setItems(prev => prev.map(item => item.id === itemId ? { ...item, name: newName, quantity: newQty, price: newPrice, discount: newDiscount } : item));
   };
 
+  const onUnitChange = (item: SaleItem, unitId: string) => {
+    const unit = item.sellingUnits?.find((u: any) => u.id === unitId);
+    if (!unit) return;
+    setItems(prevItems => {
+      // If another line already holds this exact (product, unit) pair,
+      // merge into it (sum quantity) instead of leaving two lines for the
+      // same product+unit — same identity rule Task 2 applies on add.
+      const target = findCartLineForUnit(prevItems, item.id, unitId);
+      if (target && target !== item) {
+        const mergedQty = target.quantity + item.quantity;
+        return prevItems
+          .filter(i => i !== item)
+          .map(i => i === target
+            ? { ...i, quantity: mergedQty, price: calculateEffectivePriceForUnit(unit, mergedQty, activeLevelId, defaultLevelId) }
+            : i
+          );
+      }
+      return prevItems.map(i =>
+        i === item
+          ? {
+              ...i,
+              selectedSellingUnit: unit,
+              quantity: 1,
+              price: calculateEffectivePriceForUnit(unit, 1, activeLevelId, defaultLevelId),
+            }
+          : i
+      );
+    });
+  };
+
   const handleVoidLine = (itemId: string | null) => {
     if (!itemId) { toast({ title: 'No Item Selected', description: 'Please select an item to void.', variant: 'destructive' }); return; }
     if (enableLineVoidAuth) { setPendingVoidItemId(itemId); setIsLineVoidAuthOpen(true); }
@@ -1397,7 +1427,7 @@ export function usePOS() {
     // totals
     totalDue, subTotal, vatSales, vatAmount, taxDetails, numberOfItems,
     // handlers
-    handleAddItem, handleAddItemBySKU, getSearchSuggestions, findExactCodeMatch, updateQuantity, handleUpdateItem,
+    handleAddItem, handleAddItemBySKU, getSearchSuggestions, findExactCodeMatch, updateQuantity, handleUpdateItem, onUnitChange,
     handleVoidLine, performVoidLine, focusInlineQuantity,
     removeItem, handleSuccessfulSale,
     handleOpenTender, handleDefaultTender,

@@ -4,6 +4,7 @@ import { RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, ShoppingCart } from 'lucide-react';
 import { formatStockQuantity } from '@/lib/utils';
 import type { SaleItem } from './pos-types';
@@ -16,6 +17,7 @@ type Props = {
   getSearchSuggestions: (query: string, limit?: number) => any[];
   findExactCodeMatch: (query: string) => any | undefined;
   handleAddItem: (product: any, matchedCode?: string) => void;
+  onUnitChange: (item: SaleItem, unitId: string) => void;
   handleDefaultTender: () => void;
   setIsProductSearchOpen: (v: boolean) => void;
   items: SaleItem[];
@@ -40,7 +42,7 @@ type Props = {
 };
 
 export function PosCartTable({
-  inputRef, inputValue, setInputValue, handleAddItemBySKU, getSearchSuggestions, findExactCodeMatch, handleAddItem, handleDefaultTender,
+  inputRef, inputValue, setInputValue, handleAddItemBySKU, getSearchSuggestions, findExactCodeMatch, handleAddItem, onUnitChange, handleDefaultTender,
   setIsProductSearchOpen, items, selectedItemId, setSelectedItemId,
   editingNameItemId, setEditingNameItemId,
   editingQtyItemId, setEditingQtyItemId,
@@ -232,7 +234,27 @@ export function PosCartTable({
                         </div>
                       )}
                     </TableCell>
-                    <TableCell className="text-left text-sm text-muted-foreground">{item.unitOfMeasure}</TableCell>
+                    <TableCell className="text-left text-sm text-muted-foreground" onClick={(e) => e.stopPropagation()}>
+                      {(item.sellingUnits?.length ?? 0) > 1 ? (
+                        <Select
+                          value={item.selectedSellingUnit?.id ?? ''}
+                          onValueChange={(unitId) => onUnitChange(item, unitId)}
+                        >
+                          <SelectTrigger className="h-7 w-auto border-none bg-transparent px-1 text-sm text-muted-foreground shadow-none focus:ring-0">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {item.sellingUnits!.map((u) => (
+                              <SelectItem key={u.id} value={u.id!}>
+                                {u.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        item.unitOfMeasure
+                      )}
+                    </TableCell>
                     <TableCell className="text-right font-mono text-sm">
                       {editingPriceItemId === item.id ? (
                         <Input
