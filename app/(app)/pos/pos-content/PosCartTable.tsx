@@ -199,26 +199,26 @@ export function PosCartTable({
               ) : (
                 items.map((item) => (
                   <TableRow
-                    key={item.id}
-                    id={`pos-item-${item.id}`}
-                    className={`group cursor-pointer transition-colors border-b-border/40 last:border-0 ${selectedItemId === item.id ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-muted/30'}`}
-                    onClick={() => { setSelectedItemId(item.id); inputRef.current?.focus(); }}
+                    key={item.lineId}
+                    id={`pos-item-${item.lineId}`}
+                    className={`group cursor-pointer transition-colors border-b-border/40 last:border-0 ${selectedItemId === item.lineId ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-muted/30'}`}
+                    onClick={() => { setSelectedItemId(item.lineId); inputRef.current?.focus(); }}
                   >
                     <TableCell className="pl-4">
-                      <div className={`w-2 h-2 rounded-full ${selectedItemId === item.id ? 'bg-primary' : 'bg-transparent border border-muted-foreground/30'}`} />
+                      <div className={`w-2 h-2 rounded-full ${selectedItemId === item.lineId ? 'bg-primary' : 'bg-transparent border border-muted-foreground/30'}`} />
                     </TableCell>
                     <TableCell>
-                      {editingNameItemId === item.id ? (
+                      {editingNameItemId === item.lineId ? (
                         <Input
-                          id={`pos-name-${item.id}`}
+                          id={`pos-name-${item.lineId}`}
                           defaultValue={item.name}
                           className="h-8 w-full text-sm"
                           onClick={(e) => e.stopPropagation()}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') { e.preventDefault(); commitInlineName(item.id, (e.target as HTMLInputElement).value); inputRef.current?.focus(); }
+                            if (e.key === 'Enter') { e.preventDefault(); commitInlineName(item.lineId, (e.target as HTMLInputElement).value); inputRef.current?.focus(); }
                             else if (e.key === 'Escape') { e.preventDefault(); setEditingNameItemId(null); inputRef.current?.focus(); }
                           }}
-                          onBlur={(e) => commitInlineName(item.id, e.target.value)}
+                          onBlur={(e) => commitInlineName(item.lineId, e.target.value)}
                         />
                       ) : (
                         <div className="flex flex-col">
@@ -226,7 +226,7 @@ export function PosCartTable({
                             type="button"
                             className="text-left font-medium text-sm hover:text-primary"
                             title="Edit name (F1)"
-                            onClick={(e) => { e.stopPropagation(); startEditName(item.id); }}
+                            onClick={(e) => { e.stopPropagation(); startEditName(item.lineId); }}
                           >
                             {item.name}
                           </button>
@@ -256,46 +256,46 @@ export function PosCartTable({
                       )}
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">
-                      {editingPriceItemId === item.id ? (
+                      {editingPriceItemId === item.lineId ? (
                         <Input
-                          id={`pos-price-${item.id}`}
+                          id={`pos-price-${item.lineId}`}
                           type="text"
                           inputMode="decimal"
                           defaultValue={item.price}
                           className="ml-auto h-8 w-24 text-right font-mono"
                           onClick={(e) => e.stopPropagation()}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') { e.preventDefault(); commitInlinePrice(item.id, (e.target as HTMLInputElement).value); inputRef.current?.focus(); }
+                            if (e.key === 'Enter') { e.preventDefault(); commitInlinePrice(item.lineId, (e.target as HTMLInputElement).value); inputRef.current?.focus(); }
                             else if (e.key === 'Escape') { e.preventDefault(); setEditingPriceItemId(null); inputRef.current?.focus(); }
                           }}
-                          onBlur={(e) => commitInlinePrice(item.id, e.target.value)}
+                          onBlur={(e) => commitInlinePrice(item.lineId, e.target.value)}
                         />
                       ) : (
                         <button
                           type="button"
                           className="ml-auto block rounded px-1 decoration-dotted underline-offset-2 hover:text-primary hover:underline"
                           title="Edit price (F7)"
-                          onClick={(e) => { e.stopPropagation(); requestInlinePriceEdit(item.id); }}
+                          onClick={(e) => { e.stopPropagation(); requestInlinePriceEdit(item.lineId); }}
                         >
                           ₱{item.price.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                         </button>
                       )}
                     </TableCell>
                     <TableCell className="p-0">
-                      {editingQtyItemId === item.id ? (
+                      {editingQtyItemId === item.lineId ? (
                         <div className="flex items-center justify-center h-full" onClick={(e) => e.stopPropagation()}>
                           <Input
-                            id={`pos-qty-${item.id}`}
+                            id={`pos-qty-${item.lineId}`}
                             type="text"
                             inputMode="numeric"
                             value={qtyDraft}
                             className="h-8 w-20 px-2 text-center font-mono"
                             onChange={(e) => setQtyDraft(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') { e.preventDefault(); commitQty(item.id); inputRef.current?.focus(); }
+                              if (e.key === 'Enter') { e.preventDefault(); commitQty(item.lineId); inputRef.current?.focus(); }
                               else if (e.key === 'Escape') { e.preventDefault(); setQtyDraft(String(item.quantity)); setEditingQtyItemId(null); inputRef.current?.focus(); }
                             }}
-                            onBlur={() => commitQty(item.id)}
+                            onBlur={() => commitQty(item.lineId)}
                           />
                         </div>
                       ) : (
@@ -304,7 +304,7 @@ export function PosCartTable({
                             type="button"
                             className="w-12 rounded py-0.5 text-center font-mono text-sm font-medium hover:bg-muted hover:text-primary"
                             title="Edit quantity (F6)"
-                            onClick={(e) => { e.stopPropagation(); focusInlineQuantity(item.id); }}
+                            onClick={(e) => { e.stopPropagation(); focusInlineQuantity(item.lineId); }}
                           >
                             {formatStockQuantity(item.quantity)}
                           </button>

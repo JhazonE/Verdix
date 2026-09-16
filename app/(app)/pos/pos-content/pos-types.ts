@@ -39,6 +39,12 @@ export type SaleItem = Product & {
    * Undefined for a service line, which carries no selling units at all.
    */
   selectedSellingUnit?: CartSellingUnit;
+  /**
+   * Unique per cart LINE, not per product — `id` is the product id and is
+   * shared by two lines of the same product on different selling units.
+   * Generated once when a line is created; never recomputed or reused.
+   */
+  lineId: string;
 };
 
 export function mapVatStatusToTaxType(vatStatus?: string): 'VAT' | 'NON_VAT' | 'ZERO_RATED' | 'VAT_EXEMPT' {

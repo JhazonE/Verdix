@@ -210,7 +210,7 @@ export function usePOS() {
     }
   }, []);
 
-  const selectedItem = useMemo(() => items.find(item => item.id === selectedItemId) || null, [items, selectedItemId]);
+  const selectedItem = useMemo(() => items.find(item => item.lineId === selectedItemId) || null, [items, selectedItemId]);
 
   // Scroll to selected item
   useEffect(() => {
@@ -253,7 +253,7 @@ export function usePOS() {
   };
 
   const commitInlineName = (itemId: string, rawValue: string) => {
-    const item = items.find(i => i.id === itemId);
+    const item = items.find(i => i.lineId === itemId);
     if (item) {
       const newName = rawValue.trim();
       if (newName && newName !== item.name) handleUpdateItem(itemId, newName, item.quantity, item.price, item.discount);
@@ -263,7 +263,7 @@ export function usePOS() {
 
   const commitQty = (itemId: string) => {
     setEditingQtyItemId(null);
-    const item = items.find(i => i.id === itemId);
+    const item = items.find(i => i.lineId === itemId);
     if (!item) return;
     const q = parseFloat(qtyDraft);
     if (isNaN(q) || q <= 0) { setQtyDraft(String(item.quantity)); return; }
@@ -507,7 +507,7 @@ export function usePOS() {
           const isInputEmpty = inputRef.current ? inputRef.current.value === '' : true;
           if (selectedItemId && (!isInputFocused || isInputEmpty) && !isDialogOpen) {
             e.preventDefault();
-            const item = items.find(i => i.id === selectedItemId);
+            const item = items.find(i => i.lineId === selectedItemId);
             if (item && item.quantity > 1) requestQuantityDelta(selectedItemId, -1);
           }
           break;
@@ -517,8 +517,8 @@ export function usePOS() {
           const isInputEmpty = inputRef.current ? inputRef.current.value === '' : true;
           if (items.length > 0 && (!isInputFocused || isInputEmpty) && !isDialogOpen) {
             e.preventDefault();
-            const idx = items.findIndex(i => i.id === selectedItemId);
-            setSelectedItemId(items[idx <= 0 ? items.length - 1 : idx - 1].id);
+            const idx = items.findIndex(i => i.lineId === selectedItemId);
+            setSelectedItemId(items[idx <= 0 ? items.length - 1 : idx - 1].lineId);
           }
           break;
         }
@@ -527,8 +527,8 @@ export function usePOS() {
           const isInputEmpty = inputRef.current ? inputRef.current.value === '' : true;
           if (items.length > 0 && (!isInputFocused || isInputEmpty) && !isDialogOpen) {
             e.preventDefault();
-            const idx = items.findIndex(i => i.id === selectedItemId);
-            setSelectedItemId(items[idx >= items.length - 1 ? 0 : idx + 1].id);
+            const idx = items.findIndex(i => i.lineId === selectedItemId);
+            setSelectedItemId(items[idx >= items.length - 1 ? 0 : idx + 1].lineId);
           }
           break;
         }
@@ -615,10 +615,11 @@ export function usePOS() {
           const newItem: SaleItem = {
             ...product, quantity: 1, discount: 0, name: product.name,
             selectedSellingUnit: unit,
+            lineId: crypto.randomUUID(),
             price: calculateEffectivePriceForUnit(priceUnit, 1, activeLevelId, defaultLevelId),
             taxType: mapVatStatusToTaxType(product.vatStatus),
           };
-          setSelectedItemId(newItem.id);
+          setSelectedItemId(newItem.lineId);
           return [...prevItems, newItem];
         }
       });
@@ -708,12 +709,12 @@ export function usePOS() {
     handleAddItem(undefined);
   };
 
-  const updateQuantity = (productId: string, newQuantity: number) => {
+  const updateQuantity = (lineId: string, newQuantity: number) => {
     if (newQuantity <= 0) {
-      removeItem(productId);
+      removeItem(lineId);
     } else {
       setItems(prevItems => prevItems.map(item => {
-        if (item.id === productId) {
+        if (item.lineId === lineId) {
           const unit = item.selectedSellingUnit ?? baseSellingUnitOf(item);
           return { ...item, quantity: newQuantity, price: calculateEffectivePriceForUnit(unit, newQuantity, activeLevelId, defaultLevelId) };
         }
@@ -723,7 +724,7 @@ export function usePOS() {
   };
 
   const handleUpdateItem = (itemId: string, newName: string, newQty: number, newPrice: number, newDiscount: number) => {
-    setItems(prev => prev.map(item => item.id === itemId ? { ...item, name: newName, quantity: newQty, price: newPrice, discount: newDiscount } : item));
+    setItems(prev => prev.map(item => item.lineId === itemId ? { ...item, name: newName, quantity: newQty, price: newPrice, discount: newDiscount } : item));
   };
 
   const onUnitChange = (item: SaleItem, unitId: string) => {
@@ -763,7 +764,7 @@ export function usePOS() {
   };
 
   const performVoidLine = (itemId: string) => {
-    const item = items.find(i => i.id === itemId);
+    const item = items.find(i => i.lineId === itemId);
     if (!item) return;
     removeItem(itemId);
     if (selectedItemId === itemId) setSelectedItemId(null);
@@ -792,7 +793,7 @@ export function usePOS() {
       setPendingQtyDelta(delta);
       setIsEditQtyAuthOpen(true);
     } else {
-      const item = items.find(i => i.id === itemId);
+      const item = items.find(i => i.lineId === itemId);
       if (item) updateQuantity(itemId, item.quantity + delta);
     }
   };
@@ -801,7 +802,7 @@ export function usePOS() {
     setIsEditQtyAuthOpen(false);
     if (!selectedItemId) return;
     if (pendingQtyDelta !== null) {
-      const item = items.find(i => i.id === selectedItemId);
+      const item = items.find(i => i.lineId === selectedItemId);
       if (item) updateQuantity(selectedItemId, item.quantity + pendingQtyDelta);
       setPendingQtyDelta(null);
     } else {
@@ -809,8 +810,8 @@ export function usePOS() {
     }
   };
 
-  const removeItem = (productId: string) => {
-    setItems(items.filter(item => item.id !== productId));
+  const removeItem = (lineId: string) => {
+    setItems(items.filter(item => item.lineId !== lineId));
   };
 
   const handleSendToQueue = () => {
@@ -904,7 +905,7 @@ export function usePOS() {
   };
 
   const handleOpenEditDialog = () => {
-    if (selectedItem) startEditName(selectedItem.id);
+    if (selectedItem) startEditName(selectedItem.lineId);
     else toast({ title: 'No Item Selected', description: 'Please select an item to edit.', variant: 'destructive' });
   };
 
@@ -920,7 +921,7 @@ export function usePOS() {
       setItems(items.map(item => ({ ...item, discount: percentage, discountType, discountIdNumber, discountHolderName })));
       toast({ title: 'Global Discount Applied', description: `Applied ${percentage.toFixed(2)}% discount to all items.` });
     } else {
-      setItems(items.map(item => item.id === itemId ? { ...item, discount: percentage, discountType, discountIdNumber, discountHolderName } : item));
+      setItems(items.map(item => item.lineId === itemId ? { ...item, discount: percentage, discountType, discountIdNumber, discountHolderName } : item));
       toast({ title: 'Discount Applied', description: `Discount updated to ${percentage.toFixed(2)}%` });
     }
   };
@@ -1185,7 +1186,7 @@ export function usePOS() {
   const handleRequestPriceEdit = () => {
     if (selectedItem) {
       if (businessSettings?.enablePriceEditAuth) setIsPriceEditAuthOpen(true);
-      else unlockInlinePrice(selectedItem.id);
+      else unlockInlinePrice(selectedItem.lineId);
     } else {
       toast({ title: 'No Item Selected', description: 'Please select an item to authorize price change.', variant: 'destructive' });
     }
@@ -1200,7 +1201,7 @@ export function usePOS() {
   };
 
   const commitInlinePrice = (itemId: string, rawValue: string) => {
-    const item = items.find(i => i.id === itemId);
+    const item = items.find(i => i.lineId === itemId);
     if (item) {
       const newPrice = parseFloat(rawValue);
       if (!isNaN(newPrice) && newPrice >= 0 && newPrice !== item.price) handleUpdateItem(itemId, item.name, item.quantity, newPrice, item.discount);
