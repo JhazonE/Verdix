@@ -4,6 +4,7 @@ import type { POSSaleItem, Customer } from './types';
 import { SystemSettings } from './types';
 import { formatSINumber } from './si-number';
 import { resolveEffectiveTaxType } from './tax-utils';
+import { abbreviateUOM } from './receipt-uom';
 
 // Default for 58mm
 const DEFAULT_COLS = 32;
@@ -232,7 +233,7 @@ export class ReceiptGenerator {
             // print that unit, not the product's base unitOfMeasure — printing
             // "pcs" for a line actually sold as "Pack" would misstate what the
             // customer bought.
-            const uomAbbr = this.abbreviateUOM((item as any).selectedSellingUnit?.name ?? (item as any).unitOfMeasure);
+            const uomAbbr = abbreviateUOM((item as any).selectedSellingUnit?.name ?? (item as any).unitOfMeasure);
             const qtyText = `${item.quantity}${uomAbbr ? ' ' + uomAbbr : ''}`;
             
             const qty     = qtyText.length > QTY_W ? qtyText.substring(0, QTY_W) : qtyText.padEnd(QTY_W, pad);
@@ -757,39 +758,6 @@ export class ReceiptGenerator {
         enc.cut();
 
         return enc.encode();
-    }
-
-    private abbreviateUOM(uom?: string): string {
-        if (!uom) return '';
-        const map: Record<string, string> = {
-            'Pieces': 'pcs',
-            'Piece': 'pc',
-            'Kilograms': 'kg',
-            'Kilogram': 'kg',
-            'Kilos': 'kg',
-            'Kilo': 'kg',
-            'Grams': 'g',
-            'Gram': 'g',
-            'Meters': 'm',
-            'Meter': 'm',
-            'Liters': 'L',
-            'Liter': 'L',
-            'Boxes': 'bx',
-            'Box': 'bx',
-            'Case': 'cs',
-            'Cases': 'cs',
-            'Pack': 'pk',
-            'Packs': 'pk',
-            'Bottle': 'btl',
-            'Bottles': 'btl',
-            'Can': 'cn',
-            'Cans': 'cn',
-            'Milliliters': 'ml',
-            'Milliliter': 'ml'
-        };
-        const trimmed = uom.trim();
-        const upper = trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
-        return map[upper] || trimmed.toLowerCase();
     }
 
     /** Format number as currency string */
