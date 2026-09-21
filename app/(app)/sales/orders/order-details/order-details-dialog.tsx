@@ -33,6 +33,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, mode = 'order' }
           displayDate={print.displayDate}
           subtotal={print.subtotal}
           shipping={print.shipping}
+          vatAmount={print.vatAmount}
           grandTotal={print.grandTotal}
           printContentRef={print.printContentRef}
         />

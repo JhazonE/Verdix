@@ -5,6 +5,7 @@ import { Separator } from '@/components/ui/separator';
 import { FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { formatQuantity } from '@/lib/utils';
+import { abbreviateUOM } from '@/lib/receipt-uom';
 import type { Sale } from '@/lib/types';
 import type { POSSettings, OrderDialogMode } from './order-details-types';
 
@@ -16,13 +17,18 @@ type Props = {
   displayDate: string | null | undefined;
   subtotal: number;
   shipping: number;
+  vatAmount: number;
   grandTotal: number;
   printContentRef: RefObject<HTMLDivElement>;
 };
 
+function itemUnitLabel(item: any): string {
+  return item.sellingUnitName ? abbreviateUOM(item.sellingUnitName) : '';
+}
+
 export function OrderDetailsDocument({
   order, settings, mode, documentTitle,
-  displayDate, subtotal, shipping, grandTotal, printContentRef,
+  displayDate, subtotal, shipping, vatAmount, grandTotal, printContentRef,
 }: Props) {
   const labelRef = mode === 'delivery-note' ? 'Reference Number'
     : mode === 'invoice' ? 'Invoice Number' : 'Order Number';
@@ -120,17 +126,31 @@ export function OrderDetailsDocument({
                 <th className="py-2.5 text-right font-bold tracking-wider w-32">PRICE</th>
                 <th className="py-2.5 text-right font-bold tracking-wider w-32">DISCOUNT</th>
                 <th className="py-2.5 text-right font-bold tracking-wider w-32">AMOUNT</th>
+                <th className="py-2.5 text-center font-bold tracking-wider w-16">VAT</th>
               </tr>
             </thead>
             <tbody>
               {order.items.map((item, index) => (
                 <tr key={index} className="border-b border-slate-100">
-                  <td className="py-3 uppercase font-medium">{item.product.name}</td>
+                  <td className="py-3 uppercase font-medium">
+                    {item.product.name}
+                    {itemUnitLabel(item) && (
+                      <span className="ml-1.5 font-normal normal-case text-slate-400">({itemUnitLabel(item)})</span>
+                    )}
+                  </td>
                   <td className="py-3 text-center">{formatQuantity(item.quantity)} {(item.product as any).unit || 'pc'}</td>
                   <td className="py-2 text-right">{item.price.toFixed(2)}</td>
                   <td className="py-2 text-right">0.00</td>
                   <td className="py-2 text-right font-semibold">
                     {(item.price * item.quantity).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </td>
+                  <td className="py-2 text-center">
+                    <span
+                      className="inline-block w-3.5 h-3.5 border border-slate-500 leading-none align-middle"
+                      aria-label={(item as any).vatable ? 'Subject to VAT' : 'VAT-exempt'}
+                    >
+                      {(item as any).vatable ? '✓' : ''}
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -156,8 +176,8 @@ export function OrderDetailsDocument({
               <span>{shipping.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
             <div className="flex justify-between">
-              <span className="font-bold">VAT INCLUDED</span>
-              <span>0.00</span>
+              <span className="font-bold">VAT (12%)</span>
+              <span>{vatAmount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
             <div className="flex justify-between font-black text-sm border-t-2 border-slate-900 pt-2 mt-2">
               <span>GRAND TOTAL</span>

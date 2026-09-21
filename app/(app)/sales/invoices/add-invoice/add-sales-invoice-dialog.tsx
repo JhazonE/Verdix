@@ -20,7 +20,7 @@ export function AddSalesInvoiceDialog({ onSuccess }: AddSalesInvoiceDialogProps 
     warehouses, fetchWarehouses,
     paymentMethods, fetchPaymentMethods,
     form, fields, remove,
-    total, isSubmitting, isReferenceRequired,
+    total, vatAmount, isSubmitting, isReferenceRequired,
     handleAddProduct, onSubmit,
   } = useAddInvoice({ onSuccess });
 
@@ -60,6 +60,7 @@ export function AddSalesInvoiceDialog({ onSuccess }: AddSalesInvoiceDialogProps 
                 fields={fields}
                 remove={remove}
                 total={total}
+                vatAmount={vatAmount}
                 handleAddProduct={handleAddProduct}
               />
 

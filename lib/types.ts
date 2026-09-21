@@ -133,6 +133,11 @@ export interface SaleItem {
   returnedQuantity?: number;
   price: number;
   discount?: number;
+  sellingUnitId?: string;
+  sellingUnitName?: string;
+  sellingUnitFactor?: number;
+  /** Whether this line charged 12% VAT (Backoffice sales invoices only). */
+  vatable?: boolean;
 }
 
 export interface Sale {
@@ -150,6 +155,8 @@ export interface Sale {
   salesPersonId?: string;
   items: SaleItem[];
   total: number;
+  /** 12% VAT summed across vatable lines (Backoffice sales invoices only). Already included in `total`. */
+  vatAmount?: number;
   formattedTotal?: string;
   amountPaid?: number;
   balance?: number;

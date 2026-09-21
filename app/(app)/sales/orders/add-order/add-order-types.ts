@@ -9,6 +9,14 @@ export const salesOrderItemSchema = z.object({
   }).passthrough(),
   quantity: z.coerce.number().positive('Quantity must be greater than 0'),
   price: z.coerce.number().nonnegative('Price cannot be negative'),
+  sellingUnitId: z.string().optional(),
+  sellingUnitName: z.string().optional(),
+  sellingUnitFactor: z.coerce.number().positive().optional(),
+  /**
+   * Whether this specific line charges VAT. Defaults from the product's own
+   * vatStatus when added to the cart, but staff can override it per line.
+   */
+  vatable: z.boolean(),
 });
 
 export const salesOrderSchema = z.object({

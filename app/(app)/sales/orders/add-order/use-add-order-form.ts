@@ -7,7 +7,10 @@ import { useToast } from '@/hooks/use-toast';
 import { logActivity } from '@/lib/client-activity-logger';
 import { getApiUrl } from '@/lib/api-config';
 import type { Product, PaymentMethod, SalesPerson, Customer, Sale } from '@/lib/types';
+import { mapVatStatusToTaxType } from '@/lib/tax-utils';
 import { salesOrderSchema, type SalesOrderFormValues } from './add-order-types';
+
+const VAT_RATE = 0.12;
 
 type Props = {
   paymentMethods: PaymentMethod[];
@@ -23,6 +26,8 @@ export function useAddOrderForm({ paymentMethods, salesPersons, customers, initi
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [total, setTotal] = useState(0);
+  const [vatAmount, setVatAmount] = useState(0);
+  const [vatableSales, setVatableSales] = useState(0);
 
   const refinedSchema = useMemo(() => salesOrderSchema.refine((data) => {
     const method = paymentMethods.find(m => m.name === data.paymentMethod);
@@ -69,6 +74,10 @@ export function useAddOrderForm({ paymentMethods, salesPersons, customers, initi
           product: { ...item.product },
           quantity: item.quantity,
           price: item.price,
+          sellingUnitId: (item as any).sellingUnitId,
+          sellingUnitName: (item as any).sellingUnitName,
+          sellingUnitFactor: (item as any).sellingUnitFactor,
+          vatable: Boolean((item as any).vatable),
         })),
       });
     } else {
@@ -90,28 +99,55 @@ export function useAddOrderForm({ paymentMethods, salesPersons, customers, initi
     }
   }, [watchedCustomerId, customers, salesPersons, initialData]);
 
+  // Prices on this form are VAT-EXCLUSIVE (unlike POS, where the tendered
+  // price already includes VAT and gets backed out) — a VATable line adds
+  // 12% on top instead of splitting it out of the line total. Each line's
+  // own `vatable` checkbox decides this, not the product's vatStatus
+  // directly — that status only sets the checkbox's initial value when the
+  // product is added, since staff can override it per line afterward.
+  const computeTotals = (items: any[], shipping: number) => {
+    let itemsTotal = 0;
+    let vatable = 0;
+    let vat = 0;
+    for (const item of items || []) {
+      const lineTotal = Number(item?.price || 0) * Number(item?.quantity || 0);
+      itemsTotal += lineTotal;
+      if (item?.vatable) {
+        vatable += lineTotal;
+        vat += lineTotal * VAT_RATE;
+      }
+    }
+    setVatableSales(vatable);
+    setVatAmount(vat);
+    setTotal(itemsTotal + vat + Number(shipping || 0));
+  };
+
   // Running total calculation
   useEffect(() => {
     const sub = form.watch((value, { name }) => {
       if (name?.startsWith('items') || name === 'shipping') {
-        const itemsTotal = (value.items || []).reduce((acc: number, item: any) =>
-          acc + (Number(item?.price || 0) * Number(item?.quantity || 0)), 0);
-        setTotal(itemsTotal + Number(value.shipping || 0));
+        computeTotals(value.items as any[], Number(value.shipping || 0));
       }
     });
     const cur = form.getValues();
-    const itemsTotal = (cur.items || []).reduce((acc: number, item: any) =>
-      acc + (Number(item?.price || 0) * Number(item?.quantity || 0)), 0);
-    setTotal(itemsTotal + Number(cur.shipping || 0));
+    computeTotals(cur.items, Number(cur.shipping || 0));
     return () => sub.unsubscribe();
   }, []);
 
-  const handleAddProduct = (product: Product) => {
-    const existingIndex = fields.findIndex(f => f.product.id === product.id);
+  const handleAddProduct = (product: Product, unit?: { id?: string; name: string; factor: number; price: number }) => {
+    const existingIndex = fields.findIndex(f => f.product.id === product.id && f.sellingUnitId === unit?.id);
     if (existingIndex !== -1) {
       update(existingIndex, { ...fields[existingIndex], quantity: fields[existingIndex].quantity + 1 });
     } else {
-      append({ product: { ...product }, quantity: 1, price: product.price });
+      append({
+        product: { ...product },
+        quantity: 1,
+        price: unit ? unit.price : product.price,
+        sellingUnitId: unit?.id,
+        sellingUnitName: unit?.name,
+        sellingUnitFactor: unit?.factor,
+        vatable: mapVatStatusToTaxType(product.vatStatus) === 'VAT',
+      });
     }
   };
 
@@ -177,7 +213,7 @@ export function useAddOrderForm({ paymentMethods, salesPersons, customers, initi
 
   return {
     form, fields, remove,
-    total, isSubmitting, isReferenceRequired,
+    total, vatAmount, vatableSales, isSubmitting, isReferenceRequired,
     handleAddProduct, onSubmit, onInvalid,
   };
 }

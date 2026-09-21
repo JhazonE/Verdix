@@ -14,6 +14,7 @@ export class MySqlSaleRepository implements SaleRepository {
         si.invoice_date as invoiceDate,
         si.due_date as dueDate,
         si.total,
+        si.vat_amount as vatAmount,
         si.payment_method as paymentMethod,
         si.payment_reference as paymentReference,
         si.status,
@@ -49,13 +50,14 @@ export class MySqlSaleRepository implements SaleRepository {
         p.barcode,
         sii.quantity,
         sii.price,
-        si.cost_at_sale as costAtSale,
-        si.batch_source as batchSource
+        sii.cost_at_sale as costAtSale,
+        sii.batch_source as batchSource,
+        sii.selling_unit_id as sellingUnitId,
+        sii.selling_unit_name as sellingUnitName,
+        sii.selling_unit_factor as sellingUnitFactor,
+        sii.vatable
       FROM sales_invoice_items sii
       LEFT JOIN products p ON sii.product_id = p.id
-      LEFT JOIN sales_invoices inv ON sii.sales_invoice_id = inv.id
-      LEFT JOIN sales_transactions st ON inv.reference = st.reference AND inv.reference IS NOT NULL AND inv.reference != ''
-      LEFT JOIN sale_items si ON st.id = si.sale_id AND si.product_id = sii.product_id
       WHERE sii.sales_invoice_id IN (${placeholders})
       ORDER BY sii.created_at ASC
     `;
@@ -87,6 +89,10 @@ export class MySqlSaleRepository implements SaleRepository {
         barcode: item.barcode,
         costAtSale: item.costAtSale != null ? parseFloat(item.costAtSale) : null,
         batchSource,
+        sellingUnitId: item.sellingUnitId || undefined,
+        sellingUnitName: item.sellingUnitName || undefined,
+        sellingUnitFactor: item.sellingUnitFactor != null ? parseFloat(item.sellingUnitFactor) : undefined,
+        vatable: Boolean(item.vatable),
       } as any);
     });
 
@@ -113,9 +119,9 @@ export class MySqlSaleRepository implements SaleRepository {
       // 1. Insert into sales_invoices
       const insertInvoiceSql = `
         INSERT INTO sales_invoices (
-          id, customer_id, reference, receipt_number, invoice_date, due_date, total, payment_method,
+          id, customer_id, reference, receipt_number, invoice_date, due_date, total, vat_amount, payment_method,
           payment_reference, status, transaction_source, notes, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
       `;
 
       await connection.query(insertInvoiceSql, [
@@ -126,6 +132,7 @@ export class MySqlSaleRepository implements SaleRepository {
         sale.invoiceDate,
         sale.dueDate || null,
         sale.total,
+        sale.vatAmount || 0,
         sale.paymentMethod,
         sale.paymentReference || null,
         sale.status,
@@ -136,8 +143,9 @@ export class MySqlSaleRepository implements SaleRepository {
       // 2. Insert items
       const insertItemSql = `
         INSERT INTO sales_invoice_items (
-          id, sales_invoice_id, product_id, product_name, quantity, price, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, NOW())
+          id, sales_invoice_id, product_id, product_name, quantity, price,
+          selling_unit_id, selling_unit_name, selling_unit_factor, vatable, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
       `;
 
       for (let i = 0; i < sale.items.length; i++) {
@@ -148,7 +156,11 @@ export class MySqlSaleRepository implements SaleRepository {
           item.productId,
           item.productName,
           item.quantity,
-          item.price
+          item.price,
+          item.sellingUnitId ?? null,
+          item.sellingUnitName ?? null,
+          item.sellingUnitFactor ?? null,
+          item.vatable ? 1 : 0,
         ]);
       }
 

@@ -4,6 +4,15 @@ export const salesInvoiceItemSchema = z.object({
   product: z.any(),
   quantity: z.coerce.number().positive(),
   price: z.coerce.number().nonnegative(),
+  sellingUnitId: z.string().optional(),
+  sellingUnitName: z.string().optional(),
+  sellingUnitFactor: z.coerce.number().positive().optional(),
+  /**
+   * Whether this specific line charges VAT. Defaults from the product's own
+   * vatStatus when added to the cart, but staff can override it per line
+   * (e.g. a normally-VATable product sold VAT-exempt for a special case).
+   */
+  vatable: z.boolean(),
 });
 
 export const salesInvoiceSchema = z.object({

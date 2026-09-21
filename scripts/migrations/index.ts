@@ -120,6 +120,9 @@ import './119_backfill_base_selling_units';
 import './120_add_selling_unit_to_line_items';
 import './121_create_selling_unit_price_levels';
 import './122_link_subcategories_to_categories';
+import './123_add_cost_at_sale_to_invoice_items';
+import './124_add_vat_to_sales_invoices';
+import './125_add_vat_to_sales_orders';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';

@@ -17,7 +17,6 @@ import { PlusCircle, Loader2, ArrowRight } from 'lucide-react';
 import type { Sale } from '@/lib/types';
 import { useAddOrderData } from './use-add-order-data';
 import { useAddOrderForm } from './use-add-order-form';
-import { AddOrderProductSelector } from './AddOrderProductSelector';
 import { AddOrderFormHeader } from './AddOrderFormHeader';
 import { AddOrderItemsTable } from './AddOrderItemsTable';
 
@@ -86,20 +85,14 @@ export function AddSalesOrderDialog({ initialData, isOpen: controlledIsOpen, onO
                 fetchSalesPersons={data.fetchSalesPersons}
               />
 
-              <div className="flex-1 flex flex-col overflow-hidden bg-muted/5 p-4 relative">
-                <div className="max-w-2xl mb-4 z-10">
-                  <AddOrderProductSelector
-                    onSelectProduct={formHook.handleAddProduct}
-                    warehouseId={formHook.form.watch('warehouse')}
-                  />
-                </div>
-                <AddOrderItemsTable
-                  form={formHook.form}
-                  fields={formHook.fields}
-                  remove={formHook.remove}
-                  total={formHook.total}
-                />
-              </div>
+              <AddOrderItemsTable
+                form={formHook.form}
+                fields={formHook.fields}
+                remove={formHook.remove}
+                total={formHook.total}
+                vatAmount={formHook.vatAmount}
+                handleAddProduct={formHook.handleAddProduct}
+              />
             </div>
 
             <DialogFooter className="p-4 bg-background border-t">

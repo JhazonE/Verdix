@@ -59,6 +59,7 @@ export async function GET(
         sii.product_name,
         sii.quantity,
         sii.price,
+        sii.selling_unit_name,
         p.unit_of_measure as uom,
         p.sku
       FROM sales_invoice_items sii
@@ -91,7 +92,10 @@ export async function GET(
         sku: item.sku || '',
         quantity: parseFloat(item.quantity),
         price: parseFloat(item.price),
-        uom: item.uom || 'units',
+        // The unit actually sold, e.g. "Case" vs "Piece" — falls back to the
+        // product's raw UOM text only for rows written before selling units
+        // existed (selling_unit_name is NULL there).
+        uom: item.selling_unit_name || item.uom || 'units',
         total: parseFloat(item.quantity) * parseFloat(item.price)
       })),
     };

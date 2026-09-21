@@ -3,7 +3,7 @@
  * spec (pag-assert). Usa ra ka source of truth para sa known test data.
  */
 
-export const BUSINESS_NAME = 'Verdix Test Store';
+export const BUSINESS_NAME = 'Vendix Test Store';
 
 export const TEST_PASSWORD = 'Test@1234';
 

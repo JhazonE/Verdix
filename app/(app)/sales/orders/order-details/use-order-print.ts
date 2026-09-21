@@ -3,6 +3,7 @@
 import { useRef } from 'react';
 import { format } from 'date-fns';
 import { formatQuantity } from '@/lib/utils';
+import { abbreviateUOM } from '@/lib/receipt-uom';
 import type { Sale } from '@/lib/types';
 import type { POSSettings, OrderDialogMode } from './order-details-types';
 
@@ -12,6 +13,10 @@ type Props = {
   mode: OrderDialogMode;
 };
 
+function itemUnitLabel(item: any): string {
+  return item.sellingUnitName ? abbreviateUOM(item.sellingUnitName) : '';
+}
+
 export function useOrderPrint({ order, settings, mode }: Props) {
   const printContentRef = useRef<HTMLDivElement>(null);
 
@@ -19,7 +24,8 @@ export function useOrderPrint({ order, settings, mode }: Props) {
   const displayDate = order ? (order.orderDate || order.date) : null;
   const subtotal = order ? order.items.reduce((sum, item) => sum + item.price * item.quantity, 0) : 0;
   const shipping = order ? Number((order as any).shipping || 0) : 0;
-  const grandTotal = subtotal + shipping;
+  const vatAmount = order ? Number(order.vatAmount || 0) : 0;
+  const grandTotal = subtotal + shipping + vatAmount;
 
   const handlePrint = () => {
     const printContent = printContentRef.current;
@@ -120,16 +126,18 @@ export function useOrderPrint({ order, settings, mode }: Props) {
                 <th style="width: 100px">PRICE</th>
                 <th style="width: 100px">DISCOUNT</th>
                 <th style="width: 100px">AMOUNT</th>
+                <th style="width: 60px; text-align: center;">VAT</th>
               </tr>
             </thead>
             <tbody>
               ${order.items.map(item => `
                 <tr>
-                  <td style="text-transform: uppercase; font-weight: 500;">${item.product.name}</td>
+                  <td style="text-transform: uppercase; font-weight: 500;">${item.product.name}${itemUnitLabel(item) ? ` <span style="text-transform: none; font-weight: normal; color: #888;">(${itemUnitLabel(item)})</span>` : ''}</td>
                   <td>${formatQuantity(item.quantity)} ${(item.product as any).unit || 'pc'}</td>
                   <td>${item.price.toFixed(2)}</td>
                   <td>0.00</td>
                   <td class="amount">${(item.price * item.quantity).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td style="text-align: center;"><span style="display: inline-block; width: 12px; height: 12px; border: 1px solid #555; line-height: 12px; font-size: 10px;">${(item as any).vatable ? '✓' : ''}</span></td>
                 </tr>
               `).join('')}
             </tbody>
@@ -143,7 +151,7 @@ export function useOrderPrint({ order, settings, mode }: Props) {
             <div class="totals">
               <div class="totals-row"><span>SUBTOTAL</span><span>${subtotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
               <div class="totals-row"><span>SHIPPING</span><span>${shipping.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-              <div class="totals-row"><span>VAT INCLUDED</span><span>0.00</span></div>
+              <div class="totals-row"><span>VAT (12%)</span><span>${vatAmount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
               <div class="totals-row grand"><span>GRAND TOTAL</span><span>${grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
             </div>
           </div>
@@ -212,13 +220,14 @@ export function useOrderPrint({ order, settings, mode }: Props) {
             ${order.items.map(item => `
               <div class="item">
                 <div class="item-name">
-                  ${item.product.name}
+                  ${item.product.name}${itemUnitLabel(item) ? ` (${itemUnitLabel(item)})` : ''}
                   ${item.product.barcode ? `<div style="font-size: 11px; color: #000; font-weight: bold; font-family: monospace;">BC: ${item.product.barcode}</div>` : ''}
                 </div>
                 <div class="item-details">
                   <span>${formatQuantity(item.quantity)} x ₱${item.price.toFixed(2)}</span>
                   <span>₱${(item.price * item.quantity).toFixed(2)}</span>
                 </div>
+                <div class="item-details"><span>VAT [${(item as any).vatable ? 'x' : ' '}]</span><span></span></div>
               </div>
             `).join('')}
           </div>
@@ -228,7 +237,7 @@ export function useOrderPrint({ order, settings, mode }: Props) {
           <div class="totals">
             <div class="total-row"><span>Subtotal:</span><span>₱${subtotal.toFixed(2)}</span></div>
             ${shipping > 0 ? `<div class="total-row"><span>Shipping:</span><span>₱${shipping.toFixed(2)}</span></div>` : ''}
-            <div class="total-row"><span>VAT Included:</span><span>₱0.00</span></div>
+            <div class="total-row"><span>VAT (12%):</span><span>₱${vatAmount.toFixed(2)}</span></div>
             <div class="total-row grand"><span>TOTAL:</span><span>₱${grandTotal.toFixed(2)}</span></div>
           </div>
 
@@ -253,6 +262,7 @@ export function useOrderPrint({ order, settings, mode }: Props) {
     displayDate,
     subtotal,
     shipping,
+    vatAmount,
     grandTotal,
     handlePrint,
     handlePrintPOSInvoice,

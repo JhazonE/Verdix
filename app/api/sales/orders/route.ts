@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withTransaction, query, getNextReference } from '../../../../lib/mysql';
 
+const VAT_RATE = 0.12;
+
 // Helper function to format ISO date strings to MySQL format
 function formatDateForMySQL(dateValue: string | null | undefined): string | null {
     if (!dateValue) return null;
@@ -47,6 +49,7 @@ export async function GET(request: NextRequest) {
         so.reference,
         so.delivery_address,
         so.total,
+        so.vat_amount,
         so.payment_method,
         so.status,
         so.notes,
@@ -160,6 +163,10 @@ export async function GET(request: NextRequest) {
             p.barcode,
             soi.quantity,
             soi.price,
+            soi.selling_unit_id,
+            soi.selling_unit_name,
+            soi.selling_unit_factor,
+            soi.vatable,
             (soi.quantity * soi.price) as subtotal
           FROM sales_order_items soi
           LEFT JOIN products p ON soi.product_id = p.id
@@ -180,6 +187,10 @@ export async function GET(request: NextRequest) {
           },
           quantity: parseInt(item.quantity),
           price: parseFloat(item.price),
+          sellingUnitId: item.selling_unit_id || undefined,
+          sellingUnitName: item.selling_unit_name || undefined,
+          sellingUnitFactor: item.selling_unit_factor !== null ? Number(item.selling_unit_factor) : undefined,
+          vatable: Boolean(item.vatable),
         }));
 
         return {
@@ -198,6 +209,7 @@ export async function GET(request: NextRequest) {
           reference: row.reference,
           deliveryAddress: row.delivery_address,
           total: parseFloat(row.total),
+          vatAmount: parseFloat(row.vat_amount || 0),
           formattedTotal: `₱${parseFloat(row.total).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
           paymentMethod: row.payment_method || '',
           paymentReference: row.payment_reference || '',
@@ -282,8 +294,22 @@ export async function POST(request: NextRequest) {
     // Generate order ID
     const orderId = `SO-${Date.now()}`;
 
-    // Calculate total
-    const total = items.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
+    // Prices are VAT-exclusive here — a VATable line adds 12% on top rather
+    // than having VAT backed out of an inclusive price the way POS does.
+    // `item.vatable` is the per-line checkbox from the form: it defaults
+    // from the product's own vatStatus but staff can override it per line,
+    // so the charge follows the submitted flag, not a re-derived status.
+    // NOTE: matches the pre-existing behavior of NOT folding `shipping` into
+    // `total` here (unlike the Sales Invoice path) — shipping is saved to
+    // its own column only. Not something this change should silently alter.
+    let itemsTotal = 0;
+    let vatAmount = 0;
+    for (const item of items) {
+      const lineTotal = item.price * item.quantity;
+      itemsTotal += lineTotal;
+      if (item.vatable) vatAmount += lineTotal * VAT_RATE;
+    }
+    const total = itemsTotal + vatAmount;
 
     return await withTransaction(async (connection) => {
       // Allocate the SO number from the shared counter, on THIS transaction's
@@ -300,9 +326,9 @@ export async function POST(request: NextRequest) {
       const insertOrderQuery = `
         INSERT INTO sales_orders (
           id, customer_id, order_date, delivery_date, reference,
-          delivery_address, total, payment_method, payment_reference, status, shipping,
+          delivery_address, total, vat_amount, payment_method, payment_reference, status, shipping,
           warehouse_id, sales_person_id, note
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       await connection.query(insertOrderQuery, [
@@ -313,6 +339,7 @@ export async function POST(request: NextRequest) {
         orderReference,
         deliveryAddress || null,
         total,
+        vatAmount,
         paymentMethod,
         paymentReference || null,
         status || 'Pending',
@@ -325,8 +352,9 @@ export async function POST(request: NextRequest) {
       // Insert order items and handle inventory
       const insertItemQuery = `
         INSERT INTO sales_order_items (
-          id, sales_order_id, product_id, product_name, quantity, price
-        ) VALUES (?, ?, ?, ?, ?, ?)
+          id, sales_order_id, product_id, product_name, quantity, price,
+          selling_unit_id, selling_unit_name, selling_unit_factor, vatable
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       for (let i = 0; i < items.length; i++) {
@@ -339,7 +367,11 @@ export async function POST(request: NextRequest) {
           item.product.id,
           item.product.name,
           item.quantity,
-          item.price
+          item.price,
+          item.sellingUnitId ?? null,
+          item.sellingUnitName ?? null,
+          item.sellingUnitFactor ?? null,
+          item.vatable ? 1 : 0,
         ]);
         // NOTE: stock is NOT deducted at order creation. A sales order is a
         // commitment; inventory is deducted when the order is delivered

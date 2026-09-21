@@ -65,15 +65,18 @@ export async function GET(request: NextRequest) {
       if (conditions.length > 0) {
         baseSql += ' WHERE ' + conditions.join(' AND ');
       }
+      // total_sold is compared against p.stock (base units) to rank fast/slow
+      // movers, so it must be in base units too — scale si.quantity (whatever
+      // selling unit was sold) by its factor. NULL factor means base unit (1).
       sqlSelect = `
-        SELECT 
+        SELECT
           p.id,
           p.name,
           p.sku,
           p.barcode,
           p.category,
           p.stock,
-          COALESCE(SUM(si.quantity), 0) as total_sold,
+          COALESCE(SUM(si.quantity * COALESCE(si.selling_unit_factor, 1)), 0) as total_sold,
           COALESCE(SUM(si.quantity * si.price), 0) as total_revenue
       `;
     }

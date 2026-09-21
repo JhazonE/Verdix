@@ -5,21 +5,27 @@ import { Button } from '@/components/ui/button';
 import { Printer, FileText } from 'lucide-react';
 import type { Sale } from '@/lib/types';
 import { formatQuantity } from '@/lib/utils';
+import { abbreviateUOM } from '@/lib/receipt-uom';
 import type { PosSettings } from './use-invoices-query';
 
 type Props = { order: Sale; title: string; settings: PosSettings | null; onBack: () => void };
+
+function itemUnitLabel(item: any): string {
+  return item.sellingUnitName ? abbreviateUOM(item.sellingUnitName) : '';
+}
 
 export function SalesInvoicePrintView({ order, title, settings, onBack }: Props) {
   const displayDate = order.invoiceDate || order.date;
   const subtotal = (order.items || []).reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.quantity || 0)), 0);
   const shipping = Number((order as any).shipping || 0);
-  const grandTotal = subtotal + shipping;
+  const vatAmount = Number(order.vatAmount || 0);
+  const grandTotal = subtotal + shipping + vatAmount;
 
   const handlePrintPOSInvoice = () => {
     const printWindow = window.open('', '_blank', 'width=350,height=600');
     if (!printWindow) return;
     const receiptStyles = `<style>* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: 'Courier New', Courier, monospace; font-size: 12px; width: 80mm; padding: 5mm; background: white; color: black; } .header { text-align: center; margin-bottom: 10px; } .business-name { font-weight: bold; font-size: 14px; } .address { font-size: 10px; } .dashed { border-top: 1px dashed #000; margin: 8px 0; } .title { text-align: center; font-weight: bold; font-size: 14px; margin: 10px 0; } .info-row { display: flex; justify-content: space-between; font-size: 11px; } .items { margin: 10px 0; } .item { margin-bottom: 5px; } .item-name { font-size: 11px; } .item-details { display: flex; justify-content: space-between; font-size: 10px; padding-left: 10px; } .totals { margin-top: 10px; } .total-row { display: flex; justify-content: space-between; font-size: 11px; } .total-row.grand { font-weight: bold; font-size: 14px; margin-top: 5px; padding-top: 5px; border-top: 1px dashed #000; } .footer { text-align: center; margin-top: 15px; font-size: 10px; } @media print { body { width: 80mm; margin: 0; padding: 3mm; } @page { size: 80mm auto; margin: 0; } }</style>`;
-    printWindow.document.write(`<!DOCTYPE html><html><head><title>POS Invoice - ${order.reference || (order as any).receiptNo || order.id.substring(0, 8)}</title>${receiptStyles}</head><body><div class="header"><div class="business-name">${settings?.businessName || 'VENDIX'}</div>${settings?.address ? `<div class="address">${settings.address}</div>` : ''}${settings?.contactNumber ? `<div class="address">${settings.contactNumber}</div>` : ''}</div><div class="dashed"></div><div class="title">${title.toUpperCase()}</div><div class="info-row"><span>Ref #:</span><span>${order.reference || (order as any).receiptNo || order.id.substring(0, 8)}</span></div><div class="info-row"><span>Date:</span><span>${displayDate ? format(new Date(displayDate), 'MM/dd/yyyy') : 'N/A'}</span></div><div class="info-row"><span>Customer:</span><span>${order.customer?.name || 'Walk-in'}</span></div><div class="dashed"></div><div class="items">${(order.items || []).map(item => `<div class="item"><div class="item-name">${item.product?.name || (item as any).productName || 'Unknown'}</div><div class="item-details"><span>${formatQuantity(item.quantity)} x ${Number(item.price || 0).toFixed(2)}</span><span>${(Number(item.price || 0) * Number(item.quantity || 0)).toFixed(2)}</span></div></div>`).join('')}</div><div class="dashed"></div><div class="totals"><div class="total-row"><span>Subtotal:</span><span>${subtotal.toFixed(2)}</span></div>${shipping > 0 ? `<div class="total-row"><span>Shipping:</span><span>${shipping.toFixed(2)}</span></div>` : ''}<div class="total-row"><span>VAT Included:</span><span>0.00</span></div><div class="total-row grand"><span>TOTAL:</span><span>${grandTotal.toFixed(2)}</span></div></div><div class="dashed"></div><div class="footer"><p>Thank you for your order!</p><p style="margin-top: 5px;">Printed: ${format(new Date(), 'MM/dd/yyyy hh:mm a')}</p></div></body></html>`);
+    printWindow.document.write(`<!DOCTYPE html><html><head><title>POS Invoice - ${order.reference || (order as any).receiptNo || order.id.substring(0, 8)}</title>${receiptStyles}</head><body><div class="header"><div class="business-name">${settings?.businessName || 'VENDIX'}</div>${settings?.address ? `<div class="address">${settings.address}</div>` : ''}${settings?.contactNumber ? `<div class="address">${settings.contactNumber}</div>` : ''}</div><div class="dashed"></div><div class="title">${title.toUpperCase()}</div><div class="info-row"><span>Ref #:</span><span>${order.reference || (order as any).receiptNo || order.id.substring(0, 8)}</span></div><div class="info-row"><span>Date:</span><span>${displayDate ? format(new Date(displayDate), 'MM/dd/yyyy') : 'N/A'}</span></div><div class="info-row"><span>Customer:</span><span>${order.customer?.name || 'Walk-in'}</span></div><div class="dashed"></div><div class="items">${(order.items || []).map(item => `<div class="item"><div class="item-name">${item.product?.name || (item as any).productName || 'Unknown'}${itemUnitLabel(item) ? ` (${itemUnitLabel(item)})` : ''}</div><div class="item-details"><span>${formatQuantity(item.quantity)} x ${Number(item.price || 0).toFixed(2)}</span><span>${(Number(item.price || 0) * Number(item.quantity || 0)).toFixed(2)}</span></div><div class="item-details"><span>VAT [${(item as any).vatable ? 'x' : ' '}]</span><span></span></div></div>`).join('')}</div><div class="dashed"></div><div class="totals"><div class="total-row"><span>Subtotal:</span><span>${subtotal.toFixed(2)}</span></div>${shipping > 0 ? `<div class="total-row"><span>Shipping:</span><span>${shipping.toFixed(2)}</span></div>` : ''}<div class="total-row"><span>VAT (12%):</span><span>${vatAmount.toFixed(2)}</span></div><div class="total-row grand"><span>TOTAL:</span><span>${grandTotal.toFixed(2)}</span></div></div><div class="dashed"></div><div class="footer"><p>Thank you for your order!</p><p style="margin-top: 5px;">Printed: ${format(new Date(), 'MM/dd/yyyy hh:mm a')}</p></div></body></html>`);
     printWindow.document.close();
     printWindow.focus();
     setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
@@ -86,15 +92,29 @@ export function SalesInvoicePrintView({ order, title, settings, onBack }: Props)
                   <th className="text-center py-2 uppercase font-bold tracking-wider w-16">Qty</th>
                   <th className="text-right py-2 uppercase font-bold tracking-wider w-24">Price</th>
                   <th className="text-right py-2 uppercase font-bold tracking-wider w-24">Amount</th>
+                  <th className="text-center py-2 uppercase font-bold tracking-wider w-14">VAT</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {(order.items || []).map((item, index) => (
                   <tr key={index}>
-                    <td className="py-2.5 font-medium uppercase">{item.product?.name || (item as any).productName || 'Unknown Product'}</td>
+                    <td className="py-2.5 font-medium uppercase">
+                      {item.product?.name || (item as any).productName || 'Unknown Product'}
+                      {itemUnitLabel(item) && (
+                        <span className="ml-1.5 font-normal normal-case text-slate-400">({itemUnitLabel(item)})</span>
+                      )}
+                    </td>
                     <td className="py-2.5 text-center">{formatQuantity(item.quantity)}</td>
                     <td className="py-2.5 text-right">{Number(item.price || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td className="py-2.5 text-right font-bold">{(Number(item.price || 0) * Number(item.quantity || 0)).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td className="py-2.5 text-center">
+                      <span
+                        className="inline-block w-3.5 h-3.5 border border-slate-500 leading-none align-middle"
+                        aria-label={(item as any).vatable ? 'Subject to VAT' : 'VAT-exempt'}
+                      >
+                        {(item as any).vatable ? '✓' : ''}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -103,7 +123,7 @@ export function SalesInvoicePrintView({ order, title, settings, onBack }: Props)
 
           <div className="flex justify-end mb-8">
             <div className="w-full max-w-[200px] space-y-1.5 text-[11px]">
-              {[['SUBTOTAL', subtotal], ['SHIPPING', shipping], ['VAT INCLUDED', 0]].map(([label, val]) => (
+              {[['SUBTOTAL', subtotal], ['SHIPPING', shipping], ['VAT (12%)', vatAmount]].map(([label, val]) => (
                 <div key={label as string} className="flex justify-between">
                   <span className="font-bold">{label}</span>
                   <span>{Number(val).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>

@@ -74,12 +74,16 @@ export async function POST(request: NextRequest) {
         ]
       );
 
-      // Create invoice items
+      // Create invoice items. Carry the order line's selling unit forward —
+      // sales_order_items already records it — so a later void of this
+      // invoice restocks by the right factor instead of assuming base units.
       for (const item of items as any[]) {
         const itemId = `INV-ITEM-${uuidv4()}`;
         await conn.execute(
-          `INSERT INTO sales_invoice_items (id, sales_invoice_id, product_id, product_name, quantity, price, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+          `INSERT INTO sales_invoice_items (
+             id, sales_invoice_id, product_id, product_name, quantity, price,
+             selling_unit_id, selling_unit_name, selling_unit_factor, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
           [
             itemId,
             invoiceId,
@@ -87,6 +91,9 @@ export async function POST(request: NextRequest) {
             item.product_name,
             item.quantity,
             item.price,
+            item.selling_unit_id ?? null,
+            item.selling_unit_name ?? null,
+            item.selling_unit_factor ?? null,
           ]
         );
       }

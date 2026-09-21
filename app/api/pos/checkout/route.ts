@@ -291,7 +291,13 @@ export async function POST(request: NextRequest) {
               bcs.oversellBlock,
               connection as any
             );
-            costAtSale = deduction.weightedAvgCost;
+            // deduction.weightedAvgCost is per BASE unit (batches are held in
+            // base units). sale_items.quantity is recorded in the SELLING
+            // unit sold, and every reader (fiscal-year cost, batch-analysis,
+            // margin reports) computes cost as quantity * cost_at_sale — so
+            // cost_at_sale must be per selling unit, not per base unit, or
+            // margin understates by the factor on every non-base sale.
+            costAtSale = deduction.weightedAvgCost * factor;
             batchSource = JSON.stringify(deduction.splits);
           } catch (batchErr: any) {
             // If oversell_block is ON, rethrow to abort the transaction
@@ -474,9 +480,13 @@ export async function POST(request: NextRequest) {
         const invoiceItemId = `${invoiceId}-ITEM-${i + 1}`;
         const posItemId = `${posTransId}-DETAIL-${i + 1}`;
 
+        // Reuse exactly what the deduction loop resolved — never a fresh lookup.
+        const unit = resolvedUnits[i] ?? { id: null, name: null, factor: 1 };
+
         invoiceItemRows.push([
           invoiceItemId, invoiceId, item.id, item.name, item.quantity,
-          item.price * (1 - (item.discount || 0) / 100)
+          item.price * (1 - (item.discount || 0) / 100),
+          unit.id, unit.name, unit.factor
         ]);
 
         const originalPrice = item.price;
@@ -485,9 +495,6 @@ export async function POST(request: NextRequest) {
         const lTotal = (originalPrice * item.quantity) - discAmount;
 
         const effectiveTaxType = resolveEffectiveTaxType(item.taxType || 'VAT', item.discountType, discountPercent);
-
-        // Reuse exactly what the deduction loop resolved — never a fresh lookup.
-        const unit = resolvedUnits[i] ?? { id: null, name: null, factor: 1 };
 
         posItemRows.push([
           posItemId, posTransId, itemId, item.id, item.name,
@@ -503,8 +510,9 @@ export async function POST(request: NextRequest) {
 
       await connection.query(`
         INSERT INTO sales_invoice_items (
-          id, sales_invoice_id, product_id, product_name, quantity, price, created_at
-        ) VALUES ${invoiceItemRows.map(() => '(?, ?, ?, ?, ?, ?, NOW())').join(', ')}
+          id, sales_invoice_id, product_id, product_name, quantity, price,
+          selling_unit_id, selling_unit_name, selling_unit_factor, created_at
+        ) VALUES ${invoiceItemRows.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())').join(', ')}
       `, invoiceItemRows.flat());
 
       await connection.query(`

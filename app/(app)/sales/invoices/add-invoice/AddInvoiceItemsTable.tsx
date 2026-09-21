@@ -4,9 +4,11 @@ import { UseFormReturn, FieldArrayWithId } from 'react-hook-form';
 import { FormControl, FormField } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Trash2, Search } from 'lucide-react';
 import { formatQuantity } from '@/lib/utils';
+import { abbreviateUOM } from '@/lib/receipt-uom';
 import type { Product } from '@/lib/types';
 import type { SalesInvoiceFormValues } from './add-invoice-types';
 import { AddInvoiceProductSelector } from './AddInvoiceProductSelector';
@@ -16,35 +18,37 @@ type Props = {
   fields: FieldArrayWithId<SalesInvoiceFormValues, 'items'>[];
   remove: (index: number) => void;
   total: number;
-  handleAddProduct: (product: Product) => void;
+  vatAmount: number;
+  handleAddProduct: (product: Product, unit?: { id?: string; name: string; factor: number; price: number }) => void;
 };
 
-export function AddInvoiceItemsTable({ form, fields, remove, total, handleAddProduct }: Props) {
+export function AddInvoiceItemsTable({ form, fields, remove, total, vatAmount, handleAddProduct }: Props) {
   const warehouseId = form.watch('warehouse');
   const shipping = Number(form.watch('shipping') || 0);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden bg-muted/5 p-4 relative">
-      <div className="max-w-2xl mb-4 z-10">
+    <div className="flex-1 flex flex-col overflow-hidden min-h-0 bg-muted/5 p-3 relative">
+      <div className="max-w-2xl mb-3 z-10 shrink-0">
         <AddInvoiceProductSelector onSelectProduct={handleAddProduct} warehouseId={warehouseId} />
       </div>
 
-      <div className="flex-1 rounded-lg border bg-background shadow-sm overflow-hidden flex flex-col relative">
-        <div className="overflow-y-auto flex-1 h-full relative">
+      <div className="flex-1 min-h-0 rounded-lg border bg-background shadow-sm overflow-hidden flex flex-col relative">
+        <div className="overflow-y-auto flex-1 min-h-0 relative">
           <table className="w-full caption-bottom text-sm text-left border-collapse">
             <TableHeader className="sticky top-0 bg-background z-50 shadow-sm">
               <TableRow className="hover:bg-transparent border-b">
-                <TableHead className="w-[40%] pl-4 h-10">Product</TableHead>
-                <TableHead className="w-[15%] text-center h-10">Qty</TableHead>
-                <TableHead className="w-[20%] text-right h-10">Price</TableHead>
-                <TableHead className="w-[20%] text-right pr-4 h-10">Total</TableHead>
+                <TableHead className="w-[36%] pl-4 h-10">Product</TableHead>
+                <TableHead className="w-[13%] text-center h-10">Qty</TableHead>
+                <TableHead className="w-[17%] text-right h-10">Price</TableHead>
+                <TableHead className="w-[17%] text-right pr-4 h-10">Total</TableHead>
+                <TableHead className="w-[12%] text-center h-10">VAT</TableHead>
                 <TableHead className="w-[5%] h-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {fields.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-[300px] text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="h-[calc(100vh-420px)] min-h-[300px] text-center text-muted-foreground">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <div className="bg-muted p-4 rounded-full"><Search className="h-8 w-8 opacity-20" /></div>
                       <p className="font-medium">No items added</p>
@@ -56,7 +60,12 @@ export function AddInvoiceItemsTable({ form, fields, remove, total, handleAddPro
                 fields.map((field, index) => (
                   <TableRow key={field.id} className="group hover:bg-muted/50 border-b">
                     <TableCell className="font-medium pl-4 py-2">
-                      <div className="font-medium">{field.product.name}</div>
+                      <div className="font-medium">
+                        {field.product.name}
+                        {field.sellingUnitName && (
+                          <span className="ml-1.5 text-xs font-normal text-muted-foreground">({abbreviateUOM(field.sellingUnitName)})</span>
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground flex gap-2">
                         <span>{field.product.sku || 'No SKU'}</span>
                         {field.product.stock !== undefined && (
@@ -90,6 +99,21 @@ export function AddInvoiceItemsTable({ form, fields, remove, total, handleAddPro
                       ₱{(Number(form.watch(`items.${index}.price`) || 0) * Number(form.watch(`items.${index}.quantity`) || 0)).toFixed(2)}
                     </TableCell>
                     <TableCell className="py-2">
+                      <div className="flex justify-center">
+                        <FormField
+                          control={form.control}
+                          name={`items.${index}.vatable`}
+                          render={({ field }) => (
+                            <Checkbox
+                              checked={field.value}
+                              onCheckedChange={(checked) => field.onChange(checked === true)}
+                              aria-label="Subject to VAT"
+                            />
+                          )}
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="py-2">
                       <Button
                         variant="ghost" size="icon"
                         className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
@@ -105,21 +129,22 @@ export function AddInvoiceItemsTable({ form, fields, remove, total, handleAddPro
           </table>
         </div>
 
-        <div className="bg-muted/30 p-4 border-t grid grid-cols-12 gap-4">
-          <div className="col-span-8" />
-          <div className="col-span-4 space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span>₱{(Number(total) - shipping).toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Shipping</span>
-              <span>₱{shipping.toFixed(2)}</span>
-            </div>
-            <div className="border-t pt-2 flex justify-between items-center">
-              <span className="font-semibold text-lg">Total</span>
-              <span className="font-bold text-xl text-primary">₱{Number(total).toFixed(2)}</span>
-            </div>
+        <div className="shrink-0 bg-muted/30 px-4 py-2 border-t flex items-center justify-end gap-6">
+          <div className="flex items-center gap-1.5 text-sm">
+            <span className="text-muted-foreground">Subtotal</span>
+            <span>₱{(Number(total) - shipping - vatAmount).toFixed(2)}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-sm">
+            <span className="text-muted-foreground">VAT (12%)</span>
+            <span>₱{vatAmount.toFixed(2)}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-sm">
+            <span className="text-muted-foreground">Shipping</span>
+            <span>₱{shipping.toFixed(2)}</span>
+          </div>
+          <div className="flex items-center gap-1.5 pl-4 border-l">
+            <span className="font-semibold">Total</span>
+            <span className="font-bold text-lg text-primary">₱{Number(total).toFixed(2)}</span>
           </div>
         </div>
       </div>

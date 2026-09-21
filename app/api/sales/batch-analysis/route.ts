@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
         p.category,
         si.quantity   AS qtySold,
         si.price      AS sellingPrice,
+        si.selling_unit_factor AS sellingUnitFactor,
         si.cost_at_sale AS costAtSale,
         si.batch_source AS batchSource,
         st.created_at   AS saleDate,
@@ -70,7 +71,13 @@ export async function GET(request: NextRequest) {
           : row.batchSource || [];
       } catch { splits = []; }
 
-      const sellingPrice = parseFloat(row.sellingPrice) || 0;
+      // si.price is per SELLING unit sold, but a batch split's qty is always
+      // in BASE units (batches are stocked and consumed in base units). Scale
+      // the price down to a per-base-unit figure before pairing it with a
+      // split's base-unit qty, or revenue overstates by the factor on every
+      // non-base sale. NULL factor means base unit (1).
+      const sellingUnitFactor = parseFloat(row.sellingUnitFactor) || 1;
+      const sellingPrice = (parseFloat(row.sellingPrice) || 0) / sellingUnitFactor;
 
       for (const split of splits) {
         const qty = parseFloat(split.qty) || 0;

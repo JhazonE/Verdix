@@ -4,6 +4,8 @@ import { baseQuantity } from '@/lib/selling-units';
 import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 import { isService } from '@/lib/product-type';
 
+const VAT_RATE = 0.12;
+
 // Statuses for which inventory has already been deducted (deduction happens at delivery).
 const STOCK_DEDUCTED_STATUSES = ['Delivered', 'Invoiced', 'Returned'];
 
@@ -130,31 +132,46 @@ export async function PUT(
             // Replace items
             await connection.query('DELETE FROM sales_order_items WHERE sales_order_id = ?', [orderId]);
 
-            const total = items.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
+            // Same VAT-exclusive, per-line `vatable` computation as POST —
+            // see the comment there. Shipping is likewise not folded into
+            // `total` here, matching this route's pre-existing behavior.
+            let itemsTotal = 0;
+            let vatAmount = 0;
+            for (const item of items) {
+                const lineTotal = item.price * item.quantity;
+                itemsTotal += lineTotal;
+                if (item.vatable) vatAmount += lineTotal * VAT_RATE;
+            }
+            const total = itemsTotal + vatAmount;
 
             const updateOrderQuery = `
                 UPDATE sales_orders SET
                     customer_id = ?, order_date = ?, delivery_date = ?, reference = ?,
-                    delivery_address = ?, total = ?, payment_method = ?, payment_reference = ?, status = ?,
+                    delivery_address = ?, total = ?, vat_amount = ?, payment_method = ?, payment_reference = ?, status = ?,
                     shipping = ?, warehouse_id = ?, sales_person_id = ?, note = ?, updated_at = NOW()
                 WHERE id = ?
             `;
             await connection.query(updateOrderQuery, [
                 customer.id, formatDateForMySQL(orderDate), formatDateForMySQL(deliveryDate), reference || null,
-                deliveryAddress || null, total, paymentMethod, paymentReference || null, status || 'Pending',
+                deliveryAddress || null, total, vatAmount, paymentMethod, paymentReference || null, status || 'Pending',
                 shipping || 0, warehouse || null, salesPerson || null, note || null,
                 orderId
             ]);
 
             const insertItemQuery = `
                 INSERT INTO sales_order_items (
-                  id, sales_order_id, product_id, product_name, quantity, price
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                  id, sales_order_id, product_id, product_name, quantity, price,
+                  selling_unit_id, selling_unit_name, selling_unit_factor, vatable
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               `;
             for (let i = 0; i < items.length; i++) {
                 const item = items[i];
                 const itemId = `SOI-${Date.now()}-${i + 1}-${Math.random().toString(36).substr(2, 5)}`;
-                await connection.query(insertItemQuery, [itemId, orderId, item.product.id, item.product.name, item.quantity, item.price]);
+                await connection.query(insertItemQuery, [
+                    itemId, orderId, item.product.id, item.product.name, item.quantity, item.price,
+                    item.sellingUnitId ?? null, item.sellingUnitName ?? null, item.sellingUnitFactor ?? null,
+                    item.vatable ? 1 : 0,
+                ]);
             }
 
             return NextResponse.json({
