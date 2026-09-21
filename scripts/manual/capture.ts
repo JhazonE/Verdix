@@ -115,8 +115,44 @@ const POS_SETUPS: Record<string, (page: Page) => Promise<void>> = {
     // cart and closes the sheet. The membership card panel (and its Activate
     // button) renders inside this same open sheet once the selection is no
     // longer walk-in.
-    await page.getByRole('button', { name: /activate membership/i }).click();
+    //
+    // The whole card grid is gated on `customerDetails` (CustomerAccountDialog
+    // line 143), which arrives from a fetch fired by the selection above — so
+    // wait for a field only that response can populate before reaching for the
+    // Activate button, rather than racing the in-flight request.
+    await page.getByText('SO Test Customer').last().waitFor({ timeout: 15_000 });
+    await page.getByText(/^Membership$/i).waitFor({ timeout: 15_000 });
+
+    await page.getByRole('button', { name: /activate membership/i }).click({ timeout: 15_000 });
     await page.getByRole('heading', { name: /membership payment/i }).waitFor({ timeout: 10_000 });
+  },
+
+  /**
+   * End the shift so the three-report picker ("Shift Ended Successfully")
+   * renders. Runs a completed sale first: ending a shift with no sales is
+   * allowed, but the End Shift dialog then reconciles against P0.00, and a
+   * reader learns nothing from a picker sitting above an empty shift.
+   */
+  async posEndShiftReportPicker(page) {
+    await POS_SETUPS.posWithCompletedSale(page);
+
+    await page.getByRole('button', { name: /cash count/i }).click();
+    await page.getByRole('button', { name: /confirm and end shift/i }).click();
+    await page.getByRole('heading', { name: /shift ended successfully/i }).waitFor({ timeout: 15_000 });
+  },
+
+  /**
+   * Open the "Generate Z-Reading?" confirmation from the end-shift picker.
+   *
+   * Stops at the warning deliberately — clicking Continue past it would
+   * generate a real Z-reading, locking the test terminal's business date and
+   * breaking every POS screen captured after this one in the same run.
+   */
+  async posZReadingWarning(page) {
+    await POS_SETUPS.posEndShiftReportPicker(page);
+
+    await page.getByRole('button', { name: /^z-reading$/i }).click();
+    await page.getByRole('heading', { name: /generate z-reading\?/i }).waitFor({ timeout: 10_000 });
   },
 };
 
@@ -137,6 +173,30 @@ const SETUPS: Record<string, (page: Page) => Promise<void>> = {
     // Anchor on the input id rather than the "Membership Fee (₱)" label text:
     // the peso sign is a non-ASCII literal in a matcher, and the id is stable.
     await page.locator('#membershipFee').waitFor({ state: 'visible', timeout: 10_000 });
+  },
+
+  async posSetupSecurityTab(page) {
+    await page.getByRole('tab', { name: /^security$/i }).click();
+    // Scroll the row into view: "Edit Quantity Authentication" sits far enough
+    // down the card that it lands below the 900px viewport fold, and it is the
+    // switch the Ch.9 steps single out by name.
+    const editQtyRow = page.getByText(/edit quantity authentication/i);
+    await editQtyRow.waitFor({ state: 'visible', timeout: 10_000 });
+    await editQtyRow.scrollIntoViewIfNeeded();
+  },
+
+  /**
+   * Open the Bulk Update Price drawer on the Products page. Selecting a
+   * warehouse is what reveals the adjustment controls the Ch.3 steps walk
+   * through — without it the drawer is just a single empty dropdown.
+   */
+  async productsBulkPriceDrawer(page) {
+    await page.getByRole('button', { name: /bulk update price/i }).click();
+    await page.getByText(/apply a price, cost, markup/i).waitFor({ timeout: 10_000 });
+
+    await page.getByRole('combobox').first().click();
+    await page.getByRole('option').first().click();
+    await page.getByText(/target field/i).waitFor({ state: 'visible', timeout: 10_000 });
   },
 };
 

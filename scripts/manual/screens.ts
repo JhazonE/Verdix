@@ -44,6 +44,8 @@ export const SCREENS: Screen[] = [
 
   // Ch.3 Products
   { slug: 'products-list', route: '/products', title: 'The product list', auth: 'admin' },
+  { slug: 'products-bulk-price-update', route: '/products', title: 'Bulk Update Price', auth: 'admin',
+    setup: 'productsBulkPriceDrawer' },
 
   // Ch.4 Inventory
   { slug: 'inventory-levels', route: '/inventory', title: 'Stock levels', auth: 'admin' },
@@ -78,11 +80,16 @@ export const SCREENS: Screen[] = [
   { slug: 'reports-sales-summary', route: '/reports/sales/summary', title: 'Sales summary report', auth: 'admin' },
   { slug: 'reports-low-stock', route: '/reports/low-stock', title: 'Low stock report', auth: 'admin' },
   { slug: 'reports-membership', route: '/reports/membership', title: 'Membership report', auth: 'admin' },
+  // Shot on Low Stock because it carries both the search box and the Export to
+  // Excel button that this figure is illustrating.
+  { slug: 'reports-excel-export', route: '/reports/low-stock', title: 'Report search and Excel export', auth: 'admin' },
 
   // Ch.9 Settings & Users
   { slug: 'settings', route: '/settings', title: 'Settings', auth: 'admin' },
   { slug: 'settings-pos-setup', route: '/settings/pos-setup', title: 'POS setup', auth: 'admin' },
   { slug: 'settings-membership', route: '/settings/pos-setup', title: 'Membership fee setup', auth: 'admin', setup: 'posSetupGeneralTab' },
+  { slug: 'settings-security', route: '/settings/pos-setup', title: 'Security settings', auth: 'admin',
+    setup: 'posSetupSecurityTab' },
   { slug: 'settings-pos-terminals', route: '/settings/pos-terminals', title: 'POS terminals', auth: 'admin' },
   { slug: 'settings-tax-rates', route: '/settings/tax-rates', title: 'Tax rates', auth: 'admin' },
   { slug: 'user-management', route: '/user-management', title: 'User management', auth: 'admin' },
@@ -97,4 +104,8 @@ export const SCREENS: Screen[] = [
   // instead of a page of P0.00 — an all-zero report teaches the reader nothing.
   { slug: 'pos-x-reading', route: '/pos/x-reading', title: 'X-Reading', auth: 'pos', setup: 'posWithCompletedSale' },
   { slug: 'pos-z-reading', route: '/pos/z-reading', title: 'Z-Reading', auth: 'pos', setup: 'posWithCompletedSale' },
+  { slug: 'pos-end-shift-report', route: '/pos', title: 'The end-of-shift report picker', auth: 'pos',
+    setup: 'posEndShiftReportPicker' },
+  { slug: 'pos-z-reading-warning', route: '/pos', title: 'Z-Reading confirmation', auth: 'pos',
+    setup: 'posZReadingWarning' },
 ];

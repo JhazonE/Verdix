@@ -15,7 +15,7 @@
 ; Version comes from package.json via `npm run build:updater`
 ; (iscc /DAppVersion=x.y.z). The fallback below is only for direct iscc runs.
 #ifndef AppVersion
-  #define AppVersion "1.19.8"
+  #define AppVersion "1.19.13"
 #endif
 #define AppPublisher "BHAGOH SYSTEMS"
 #define AppExeName "verdix.exe"

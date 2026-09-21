@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "nextn",
-  "version": "1.19.12",
+  "version": "1.19.13",
   "private": true,
   "main": "main.js",
   "scripts": {
@@ -30,7 +30,9 @@
     "test:unit": "tsx tests/unit/run.ts",
     "manual:capture": "tsx scripts/manual/capture.ts",
     "manual:build": "tsx scripts/manual/build-docx.ts",
-    "manual": "npm run manual:capture && npm run manual:build"
+    "manual:pdf": "tsx scripts/manual/build-pdf.ts",
+    "manual:build:all": "npm run manual:build && npm run manual:pdf",
+    "manual": "npm run manual:capture && npm run manual:build:all"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",

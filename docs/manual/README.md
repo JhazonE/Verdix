@@ -1,16 +1,22 @@
-# Verdix POS User Manual — Regeneration
+# Vendix POS User Manual — Regeneration
 
-This directory contains the Verdix POS User Manual and the build system for regenerating it.
+This directory contains the Vendix POS User Manual and the build system for regenerating it.
 
 ## Scripts
 
-Three npm scripts manage the manual:
+The manual ships in two formats — Word (`.docx`) and PDF — both generated from
+the same `content.ts`, so their wording can never drift apart.
 
 | Script | Purpose |
 |--------|---------|
-| `npm run manual:build` | Assemble the Word document from `content.ts` + committed PNGs. **Offline, no database required.** Common case: edit prose or figures, then rebuild. |
-| `npm run manual:capture` | Playwright script; screenshot all 34 screens to `docs/manual/images/`. **Requires dev server running on port 3100 + test database.** Full run takes ~25 minutes. |
-| `npm run manual` | Run both: capture, then build. Regenerates the entire manual from live app screens. |
+| `npm run manual:build` | Assemble the **Word** document from `content.ts` + committed PNGs. **Offline, no database required.** Common case: edit prose or figures, then rebuild. |
+| `npm run manual:pdf` | Assemble the **PDF** from the same sources, via Playwright's Chromium print-to-PDF. Also offline. |
+| `npm run manual:build:all` | Both documents in one go. Use this after editing prose, so the two formats stay in sync. |
+| `npm run manual:capture` | Playwright script; screenshot all 43 screens to `docs/manual/images/`. **Requires dev server running on port 3100 + test database.** Full run takes ~25 minutes. |
+| `npm run manual` | Capture, then build both documents. Regenerates the entire manual from live app screens. |
+
+**Editing prose? Run `npm run manual:build:all`, not `manual:build`** — the
+latter refreshes only the Word file and leaves the PDF stale.
 
 ## Quick Rebuild (Offline)
 
@@ -18,15 +24,15 @@ Most edits to manual prose do not require a full capture:
 
 ```powershell
 # PowerShell
-npm run manual:build
+npm run manual:build:all
 ```
 
 ```bash
 # Bash
-npm run manual:build
+npm run manual:build:all
 ```
 
-This reads `scripts/manual/content.ts` and the existing PNGs in `docs/manual/images/`, assembles them into a Word document, and writes `VerdixPOS-User-Manual.docx`. **No database or server needed.**
+This reads `scripts/manual/content.ts` and the existing PNGs in `docs/manual/images/`, and writes both `VendixPOS-User-Manual.docx` and `VendixPOS-User-Manual.pdf`. **No database or server needed.**
 
 On first open in Microsoft Word, the document will prompt you to update the table of contents. Accept the prompt (or press **F9**) so page numbers populate correctly. This is normal and expected.
 
@@ -89,16 +95,16 @@ A full run takes approximately 25 minutes. Progress is logged to the console.
 Once capture completes:
 
 ```powershell
-npm run manual:build
+npm run manual:build:all
 ```
 
-The DOCX is now fresh. Screenshots are committed on purpose — the next developer can rebuild the document without a database.
+Both documents are now fresh. Screenshots are committed on purpose — the next developer can rebuild them without a database.
 
 ## Important Notes
 
 - **Port 3000 is your own dev server.** Your personal edits and database go there. Never point screenshot capture at port 3000, or the manual will contain your real store data.
 - **Port 3100 is the test database server.** Screenshot capture always runs against port 3100 and the seeded fixtures (`verdix_test` database).
-- **Screenshots show test data.** Figures feature test products like "Test Coffee 3-in-1" and the store name "Verdix Test Store" — intentional, to avoid leaking real customer/inventory data into a published manual.
+- **Screenshots show test data.** Figures feature test products like "Test Coffee 3-in-1" and the store name "Vendix Test Store" — intentional, to avoid leaking real customer/inventory data into a published manual.
 - **Committed PNGs are the source of truth.** The build process depends on them. Do not delete `docs/manual/images/`.
 
 ## Adding a New Screen
@@ -122,7 +128,7 @@ To document a new feature or interface:
    ```
    Or, if only rebuilding from an existing PNG:
    ```powershell
-   npm run manual:build
+   npm run manual:build:all
    ```
 
 ### Validation
@@ -143,13 +149,17 @@ To document a new feature or interface:
 → The screen may have changed or the selector is stale. Check the app, update `screens.ts`, and re-run capture.
 
 **Word document won't open**  
-→ If the build fails mid-document, try deleting `docs/manual/VerdixPOS-User-Manual.docx` and rebuilding.
+→ If the build fails mid-document, try deleting `docs/manual/VendixPOS-User-Manual.docx` and rebuilding.
+
+**PDF build fails with a browser error**  
+→ The PDF renders through Playwright's Chromium. If it is not installed, run `npx playwright install chromium`.
 
 ## References
 
-- `scripts/manual/screens.ts` — Registry of all 34 screens, slugs, and callout badges.
-- `scripts/manual/content.ts` — All manual prose: 9 chapters, 34 figures, 23-row report index.
+- `scripts/manual/screens.ts` — Registry of all 43 screens, slugs, and callout badges.
+- `scripts/manual/content.ts` — All manual prose: 9 chapters, 43 figures, 23-row report index.
 - `scripts/manual/build-docx.ts` — Word document assembly (figures, TOC, formatting).
+- `scripts/manual/build-pdf.ts` — PDF assembly from the same content, via Chromium print-to-PDF.
 - `scripts/manual/capture.ts` — Playwright screenshot capture with overlay rendering.
 - `scripts/manual/overlay.ts` — Callout badge styling and rendering.
 - `tests/unit/manual-*.test.ts` — Unit tests for screens, content, overlay, and build integrity.

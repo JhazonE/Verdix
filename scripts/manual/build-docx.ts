@@ -1,5 +1,5 @@
 /**
- * Verdix POS User Manual — Word document builder.
+ * Vendix POS User Manual — Word document builder.
  *
  * Consumes the structured content in `content.ts` plus the screenshots in
  * `docs/manual/images/*.png` (see `screens.ts` for the slug → caption map)
@@ -38,7 +38,7 @@ import { CHAPTERS, MANUAL_SUBTITLE, MANUAL_TITLE, type Block } from './content';
 import { SCREENS } from './screens';
 
 const IMAGES_DIR = path.join(__dirname, '..', '..', 'docs', 'manual', 'images');
-const DEFAULT_OUT = path.join(__dirname, '..', '..', 'docs', 'manual', 'VerdixPOS-User-Manual.docx');
+const DEFAULT_OUT = path.join(__dirname, '..', '..', 'docs', 'manual', 'VendixPOS-User-Manual.docx');
 
 // Source screenshots are captured at 1440x900; scaling to 600px wide keeps
 // the exact 1.6 aspect ratio (600 / 1.6 = 375).

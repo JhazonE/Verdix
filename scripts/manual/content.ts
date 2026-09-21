@@ -1,5 +1,5 @@
 /**
- * Verdix POS User Manual — content data.
+ * Vendix POS User Manual — content data.
  *
  * All manual prose lives here as structured data. A later task renders this
  * into a Word document with screenshots (see `screens.ts` for the figure
@@ -22,7 +22,7 @@ export type Section = { heading: string; blocks: Block[] };
 
 export type Chapter = { number: number; title: string; intro: string; sections: Section[] };
 
-export const MANUAL_TITLE = 'Verdix POS — User Manual';
+export const MANUAL_TITLE = 'Vendix POS — User Manual';
 export const MANUAL_SUBTITLE = 'A step-by-step guide for cashiers and back-office staff';
 
 export const CHAPTERS: Chapter[] = [
@@ -33,18 +33,18 @@ export const CHAPTERS: Chapter[] = [
     number: 1,
     title: 'Getting Started',
     intro:
-      'This chapter covers the very first things you need to do before you can use Verdix POS: activating the software on a new computer, and logging in to the back office. If your store already has Verdix running and you only work the cashier counter, you can skip ahead to Chapter 2 — Cashier / POS.',
+      'This chapter covers the very first things you need to do before you can use Vendix POS: activating the software on a new computer, and logging in to the back office. If your store already has Vendix running and you only work the cashier counter, you can skip ahead to Chapter 2 — Cashier / POS.',
     sections: [
       {
-        heading: 'Activating Verdix on a new computer',
+        heading: 'Activating Vendix on a new computer',
         blocks: [
           {
             kind: 'para',
-            text: 'The first time Verdix POS is installed on a computer, it will not let you use the system until it has been activated with a license key. This is a one-time step per computer — once activation succeeds, that computer stays activated. If you see a card titled "Verdix POS — License Activation" instead of the app you expect, follow the steps below.',
+            text: 'The first time Vendix POS is installed on a computer, it will not let you use the system until it has been activated with a license key. This is a one-time step per computer — once activation succeeds, that computer stays activated. If you see a card titled "Vendix POS — License Activation" instead of the app you expect, follow the steps below.',
           },
           {
             kind: 'para',
-            text: 'The license is tied to that specific computer through its Machine ID, a unique code generated from the computer\'s own hardware. A license activated on one computer will not work on another — if you move Verdix to a new or replacement computer, it needs to be activated again with a new key for that machine.',
+            text: 'The license is tied to that specific computer through its Machine ID, a unique code generated from the computer\'s own hardware. A license activated on one computer will not work on another — if you move Vendix to a new or replacement computer, it needs to be activated again with a new key for that machine.',
           },
           {
             kind: 'steps',
@@ -90,7 +90,7 @@ export const CHAPTERS: Chapter[] = [
           { kind: 'figure', slug: 'login' },
           {
             kind: 'para',
-            text: 'If your account is set up as a Cashier or Employee user type, Verdix will send you straight to the POS screen instead of the back office dashboard — this is expected. Back-office pages are for Admin and Manager accounts.',
+            text: 'If your account is set up as a Cashier or Employee user type, Vendix will send you straight to the POS screen instead of the back office dashboard — this is expected. Back-office pages are for Admin and Manager accounts.',
           },
         ],
       },
@@ -118,7 +118,7 @@ export const CHAPTERS: Chapter[] = [
     number: 2,
     title: 'Cashier / POS',
     intro:
-      'This chapter is for cashiers working the checkout counter. The POS screen is a separate, full-screen part of Verdix designed to be fast to use with a barcode scanner and keyboard. It has its own login, separate from the back-office login in Chapter 1, and it manages its own shift and cash drawer.',
+      'This chapter is for cashiers working the checkout counter. The POS screen is a separate, full-screen part of Vendix designed to be fast to use with a barcode scanner and keyboard. It has its own login, separate from the back-office login in Chapter 1, and it manages its own shift and cash drawer.',
     sections: [
       {
         heading: 'Cashier login',
@@ -177,17 +177,28 @@ export const CHAPTERS: Chapter[] = [
             kind: 'steps',
             items: [
               'Click into the "Scan Barcode or Enter Product SKU (Enter)" box (it is usually already focused and ready).',
-              'Scan the item with the barcode scanner, or type its SKU, then press Enter.',
+              'Scan the item with the barcode scanner. It is added to the cart straight away — you do not need to press Enter.',
+              'Or type part of the barcode, SKU, or product name. A suggestion list drops down under the box as you type. Click the item you want, or use the arrow keys and press Enter.',
               'The item appears as a new row in the cart with its description, unit, price, quantity, and line total.',
               'Repeat for every item the customer is buying. If the cart is empty, it will show "Cart is empty" with a shopping cart icon until you scan the first item.',
               'To change a line, click the item name to edit it, click the quantity to change how many, or click the price to override it (each has an on-screen or F-key shortcut shown at the top of the screen, such as F6 for quantity and F7 for price).',
             ],
           },
+          {
+            kind: 'note',
+            variant: 'tip',
+            text: 'Searching is not case-sensitive — typing "coke", "Coke", or "COKE" all find the same product. The search also reaches every product in your store, not only the ones already loaded on screen, so an item still comes up even if it is far down a long product list.',
+          },
           { kind: 'figure', slug: 'pos-empty' },
           { kind: 'figure', slug: 'pos-cart' },
           {
             kind: 'para',
-            text: 'The row of buttons across the top of the screen (Edit Item, Line Void, Discount, Suspend, Suspended, Quantity, Edit Price, and Shutdown/Endorse-Out) act on whichever cart line is currently selected. The row of buttons across the bottom (Cash count, Cash transfer, Customer, Loyalty, Recent Sales, Post Void, Merch Credit, OVERALL, Z-READING, Price Inquiry) are shift- and store-level actions rather than per-item actions.',
+            text: 'The row of buttons across the top of the screen (Edit Item, Line Void, Discount, Suspend, Suspended, Quantity, Edit Price, and Shutdown/Endorse-Out) act on whichever cart line is currently selected. The row of buttons across the bottom (Cash count, Cash transfer, Customer, Loyalty, Recent Sales, Post Void, Merch Credit, and Price Inquiry) are shift- and store-level actions rather than per-item actions.',
+          },
+          {
+            kind: 'note',
+            variant: 'tip',
+            text: 'The X-Reading, Z-Reading, and Overall readings are no longer buttons on this bottom row. They are now reached from the report picker that appears after you end your shift — see "Ending your shift" later in this chapter.',
           },
         ],
       },
@@ -218,6 +229,28 @@ export const CHAPTERS: Chapter[] = [
         ],
       },
       {
+        heading: 'Sales Invoice or Official Receipt',
+        blocks: [
+          {
+            kind: 'para',
+            text: 'Philippine tax rules require two different documents depending on what was sold. Selling goods produces a SALES INVOICE; selling services produces an OFFICIAL RECEIPT. Vendix decides this for you from the products in the cart and prints the correct heading at the top of the receipt — you do not choose it anywhere.',
+          },
+          {
+            kind: 'para',
+            text: 'The two documents are also numbered separately. A sale of goods takes the next Sales Invoice (SI) number, while a sale of services takes the next Official Receipt (OR) number. Each series runs on its own count, so SI numbers and OR numbers advance independently of one another.',
+          },
+          {
+            kind: 'note',
+            variant: 'warning',
+            text: 'Because one sale can only produce one document, goods and services cannot be sold in the same transaction. If you try, the sale is refused with the message "Cannot mix goods and services in one sale — please complete this as two separate transactions." Ring up the goods as one sale and the services as another.',
+          },
+          {
+            kind: 'para',
+            text: 'If you reprint a receipt that was already printed once, the reprinted copy carries a REPRINT watermark and the time it was reprinted. This marks it clearly as a duplicate so it is never mistaken for the original document during a BIR audit. The same watermark appears on a reprinted Z-Reading.',
+          },
+        ],
+      },
+      {
         heading: 'Ending your shift',
         blocks: [
           {
@@ -242,6 +275,16 @@ export const CHAPTERS: Chapter[] = [
             variant: 'tip',
             text: 'Re-count carefully if you see a shortage larger than a few pesos before confirming — once the shift is ended it cannot be reopened.',
           },
+          {
+            kind: 'para',
+            text: 'Once the shift closes, a "Shift Ended Successfully" box appears offering three reports: Overall, X-Reading, and Z-Reading. Click whichever one you need, or click "Close" if you do not need any of them right now. Nothing is printed automatically — choosing a report here is what opens it.',
+          },
+          { kind: 'figure', slug: 'pos-end-shift-report' },
+          {
+            kind: 'note',
+            variant: 'warning',
+            text: 'Ending a shift does NOT close the business day, and it does not generate a Z-Reading on its own. Only choosing "Z-Reading" from this box does that. Ending a shift without running a Z-Reading is normal for a cashier handing over to the next shift mid-day.',
+          },
         ],
       },
       {
@@ -254,7 +297,8 @@ export const CHAPTERS: Chapter[] = [
           {
             kind: 'steps',
             items: [
-              'From the POS screen, use the "OVERALL" button for the overall reading, or open the X-Reading / Z-Reading page directly.',
+              'End your shift using the "Cash count" button, as described in the previous section.',
+              'When the "Shift Ended Successfully" box appears, click "X-Reading" or "Z-Reading".',
               'Enter admin credentials in the authentication dialog when prompted.',
               'Review the report on screen, then print it using the printer if a hard copy is needed for records.',
             ],
@@ -266,9 +310,45 @@ export const CHAPTERS: Chapter[] = [
             text: 'When membership fees were collected in cash during the shift, the printed reading slip carries a "Membership (cash)" line, followed by a line such as "3a / 1r" — meaning three activations and one renewal. This line also appears on the back-office X-Reading page (Sales → X-Reading); the reading shown on the POS screen itself does not include it.',
           },
           {
+            kind: 'para',
+            text: 'A printed Z-Reading also carries a "BY CASHIER" section when more than one cashier worked the day. Each cashier is listed with their total sales, and underneath, how many shifts and transactions they handled — a line such as "2 shifts, 47 txns". Use it to see who rang up what without pulling a separate report.',
+          },
+          {
             kind: 'note',
             variant: 'warning',
             text: 'A Z-Reading closes out the day\'s sales totals for BIR reporting and cannot be run again for that day once completed. An X-Reading is a mid-shift snapshot and does NOT close or reset anything — run as many X-Readings as you like during the day, but only run the Z-Reading once, at the true end of the business day.',
+          },
+        ],
+      },
+      {
+        heading: 'What happens after a Z-Reading',
+        blocks: [
+          {
+            kind: 'para',
+            text: 'A Z-Reading is the end of the business day for that terminal, so Vendix asks you to confirm before it runs one. A box titled "Generate Z-Reading?" appears, warning that this will close out the current business day for this terminal and that no further sales can be made there until a new shift is started. Click "Continue" to proceed, or "Cancel" to back out.',
+          },
+          { kind: 'figure', slug: 'pos-z-reading-warning' },
+          {
+            kind: 'para',
+            text: 'After the Z-Reading is generated, the terminal is locked for the rest of that calendar day. Anyone who tries to ring up a sale sees the message "This terminal\'s business day is closed (Z-Reading already generated). Start a new shift to begin the next business day." This is not a fault — it is the system preventing sales from being recorded into a day that has already been closed and reported.',
+          },
+          {
+            kind: 'steps',
+            items: [
+              'If you ran the Z-Reading by mistake and the store is still trading, start a new shift on that terminal. Starting a shift clears the lock and opens the next business day.',
+              'If you try to start a new shift on the same calendar day the Z-Reading was run, Vendix refuses with "This terminal\'s business day is still closed (Z-Reading generated today). Try again after midnight to start the next business day."',
+              'In that case, use another terminal for the rest of the day, or wait until after midnight.',
+            ],
+          },
+          {
+            kind: 'note',
+            variant: 'warning',
+            text: 'Only the terminal that ran the Z-Reading is locked. Other terminals in the store keep selling normally. This is why the Z-Reading should be run at the true close of business on each terminal, not as a way of printing a mid-day total — use the X-Reading for that.',
+          },
+          {
+            kind: 'note',
+            variant: 'tip',
+            text: 'Both the confirmation box and the lockout can be switched off by an admin in Settings → POS Setup → Confirmations. Leave them on unless you have a specific reason not to — see Chapter 9 for the compliance warning that goes with turning the lockout off.',
           },
         ],
       },
@@ -344,11 +424,94 @@ export const CHAPTERS: Chapter[] = [
         ],
       },
       {
+        heading: 'Changing many prices at once',
+        blocks: [
+          {
+            kind: 'para',
+            text: 'Editing products one at a time is fine for a handful of items, but not for a supplier-wide price increase. The "Bulk Update Price" button at the top of the Products page opens a panel that applies a price, cost, markup, or price-level change to many products in one go.',
+          },
+          {
+            kind: 'steps',
+            items: [
+              'On the Products page, click "Bulk Update Price".',
+              'Choose the "Warehouse" whose stock you are repricing.',
+              'Choose the "Target Field" — "Selling Price", "Cost", "Recalculate from Markup %", or "Price Level".',
+              'Choose the "Adjustment Type" — "Percentage (%)" to move prices by a percentage, "Fixed Amount (₱)" to add or subtract a peso amount, or "Set Exact Value" to give every selected product the same price.',
+              'Type the amount into the "Value" box. To reduce prices, enter a negative number.',
+              'Find the products using the "Search products by SKU, barcode, or name..." box, then tick the checkbox on each product you want to change.',
+              'Check the preview table, which shows the old and new figures side by side before anything is saved.',
+              'Click the "Update N Product(s)" button at the bottom to apply the change.',
+            ],
+          },
+          { kind: 'figure', slug: 'products-bulk-price-update' },
+          {
+            kind: 'note',
+            variant: 'warning',
+            text: 'If your store has "Bulk Price Update Approval" switched on in Settings, the change does not take effect straight away — it goes to the Approvals board for a second person to review first (see Chapter 7). Until it is approved, the products keep their old prices.',
+          },
+        ],
+      },
+      {
+        heading: 'Updating prices from an Excel file',
+        blocks: [
+          {
+            kind: 'para',
+            text: 'When a supplier sends you a new price list, you can load it straight into Vendix instead of typing each price by hand. This is done from the same "Bulk Update Price" panel.',
+          },
+          {
+            kind: 'steps',
+            items: [
+              'Open "Bulk Update Price" and click "Download Template". This gives you an Excel file laid out the way Vendix expects.',
+              'Fill in the new prices in that file, then save it.',
+              'Back in Vendix, click "Upload Excel" and choose your saved file.',
+              'Vendix shows you a preview split into two tables: rows that matched products you already have, and rows it did not recognize.',
+              'Unrecognized rows can be created as brand-new products. Review that second table carefully and confirm before continuing — this is the step that adds products to your system.',
+              'Confirm to apply the price changes and create any new products.',
+            ],
+          },
+          {
+            kind: 'note',
+            variant: 'tip',
+            text: 'A row can only become a new product if it has an SKU. If you leave the SKU blank, Vendix generates one for you. Rows with prices that are not valid numbers are skipped rather than applied, so a typo in the spreadsheet will not corrupt a price.',
+          },
+        ],
+      },
+      {
+        heading: 'Price levels',
+        blocks: [
+          {
+            kind: 'para',
+            text: 'A price level is a named alternative price — for example "Wholesale" or "Senior Discount" — that sits alongside a product\'s normal retail price. Price levels are set up once from the Products page under "Manage" → "Manage Price Levels", then applied per product on the Price Levels tab of the edit-product form.',
+          },
+          {
+            kind: 'para',
+            text: 'Each price level is worked out automatically from a base figure you nominate — usually the product\'s cost or its retail price. There are two ways it can adjust that base:',
+          },
+          {
+            kind: 'table',
+            headers: ['Adjustment type', 'What it does', 'Example'],
+            rows: [
+              ['Percentage', 'Moves the base figure by a percentage.', 'Base ₱100 with 20% gives ₱120.'],
+              ['Fixed Amount', 'Adds a flat peso amount to the base figure.', 'Base ₱100 with ₱15 gives ₱115.'],
+            ],
+          },
+          {
+            kind: 'note',
+            variant: 'tip',
+            text: 'Use Percentage when you want the gap to grow with the price of the item, and Fixed Amount when every product should carry the same peso mark-up regardless of how expensive it is.',
+          },
+          {
+            kind: 'para',
+            text: 'Existing price-level rows are not recalculated behind your back. Changing a product\'s cost or category leaves its already-saved price levels alone, so a price you set deliberately is never overwritten by an unrelated edit.',
+          },
+        ],
+      },
+      {
         heading: 'Product families and child units',
         blocks: [
           {
             kind: 'para',
-            text: 'Verdix supports product families: a parent product (for example a 1kg bag) can be broken down into smaller child units (for example 250g sachets) using a conversion factor. Any stock change to the parent or a child automatically syncs the stock of every other member of the family, so the whole family always reflects the same underlying physical stock.',
+            text: 'Vendix supports product families: a parent product (for example a 1kg bag) can be broken down into smaller child units (for example 250g sachets) using a conversion factor. Any stock change to the parent or a child automatically syncs the stock of every other member of the family, so the whole family always reflects the same underlying physical stock.',
           },
           {
             kind: 'note',
@@ -419,6 +582,15 @@ export const CHAPTERS: Chapter[] = [
             text: 'You can count while the store is open. The system records the moment each line is entered and ignores any sale, delivery, or transfer that happens between starting the count and entering that quantity — those movements are already accounted for and are not treated as missing stock. Enter each quantity at the shelf as you count it, rather than writing quantities on paper and encoding them hours later: the system times the count from when you type it, so a long delay makes the figures less accurate.',
           },
           { kind: 'figure', slug: 'inventory-stock-counts' },
+          {
+            kind: 'para',
+            text: 'Opening a stock count gives you two ways to get it onto paper, and they do different things. The "Print" button prints only the page of items currently on screen — use the row-count selector at the bottom if you want more items on that page. The "Export PDF" button saves every item in the count to a PDF file, ignoring whatever you have typed in the search box.',
+          },
+          {
+            kind: 'note',
+            variant: 'tip',
+            text: 'For a whole-store count running to hundreds or thousands of lines, always use "Export PDF" rather than "Print". Export PDF is the one that guarantees you get every item; Print only ever gives you what is on screen.',
+          },
         ],
       },
       {
@@ -444,7 +616,7 @@ export const CHAPTERS: Chapter[] = [
         blocks: [
           {
             kind: 'para',
-            text: 'Every stock change in Verdix — a sale, a purchase received, a transfer, an adjustment, or a repackaging — writes a record so it can be traced later. The "Stock Movement" page lists these movements per product with the date, type (sale, purchase, transfer, and so on), and quantity change. The "Adjustment History" page focuses specifically on manual stock adjustments, showing the reason for each one and whether it is still pending approval.',
+            text: 'Every stock change in Vendix — a sale, a purchase received, a transfer, an adjustment, or a repackaging — writes a record so it can be traced later. The "Stock Movement" page lists these movements per product with the date, type (sale, purchase, transfer, and so on), and quantity change. The "Adjustment History" page focuses specifically on manual stock adjustments, showing the reason for each one and whether it is still pending approval.',
           },
           { kind: 'figure', slug: 'inventory-movement' },
           { kind: 'figure', slug: 'inventory-history' },
@@ -494,7 +666,7 @@ export const CHAPTERS: Chapter[] = [
         blocks: [
           {
             kind: 'para',
-            text: 'When you receive a delivery, Verdix does not simply overwrite the product\'s cost and retail price with whatever is on the new purchase order. It follows one simple rule, which applies to the cost and the retail price separately: the higher value always wins.',
+            text: 'When you receive a delivery, Vendix does not simply overwrite the product\'s cost and retail price with whatever is on the new purchase order. It follows one simple rule, which applies to the cost and the retail price separately: the higher value always wins.',
           },
           {
             kind: 'para',
@@ -716,7 +888,7 @@ export const CHAPTERS: Chapter[] = [
     number: 7,
     title: 'Approvals',
     intro:
-      'Certain changes in Verdix — purchase orders, stock counts, stock transfers, bad orders, and bulk adjustments — do not take effect immediately. They go through an approvals queue first, so a second person can review and confirm the change before it becomes final.',
+      'Certain changes in Vendix — purchase orders, stock counts, stock transfers, bad orders, and bulk adjustments — do not take effect immediately. They go through an approvals queue first, so a second person can review and confirm the change before it becomes final.',
     sections: [
       {
         heading: 'Working the Approvals board',
@@ -770,7 +942,7 @@ export const CHAPTERS: Chapter[] = [
     number: 8,
     title: 'Reports',
     intro:
-      'Verdix includes a large library of reports covering sales, inventory, purchases, and compliance. Rather than walking through each one individually, this chapter shows you how to get to the Reports hub and gives you an index of every available report and what it is for.',
+      'Vendix includes a large library of reports covering sales, inventory, purchases, and compliance. Rather than walking through each one individually, this chapter shows you how to get to the Reports hub and gives you an index of every available report and what it is for.',
     sections: [
       {
         heading: 'The Reports hub',
@@ -789,6 +961,30 @@ export const CHAPTERS: Chapter[] = [
             ],
           },
           { kind: 'figure', slug: 'reports-hub' },
+        ],
+      },
+      {
+        heading: 'Searching and exporting a report',
+        blocks: [
+          {
+            kind: 'para',
+            text: 'Most reports share two tools that make a long list usable: a search box for narrowing what is on screen, and an "Export to Excel" button for taking the figures away to work on them.',
+          },
+          {
+            kind: 'steps',
+            items: [
+              'Open the report and set its date range or other filters first.',
+              'Type into the search box to narrow the rows on screen. On some reports the search runs as you type; on others there is a "Search" button next to the box to click. The totals shown at the top of the report recalculate to match what you have filtered to, so they always describe what you are looking at.',
+              'Clear the search box to go back to the full list.',
+              'Click "Export to Excel" to download the report as a spreadsheet.',
+            ],
+          },
+          { kind: 'figure', slug: 'reports-excel-export' },
+          {
+            kind: 'note',
+            variant: 'tip',
+            text: 'The Excel export matches what you filtered to, but it is not limited to the page you can see. If your search matches 500 rows and the screen only shows the first 50, the spreadsheet still contains all 500. Clear the search first if you want the whole report.',
+          },
         ],
       },
       {
@@ -815,7 +1011,7 @@ export const CHAPTERS: Chapter[] = [
         blocks: [
           {
             kind: 'para',
-            text: 'The table below lists every report available in Verdix POS, with the menu path and a one-line description of what it shows.',
+            text: 'The table below lists every report available in Vendix POS, with the menu path and a one-line description of what it shows.',
           },
           {
             kind: 'table',
@@ -859,7 +1055,7 @@ export const CHAPTERS: Chapter[] = [
     number: 9,
     title: 'Settings & Users',
     intro:
-      'This chapter covers store-wide configuration — POS terminals, tax rates, and general settings — plus managing the user accounts allowed to log in to Verdix. These pages are for admins only and change how the whole system behaves, so treat them carefully.',
+      'This chapter covers store-wide configuration — POS terminals, tax rates, and general settings — plus managing the user accounts allowed to log in to Vendix. These pages are for admins only and change how the whole system behaves, so treat them carefully.',
     sections: [
       {
         heading: 'The Settings hub',
@@ -913,11 +1109,65 @@ export const CHAPTERS: Chapter[] = [
         ],
       },
       {
+        heading: 'Requiring credentials for sensitive actions',
+        blocks: [
+          {
+            kind: 'para',
+            text: 'The "Security Settings" card on the POS Setup page lets you put an admin password in front of actions you do not want a cashier doing unsupervised. Each action has its own switch, and its own username and password, so you can give the price-override password to a supervisor without handing over the end-shift password.',
+          },
+          {
+            kind: 'steps',
+            items: [
+              'Go to Settings → POS Setup and find the "Security Settings" card.',
+              'Switch on the action you want to protect — for example "Edit Quantity Authentication", which requires credentials before a cashier can change an item\'s quantity in the cart.',
+              'Type the username and password that will unlock that action into the two boxes underneath.',
+              'Click "Save Settings" at the top of the page.',
+            ],
+          },
+          { kind: 'figure', slug: 'settings-security' },
+          {
+            kind: 'para',
+            text: 'The switches follow the same pattern throughout: Cash Count Authentication (ending a shift), Edit Price Authentication, Edit Item Authentication (changing an item name), Edit Quantity Authentication, Suspend and Suspended Authentication (holding and recalling transactions), and Tax Rates Authentication.',
+          },
+          {
+            kind: 'note',
+            variant: 'tip',
+            text: 'Edit Quantity Authentication covers every way of changing a quantity — the quantity button, the F6 shortcut, and the + / − keys. Turn it on in stores where quantity changes have been used to under-ring sales.',
+          },
+        ],
+      },
+      {
+        heading: 'Z-Reading confirmation and lockout',
+        blocks: [
+          {
+            kind: 'para',
+            text: 'The "Transaction Confirmations" card controls which actions need a second look before they go through. Two of its switches govern the end of the business day, and both are switched on when Vendix is installed.',
+          },
+          {
+            kind: 'table',
+            headers: ['Setting', 'What it does when switched on'],
+            rows: [
+              ['Z-Reading Confirmation', 'Asks the cashier to confirm before a Z-Reading is generated, warning that it locks the terminal for the rest of the calendar day.'],
+              ['Enforce Z-Reading Lockout', 'Blocks sales and Start Shift on a terminal after its Z-Reading, until the next calendar day.'],
+            ],
+          },
+          {
+            kind: 'note',
+            variant: 'warning',
+            text: 'Enforce Z-Reading Lockout exists to satisfy a BIR Annex F requirement: once a business day has been closed and reported, no further sales may be recorded into it. Switching it off lets a terminal keep selling after its Z-Reading, which puts your store out of compliance. Turn it off only if you fully understand the consequences for your tax filing.',
+          },
+          {
+            kind: 'para',
+            text: 'The same card also holds "Bulk Price Update Approval", which sends bulk price changes to the Approvals board instead of applying them immediately (see Chapter 3), alongside the approval switches for stock adjustments, transfers, purchase orders, and new products.',
+          },
+        ],
+      },
+      {
         heading: 'Managing POS terminals',
         blocks: [
           {
             kind: 'para',
-            text: 'Each physical checkout counter in your store is registered as a terminal. This lets Verdix track which terminal a sale happened on and which warehouse it draws stock from.',
+            text: 'Each physical checkout counter in your store is registered as a terminal. This lets Vendix track which terminal a sale happened on and which warehouse it draws stock from.',
           },
           {
             kind: 'steps',
@@ -959,7 +1209,7 @@ export const CHAPTERS: Chapter[] = [
         blocks: [
           {
             kind: 'para',
-            text: 'User Management controls who can log in to Verdix, what permissions they have, and lets you review an activity log of what every user has done across the system.',
+            text: 'User Management controls who can log in to Vendix, what permissions they have, and lets you review an activity log of what every user has done across the system.',
           },
           {
             kind: 'steps',
