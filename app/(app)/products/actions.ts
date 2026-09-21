@@ -125,6 +125,26 @@ function validateSellingUnits(units: SellingUnitInput[] | undefined, baseUnitNam
 }
 
 /**
+ * Turn a UNIQUE(name) collision on one of the simple lookup tables (brands,
+ * categories, departments, units of measure, warehouses, shelf locations,
+ * suppliers) into a message naming the value that collided, instead of the
+ * generic "Error adding X." every one of those actions' catch blocks used to
+ * return. The collation on these columns is case-insensitive, so "n/a" and
+ * "N/A" collide even though they aren't the same string — that surprise is
+ * exactly why this needs to be said explicitly rather than left generic.
+ */
+function describeAddError(error: any, label: string): string {
+  if (error?.code === 'ER_DUP_ENTRY') {
+    const match = String(error.message || '').match(/Duplicate entry '([^']*)'/);
+    const value = match ? match[1] : undefined;
+    return value
+      ? `A ${label} named "${value}" already exists.`
+      : `A ${label} with that name already exists.`;
+  }
+  return `Error adding ${label}.`;
+}
+
+/**
  * Turn a UNIQUE-barcode collision into a message naming the offending barcode.
  *
  * product_selling_units.barcode is UNIQUE across all ~16,000 rows, so a
@@ -1830,7 +1850,7 @@ export async function addCategory(name: string, markupPercentage?: number) {
     return { success: true, message: 'Category added successfully.' };
   } catch (error) {
     console.error('Error adding category:', error);
-    return { success: false, message: 'Error adding category.' };
+    return { success: false, message: describeAddError(error, 'category') };
   }
 }
 
@@ -1875,7 +1895,7 @@ export async function addBrand(name: string, markupPercentage?: number) {
     return { success: true, message: 'Brand added successfully.' };
   } catch (error) {
     console.error('Error adding brand:', error);
-    return { success: false, message: 'Error adding brand.' };
+    return { success: false, message: describeAddError(error, 'brand') };
   }
 }
 
@@ -2006,7 +2026,7 @@ export async function addUnitOfMeasure(name: string, abbreviation: string) {
     return { success: true, message: 'Unit of measure added successfully.' };
   } catch (error) {
     console.error('Error adding unit of measure:', error);
-    return { success: false, message: 'Error adding unit of measure.' };
+    return { success: false, message: describeAddError(error, 'unit of measure') };
   }
 }
 
@@ -2121,7 +2141,7 @@ export async function addSupplier(data: any) {
     return { success: true, message: 'Supplier added successfully.' };
   } catch (error) {
     console.error('Error adding supplier:', error);
-    return { success: false, message: 'Error adding supplier.' };
+    return { success: false, message: describeAddError(error, 'supplier') };
   }
 }
 
@@ -2196,7 +2216,7 @@ export async function addWarehouse(name: string, location?: string) {
     return { success: true, message: 'Warehouse added successfully.' };
   } catch (error) {
     console.error('Error adding warehouse:', error);
-    return { success: false, message: 'Error adding warehouse.' };
+    return { success: false, message: describeAddError(error, 'warehouse') };
   }
 }
 
@@ -2241,7 +2261,7 @@ export async function addDepartment(name: string, markupPercentage?: number) {
     return { success: true, message: 'Department added successfully.' };
   } catch (error) {
     console.error('Error adding department:', error);
-    return { success: false, message: 'Error adding department.' };
+    return { success: false, message: describeAddError(error, 'department') };
   }
 }
 
@@ -2289,7 +2309,7 @@ export async function addShelfLocation(name: string, description?: string) {
     return { success: true, message: 'Shelf location added successfully.' };
   } catch (error) {
     console.error('Error adding shelf location:', error);
-    return { success: false, message: 'Error adding shelf location.' };
+    return { success: false, message: describeAddError(error, 'shelf location') };
   }
 }
 

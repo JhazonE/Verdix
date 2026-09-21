@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { PlusCircle, Loader2, Wand2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { Form } from '@/components/ui/form';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToast } from '@/hooks/use-toast';
 
 import { useAddProductForm, type UseAddProductFormProps } from './use-add-product-form';
 import { AddProductFormProvider } from './add-product-form-context';
@@ -33,15 +35,56 @@ export function AddProductDialog(props: UseAddProductFormProps) {
     onSubmit,
     itemType, setItemType,
   } = controller;
+  const { toast } = useToast();
+
+  // Uncontrolled Tabs meant a validation failure on a tab the user wasn't
+  // looking at (e.g. a blank required Name/Brand/SKU on Basic Info while
+  // sitting on Selling Units) produced nothing more visible than a small red
+  // dot — indistinguishable from the button silently doing nothing. Making
+  // this controlled lets a failed submit jump the user straight to the
+  // first tab that actually has the problem.
+  const [activeTab, setActiveTab] = useState('basic');
+
+  useEffect(() => {
+    if (isOpen) setActiveTab('basic');
+  }, [isOpen]);
+
+  const handleInvalid = () => {
+    // Reuse tabErrors rather than re-deriving which field lives on which tab
+    // here — that mapping depends on itemType (a Standard product's
+    // unitOfMeasure/cost render on Selling Units, a Service's render on
+    // Inventory), and tabErrors is the one place that distinction is made.
+    const firstErrorTab = tabErrors.basic
+      ? 'basic'
+      : tabErrors.inventory
+      ? 'inventory'
+      : tabErrors.conversion
+      ? 'conversion'
+      : 'basic';
+    setActiveTab(firstErrorTab);
+    toast({
+      variant: 'destructive',
+      title: 'Missing required fields',
+      description: 'Some required fields are still blank — check the highlighted tab.',
+    });
+  };
+
+  // A caller that passes `open` drives visibility itself (e.g. Add Purchase
+  // Order's own "+ Add New Product" button) — the dialog then renders no
+  // trigger of its own, so there is never a second, redundant Add Product
+  // button sitting next to the caller's.
+  const isControlled = props.open !== undefined;
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm">
-          <PlusCircle className="mr-2 h-4 w-4" />
-          Add Product
-        </Button>
-      </DialogTrigger>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          <Button size="sm">
+            <PlusCircle className="mr-2 h-4 w-4" />
+            Add Product
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-3xl h-[85vh] flex flex-col overflow-hidden !rounded-3xl !duration-500 ease-in-out data-[state=open]:!animate-in data-[state=closed]:!animate-out data-[state=closed]:!fade-out-0 data-[state=open]:!fade-in-0 data-[state=closed]:!zoom-out-95 data-[state=open]:!zoom-in-90 data-[state=closed]:!slide-out-to-top-[5%] data-[state=open]:!slide-in-from-top-[5%]">
         <DialogHeader className="flex-shrink-0">
           {/* The type choice sits in the header, outside the scroll area: it
@@ -86,9 +129,24 @@ export function AddProductDialog(props: UseAddProductFormProps) {
         <AddProductFormProvider controller={controller}>
           <div className="flex-1 overflow-y-auto px-4 py-1">
             <Form {...form}>
-              <form id="add-product-form" onSubmit={form.handleSubmit(onSubmit)}>
+              <form
+                id="add-product-form"
+                onSubmit={(e) => {
+                  // This dialog can be embedded inside another form (Add
+                  // Purchase Order's own "+ Add New Product" button portals
+                  // this dialog in, but React's synthetic event system
+                  // bubbles submits through the COMPONENT tree, not the
+                  // portaled DOM tree). Without stopping it here, submitting
+                  // this form also bubbles up into the host's <form
+                  // onSubmit>, which then validates and reports on the
+                  // host's own fields — exactly what looked like this
+                  // dialog "detecting" unrelated Purchase Order fields.
+                  e.stopPropagation();
+                  form.handleSubmit(onSubmit, handleInvalid)(e);
+                }}
+              >
                 <div className="h-full">
-                  <Tabs defaultValue="basic" className="w-full h-full">
+                  <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full">
                     <TabsList className="w-full h-auto justify-start rounded-none border-b bg-transparent p-0">
                       <TabsTrigger
                         value="basic"

@@ -14,6 +14,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+
+// A server action's failure (e.g. a duplicate name) has a human-readable
+// `message` worth showing — { error } carries it through so the input
+// doesn't just silently close as if nothing happened. Plain `undefined`
+// stays valid for a caller with nothing more to say.
+export type InlineEditResult = string | undefined | { error: string };
 
 export interface InlineEditableSelectProps<T> {
   items: T[];
@@ -31,8 +38,8 @@ export interface InlineEditableSelectProps<T> {
   getValue: (item: T) => string;
   getOptionLabel: (item: T) => string;
   getName: (item: T) => string;
-  onAdd: (name: string) => Promise<string | undefined>;
-  onRename: (id: string, name: string) => Promise<string | undefined>;
+  onAdd: (name: string) => Promise<InlineEditResult>;
+  onRename: (id: string, name: string) => Promise<InlineEditResult>;
   triggerClassName?: string;
   itemClassName?: string;
   disabled?: boolean;
@@ -66,6 +73,7 @@ export function InlineEditableSelect<T>({
   const [renameDraft, setRenameDraft] = useState('');
   const [renameOldValue, setRenameOldValue] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const { toast } = useToast();
 
   const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
 
@@ -84,8 +92,12 @@ export function InlineEditableSelect<T>({
     if (!name || isSaving) return;
     setIsSaving(true);
     try {
-      const newValue = await onAdd(name);
-      if (newValue !== undefined) onChange(newValue);
+      const result = await onAdd(name);
+      if (result && typeof result === 'object') {
+        toast({ variant: 'destructive', title: 'Could not add', description: result.error });
+        return;
+      }
+      if (result !== undefined) onChange(result);
       resetAdd();
     } finally {
       setIsSaving(false);
@@ -104,8 +116,12 @@ export function InlineEditableSelect<T>({
     if (!name || renamingId === null || isSaving) return;
     setIsSaving(true);
     try {
-      const newValue = await onRename(renamingId, name);
-      if (newValue !== undefined && renameOldValue === value) onChange(newValue);
+      const result = await onRename(renamingId, name);
+      if (result && typeof result === 'object') {
+        toast({ variant: 'destructive', title: 'Could not rename', description: result.error });
+        return;
+      }
+      if (result !== undefined && renameOldValue === value) onChange(result);
       resetRename();
     } finally {
       setIsSaving(false);

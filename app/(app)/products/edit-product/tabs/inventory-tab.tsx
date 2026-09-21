@@ -115,13 +115,13 @@ export function InventoryTab() {
                 onAdd={async (name) => {
                   const r = await addUnitOfMeasure(name, name);
                   if (r.success) { await refreshUnits(); return name; }
-                  return undefined;
+                  return { error: r.message };
                 }}
                 onRename={async (id, name) => {
                   const existing = units.find((u: UnitOfMeasure) => u.id === id);
                   const r = await updateUnitOfMeasure(id, name, existing?.abbreviation ?? name);
                   if (r.success) { await refreshUnits(); return name; }
-                  return undefined;
+                  return { error: r.message };
                 }}
               />
               <FormMessage />
@@ -173,13 +173,13 @@ export function InventoryTab() {
                 onAdd={async (name) => {
                   const r = await addDepartment(name, 0);
                   if (r.success) { await refreshDepartments(); return name; }
-                  return undefined;
+                  return { error: r.message };
                 }}
                 onRename={async (id, name) => {
                   const existing = departments.find((d: any) => d.id === id);
                   const r = await updateDepartment(id, name, existing?.markupPercentage);
                   if (r.success) { await refreshDepartments(); return name; }
-                  return undefined;
+                  return { error: r.message };
                 }}
               />
               <FormMessage />
@@ -263,14 +263,14 @@ export function InventoryTab() {
                     const created = fresh.find((s) => s.name === name);
                     return created?.id;
                   }
-                  return undefined;
+                  return { error: r.message };
                 }}
                 onRename={async (id, name) => {
                   const existing = suppliers.find((s: Supplier) => s.id === id);
                   if (!existing) return undefined;
                   const r = await updateSupplier(id, { ...existing, name });
                   if (r.success) { await refreshSuppliers(); return id; }
-                  return undefined;
+                  return { error: r.message };
                 }}
               />
               <FormMessage />
@@ -314,13 +314,13 @@ export function InventoryTab() {
                     const created = fresh.find((w: any) => w.name === name);
                     return created?.id;
                   }
-                  return undefined;
+                  return { error: r.message };
                 }}
                 onRename={async (id, name) => {
                   const existing = warehouses.find((w: any) => w.id === id);
                   const r = await updateWarehouse(id, name, existing?.location);
                   if (r.success) { await refreshWarehouses(); return id; }
-                  return undefined;
+                  return { error: r.message };
                 }}
               />
               <FormMessage />
@@ -354,13 +354,13 @@ export function InventoryTab() {
                     const created = fresh.find((l: any) => l.name === name);
                     return created?.id;
                   }
-                  return undefined;
+                  return { error: r.message };
                 }}
                 onRename={async (id, name) => {
                   const existing = (shelfLocations || []).find((l: any) => l.id === id);
                   const r = await updateShelfLocation(id, name, existing?.description);
                   if (r.success) { await refreshShelfLocations(); return id; }
-                  return undefined;
+                  return { error: r.message };
                 }}
               />
               <FormMessage />

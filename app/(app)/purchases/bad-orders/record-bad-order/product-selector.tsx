@@ -1,98 +1,21 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { Search, X } from 'lucide-react';
+import { useState } from 'react';
 import { Input } from '@/components/ui/input';
-import {
-  Dialog,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import {
   Command,
   CommandEmpty,
   CommandGroup,
-  CommandInput,
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-import { useProducts } from '@/hooks/use-api';
+import { Search, Loader2 } from 'lucide-react';
+import { useProducts, mapApiProduct } from '@/hooks/use-api';
+import { useDebounce } from '@/hooks/use-debounce';
+import { getApiUrl } from '@/lib/api-config';
 import { Product } from '@/lib/types';
 import { formatQuantity } from '@/lib/utils';
-
-// ---------------------------------------------------------------------------
-// DraggableSearchDialogContent
-// ---------------------------------------------------------------------------
-
-export function DraggableSearchDialogContent({
-  className,
-  children,
-  onClose,
-  ...props
-}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { onClose?: () => void }) {
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStartPos = useRef({ x: 0, y: 0 });
-  const elementStartPos = useRef({ x: 0, y: 0 });
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('[data-drag-handle]')) {
-      setIsDragging(true);
-      dragStartPos.current = { x: e.clientX, y: e.clientY };
-      elementStartPos.current = { ...position };
-      e.preventDefault();
-    }
-  };
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return;
-      const dx = e.clientX - dragStartPos.current.x;
-      const dy = e.clientY - dragStartPos.current.y;
-      setPosition({ x: elementStartPos.current.x + dx, y: elementStartPos.current.y + dy });
-    };
-    const handleMouseUp = () => setIsDragging(false);
-
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    }
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDragging]);
-
-  return (
-    <DialogPrimitive.Portal>
-      <DialogPrimitive.Content
-        {...props}
-        onPointerDownOutside={(e) => e.preventDefault()}
-        onInteractOutside={(e) => e.preventDefault()}
-        onMouseDown={handleMouseDown}
-        style={{
-          position: 'fixed',
-          left: '50%',
-          top: '20%',
-          transform: `translate(calc(-50% + ${position.x}px), ${position.y}px)`,
-          zIndex: 200,
-        }}
-        className={`bg-background p-6 shadow-lg rounded-xl border w-full max-w-lg ${className}`}
-      >
-        {children}
-        <DialogPrimitive.Close
-          onClick={onClose}
-          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground"
-        >
-          <X className="h-4 w-4" />
-          <span className="sr-only">Close</span>
-        </DialogPrimitive.Close>
-      </DialogPrimitive.Content>
-    </DialogPrimitive.Portal>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // ProductSelector
@@ -108,102 +31,104 @@ export function ProductSelector({
   // When a supplier is selected, only that supplier's products are searchable.
   // Otherwise, all products are shown.
   const filterSupplierId = supplierId && supplierId !== 'none' ? supplierId : undefined;
-  const { products: allProducts, loading, error } = useProducts(undefined, undefined, filterSupplierId);
+  const [inputValue, setInputValue] = useState('');
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+
+  // Same field the user types/scans into now drives the autocomplete — the
+  // server caps results at 100 rows, so without a search term a store with
+  // more than 100 products would silently hide the rest behind that page
+  // instead of ever fetching them, which is why suggestions only appear
+  // once there's a query.
+  const debouncedSearch = useDebounce(inputValue, 300);
+  const { products: suggestedProducts, loading, error } = useProducts(debouncedSearch, undefined, filterSupplierId);
   // Services are excluded: they have no stock, so they can't be reported as a
   // bad order. useProducts() is shared with POS/sales, so filter here rather
   // than in the hook or API route.
-  const products = allProducts.filter((p) => p.type !== 'service');
-  const [inputValue, setInputValue] = useState('');
-  const [searchDialogOpen, setSearchDialogOpen] = useState(false);
-  const [commandSearch, setCommandSearch] = useState('');
+  const products = suggestedProducts.filter((p) => p.type !== 'service');
 
-  const handleScanOrPunch = () => {
-    const term = inputValue.trim();
-    if (!term) return;
+  // Enter fires immediately, milliseconds after a hardware scanner finishes
+  // typing — too fast for the debounced autocomplete query to have resolved.
+  // It looks up the exact code directly instead of waiting on that query.
+  const handleScanOrPunch = async () => {
+    const code = inputValue.trim();
+    if (!code) return;
+    setIsScanning(true);
+    try {
+      const params = new URLSearchParams({ search: code, limit: '25' });
+      if (filterSupplierId) params.append('supplierId', filterSupplierId);
+      const res = await fetch(getApiUrl(`/products?${params.toString()}`), { cache: 'no-store' });
+      const result = await res.json();
+      if (!result.success) return;
+      const matches: Product[] = (result.data || [])
+        .map(mapApiProduct)
+        .filter((p: Product) => p.type !== 'service');
 
-    const exactMatch = products.find(
-      (p) =>
-        p.barcode?.toLowerCase() === term.toLowerCase() ||
-        p.sku?.toLowerCase() === term.toLowerCase(),
-    );
-    if (exactMatch) {
-      onSelectProduct(exactMatch);
-      setInputValue('');
-      return;
-    }
-
-    const nameMatch = products.find((p) => p.name.toLowerCase() === term.toLowerCase());
-    if (nameMatch) {
-      onSelectProduct(nameMatch);
-      setInputValue('');
-      return;
-    }
-
-    const partialMatches = products.filter((p) =>
-      p.name.toLowerCase().includes(term.toLowerCase()),
-    );
-
-    if (partialMatches.length === 1) {
-      onSelectProduct(partialMatches[0]);
-      setInputValue('');
-    } else {
-      setCommandSearch(term);
-      setSearchDialogOpen(true);
+      const needle = code.toLowerCase();
+      const match = matches.find((p) =>
+        p.barcode?.toLowerCase() === needle ||
+        p.sku?.toLowerCase() === needle ||
+        p.name.toLowerCase() === needle
+      );
+      if (match) {
+        onSelectProduct(match);
+        setInputValue('');
+        setSuggestionsOpen(false);
+      }
+    } finally {
+      setIsScanning(false);
     }
   };
 
+  const selectProduct = (product: Product) => {
+    onSelectProduct(product);
+    setInputValue('');
+    setSuggestionsOpen(false);
+  };
+
   return (
-    <>
-      <div className="relative pb-2">
-        <Input
-          placeholder="Scan barcode, enter SKU, or type product name"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleScanOrPunch()}
-          className="pr-10 bg-background"
-        />
-        <Search
-          className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground cursor-pointer"
-          onClick={() => setSearchDialogOpen(true)}
-        />
-      </div>
-
-      <Dialog open={searchDialogOpen} onOpenChange={setSearchDialogOpen} modal={false}>
-        <DraggableSearchDialogContent
-          className="sm:max-w-md"
-          onClose={() => setSearchDialogOpen(false)}
-        >
-          <div data-drag-handle className="cursor-move">
-            <DialogHeader>
-              <DialogTitle>Search Products</DialogTitle>
-              <DialogDescription>Search and select a product to report.</DialogDescription>
-            </DialogHeader>
-          </div>
-
-          {loading ? (
-            <div className="flex justify-center py-4">
-              <div className="text-sm text-muted-foreground">Loading products...</div>
-            </div>
-          ) : error ? (
-            <div className="text-sm text-destructive py-4">Error loading products: {error}</div>
+    <Popover open={suggestionsOpen && inputValue.trim().length > 0} onOpenChange={setSuggestionsOpen}>
+      <PopoverAnchor asChild>
+        <div className="relative pb-2">
+          <Input
+            placeholder="Scan barcode, enter SKU, or type product name"
+            value={inputValue}
+            onChange={(e) => { setInputValue(e.target.value); setSuggestionsOpen(true); }}
+            onFocus={() => setSuggestionsOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); handleScanOrPunch(); }
+              else if (e.key === 'Escape') { setSuggestionsOpen(false); }
+            }}
+            disabled={isScanning}
+            className="pr-10 bg-background"
+          />
+          {isScanning ? (
+            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground animate-spin" />
           ) : (
-            <Command>
-              <CommandInput
-                placeholder="Type product name, SKU, or barcode..."
-                value={commandSearch}
-                onValueChange={setCommandSearch}
-              />
-              <CommandList>
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          )}
+        </div>
+      </PopoverAnchor>
+      <PopoverContent
+        align="start"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        className="w-[--radix-popover-trigger-width] p-0"
+      >
+        <Command shouldFilter={false}>
+          <CommandList>
+            {loading ? (
+              <div className="flex justify-center py-4 text-sm text-muted-foreground">Loading products...</div>
+            ) : error ? (
+              <div className="text-sm text-destructive py-4 px-2">Error loading products: {error}</div>
+            ) : (
+              <>
                 <CommandEmpty>No products found.</CommandEmpty>
                 <CommandGroup>
                   {products.map((product) => (
                     <CommandItem
                       key={product.id}
-                      value={`${product.name} ${product.sku || ''} ${product.barcode || ''}`}
-                      onSelect={() => {
-                        onSelectProduct(product);
-                        setSearchDialogOpen(false);
-                      }}
+                      value={product.id}
+                      onSelect={() => selectProduct(product)}
                     >
                       <div className="flex flex-col">
                         <span className="font-medium">{product.name}</span>
@@ -215,11 +140,11 @@ export function ProductSelector({
                     </CommandItem>
                   ))}
                 </CommandGroup>
-              </CommandList>
-            </Command>
-          )}
-        </DraggableSearchDialogContent>
-      </Dialog>
-    </>
+              </>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }

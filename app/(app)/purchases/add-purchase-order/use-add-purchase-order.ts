@@ -449,7 +449,10 @@ export function useAddPurchaseOrder({
       toast({
         variant: 'destructive',
         title: 'Uh oh! Something went wrong.',
-        description: 'There was a problem saving the purchase order. Please try again.',
+        description:
+          error instanceof Error
+            ? error.message
+            : 'There was a problem saving the purchase order. Please try again.',
       });
     } finally {
       setIsSubmitting(false);

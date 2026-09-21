@@ -10,6 +10,8 @@ import { FormControl } from '@/components/ui/form';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import type { Category } from '@/lib/types';
+import { useToast } from '@/hooks/use-toast';
+import type { InlineEditResult } from './inline-editable-select';
 
 type Subcategory = Category & { categoryId: string | null };
 
@@ -25,10 +27,10 @@ export interface CategorySubcategorySelectProps {
   onChange: (categoryName: string, subcategoryName: string) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAddCategory: (name: string) => Promise<string | undefined>;
-  onRenameCategory: (id: string, name: string) => Promise<string | undefined>;
-  onAddSubcategory: (name: string, categoryId: string) => Promise<string | undefined>;
-  onRenameSubcategory: (id: string, name: string) => Promise<string | undefined>;
+  onAddCategory: (name: string) => Promise<InlineEditResult>;
+  onRenameCategory: (id: string, name: string) => Promise<InlineEditResult>;
+  onAddSubcategory: (name: string, categoryId: string) => Promise<InlineEditResult>;
+  onRenameSubcategory: (id: string, name: string) => Promise<InlineEditResult>;
 }
 
 /**
@@ -70,6 +72,7 @@ export function CategorySubcategorySelect({
   const [renaming, setRenaming] = useState<{ kind: 'category' | 'subcategory'; id: string } | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const { toast } = useToast();
 
   const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
 
@@ -107,8 +110,12 @@ export function CategorySubcategorySelect({
     if (!name || isSaving) return;
     setIsSaving(true);
     try {
-      const newName = await onAddCategory(name);
-      if (newName !== undefined) onChange(newName, '');
+      const result = await onAddCategory(name);
+      if (result && typeof result === 'object') {
+        toast({ variant: 'destructive', title: 'Could not add category', description: result.error });
+        return;
+      }
+      if (result !== undefined) onChange(result, '');
       resetAdd();
     } finally {
       setIsSaving(false);
@@ -120,8 +127,12 @@ export function CategorySubcategorySelect({
     if (!name || isSaving) return;
     setIsSaving(true);
     try {
-      const newName = await onAddSubcategory(name, categoryId);
-      if (newName !== undefined) onChange(categoryName, newName);
+      const result = await onAddSubcategory(name, categoryId);
+      if (result && typeof result === 'object') {
+        toast({ variant: 'destructive', title: 'Could not add subcategory', description: result.error });
+        return;
+      }
+      if (result !== undefined) onChange(categoryName, result);
       resetAdd();
     } finally {
       setIsSaving(false);
@@ -146,13 +157,21 @@ export function CategorySubcategorySelect({
     try {
       if (renaming.kind === 'category') {
         const wasSelected = categoryValue === categories.find((c) => c.id === renaming.id)?.name;
-        const newName = await onRenameCategory(renaming.id, name);
-        if (newName !== undefined && wasSelected) onChange(newName, subcategoryValue);
+        const result = await onRenameCategory(renaming.id, name);
+        if (result && typeof result === 'object') {
+          toast({ variant: 'destructive', title: 'Could not rename category', description: result.error });
+          return;
+        }
+        if (result !== undefined && wasSelected) onChange(result, subcategoryValue);
       } else {
         const sub = subcategories.find((s) => s.id === renaming.id);
         const wasSelected = subcategoryValue === sub?.name;
-        const newName = await onRenameSubcategory(renaming.id, name);
-        if (newName !== undefined && wasSelected) onChange(categoryValue, newName);
+        const result = await onRenameSubcategory(renaming.id, name);
+        if (result && typeof result === 'object') {
+          toast({ variant: 'destructive', title: 'Could not rename subcategory', description: result.error });
+          return;
+        }
+        if (result !== undefined && wasSelected) onChange(categoryValue, result);
       }
       resetRename();
     } finally {

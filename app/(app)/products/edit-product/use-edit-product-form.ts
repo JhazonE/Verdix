@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -176,7 +176,7 @@ export function useEditProductForm({
     name: 'sellingUnits',
   });
 
-  const { fields: priceLevelFields, append: appendPriceLevel, remove: removePriceLevel } = useFieldArray({
+  const { fields: priceLevelFields, append: appendPriceLevel, remove: removePriceLevel, replace: replacePriceLevels } = useFieldArray({
     control: form.control,
     name: "priceLevels",
   });
@@ -190,23 +190,40 @@ export function useEditProductForm({
   const watchedSubcategoryName = form.watch('subcategory');
   const watchedBrandName = form.watch('brand');
   const formErrors = form.formState.errors;
+  // unitOfMeasure and cost are top-level fields the schema requires for every
+  // item type, but which TAB renders them differs by product type: a Service
+  // shows them on Inventory; a Standard product shows them inside the base
+  // unit card on Selling Units instead (see inventory-tab.tsx / conversion-tab.tsx).
+  // Routing both to 'inventory' unconditionally used to light up (or jump to)
+  // a tab that, for a Standard product, doesn't even contain the field.
+  const unitOrCostError = !!(formErrors.unitOfMeasure || formErrors.cost);
   const tabErrors = {
     basic: !!(formErrors.name || formErrors.brand || formErrors.sku || formErrors.description || formErrors.category),
-    inventory: !!(formErrors.unitOfMeasure),
+    inventory: product.type === 'service' && unitOrCostError,
     // The base selling unit's price-level overrides bind to the top-level
     // `priceLevels` field (see product-schema.ts), but they render inside
     // the Selling Units tab, not a standalone one — fold their errors into
     // the same `conversion` flag extra units' sellingUnits[].priceLevels
     // errors already use, so the tab that actually shows the problem is the
     // one that lights up.
-    conversion: !!(formErrors.conversionFactors || formErrors.sellingUnits || formErrors.priceLevels),
+    conversion: !!(formErrors.conversionFactors || formErrors.sellingUnits || formErrors.priceLevels) || (product.type !== 'service' && unitOrCostError),
   };
 
   // State for selected price level (for automatic price calculation)
   const [selectedPriceLevelId, setSelectedPriceLevelId] = useState<string>('');
 
+  // Remembers the value the cost→markup auto-fill effect last wrote to the
+  // Retail price field, so it can tell its own write apart from the user's.
+  // Reset whenever the form is reset for a (re)opened product below, so a
+  // manual edit made while editing a previous product doesn't silently carry
+  // into the next one. See that effect further down for the full explanation.
+  const lastAutoRetailPrice = useRef<number | null>(null);
+  const retailPriceEditedByUser = useRef(false);
+
   useEffect(() => {
     if (product && isOpen) {
+      lastAutoRetailPrice.current = null;
+      retailPriceEditedByUser.current = false;
       const sanitizedProduct = {
           ...product,
           category: product.category ?? '',
@@ -268,6 +285,30 @@ export function useEditProductForm({
     }
   }, [isOpen]);
 
+  // "There is no standalone price field — the default (Retail) price-level
+  // row IS the product's price" only held at save time (saveChanges copied
+  // priceLevels' Retail entry into `price` right before the DB write). The
+  // form opens pre-populated with the saved product's real price, so this
+  // usually goes unnoticed — but the schema's zodResolver validates the
+  // form's CURRENT values before saveChanges is ever called, so editing
+  // Retail price without this went stale: `price` kept the OLD saved value
+  // while the user's new Retail entry sat unvalidated, and a mismatch there
+  // could block a legitimate save. This mirrors Retail price into `price`
+  // live, the moment it changes, so validation sees what saveChanges always
+  // assumed it would.
+  const watchedPriceLevels = form.watch('priceLevels');
+  useEffect(() => {
+    if (!isOpen || priceLevels.length === 0) return;
+    const defaultLevel = priceLevels.find((l: any) => l.isDefault) || priceLevels[0];
+    if (!defaultLevel) return;
+    const retailEntry = (watchedPriceLevels || []).find((pl: any) => pl.levelId === defaultLevel.id);
+    if (!retailEntry) return;
+    const retailPrice = retailEntry.price ?? 0;
+    if (form.getValues('price') !== retailPrice) {
+      form.setValue('price', retailPrice, { shouldValidate: form.formState.isSubmitted });
+    }
+  }, [isOpen, priceLevels, watchedPriceLevels, form]);
+
   useEffect(() => {
     // Skip if not initialized. A per-product markup is a deliberate entry
     // (not a guess from category/brand/supplier), so it must survive
@@ -296,7 +337,7 @@ export function useEditProductForm({
 
     if (source) {
       setMarkupSource(`Calculated from ${source} Markup (${markup}%)`);
-      if (watchedCost && watchedCost > 0) {
+      if (watchedCost && watchedCost > 0 && !retailPriceEditedByUser.current) {
           // Calculate base price and default level price
           const defaultLevel = priceLevels.find((l: any) => l.isDefault) || priceLevels[0];
           const suggestedMainPrice = calculateSuggestedPrice(watchedCost, markup, 0, defaultLevel);
@@ -307,7 +348,16 @@ export function useEditProductForm({
           if (defaultLevel) {
             const idx = priceLevelFields.findIndex((f: any) => f.levelId === defaultLevel.id);
             if (idx !== -1) {
-              form.setValue(`priceLevels.${idx}.price`, parseFloat(suggestedMainPrice.toFixed(2)));
+              const currentValue = form.getValues(`priceLevels.${idx}.price`);
+              // A mismatch against what this effect itself wrote last means
+              // the user changed it in between — respect that and stop.
+              if (lastAutoRetailPrice.current !== null && currentValue !== lastAutoRetailPrice.current) {
+                retailPriceEditedByUser.current = true;
+                return;
+              }
+              const rounded = parseFloat(suggestedMainPrice.toFixed(2));
+              form.setValue(`priceLevels.${idx}.price`, rounded);
+              lastAutoRetailPrice.current = rounded;
             }
           }
       }
@@ -517,7 +567,7 @@ export function useEditProductForm({
     // field arrays
     conversionFactorFields, appendConversionFactor, removeConversionFactor,
     sellingUnitFields, appendSellingUnit, removeSellingUnit,
-    priceLevelFields, appendPriceLevel, removePriceLevel,
+    priceLevelFields, appendPriceLevel, removePriceLevel, replacePriceLevels,
 
     // watched / derived values
     selectedSupplierId,

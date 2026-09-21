@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -10,7 +10,7 @@ import { dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { logActivity } from '@/lib/client-activity-logger';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
-import { Category, Brand, UnitOfMeasure, Supplier, TaxRate, SystemSettings } from '@/lib/types';
+import { Category, Brand, UnitOfMeasure, Supplier, TaxRate, SystemSettings, Product } from '@/lib/types';
 import type { ProductType } from '@/lib/product-type';
 
 import {
@@ -23,6 +23,7 @@ import {
   getWarehouses,
   getShelfLocations,
   getDepartments,
+  getProductOptions,
 } from '../actions';
 import { productSchema, type ProductFormValues } from './product-schema';
 
@@ -62,16 +63,41 @@ export function calculatePriceLevelPrice(
 
 export interface UseAddProductFormProps {
   onProductAdded?: () => void;
+  // Fired only on immediate (non-approval-queue) success, with the newly
+  // created product so a caller like Add Purchase Order can treat it as a PO
+  // line item straight away. When PRODUCT_CREATE requires approval, no real
+  // product id exists yet — this callback simply does not fire that time.
+  onProductCreated?: (product: Product) => void;
   productOptions?: any;
   onOptionsRefresh?: () => void;
+  // Lets a host (e.g. Add Purchase Order's "+ Add New Product" button)
+  // control the dialog's open state itself instead of using the built-in
+  // trigger button — mirrors useAddPurchaseOrder's own controlled-open props.
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  // A product created from inside a Purchase Order gets its stock from that
+  // PO's own receiving flow, not from this form — showing Initial Stock here
+  // too would invite entering it twice (once here, once via the PO) with
+  // nothing reconciling the two. The field is hidden, not just disabled, so
+  // there is nothing to misread as "this is where PO stock goes."
+  hideInitialStock?: boolean;
 }
 
 export function useAddProductForm({
   onProductAdded,
+  onProductCreated,
   productOptions: externalProductOptions,
   onOptionsRefresh,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  hideInitialStock = false,
 }: UseAddProductFormProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setIsOpen = (val: boolean) => {
+    controlledOnOpenChange?.(val);
+    setInternalOpen(val);
+  };
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [productType, setProductType] = useState<'parent' | 'child'>('parent');
   // Standard vs Service. Distinct from `productType` above, which is the
@@ -164,7 +190,7 @@ export function useAddProductForm({
     name: "sellingUnits",
   });
 
-  const { fields: priceLevelFields, append: appendPriceLevel, remove: removePriceLevel } = useFieldArray({
+  const { fields: priceLevelFields, append: appendPriceLevel, remove: removePriceLevel, replace: replacePriceLevels } = useFieldArray({
     control: form.control,
     name: "priceLevels",
   });
@@ -172,53 +198,104 @@ export function useAddProductForm({
   const selectedUnitOfMeasure = form.watch('unitOfMeasure');
   const watchedPrice = form.watch('price');
   const formErrors = form.formState.errors;
+  // unitOfMeasure and cost are top-level fields the schema requires for every
+  // item type, but which TAB renders them differs by itemType: a Service
+  // shows them on Inventory; a Standard product shows them inside the base
+  // unit card on Selling Units instead (see inventory-tab.tsx / conversion-tab.tsx).
+  // Routing both to 'inventory' unconditionally used to light up (or jump to)
+  // a tab that, for a Standard product, doesn't even contain the field.
+  const unitOrCostError = !!(formErrors.unitOfMeasure || formErrors.cost);
   const tabErrors = {
     basic: !!(formErrors.name || formErrors.brand || formErrors.sku || formErrors.description || formErrors.category),
-    inventory: !!(formErrors.unitOfMeasure || formErrors.stock),
+    inventory: !!(formErrors.stock) || (itemType === 'service' && unitOrCostError),
     // The base selling unit's price-level overrides bind to the top-level
     // `priceLevels` field (see product-schema.ts), but they render inside
     // the Selling Units tab, not a standalone one — fold their errors into
     // the same `conversion` flag extra units' sellingUnits[].priceLevels
     // errors already use, so the tab that actually shows the problem is the
     // one that lights up.
-    conversion: !!(formErrors.conversionFactors || formErrors.sellingUnits || formErrors.priceLevels),
+    conversion: !!(formErrors.conversionFactors || formErrors.sellingUnits || formErrors.priceLevels) || (itemType === 'standard' && unitOrCostError),
   };
 
   // State for selected price level (for automatic price calculation)
   const [selectedPriceLevelId, setSelectedPriceLevelId] = useState<string>('');
 
+  // Remembers the value the cost→markup auto-fill effect last wrote to the
+  // Retail price field, so it can tell its own write apart from the user's.
+  // Reset on every dialog open (see the form.reset() effect below) so a
+  // manual edit from a previous product doesn't silently carry into the next
+  // one. See the effect further down for the full explanation.
+  const lastAutoRetailPrice = useRef<number | null>(null);
+  const retailPriceEditedByUser = useRef(false);
+
+  // Applies a getProductOptions()-shaped payload to every dropdown's state,
+  // whichever source it came from (parent-supplied or self-fetched below).
+  // Does NOT touch the form — ensureDefaultPriceLevel (below) owns that, and
+  // runs separately on every open, not just whenever this data happens to load.
+  const applyProductOptions = (options: any) => {
+    setCategories(options.categories || []);
+    setSubcategories(options.subcategories || []);
+    setBrands(options.brands || []);
+    setUnitsOfMeasure(options.units || []);
+    setSuppliers(options.suppliers || []);
+    setWarehouses(options.warehouses || []);
+    setShelfLocations(options.shelfLocations || []);
+    setDepartments(options.departments || []);
+    setPriceLevels(options.priceLevels || []);
+    setTaxRates(options.taxRates || []);
+  };
+
   // Use pre-loaded data from parent when available
   useEffect(() => {
     if (externalProductOptions) {
-      setCategories(externalProductOptions.categories || []);
-      setSubcategories(externalProductOptions.subcategories || []);
-      setBrands(externalProductOptions.brands || []);
-      setUnitsOfMeasure(externalProductOptions.units || []);
-      setSuppliers(externalProductOptions.suppliers || []);
-      setWarehouses(externalProductOptions.warehouses || []);
-      setShelfLocations(externalProductOptions.shelfLocations || []);
-      setDepartments(externalProductOptions.departments || []);
-      setPriceLevels(externalProductOptions.priceLevels || []);
-      setTaxRates(externalProductOptions.taxRates || []);
-
-      // Initialize default price level if form is empty
-      const systemPriceLevels = externalProductOptions.priceLevels || [];
-      const currentPriceLevels = form.getValues('priceLevels') || [];
-
-      if (currentPriceLevels.length === 0 && systemPriceLevels.length > 0) {
-          // Find default level or take first
-          const defaultLevel = systemPriceLevels.find((l:any) => l.isDefault) || systemPriceLevels[0];
-          if (defaultLevel) {
-              appendPriceLevel({ levelId: defaultLevel.id, price: 0 });
-          }
-      }
-
+      applyProductOptions(externalProductOptions);
     }
-  }, [externalProductOptions, form, appendPriceLevel]); // Added appendPriceLevel dep
+  }, [externalProductOptions]);
+
+  // A caller with no productOptions to share (e.g. Add Purchase Order's own
+  // "+ Add New Product" button) previously got a dialog full of empty
+  // dropdowns — nothing ever populated categories/brands/units/etc. in that
+  // case, only the branch above did. Self-fetch the same getProductOptions()
+  // payload the Products page already uses once, on the dialog's first open
+  // (the fetched lists themselves don't need refetching on every re-open —
+  // ensureDefaultPriceLevel below is what needs to re-run each time).
+  const [hasSelfFetchedOptions, setHasSelfFetchedOptions] = useState(false);
+  useEffect(() => {
+    if (externalProductOptions || !isOpen || hasSelfFetchedOptions) return;
+    setHasSelfFetchedOptions(true);
+    setIsLoadingCategories(true);
+    setIsLoadingSubcategories(true);
+    setIsLoadingBrands(true);
+    setIsLoadingUnits(true);
+    setIsLoadingSuppliers(true);
+    setIsLoadingWarehouses(true);
+    setIsLoadingShelfLocations(true);
+    setIsLoadingDepartments(true);
+    setIsLoadingPriceLevels(true);
+    getProductOptions()
+      .then((options) => applyProductOptions(options))
+      .catch((error) => console.error('Error loading product options:', error))
+      .finally(() => {
+        setIsLoadingCategories(false);
+        setIsLoadingSubcategories(false);
+        setIsLoadingBrands(false);
+        setIsLoadingUnits(false);
+        setIsLoadingSuppliers(false);
+        setIsLoadingWarehouses(false);
+        setIsLoadingShelfLocations(false);
+        setIsLoadingDepartments(false);
+        setIsLoadingPriceLevels(false);
+      });
+  }, [externalProductOptions, isOpen, hasSelfFetchedOptions]);
 
   useEffect(() => {
     if (isOpen) {
       form.reset();
+      // A fresh product for a fresh session — don't carry a previous
+      // product's "user edited Retail price, stop suggesting" state into
+      // this one.
+      lastAutoRetailPrice.current = null;
+      retailPriceEditedByUser.current = false;
 
       // Set default tax rate if available and valid
       if (taxRates.length > 0) {
@@ -229,6 +306,50 @@ export function useAddProductForm({
       setProductType('parent');
     }
   }, [isOpen, form]);
+
+  // The base unit's Retail price-level row is required (product-schema.ts
+  // treats it as the product's actual `price`), but the form.reset() effect
+  // above wipes the form's priceLevels field array back to `[]` on every
+  // open — including the second and later opens, when priceLevels (the
+  // loaded option list) is already sitting in state from the very first open
+  // and nothing else will re-trigger appending it. Declared AFTER the reset
+  // effect so it runs after reset within the same commit, not before it —
+  // otherwise reset would immediately wipe out the row this just appended.
+  // Without this, only the first "Add New Product" of a session ever gets a
+  // submittable form; every reopen after that fails validation on a price
+  // row the user never sees, with nothing more visible than a small dot on
+  // the Selling Units tab.
+  useEffect(() => {
+    if (!isOpen || priceLevels.length === 0) return;
+    const currentPriceLevels = form.getValues('priceLevels') || [];
+    if (currentPriceLevels.length > 0) return;
+    const defaultLevel = priceLevels.find((l: any) => l.isDefault) || priceLevels[0];
+    if (defaultLevel) {
+      appendPriceLevel({ levelId: defaultLevel.id, price: 0 });
+    }
+  }, [isOpen, priceLevels, form, appendPriceLevel]);
+
+  // "There is no standalone price field — the default (Retail) price-level
+  // row IS the product's price" only held at submit time (onSubmit copied
+  // priceLevels' Retail entry into `price` right before the DB write). But
+  // the schema's zodResolver validates the form's CURRENT values before
+  // onSubmit is ever called, and nothing kept `price` itself in sync while
+  // the user was typing — it sat at its default of 0 for the entire session,
+  // so `price: z.coerce.number().positive()` failed validation unconditionally,
+  // no matter how correctly the user filled in Retail price. This mirrors
+  // Retail price into `price` live, the moment it changes, so validation sees
+  // what onSubmit always assumed it would.
+  const watchedPriceLevels = form.watch('priceLevels');
+  useEffect(() => {
+    if (!isOpen || priceLevels.length === 0) return;
+    const defaultLevel = priceLevels.find((l: any) => l.isDefault) || priceLevels[0];
+    if (!defaultLevel) return;
+    const retailEntry = (watchedPriceLevels || []).find((pl: any) => pl.levelId === defaultLevel.id);
+    const retailPrice = retailEntry?.price ?? 0;
+    if (form.getValues('price') !== retailPrice) {
+      form.setValue('price', retailPrice, { shouldValidate: form.formState.isSubmitted });
+    }
+  }, [isOpen, priceLevels, watchedPriceLevels, form]);
 
   useEffect(() => {
     if (productType === 'parent') {
@@ -301,7 +422,7 @@ export function useAddProductForm({
 
     if (source) {
       setMarkupSource(`Calculated from ${source} Markup (${markup}%)`);
-      if (watchedCost && watchedCost > 0) {
+      if (watchedCost && watchedCost > 0 && !retailPriceEditedByUser.current) {
           // Calculate base price and default level price
           const defaultLevel = priceLevels.find((l: any) => l.isDefault) || priceLevels[0];
           const suggestedMainPrice = calculateSuggestedPrice(watchedCost, markup, 0, defaultLevel);
@@ -312,7 +433,16 @@ export function useAddProductForm({
           if (defaultLevel) {
             const idx = priceLevelFields.findIndex((f: any) => f.levelId === defaultLevel.id);
             if (idx !== -1) {
-              form.setValue(`priceLevels.${idx}.price`, parseFloat(suggestedMainPrice.toFixed(2)));
+              const currentValue = form.getValues(`priceLevels.${idx}.price`);
+              // A mismatch against what this effect itself wrote last means
+              // the user changed it in between — respect that and stop.
+              if (lastAutoRetailPrice.current !== null && currentValue !== lastAutoRetailPrice.current) {
+                retailPriceEditedByUser.current = true;
+                return;
+              }
+              const rounded = parseFloat(suggestedMainPrice.toFixed(2));
+              form.setValue(`priceLevels.${idx}.price`, rounded);
+              lastAutoRetailPrice.current = rounded;
             }
           }
       }
@@ -477,6 +607,30 @@ export function useAddProductForm({
           title: 'Product Added',
           description: `${values.name} has been successfully added.`,
         });
+        onProductCreated?.({
+          id: result.productId!,
+          name: values.name,
+          description: values.description,
+          category: values.category,
+          brand: values.brand,
+          department: values.department,
+          subcategory: values.subcategory,
+          supplier: values.supplier,
+          stock: values.stock ?? 0,
+          reorderPoint: values.reorderPoint ?? 0,
+          avgDailySales: 0,
+          price: values.price,
+          cost: values.cost,
+          sku: values.sku,
+          barcode: values.barcode,
+          imageUrl: '',
+          imageHint: '',
+          unitOfMeasure: values.unitOfMeasure,
+          vatStatus: values.vatStatus,
+          availability: values.availability,
+          earnsPoints: values.earnsPoints,
+          type: itemType,
+        });
         form.reset();
         onProductAdded?.();
         dispatchStockUpdate();
@@ -534,6 +688,7 @@ export function useAddProductForm({
     productType, setProductType,
     itemType, setItemType,
     form,
+    hideInitialStock,
 
     // option data + loading flags
     categories, isLoadingCategories,
@@ -554,7 +709,7 @@ export function useAddProductForm({
     // field arrays
     conversionFactorFields, appendConversionFactor, removeConversionFactor,
     sellingUnitFields, appendSellingUnit, removeSellingUnit,
-    priceLevelFields, appendPriceLevel, removePriceLevel,
+    priceLevelFields, appendPriceLevel, removePriceLevel, replacePriceLevels,
 
     // derived values
     selectedUnitOfMeasure,

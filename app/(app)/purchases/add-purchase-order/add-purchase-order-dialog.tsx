@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -43,7 +44,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Loader2, Trash2, Search, ArrowRight, Wand2 } from 'lucide-react';
+import { Loader2, Trash2, Search, ArrowRight, Wand2, Plus } from 'lucide-react';
 
 import { InlineWarehouseSelect } from '../../components/inline-selects/inline-warehouse-select';
 import { InlinePaymentMethodSelect } from '../../components/inline-selects/inline-payment-method-select';
@@ -56,6 +57,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAddPurchaseOrder, type UseAddPurchaseOrderProps } from './use-add-purchase-order';
 import { ProductSelector } from './product-selector';
 import { CurrencyInput } from './currency-input';
+import { AddProductDialog } from '../../products/add-product/add-product-dialog';
 
 export function AddPurchaseOrderDialog(props: UseAddPurchaseOrderProps & { trigger?: React.ReactNode }) {
   const { trigger, ...hookProps } = props;
@@ -84,6 +86,7 @@ export function AddPurchaseOrderDialog(props: UseAddPurchaseOrderProps & { trigg
   } = controller;
 
   const { toast } = useToast();
+  const [isAddProductOpen, setIsAddProductOpen] = useState(false);
 
   return (
     <Dialog open={isOpen} onOpenChange={(val) => setOpen(val)}>
@@ -300,12 +303,36 @@ export function AddPurchaseOrderDialog(props: UseAddPurchaseOrderProps & { trigg
 
               {/* ITEMS TABLE */}
               <div className="flex-1 flex flex-col overflow-hidden bg-muted/5 p-4 relative">
-                <div className="max-w-2xl mb-4 z-10">
-                  <ProductSelector
-                    onSelectProduct={handleAddProduct}
-                    supplierId={form.watch('supplierId')}
-                  />
+                <div className="max-w-2xl mb-4 z-10 flex items-start gap-2">
+                  <div className="flex-1">
+                    <ProductSelector
+                      onSelectProduct={handleAddProduct}
+                      supplierId={form.watch('supplierId')}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 shrink-0"
+                    onClick={() => setIsAddProductOpen(true)}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add New Product
+                  </Button>
                 </div>
+
+                {/* Deliberately independent of the items table: creating a
+                    product here does not add a PO line for it. The user
+                    finds it again through the search above like any other
+                    product — this dialog's only job is to make a product
+                    that didn't exist yet exist, nothing more. Initial Stock
+                    is hidden: a product created from a PO gets its stock
+                    from that PO's own receiving flow, not from this form. */}
+                <AddProductDialog
+                  open={isAddProductOpen}
+                  onOpenChange={setIsAddProductOpen}
+                  hideInitialStock
+                />
 
                 <div className="flex-1 rounded-lg border bg-background shadow-sm overflow-hidden flex flex-col relative">
                   <div className="overflow-y-auto flex-1 h-full relative">

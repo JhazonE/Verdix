@@ -10,6 +10,8 @@ import { FormControl } from '@/components/ui/form';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
+import type { InlineEditResult } from './inline-editable-select';
 
 export interface InlineEditableMultiSelectProps<T> {
   items: T[];
@@ -21,10 +23,10 @@ export interface InlineEditableMultiSelectProps<T> {
   searchPlaceholder: string;
   getId: (item: T) => string;
   getName: (item: T) => string;
-  /** Returns the id of the newly created item, or undefined on failure. */
-  onAdd: (name: string) => Promise<string | undefined>;
-  /** Returns the renamed id on success, or undefined on failure. */
-  onRename: (id: string, name: string) => Promise<string | undefined>;
+  /** Returns the id of the newly created item, { error } on failure. */
+  onAdd: (name: string) => Promise<InlineEditResult>;
+  /** Returns the renamed id on success, { error } on failure. */
+  onRename: (id: string, name: string) => Promise<InlineEditResult>;
 }
 
 export function InlineEditableMultiSelect<T>({
@@ -45,6 +47,7 @@ export function InlineEditableMultiSelect<T>({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const { toast } = useToast();
 
   const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
 
@@ -67,9 +70,13 @@ export function InlineEditableMultiSelect<T>({
     if (!name || isSaving) return;
     setIsSaving(true);
     try {
-      const newId = await onAdd(name);
-      if (newId !== undefined && !(value || []).includes(newId)) {
-        onChange([...(value || []), newId]);
+      const result = await onAdd(name);
+      if (result && typeof result === 'object') {
+        toast({ variant: 'destructive', title: 'Could not add', description: result.error });
+        return;
+      }
+      if (result !== undefined && !(value || []).includes(result)) {
+        onChange([...(value || []), result]);
       }
       resetAdd();
     } finally {
@@ -88,7 +95,11 @@ export function InlineEditableMultiSelect<T>({
     if (!name || renamingId === null || isSaving) return;
     setIsSaving(true);
     try {
-      await onRename(renamingId, name);
+      const result = await onRename(renamingId, name);
+      if (result && typeof result === 'object') {
+        toast({ variant: 'destructive', title: 'Could not rename', description: result.error });
+        return;
+      }
       resetRename();
     } finally {
       setIsSaving(false);

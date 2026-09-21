@@ -78,13 +78,13 @@ export function BasicInfoTab() {
                 onAdd={async (name) => {
                   const r = await addBrand(name, 0);
                   if (r.success) { await refreshBrands(); return name; }
-                  return undefined;
+                  return { error: r.message };
                 }}
                 onRename={async (id, name) => {
                   const existing = brands.find((b: Brand) => b.id === id);
                   const r = await updateBrand(id, name, existing?.markupPercentage);
                   if (r.success) { await refreshBrands(); return name; }
-                  return undefined;
+                  return { error: r.message };
                 }}
               />
               <FormMessage />
@@ -139,24 +139,24 @@ export function BasicInfoTab() {
               onAddCategory={async (name) => {
                 const r = await addCategory(name, 0);
                 if (r.success) { await refreshCategories(); return name; }
-                return undefined;
+                return { error: r.message };
               }}
               onRenameCategory={async (id, name) => {
                 const existing = categories.find((c: Category) => c.id === id);
                 const r = await updateCategory(id, name, existing?.markupPercentage);
                 if (r.success) { await refreshCategories(); return name; }
-                return undefined;
+                return { error: r.message };
               }}
               onAddSubcategory={async (name, categoryId) => {
                 const r = await addSubcategory(name, categoryId, 0);
                 if (r.success) { await refreshSubcategories(); return name; }
-                return undefined;
+                return { error: r.message };
               }}
               onRenameSubcategory={async (id, name) => {
                 const existing: any = subcategories.find((s: Category) => s.id === id);
                 const r = await updateSubcategory(id, name, existing?.categoryId ?? null, existing?.markupPercentage);
                 if (r.success) { await refreshSubcategories(); return name; }
-                return undefined;
+                return { error: r.message };
               }}
             />
             <FormMessage />

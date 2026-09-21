@@ -34,6 +34,7 @@ export function InventoryTab() {
     refreshWarehouses,
     refreshShelfLocations,
     refreshUnits,
+    hideInitialStock,
   } = useAddProductFormContext();
 
   if (itemType === 'service') {
@@ -109,13 +110,13 @@ export function InventoryTab() {
                 onAdd={async (name) => {
                   const r = await addUnitOfMeasure(name, name);
                   if (r.success) { await refreshUnits(); return name; }
-                  return undefined;
+                  return { error: r.message };
                 }}
                 onRename={async (id, name) => {
                   const existing = unitsOfMeasure.find((u: UnitOfMeasure) => u.id === id);
                   const r = await updateUnitOfMeasure(id, name, existing?.abbreviation ?? name);
                   if (r.success) { await refreshUnits(); return name; }
-                  return undefined;
+                  return { error: r.message };
                 }}
               />
               <FormMessage />
@@ -167,13 +168,13 @@ export function InventoryTab() {
                 onAdd={async (name) => {
                   const r = await addDepartment(name, 0);
                   if (r.success) { await refreshDepartments(); return name; }
-                  return undefined;
+                  return { error: r.message };
                 }}
                 onRename={async (id, name) => {
                   const existing = departments.find((d: any) => d.id === id);
                   const r = await updateDepartment(id, name, existing?.markupPercentage);
                   if (r.success) { await refreshDepartments(); return name; }
-                  return undefined;
+                  return { error: r.message };
                 }}
               />
               <FormMessage />
@@ -258,14 +259,14 @@ export function InventoryTab() {
                       const created = fresh.find((s) => s.name === name);
                       return created?.id;
                     }
-                    return undefined;
+                    return { error: r.message };
                   }}
                   onRename={async (id, name) => {
                     const existing = suppliers.find((s: Supplier) => s.id === id);
                     if (!existing) return undefined;
                     const r = await updateSupplier(id, { ...existing, name });
                     if (r.success) { await refreshSuppliers(); return id; }
-                    return undefined;
+                    return { error: r.message };
                   }}
                 />
                 <FormMessage />
@@ -308,13 +309,13 @@ export function InventoryTab() {
                       const created = fresh.find((w: any) => w.name === name);
                       return created?.id;
                     }
-                    return undefined;
+                    return { error: r.message };
                   }}
                   onRename={async (id, name) => {
                     const existing = warehouses.find((w: any) => w.id === id);
                     const r = await updateWarehouse(id, name, existing?.location);
                     if (r.success) { await refreshWarehouses(); return id; }
-                    return undefined;
+                    return { error: r.message };
                   }}
                 />
                 <FormMessage />
@@ -348,13 +349,13 @@ export function InventoryTab() {
                       const created = fresh.find((l: any) => l.name === name);
                       return created?.id;
                     }
-                    return undefined;
+                    return { error: r.message };
                   }}
                   onRename={async (id, name) => {
                     const existing = (shelfLocations || []).find((l: any) => l.id === id);
                     const r = await updateShelfLocation(id, name, existing?.description);
                     if (r.success) { await refreshShelfLocations(); return id; }
-                    return undefined;
+                    return { error: r.message };
                   }}
                 />
                 <FormMessage />
@@ -386,24 +387,26 @@ export function InventoryTab() {
           reached for a standard item (a service returns earlier above), so
           Stock and Reorder Point get the full row to themselves now. */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <FormField
-          control={form.control}
-          name="stock"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Initial Stock</FormLabel>
-              <FormControl>
-                <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {!hideInitialStock && (
+          <FormField
+            control={form.control}
+            name="stock"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Initial Stock</FormLabel>
+                <FormControl>
+                  <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
         <FormField
           control={form.control}
           name="reorderPoint"
           render={({ field }) => (
-            <FormItem>
+            <FormItem className={hideInitialStock ? 'sm:col-span-2' : undefined}>
               <FormLabel>Reorder Point</FormLabel>
               <FormControl>
                 <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />

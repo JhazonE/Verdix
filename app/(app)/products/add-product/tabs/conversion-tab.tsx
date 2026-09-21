@@ -152,7 +152,7 @@ export function SellingUnitsTab() {
   const {
     form,
     sellingUnitFields, appendSellingUnit, removeSellingUnit,
-    priceLevelFields, appendPriceLevel, removePriceLevel,
+    replacePriceLevels,
     unitsOfMeasure, isLoadingUnits, refreshUnits,
     selectedUnitOfMeasure,
     generateBarcode,
@@ -178,13 +178,12 @@ export function SellingUnitsTab() {
     allPriceLevelValues.filter((v) => !!v?.levelId) as { levelId: string; price?: number; minQuantity?: number }[];
 
   const setBasePriceLevels = (next: { levelId: string; price?: number; minQuantity?: number }[]) => {
-    // Remove every existing row, then re-append what's left. Simplest way to
-    // keep the field array in sync with a find-or-splice update without
-    // fighting react-hook-form's array indices.
-    for (let i = priceLevelFields.length - 1; i >= 0; i--) {
-      removePriceLevel(i);
-    }
-    next.forEach(entry => appendPriceLevel({ levelId: entry.levelId, price: entry.price ?? 0, minQuantity: entry.minQuantity }));
+    // One atomic swap via useFieldArray's own replace(), not a remove-loop
+    // followed by an append-loop — that used to fire on every keystroke (a
+    // new onChange each time the user typed a digit) and momentarily left
+    // the field array empty between the removes and the appends, which
+    // dropped focus from the input the user was actively typing into.
+    replacePriceLevels(next.map(entry => ({ levelId: entry.levelId, price: entry.price ?? 0, minQuantity: entry.minQuantity })));
   };
 
   return (
@@ -252,13 +251,13 @@ export function SellingUnitsTab() {
                           onAdd={async (name) => {
                             const r = await addUnitOfMeasure(name, name);
                             if (r.success) { await refreshUnits(); return name; }
-                            return undefined;
+                            return { error: r.message };
                           }}
                           onRename={async (id, name) => {
                             const existing = unitsOfMeasure.find((u: UnitOfMeasure) => u.id === id);
                             const r = await updateUnitOfMeasure(id, name, existing?.abbreviation ?? name);
                             if (r.success) { await refreshUnits(); return name; }
-                            return undefined;
+                            return { error: r.message };
                           }}
                         />
                         <FormMessage />

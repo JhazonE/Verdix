@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { PlusCircle, Pencil, Loader2, Wand2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ import {
 import { Form } from '@/components/ui/form';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useToast } from '@/hooks/use-toast';
 import { Product } from '@/lib/types';
 
 import { useEditProductForm } from './use-edit-product-form';
@@ -57,6 +59,38 @@ export function EditProductDialog({
     markupSource,
     saveChanges,
   } = controller;
+  const { toast } = useToast();
+
+  // Uncontrolled Tabs meant a validation failure on a tab the user wasn't
+  // looking at produced nothing more visible than a small red dot (or, until
+  // now, only a console.log) — indistinguishable from Save silently doing
+  // nothing. Making this controlled lets a failed submit jump the user
+  // straight to the first tab that actually has the problem.
+  const [activeTab, setActiveTab] = useState('basic');
+
+  useEffect(() => {
+    if (isOpen) setActiveTab('basic');
+  }, [isOpen]);
+
+  const handleInvalid = () => {
+    // Reuse tabErrors rather than re-deriving which field lives on which tab
+    // here — that mapping depends on product type (a Standard product's
+    // unitOfMeasure/cost render on Selling Units, a Service's render on
+    // Inventory), and tabErrors is the one place that distinction is made.
+    const firstErrorTab = tabErrors.basic
+      ? 'basic'
+      : tabErrors.inventory
+      ? 'inventory'
+      : tabErrors.conversion
+      ? 'conversion'
+      : 'basic';
+    setActiveTab(firstErrorTab);
+    toast({
+      variant: 'destructive',
+      title: 'Missing required fields',
+      description: 'Some required fields are still blank — check the highlighted tab.',
+    });
+  };
 
   return (
     <TooltipProvider>
@@ -90,9 +124,23 @@ export function EditProductDialog({
           <EditProductFormProvider controller={controller}>
             <div className="flex-1 overflow-y-auto px-4 py-1">
               <Form {...form}>
-                <form id="edit-product-form" onSubmit={form.handleSubmit(saveChanges, (errors) => console.log('Form validation errors:', errors))}>
+                <form
+                  id="edit-product-form"
+                  onSubmit={(e) => {
+                    // Defensive: if this dialog is ever embedded inside
+                    // another <form> (e.g. the way Add Product's dialog is
+                    // embedded in Add Purchase Order), React's synthetic
+                    // event system would bubble this submit through the
+                    // COMPONENT tree, not the portaled DOM tree — reaching
+                    // and validating the host's own unrelated fields. Not
+                    // currently reachable from inside a <form> today, but
+                    // costs nothing to guard against here too.
+                    e.stopPropagation();
+                    form.handleSubmit(saveChanges, handleInvalid)(e);
+                  }}
+                >
                   <div className="h-full">
-                    <Tabs defaultValue="basic" className="w-full h-full">
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full">
                       <TabsList className="w-full h-auto justify-start rounded-none border-b bg-transparent p-0">
                         <TabsTrigger
                           value="basic"
