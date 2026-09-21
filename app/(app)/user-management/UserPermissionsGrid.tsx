@@ -15,7 +15,7 @@ export function UserPermissionsGrid({ form, disabledForCashier }: Props) {
   const isDisabled = disabledForCashier && watchedUserType === 'Cashier';
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-x-4 gap-y-3 p-4 rounded-xl bg-muted/20 border border-muted-foreground/10">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 p-4 rounded-xl bg-muted/20 border border-muted-foreground/10">
       {ALL_PERMISSIONS.map(permission => (
         <FormField
           key={permission.id}

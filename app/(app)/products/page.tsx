@@ -89,23 +89,6 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
         ? 'low-stock'
         : 'in-stock';
 
-  const badgeVariant =
-    stockStatus === 'service'
-      ? 'outline'
-      : stockStatus === 'out-of-stock'
-      ? 'destructive'
-      : stockStatus === 'low-stock'
-        ? 'destructive'
-        : 'default';
-  const badgeText =
-    stockStatus === 'service'
-      ? 'Available'
-      : stockStatus === 'out-of-stock'
-      ? 'Out of Stock'
-      : stockStatus === 'low-stock'
-        ? 'Low Stock'
-        : 'In Stock';
-
   const handleDeleteConfirm = async () => {
     const result = await deleteProduct(product.id);
     if (result.success) {
@@ -158,10 +141,15 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
           {product.unitOfMeasure}
         </TableCell>
         <TableCell className="text-center">
-          <div className="flex flex-col items-center gap-1">
+          <span className="inline-flex items-center justify-center gap-1.5">
+            {stockStatus === 'out-of-stock' && (
+              <span className="h-2 w-2 rounded-full bg-red-500" title="Out of Stock" />
+            )}
+            {stockStatus === 'low-stock' && (
+              <span className="h-2 w-2 rounded-full bg-amber-500" title="Low Stock" />
+            )}
             <span className="font-bold">{formatStockQuantity(product.stock)}</span>
-            <Badge variant={badgeVariant} className="text-[10px] px-1.5 py-0">{badgeText}</Badge>
-          </div>
+          </span>
         </TableCell>
         <TableCell className="hidden md:table-cell text-right">
           {product.cost && typeof product.cost === 'number' ? `₱${product.cost.toFixed(2)}` : '—'}
