@@ -1,6 +1,8 @@
 import type { Product } from '@/lib/types';
 import type { CartSellingUnit } from '@/lib/pos-cart-units';
 
+export { mapVatStatusToTaxType } from '@/lib/tax-utils';
+
 export type QueuedOrder = {
   id: string;
   queueNumber: number;
@@ -47,13 +49,3 @@ export type SaleItem = Product & {
   lineId: string;
 };
 
-export function mapVatStatusToTaxType(vatStatus?: string): 'VAT' | 'NON_VAT' | 'ZERO_RATED' | 'VAT_EXEMPT' {
-  if (!vatStatus) return 'VAT';
-  const status = vatStatus.toUpperCase();
-  if (status.includes('SUBJECT TO 12% VAT') || status.includes('YES')) return 'VAT';
-  if (status.includes('EXEMPT')) return 'VAT_EXEMPT';
-  if (status.includes('ZERO RATED') || status.includes('ZERO-RATED') || status.includes('0%')) return 'ZERO_RATED';
-  if (status.includes('NON-VAT') || status.includes('NON VAT') || status.includes('NO VAT')) return 'NON_VAT';
-  if (status.startsWith('NO') || status.startsWith('NON')) return 'NON_VAT';
-  return 'VAT';
-}

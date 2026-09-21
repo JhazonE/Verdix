@@ -5,12 +5,9 @@ import type { Product } from '@/lib/types';
 import { useProducts } from '@/hooks/use-api';
 import { useLiveRefresh } from '@/hooks/use-live-refresh';
 import { useDebounce } from '@/hooks/use-debounce';
+import { explodeToUnitRows, type ProductUnitRow } from '@/lib/selling-unit-rows';
 
-export type ProductUnitRow = {
-  key: string;
-  product: Product;
-  unit?: { id?: string; name: string; factor: number; barcode?: string; cost?: number; price: number; isBase?: boolean };
-};
+export type { ProductUnitRow };
 
 type Options = {
   isOpen: boolean;
@@ -52,23 +49,10 @@ export function useProductSearch({
     }
   }, [products, loading, error, selectedBrand, selectedCategory]);
 
-  // A product with more than one selling unit (e.g. a Pack alongside its
-  // base Piece) shows as one row per unit, so a cashier can pick exactly
-  // which one to add rather than always getting the base unit. Services
-  // carry no sellingUnits and a single-unit product's own units array has
-  // just the base entry, so both render as a single row as before.
-  const displayedRows = useMemo<ProductUnitRow[]>(() => {
-    const rows: ProductUnitRow[] = [];
-    for (const product of displayedProducts) {
-      const units = product.type === 'service' ? [] : (product.sellingUnits || []);
-      if (units.length > 1) {
-        for (const unit of units) rows.push({ key: `${product.id}:${unit.id}`, product, unit });
-      } else {
-        rows.push({ key: product.id, product, unit: units[0] });
-      }
-    }
-    return rows;
-  }, [displayedProducts]);
+  const displayedRows = useMemo<ProductUnitRow[]>(
+    () => explodeToUnitRows(displayedProducts),
+    [displayedProducts]
+  );
 
   const stableRefresh = useCallback(() => { refetchProducts(); }, [refetchProducts]);
   useLiveRefresh(stableRefresh);
