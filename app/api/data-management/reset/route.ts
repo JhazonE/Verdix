@@ -35,7 +35,14 @@ export async function POST(request: NextRequest) {
             'bad_orders',
             'shifts',
             'x_readings',
-            'z_readings'
+            'z_readings',
+            // Purchase orders — grouped with sales here because they are the
+            // other half of a store's transaction history; inventory itself
+            // (products, stock, batches) is untouched and stays under
+            // clear_inventory / factory_reset.
+            'purchase_order_items',
+            'purchase_order_payments',
+            'purchase_orders'
           ];
 
           for (const table of tablesToClear) {
@@ -45,9 +52,9 @@ export async function POST(request: NextRequest) {
               console.log(`Table ${table} missing, skipping...`);
             }
           }
-           
-          // Clear approval queue items related to sales
-          await connection.query("DELETE FROM approval_queue WHERE transaction_type IN ('SALES_ORDER', 'SALES_INVOICE', 'BAD_ORDER')");
+
+          // Clear approval queue items related to sales and purchase orders
+          await connection.query("DELETE FROM approval_queue WHERE transaction_type IN ('SALES_ORDER', 'SALES_INVOICE', 'BAD_ORDER', 'PURCHASE_ORDER', 'RECEIVE_PO')");
           await connection.query("DELETE FROM approval_history WHERE approval_queue_id NOT IN (SELECT id FROM approval_queue)");
 
           // With all sales gone, restart invoice/receipt numbering so the next

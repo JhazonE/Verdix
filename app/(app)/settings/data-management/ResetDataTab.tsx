@@ -22,7 +22,7 @@ export function ResetDataTab({ onOpenResetDialog }: Props) {
             <div>
               <h3 className="text-lg font-medium text-red-900 dark:text-red-200">Clear Sales Data</h3>
               <p className="text-sm text-red-700 dark:text-red-300">
-                Deletes all sales transactions (POS, Orders, Invoices), payments, shifts, readings, and related approval queue items. Invoice numbering restarts at SI 000001.
+                Deletes all sales transactions (POS, Orders, Invoices), purchase orders, payments, shifts, readings, and related approval queue items. Invoice numbering restarts at SI 000001.
               </p>
             </div>
             <Button variant="destructive" onClick={() => onOpenResetDialog('clear_sales')}>
