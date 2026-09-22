@@ -146,7 +146,6 @@ export function useEditProductForm({
       warehouse: product.warehouse ?? '',
       shelfLocationIds: product.shelfLocationIds || [],
       subcategory: product.subcategory ?? '', // Handle null
-      supplier: product.supplier ?? '', // Handle null
       unitOfMeasure: product.unitOfMeasure ?? '', // Handle null
       conversionFactor: product.conversionFactor ?? 1, // Handle null/0 by defaulting to 1
       conversionFactors: product.conversionFactors || [],
@@ -239,7 +238,6 @@ export function useEditProductForm({
           shelfLocationIds: product.shelfLocationIds || [],
           reorderPoint: product.reorderPoint ?? 0,
           subcategory: product.subcategory ?? '', // Handle null
-          supplier: product.supplier ?? '', // Handle null
           unitOfMeasure: product.unitOfMeasure ?? '', // Handle null
           conversionFactor: product.conversionFactor ?? 1, // Handle null/0 by defaulting to 1
           conversionFactors: product.conversionFactors || [],

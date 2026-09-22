@@ -234,50 +234,6 @@ export function InventoryTab() {
           )}
         />
 
-        {!isServiceProduct && (
-        <FormField
-          control={form.control}
-          name="supplier"
-          render={({ field }) => (
-            <FormItem className="col-span-1">
-              <FormLabel>Supplier (Optional)</FormLabel>
-              <InlineEditableSelect
-                items={suppliers}
-                isLoading={false}
-                value={field.value}
-                onChange={field.onChange}
-                open={selects.suppliers}
-                onOpenChange={(o) => setSelects((p) => ({ ...p, suppliers: o }))}
-                placeholder="Select a supplier"
-                addLabel="Add Supplier"
-                emptyLabel="No suppliers found"
-                getId={(s: Supplier) => s.id}
-                getValue={(s: Supplier) => s.id}
-                getOptionLabel={(s: Supplier) => s.name}
-                getName={(s: Supplier) => s.name}
-                onAdd={async (name) => {
-                  const r = await addSupplier({ name });
-                  if (r.success) {
-                    await refreshSuppliers();
-                    const fresh = await getSuppliers();
-                    const created = fresh.find((s) => s.name === name);
-                    return created?.id;
-                  }
-                  return { error: r.message };
-                }}
-                onRename={async (id, name) => {
-                  const existing = suppliers.find((s: Supplier) => s.id === id);
-                  if (!existing) return undefined;
-                  const r = await updateSupplier(id, { ...existing, name });
-                  if (r.success) { await refreshSuppliers(); return id; }
-                  return { error: r.message };
-                }}
-              />
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        )}
       </div>
 
       {/* Warehouse and Shelf are stock-only — a service skips both. Unit of
