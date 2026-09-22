@@ -2,6 +2,7 @@
 
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { UnitOfMeasure } from '@/lib/types';
 import type { Supplier } from '@/lib/types';
@@ -233,20 +234,34 @@ export function InventoryTab() {
         {/* Reorder Point is set per supplier mapping on the Suppliers tab
             (rop) — there's no field for it here, so there's exactly one
             place to look. */}
-        {itemType === 'standard' && !hideInitialStock && (
-          <FormField
-            control={form.control}
-            name="stock"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Initial Stock</FormLabel>
-                <FormControl>
-                  <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+        {itemType === 'standard' && (
+          hideInitialStock ? (
+            // A product created from Purchase Order's inline "Add New
+            // Product" gets its stock from that PO's own receiving flow, not
+            // from this form — shown here read-only so it's still visible
+            // (not just silently missing), rather than editable.
+            <div className="space-y-2">
+              <Label>Initial Stock</Label>
+              <div>
+                <Input type="text" value="0" disabled />
+              </div>
+              <p className="text-sm text-muted-foreground">Set when this purchase order is received.</p>
+            </div>
+          ) : (
+            <FormField
+              control={form.control}
+              name="stock"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Initial Stock</FormLabel>
+                  <FormControl>
+                    <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )
         )}
       </div>
 
