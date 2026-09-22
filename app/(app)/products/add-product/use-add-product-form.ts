@@ -403,7 +403,8 @@ export function useAddProductForm({
   const watchedCategoryName = form.watch('category');
   const watchedSubcategoryName = form.watch('subcategory');
   const watchedBrandName = form.watch('brand');
-  const watchedSupplierId = form.watch('supplier');
+  const watchedSupplierMappings = form.watch('supplierMappings');
+  const markupSupplierId = (watchedSupplierMappings || []).find(m => m.isPrimary)?.supplierId;
   const [markupSource, setMarkupSource] = useState<string | null>(null);
 
   useEffect(() => {
@@ -418,7 +419,7 @@ export function useAddProductForm({
             category: watchedCategoryName,
             subcategory: watchedSubcategoryName,
             brand: watchedBrandName,
-            supplierId: watchedSupplierId
+            supplierId: markupSupplierId
         },
         systemSettings,
         categories,
@@ -457,7 +458,7 @@ export function useAddProductForm({
       setMarkupSource(null);
     }
 
-  }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, watchedSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, priceLevelFields]);
+  }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, markupSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, priceLevelFields]);
 
   // Auto-update main price when a price level is selected
   useEffect(() => {
