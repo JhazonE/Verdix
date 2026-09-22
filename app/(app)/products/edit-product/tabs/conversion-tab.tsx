@@ -323,8 +323,22 @@ export function SellingUnitsTab() {
                   name="cost"
                   render={({ field }) => (
                     <FormItem>
-                      <div className="flex items-center justify-between">
-                        <FormLabel className="text-xs">Cost</FormLabel>
+                      <FormLabel className="text-xs">Cost</FormLabel>
+                      <div className="relative">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0.01"
+                            placeholder="Required"
+                            className={supplierCostOptions.length > 0 ? 'pr-9' : undefined}
+                            value={field.value ?? ''}
+                            onChange={(e) => {
+                              const parsed = parseFloat(e.target.value);
+                              field.onChange(Number.isNaN(parsed) ? undefined : parsed);
+                            }}
+                          />
+                        </FormControl>
                         {supplierCostOptions.length > 0 && (
                           <DropdownMenu modal={false}>
                             <DropdownMenuTrigger asChild>
@@ -332,9 +346,9 @@ export function SellingUnitsTab() {
                                 type="button"
                                 variant="ghost"
                                 size="icon"
-                                className="h-5 w-5 -mt-1 text-muted-foreground"
+                                className="absolute right-0.5 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
                               >
-                                <Truck className="h-3.5 w-3.5" />
+                                <Truck className="h-4 w-4" />
                                 <span className="sr-only">Use a supplier's cost</span>
                               </Button>
                             </DropdownMenuTrigger>
@@ -356,19 +370,6 @@ export function SellingUnitsTab() {
                           </DropdownMenu>
                         )}
                       </div>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          placeholder="Required"
-                          value={field.value ?? ''}
-                          onChange={(e) => {
-                            const parsed = parseFloat(e.target.value);
-                            field.onChange(Number.isNaN(parsed) ? undefined : parsed);
-                          }}
-                        />
-                      </FormControl>
                       <FormMessage />
                       {costSuggestionSource && (
                         <p className="text-xs text-muted-foreground flex items-center gap-1">
