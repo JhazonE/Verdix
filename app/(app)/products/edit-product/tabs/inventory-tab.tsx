@@ -35,6 +35,7 @@ export function InventoryTab() {
     refreshWarehouses,
     refreshShelfLocations,
     refreshUnits,
+    primarySupplierMapping,
   } = useEditProductFormContext();
 
   // Derived from the saved product, not from state: type is immutable after
@@ -339,19 +340,35 @@ export function InventoryTab() {
           </div>
           <p className="text-sm text-muted-foreground">Stock is updated via transactions.</p>
         </div>
-        <FormField
-          control={form.control}
-          name="reorderPoint"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Reorder Point</FormLabel>
-              <FormControl>
-                <Input type="number" placeholder="0" value={field.value != null ? formatQuantity(field.value) : ''} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {primarySupplierMapping ? (
+          <div className="space-y-2">
+            <Label>Reorder Point</Label>
+            <div>
+              <Input
+                type="text"
+                value={formatQuantity(primarySupplierMapping.supplierSpecificRop)}
+                disabled
+              />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Managed by {primarySupplierMapping.supplierName || 'the primary supplier'} — edit it on the Suppliers tab.
+            </p>
+          </div>
+        ) : (
+          <FormField
+            control={form.control}
+            name="reorderPoint"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Reorder Point</FormLabel>
+                <FormControl>
+                  <Input type="number" placeholder="0" value={field.value != null ? formatQuantity(field.value) : ''} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
       </div>
     </div>
   );
