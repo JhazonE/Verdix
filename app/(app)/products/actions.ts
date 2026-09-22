@@ -2473,11 +2473,28 @@ export async function addSupplierMapping(productId: string, supplierId: string, 
 
 export async function updateSupplierMapping(id: string, leadTime: number, rop: number, cost?: number, supplierSku?: string, isPrimary: boolean = false) {
   try {
-    const [mapping]: any = await query('SELECT product_id FROM supplier_product_mapping WHERE id = ?', [id]);
-    if (isPrimary && mapping) {
-      await query('UPDATE supplier_product_mapping SET is_primary = 0 WHERE product_id = ?', [mapping.product_id]);
+    const [existing]: any = await query('SELECT product_id, is_primary FROM supplier_product_mapping WHERE id = ?', [id]);
+    if (!existing) {
+      return { success: false, message: 'Supplier mapping not found.' };
+    }
+
+    if (isPrimary) {
+      await query('UPDATE supplier_product_mapping SET is_primary = 0 WHERE product_id = ?', [existing.product_id]);
     }
     await query('UPDATE supplier_product_mapping SET supplier_lead_time = ?, supplier_specific_rop = ?, supplier_cost = ?, supplier_sku = ?, is_primary = ? WHERE id = ?', [leadTime, rop, cost || null, supplierSku || null, isPrimary ? 1 : 0, id]);
+
+    // The row being edited was already primary (is_primary=1 before this
+    // update, and isPrimary wasn't explicitly turned off — this function has
+    // no "demote" path, only "promote via isPrimary:true"), or was just
+    // promoted by this call. Either way, if it is primary AFTER this update,
+    // its rop must be what products.reorder_point reflects — otherwise
+    // editing an already-primary row's ROP here would silently desync it
+    // until someone re-triggered setPrimarySupplier.
+    const isNowPrimary = isPrimary || !!existing.is_primary;
+    if (isNowPrimary) {
+      await query('UPDATE products SET reorder_point = ? WHERE id = ?', [rop, existing.product_id]);
+    }
+
     return { success: true, message: 'Supplier mapping updated successfully.' };
   } catch (error) {
     console.error('Error updating supplier mapping:', error);
