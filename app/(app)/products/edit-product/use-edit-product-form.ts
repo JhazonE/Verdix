@@ -184,7 +184,6 @@ export function useEditProductForm({
     name: "priceLevels",
   });
 
-  const selectedSupplierId = form.watch('supplier');
   const selectedUnitOfMeasure = form.watch('unitOfMeasure');
   const costValue = form.watch('cost');
   const watchedCost = form.watch('cost');
@@ -330,6 +329,13 @@ export function useEditProductForm({
     }
   }, [isOpen, priceLevels, watchedPriceLevels, form]);
 
+  // The Supplier field is gone from the form — markup's supplier link now
+  // comes from the primary supplier mapping (see refreshSupplierMappings /
+  // primarySupplierMapping above), falling back to the read-only legacy
+  // `product.supplier` (itself already primary_supplier_id || supplier_id,
+  // resolved by getProducts) for a product with no mapping row yet.
+  const markupSupplierId = primarySupplierMapping?.supplierId ?? product.supplier;
+
   useEffect(() => {
     // Skip if not initialized. A per-product markup is a deliberate entry
     // (not a guess from category/brand/supplier), so it must survive
@@ -347,7 +353,7 @@ export function useEditProductForm({
             category: watchedCategoryName,
             subcategory: watchedSubcategoryName,
             brand: watchedBrandName,
-            supplierId: selectedSupplierId
+            supplierId: markupSupplierId
         },
         systemSettings,
         categories,
@@ -385,7 +391,7 @@ export function useEditProductForm({
     } else {
       setMarkupSource(null);
     }
-  }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, selectedSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, isInitialized, priceLevelFields]);
+  }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, markupSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, isInitialized, priceLevelFields]);
 
   // Auto-update main price when a price level is selected
   useEffect(() => {
@@ -592,7 +598,6 @@ export function useEditProductForm({
     priceLevelFields, appendPriceLevel, removePriceLevel, replacePriceLevels,
 
     // watched / derived values
-    selectedSupplierId,
     selectedUnitOfMeasure,
     tabErrors,
     selectedPriceLevelId, setSelectedPriceLevelId,
