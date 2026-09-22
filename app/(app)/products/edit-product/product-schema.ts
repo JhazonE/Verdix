@@ -19,7 +19,7 @@ export function buildProductSchema(isService: boolean) {
     brand: z.string().min(1, 'Brand is required'),
     department: z.string().optional(),
     sku: z.string().min(1, 'SKU is required'),
-    barcode: z.string().optional(),
+    barcode: z.string().min(1, 'Barcode is required'),
     description: z.string().min(1, 'Description is required'),
     additionalDescription: z.string().optional(),
     category: z.string().min(1, 'Category is required'),

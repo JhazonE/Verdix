@@ -10,7 +10,7 @@ const baseProductSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
   brand: z.string().min(1, 'Brand is required'),
   sku: z.string().min(1, 'SKU is required'),
-  barcode: z.string().optional(),
+  barcode: z.string().min(1, 'Barcode is required'),
   department: z.string().optional(),
   description: z.string().min(1, 'Description is required'),
   additionalDescription: z.string().optional(),
