@@ -2,7 +2,6 @@
 
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { UnitOfMeasure } from '@/lib/types';
 import type { Supplier } from '@/lib/types';
@@ -345,14 +344,17 @@ export function InventoryTab() {
 
       {/* Cost moved to the Selling Units tab's base row — this point is only
           reached for a standard item (a service returns earlier above), so
-          Stock and Reorder Point get the full row to themselves now. */}
+          Stock and Reorder Point get the full row to themselves now.
+          Once a primary supplier mapping exists, ROP lives entirely on the
+          Suppliers tab — no read-only echo here, so there's exactly one
+          place to look for it, not two. */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {!hideInitialStock && (
           <FormField
             control={form.control}
             name="stock"
             render={({ field }) => (
-              <FormItem>
+              <FormItem className={primaryMapping ? 'sm:col-span-2' : undefined}>
                 <FormLabel>Initial Stock</FormLabel>
                 <FormControl>
                   <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
@@ -362,17 +364,7 @@ export function InventoryTab() {
             )}
           />
         )}
-        {primaryMapping ? (
-          <div className={hideInitialStock ? 'sm:col-span-2 space-y-2' : 'space-y-2'}>
-            <Label>Reorder Point</Label>
-            <div>
-              <Input type="text" value={primaryMapping.rop} disabled />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Set on the Suppliers tab (this product's primary supplier).
-            </p>
-          </div>
-        ) : (
+        {!primaryMapping && (
           <FormField
             control={form.control}
             name="reorderPoint"
