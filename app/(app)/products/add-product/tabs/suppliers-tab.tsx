@@ -76,9 +76,17 @@ export function SuppliersTab() {
   }) => {
     if (!data) return;
 
+    // A product's first supplier mapping is always primary — same rule
+    // addSupplierMapping enforces server-side for Edit Product (see
+    // actions.ts). Only applies when adding a brand-new row (editingIndex is
+    // null) into a currently-empty array; editing an existing row leaves
+    // whatever primary flag the user picked in the dialog.
+    const isAddingFirstRow = editingIndex === null && supplierMappingFields.length === 0;
+    const resolvedData = isAddingFirstRow ? { ...data, isPrimary: true } : data;
+
     // Only one mapping can be primary — clear any existing flag first, same
     // as setPrimarySupplier enforces server-side for an existing product.
-    if (data.isPrimary) {
+    if (resolvedData.isPrimary) {
       supplierMappingFields.forEach((row, i) => {
         if (i !== editingIndex && row.isPrimary) {
           updateSupplierMappingField(i, { ...row, isPrimary: false });
@@ -87,9 +95,9 @@ export function SuppliersTab() {
     }
 
     if (editingIndex !== null) {
-      updateSupplierMappingField(editingIndex, { ...supplierMappingFields[editingIndex], ...data });
+      updateSupplierMappingField(editingIndex, { ...supplierMappingFields[editingIndex], ...resolvedData });
     } else {
-      appendSupplierMapping(data);
+      appendSupplierMapping(resolvedData);
     }
     setEditingIndex(null);
   };
