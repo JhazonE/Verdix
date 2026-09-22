@@ -11,7 +11,7 @@ import { dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { logActivity } from '@/lib/client-activity-logger';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
-import { Category, Product, Brand, UnitOfMeasure, Supplier, TaxRate, SystemSettings } from '@/lib/types';
+import { Category, Product, Brand, UnitOfMeasure, Supplier, TaxRate, SystemSettings, SupplierProductMapping } from '@/lib/types';
 
 import {
   updateProduct,
@@ -20,6 +20,7 @@ import {
   getSubcategories,
   getUnitsOfMeasure,
   getSuppliers,
+  getSupplierMappings,
   getWarehouses,
   getShelfLocations,
   getDepartments,
@@ -76,6 +77,8 @@ export function useEditProductForm({
   const [subcategories, setSubcategories] = useState<Category[]>([]);
   const [units, setUnits] = useState<UnitOfMeasure[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierMappings, setSupplierMappings] = useState<SupplierProductMapping[]>([]);
+  const [isLoadingSupplierMappings, setIsLoadingSupplierMappings] = useState(false);
   const [warehouses, setWarehouses] = useState<any[]>([]);
   const [shelfLocations, setShelfLocations] = useState<any[]>([]);
   const [isLoadingShelfLocations, setIsLoadingShelfLocations] = useState(false);
@@ -269,6 +272,24 @@ export function useEditProductForm({
     // seed on the rare cold-load race.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product, isOpen, form]);
+
+  const refreshSupplierMappings = async () => {
+    setIsLoadingSupplierMappings(true);
+    try {
+      setSupplierMappings(await getSupplierMappings(product.id));
+    } finally {
+      setIsLoadingSupplierMappings(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      refreshSupplierMappings();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, product.id]);
+
+  const primarySupplierMapping = supplierMappings.find(m => m.isPrimary);
 
   const [markupSource, setMarkupSource] = useState<string | null>(null);
 
@@ -554,6 +575,7 @@ export function useEditProductForm({
     subcategories,
     units,
     suppliers,
+    supplierMappings, isLoadingSupplierMappings, refreshSupplierMappings, primarySupplierMapping,
     warehouses,
     shelfLocations, isLoadingShelfLocations,
     priceLevels, isLoadingPriceLevels,

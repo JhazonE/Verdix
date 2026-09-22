@@ -59,6 +59,9 @@ export function EditProductDialog({
     tabErrors,
     markupSource,
     saveChanges,
+    supplierMappings,
+    isLoadingSupplierMappings,
+    refreshSupplierMappings,
   } = controller;
   const { toast } = useToast();
 
@@ -197,7 +200,13 @@ export function EditProductDialog({
                       </TabsContent>
                       {product?.type !== 'service' && (
                         <TabsContent value="suppliers" className="space-y-4 p-6">
-                          <ProductSuppliers productId={product.id} onUpdate={onProductUpdated} />
+                          <ProductSuppliers
+                            productId={product.id}
+                            mappings={supplierMappings}
+                            isLoadingMappings={isLoadingSupplierMappings}
+                            onMappingsChanged={refreshSupplierMappings}
+                            onUpdate={onProductUpdated}
+                          />
                         </TabsContent>
                       )}
                     </Tabs>

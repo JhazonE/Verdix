@@ -15,30 +15,61 @@ import {
 export interface UseProductSuppliersProps {
   productId: string;
   onUpdate?: () => void;
+  /**
+   * When supplied (Edit Product does, via useEditProductForm — see Task 4),
+   * this hook uses these instead of fetching its own copy, so the markup and
+   * selling-unit-cost suggestion effects in useEditProductForm and this
+   * tab's CRUD UI always agree on the same primary mapping. When omitted,
+   * this hook fetches and owns the data itself (kept for any other caller).
+   */
+  mappings?: SupplierProductMapping[];
+  isLoadingMappings?: boolean;
+  onMappingsChanged?: () => void | Promise<void>;
 }
 
 /**
  * Controller for the product supplier mappings panel: loads mappings/suppliers
  * and owns the add/edit dialog state plus the delete and set-primary flows.
  */
-export function useProductSuppliers({ productId, onUpdate }: UseProductSuppliersProps) {
-  const [mappings, setMappings] = useState<SupplierProductMapping[]>([]);
+export function useProductSuppliers({
+  productId,
+  onUpdate,
+  mappings: externalMappings,
+  isLoadingMappings: externalIsLoading,
+  onMappingsChanged,
+}: UseProductSuppliersProps) {
+  const [internalMappings, setInternalMappings] = useState<SupplierProductMapping[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [internalIsLoading, setInternalIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingMapping, setEditingMapping] = useState<SupplierProductMapping | null>(null);
   const [confirmPrimaryOpen, setConfirmPrimaryOpen] = useState(false);
   const [pendingPrimaryId, setPendingPrimaryId] = useState<string | null>(null);
   const { toast } = useToast();
 
+  const usesExternalMappings = externalMappings !== undefined;
+  const mappings = usesExternalMappings ? externalMappings : internalMappings;
+  const isLoading = usesExternalMappings ? !!externalIsLoading : internalIsLoading;
+
   const loadData = async () => {
-    setIsLoading(true);
+    if (usesExternalMappings) {
+      // Suppliers still needs its own fetch either way — only the mappings
+      // list is shared with the parent.
+      try {
+        setSuppliers(await getSuppliers());
+      } catch (error) {
+        console.error('Failed to load suppliers', error);
+      }
+      await onMappingsChanged?.();
+      return;
+    }
+    setInternalIsLoading(true);
     try {
       const [mappingsData, suppliersData] = await Promise.all([
         getSupplierMappings(productId),
         getSuppliers(),
       ]);
-      setMappings(mappingsData);
+      setInternalMappings(mappingsData);
       setSuppliers(suppliersData);
     } catch (error) {
       console.error('Failed to load supplier data', error);
@@ -48,12 +79,13 @@ export function useProductSuppliers({ productId, onUpdate }: UseProductSuppliers
         description: 'Failed to load supplier data.',
       });
     } finally {
-      setIsLoading(false);
+      setInternalIsLoading(false);
     }
   };
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId]);
 
   const handleOpenDialog = (mapping?: SupplierProductMapping) => {
