@@ -302,6 +302,7 @@ export function useAddProductForm({
   useEffect(() => {
     if (isOpen) {
       form.reset();
+      generateBarcode();
       // A fresh product for a fresh session — don't carry a previous
       // product's "user edited Retail price, stop suggesting" state into
       // this one.
