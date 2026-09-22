@@ -234,6 +234,18 @@ export function InventoryTab() {
           )}
         />
 
+        {/* Stock is standard-only. Reorder Point is set per supplier
+            mapping on the Suppliers tab (supplier_specific_rop) — there's
+            no field for it here, so there's exactly one place to look. */}
+        {!isServiceProduct && (
+        <div className="space-y-2">
+          <Label>Initial Stock</Label>
+          <div>
+            <Input type="text" value={formatQuantity(product.stock || 0)} disabled />
+          </div>
+          <p className="text-sm text-muted-foreground">Stock is updated via transactions.</p>
+        </div>
+        )}
       </div>
 
       {/* Warehouse and Shelf are stock-only — a service skips both. Unit of
@@ -324,22 +336,6 @@ export function InventoryTab() {
           )}
         />
         )}
-      </div>
-
-      {/* Stock is standard-only, leaving Cost alone here for a service —
-          kept at two columns so it lines up with every field above it.
-          Cost moved to the Selling Units tab's base row. Reorder Point is
-          gone from here entirely — it's set per supplier mapping on the
-          Suppliers tab (supplier_specific_rop), never here, so there's
-          exactly one place to look for it. */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="space-y-2 sm:col-span-2">
-          <Label>Initial Stock</Label>
-          <div>
-            <Input type="text" value={formatQuantity(product.stock || 0)} disabled />
-          </div>
-          <p className="text-sm text-muted-foreground">Stock is updated via transactions.</p>
-        </div>
       </div>
     </div>
   );

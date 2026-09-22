@@ -230,6 +230,24 @@ export function InventoryTab() {
           )}
         />
 
+        {/* Reorder Point is set per supplier mapping on the Suppliers tab
+            (rop) — there's no field for it here, so there's exactly one
+            place to look. */}
+        {itemType === 'standard' && !hideInitialStock && (
+          <FormField
+            control={form.control}
+            name="stock"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Initial Stock</FormLabel>
+                <FormControl>
+                  <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
       </div>
 
       {/* Warehouse and Shelf are stock-only — a service skips both. Unit of
@@ -338,29 +356,6 @@ export function InventoryTab() {
           )}
         />
       )}
-
-      {/* Cost moved to the Selling Units tab's base row — this point is only
-          reached for a standard item (a service returns earlier above).
-          Reorder Point is gone from here entirely — it's set per supplier
-          mapping on the Suppliers tab (rop), never here, so there's exactly
-          one place to look for it. */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {!hideInitialStock && (
-          <FormField
-            control={form.control}
-            name="stock"
-            render={({ field }) => (
-              <FormItem className="sm:col-span-2">
-                <FormLabel>Initial Stock</FormLabel>
-                <FormControl>
-                  <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
-      </div>
     </>
   );
 }
