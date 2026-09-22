@@ -37,9 +37,6 @@ export function InventoryTab() {
     hideInitialStock,
   } = useAddProductFormContext();
 
-  const watchedSupplierMappings = form.watch('supplierMappings');
-  const primaryMapping = (watchedSupplierMappings || []).find(m => m.isPrimary);
-
   if (itemType === 'service') {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -343,34 +340,18 @@ export function InventoryTab() {
       )}
 
       {/* Cost moved to the Selling Units tab's base row — this point is only
-          reached for a standard item (a service returns earlier above), so
-          Stock and Reorder Point get the full row to themselves now.
-          Once a primary supplier mapping exists, ROP lives entirely on the
-          Suppliers tab — no read-only echo here, so there's exactly one
-          place to look for it, not two. */}
+          reached for a standard item (a service returns earlier above).
+          Reorder Point is gone from here entirely — it's set per supplier
+          mapping on the Suppliers tab (rop), never here, so there's exactly
+          one place to look for it. */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {!hideInitialStock && (
           <FormField
             control={form.control}
             name="stock"
             render={({ field }) => (
-              <FormItem className={primaryMapping ? 'sm:col-span-2' : undefined}>
+              <FormItem className="sm:col-span-2">
                 <FormLabel>Initial Stock</FormLabel>
-                <FormControl>
-                  <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
-        {!primaryMapping && (
-          <FormField
-            control={form.control}
-            name="reorderPoint"
-            render={({ field }) => (
-              <FormItem className={hideInitialStock ? 'sm:col-span-2' : undefined}>
-                <FormLabel>Reorder Point</FormLabel>
                 <FormControl>
                   <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
                 </FormControl>

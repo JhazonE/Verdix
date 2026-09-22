@@ -35,7 +35,6 @@ export function InventoryTab() {
     refreshWarehouses,
     refreshShelfLocations,
     refreshUnits,
-    primarySupplierMapping,
   } = useEditProductFormContext();
 
   // Derived from the saved product, not from state: type is immutable after
@@ -327,37 +326,20 @@ export function InventoryTab() {
         )}
       </div>
 
-      {/* Stock and Reorder Point are standard-only, leaving Cost alone here for
-          a service — kept at two columns so it lines up with every field
-          above it. Cost moved to the Selling Units tab's base row — this
-          point is standard-item-only, so Stock and Reorder Point get the
-          full row now. Mirrors the Add form. */}
-      {/* Once a product has a primary supplier mapping, its ROP lives
-          entirely on the Suppliers tab — no read-only echo here any more,
-          so there's exactly one place to look for it, not two. */}
+      {/* Stock is standard-only, leaving Cost alone here for a service —
+          kept at two columns so it lines up with every field above it.
+          Cost moved to the Selling Units tab's base row. Reorder Point is
+          gone from here entirely — it's set per supplier mapping on the
+          Suppliers tab (supplier_specific_rop), never here, so there's
+          exactly one place to look for it. */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className={primarySupplierMapping ? 'space-y-2 sm:col-span-2' : 'space-y-2'}>
+        <div className="space-y-2 sm:col-span-2">
           <Label>Initial Stock</Label>
           <div>
             <Input type="text" value={formatQuantity(product.stock || 0)} disabled />
           </div>
           <p className="text-sm text-muted-foreground">Stock is updated via transactions.</p>
         </div>
-        {!primarySupplierMapping && (
-          <FormField
-            control={form.control}
-            name="reorderPoint"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Reorder Point</FormLabel>
-                <FormControl>
-                  <Input type="number" placeholder="0" value={field.value != null ? formatQuantity(field.value) : ''} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
       </div>
     </div>
   );
