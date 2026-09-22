@@ -1,11 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, PlusCircle, Wand2, X } from 'lucide-react';
+import { ChevronDown, PlusCircle, Truck, Wand2, X } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -157,7 +165,16 @@ export function SellingUnitsTab() {
     selectedUnitOfMeasure,
     generateBarcode,
     costSuggestionSource,
+    supplierMappingFields,
+    suppliers,
   } = useAddProductFormContext();
+
+  // Only mappings with a cost actually on file are worth offering — an empty
+  // cost has nothing to pick. Rows live in form state here (not yet saved),
+  // so the supplier's display name is resolved from the suppliers list.
+  const supplierCostOptions = (supplierMappingFields || [])
+    .filter(m => m.cost != null)
+    .map(m => ({ ...m, supplierName: suppliers.find(s => s.id === m.supplierId)?.name }));
 
   const [baseExpanded, setBaseExpanded] = useState(false);
   const [expandedUnits, setExpandedUnits] = useState<Record<number, boolean>>({});
@@ -308,7 +325,39 @@ export function SellingUnitsTab() {
                     name="cost"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs">Cost</FormLabel>
+                        <div className="flex items-center justify-between">
+                          <FormLabel className="text-xs">Cost</FormLabel>
+                          {supplierCostOptions.length > 0 && (
+                            <DropdownMenu modal={false}>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 -mt-1 text-muted-foreground"
+                                >
+                                  <Truck className="h-3.5 w-3.5" />
+                                  <span className="sr-only">Use a supplier's cost</span>
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuLabel className="text-xs">Use supplier cost</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                {supplierCostOptions.map((mapping) => (
+                                  <DropdownMenuItem
+                                    key={mapping.id}
+                                    onClick={() => field.onChange(mapping.cost)}
+                                  >
+                                    <span className="flex-1">{mapping.supplierName || 'Unknown supplier'}</span>
+                                    <span className="text-muted-foreground ml-2">
+                                      ₱{mapping.cost?.toFixed(2)}
+                                    </span>
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </div>
                         <FormControl>
                           <Input
                             type="number"
