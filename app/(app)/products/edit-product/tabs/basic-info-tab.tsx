@@ -1,7 +1,7 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
-import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Category, Brand } from '@/lib/types';
@@ -92,24 +92,6 @@ export function BasicInfoTab() {
           )}
         />
       </div>
-      {/* SKU — no partner left once Category moved into the card below, so
-          it spans the full width instead of leaving an empty half-row
-          beside it. */}
-      <FormField
-        control={form.control}
-        name="sku"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>SKU</FormLabel>
-            <FormControl>
-              <Input {...field} value={field.value ?? ''} readOnly className="bg-muted" />
-            </FormControl>
-            <FormDescription>SKU cannot be changed after creation.</FormDescription>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-
       {/* Category and Subcategory are ONE field: picking a subcategory
           resolves its parent category automatically, picking a category
           clears any subcategory. See category-subcategory-select.tsx.

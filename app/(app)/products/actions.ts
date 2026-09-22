@@ -12,7 +12,12 @@ import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 export type ProductFormData = {
   name: string;
   brand: string;
-  sku: string;
+  // Edit Product's own form no longer collects a SKU (retired in favor of
+  // the base selling unit's barcode) — updateProduct's `formData.sku ??
+  // existing.sku` fallback already handles an absent value by preserving
+  // the existing DB row, so this only needed to stop being required.
+  // `products.sku` the DB column is unaffected and out of scope here.
+  sku?: string;
   barcode?: string;
   description: string;
   additionalDescription?: string;

@@ -199,7 +199,7 @@ export function useEditProductForm({
   // a tab that, for a Standard product, doesn't even contain the field.
   const unitOrCostError = !!(formErrors.unitOfMeasure || formErrors.cost);
   const tabErrors = {
-    basic: !!(formErrors.name || formErrors.brand || formErrors.sku || formErrors.description || formErrors.category),
+    basic: !!(formErrors.name || formErrors.brand || formErrors.description || formErrors.category),
     inventory: product.type === 'service' && unitOrCostError,
     // The base selling unit's price-level overrides bind to the top-level
     // `priceLevels` field (see product-schema.ts), but they render inside
@@ -561,7 +561,7 @@ export function useEditProductForm({
         await logActivity({
           action: 'UPDATE',
           module: 'PRODUCTS',
-          description: `Updated product: ${values.name || product.name} (SKU: ${values.sku || product.sku})`,
+          description: `Updated product: ${values.name || product.name} (Barcode: ${values.barcode || product.sku})`,
           referenceId: String(product.id),
         });
         toast({
