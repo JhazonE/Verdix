@@ -2,6 +2,7 @@
 
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { UnitOfMeasure } from '@/lib/types';
 import type { Supplier } from '@/lib/types';
@@ -36,6 +37,9 @@ export function InventoryTab() {
     refreshUnits,
     hideInitialStock,
   } = useAddProductFormContext();
+
+  const watchedSupplierMappings = form.watch('supplierMappings');
+  const primaryMapping = (watchedSupplierMappings || []).find(m => m.isPrimary);
 
   if (itemType === 'service') {
     return (
@@ -358,19 +362,31 @@ export function InventoryTab() {
             )}
           />
         )}
-        <FormField
-          control={form.control}
-          name="reorderPoint"
-          render={({ field }) => (
-            <FormItem className={hideInitialStock ? 'sm:col-span-2' : undefined}>
-              <FormLabel>Reorder Point</FormLabel>
-              <FormControl>
-                <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {primaryMapping ? (
+          <div className={hideInitialStock ? 'sm:col-span-2 space-y-2' : 'space-y-2'}>
+            <Label>Reorder Point</Label>
+            <div>
+              <Input type="text" value={primaryMapping.rop} disabled />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Set on the Suppliers tab (this product's primary supplier).
+            </p>
+          </div>
+        ) : (
+          <FormField
+            control={form.control}
+            name="reorderPoint"
+            render={({ field }) => (
+              <FormItem className={hideInitialStock ? 'sm:col-span-2' : undefined}>
+                <FormLabel>Reorder Point</FormLabel>
+                <FormControl>
+                  <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
       </div>
     </>
   );
