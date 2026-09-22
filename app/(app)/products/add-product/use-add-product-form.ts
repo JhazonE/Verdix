@@ -168,7 +168,6 @@ export function useAddProductForm({
       reorderPoint: 0,
       price: 0,
       cost: undefined,
-      sku: '',
       barcode: '',
       conversionFactor: 1,
       conversionFactors: [],
@@ -211,7 +210,7 @@ export function useAddProductForm({
   // a tab that, for a Standard product, doesn't even contain the field.
   const unitOrCostError = !!(formErrors.unitOfMeasure || formErrors.cost);
   const tabErrors = {
-    basic: !!(formErrors.name || formErrors.brand || formErrors.sku || formErrors.description || formErrors.category),
+    basic: !!(formErrors.name || formErrors.brand || formErrors.description || formErrors.category),
     inventory: !!(formErrors.stock) || (itemType === 'service' && unitOrCostError),
     // The base selling unit's price-level overrides bind to the top-level
     // `priceLevels` field (see product-schema.ts), but they render inside
@@ -620,7 +619,7 @@ export function useAddProductForm({
         {
           ...values,
           itemType,
-          image: `https://picsum.photos/seed/${values.sku}/400/300`,
+          image: `https://picsum.photos/seed/${values.barcode}/400/300`,
         } as any,
         uid,
       );
@@ -638,7 +637,7 @@ export function useAddProductForm({
         logActivity({
           action: 'CREATE',
           module: 'PRODUCTS',
-          description: `Added product: ${values.name} (SKU: ${values.sku}) — Category: ${values.category || 'N/A'}`,
+          description: `Added product: ${values.name} (Barcode: ${values.barcode}) — Category: ${values.category || 'N/A'}`,
           referenceId: result.productId,
         }).catch(() => {
           // Silently ignore activity logging errors
@@ -660,7 +659,10 @@ export function useAddProductForm({
           avgDailySales: 0,
           price: values.price,
           cost: values.cost,
-          sku: values.sku,
+          // `Product.sku` (lib/types.ts) is still a required string — out of
+          // scope for this task, which only retires the Add Product form's
+          // OWN sku field. Pass '' rather than reintroducing a sku value here.
+          sku: '',
           barcode: values.barcode,
           imageUrl: '',
           imageHint: '',
@@ -692,13 +694,6 @@ export function useAddProductForm({
       setIsSubmitting(false);
     }
   }
-
-  const generateSku = () => {
-    const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const brandPart = form.getValues('brand')?.substring(0, 3).toUpperCase() || 'BRD';
-    const namePart = form.getValues('name')?.substring(0, 3).toUpperCase() || 'PRO';
-    form.setValue('sku', `${brandPart}-${namePart}-${randomPart}`);
-  };
 
   const generateBarcode = (
     fieldPath: 'barcode' | `sellingUnits.${number}.barcode` = 'barcode',
@@ -760,7 +755,6 @@ export function useAddProductForm({
 
     // handlers
     onSubmit,
-    generateSku,
     generateBarcode,
     refreshBrands,
     refreshDepartments,

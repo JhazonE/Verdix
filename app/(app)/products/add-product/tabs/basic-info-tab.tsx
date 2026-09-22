@@ -1,8 +1,5 @@
 'use client';
 
-import { Wand2 } from 'lucide-react';
-
-import { Button } from '@/components/ui/button';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -23,7 +20,6 @@ export function BasicInfoTab() {
     refreshBrands,
     refreshCategories,
     refreshSubcategories,
-    generateSku,
   } = useAddProductFormContext();
 
   const watchedCategoryName = form.watch('category');
@@ -87,35 +83,6 @@ export function BasicInfoTab() {
           )}
         />
       </div>
-
-      {/* Row 2: SKU — no partner left once Category moved into the card
-          below, so it spans the full width instead of leaving an empty
-          half-row beside it. */}
-      <FormField
-        control={form.control}
-        name="sku"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>SKU</FormLabel>
-            <div className="relative">
-              <FormControl>
-                <Input placeholder="e.g., COKE-PC" {...field} className="pr-10" />
-              </FormControl>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
-                onClick={generateSku}
-              >
-                <Wand2 className="h-4 w-4" />
-                <span className="sr-only">Generate SKU</span>
-              </Button>
-            </div>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
 
       {/* Category and Subcategory are ONE field: picking a subcategory
           resolves its parent category automatically, picking a category
