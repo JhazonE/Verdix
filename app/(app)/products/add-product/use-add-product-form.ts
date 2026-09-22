@@ -233,6 +233,12 @@ export function useAddProductForm({
   const lastAutoRetailPrice = useRef<number | null>(null);
   const retailPriceEditedByUser = useRef(false);
 
+  // Mirrors lastAutoRetailPrice/retailPriceEditedByUser above, but for the
+  // base unit's Cost field being suggested from the primary supplier
+  // mapping's own cost.
+  const lastAutoSuggestedCost = useRef<number | null>(null);
+  const costEditedByUser = useRef(false);
+
   // Applies a getProductOptions()-shaped payload to every dropdown's state,
   // whichever source it came from (parent-supplied or self-fetched below).
   // Does NOT touch the form — ensureDefaultPriceLevel (below) owns that, and
@@ -301,6 +307,8 @@ export function useAddProductForm({
       // this one.
       lastAutoRetailPrice.current = null;
       retailPriceEditedByUser.current = false;
+      lastAutoSuggestedCost.current = null;
+      costEditedByUser.current = false;
 
       // Set default tax rate if available and valid
       if (taxRates.length > 0) {
@@ -457,6 +465,31 @@ export function useAddProductForm({
     }
 
   }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, markupSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, priceLevelFields]);
+
+  const [costSuggestionSource, setCostSuggestionSource] = useState<string | null>(null);
+
+  useEffect(() => {
+    const primaryMapping = (watchedSupplierMappings || []).find(m => m.isPrimary);
+    if (!primaryMapping || primaryMapping.cost == null) {
+      setCostSuggestionSource(null);
+      return;
+    }
+    if (costEditedByUser.current) {
+      return;
+    }
+
+    const suggested = primaryMapping.cost;
+    const currentValue = form.getValues('cost');
+    if (lastAutoSuggestedCost.current !== null && currentValue !== lastAutoSuggestedCost.current) {
+      costEditedByUser.current = true;
+      return;
+    }
+
+    form.setValue('cost', suggested);
+    lastAutoSuggestedCost.current = suggested;
+    const supplierName = suppliers.find(s => s.id === primaryMapping.supplierId)?.name;
+    setCostSuggestionSource(`Suggested from ${supplierName || 'the primary supplier'}'s cost`);
+  }, [watchedSupplierMappings, suppliers, form]);
 
   // Auto-update main price when a price level is selected
   useEffect(() => {
@@ -722,6 +755,7 @@ export function useAddProductForm({
     tabErrors,
     selectedPriceLevelId, setSelectedPriceLevelId,
     markupSource,
+    costSuggestionSource,
 
     // handlers
     onSubmit,

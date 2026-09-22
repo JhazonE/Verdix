@@ -156,6 +156,7 @@ export function SellingUnitsTab() {
     unitsOfMeasure, isLoadingUnits, refreshUnits,
     selectedUnitOfMeasure,
     generateBarcode,
+    costSuggestionSource,
   } = useAddProductFormContext();
 
   const [baseExpanded, setBaseExpanded] = useState(false);
@@ -322,6 +323,12 @@ export function SellingUnitsTab() {
                           />
                         </FormControl>
                         <FormMessage />
+                        {costSuggestionSource && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Wand2 className="h-3 w-3" />
+                            {costSuggestionSource}
+                          </p>
+                        )}
                       </FormItem>
                     )}
                   />
