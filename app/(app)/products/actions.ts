@@ -18,7 +18,7 @@ export type ProductFormData = {
   // the existing DB row, so this only needed to stop being required.
   // `products.sku` the DB column is unaffected and out of scope here.
   sku?: string;
-  barcode?: string;
+  barcode: string;
   description: string;
   additionalDescription?: string;
   category: string;
@@ -626,7 +626,11 @@ export async function addProduct(
       throw error;
     }
 
-    const productId = `${formData.sku}-${Date.now()}`;
+    // formData.sku no longer exists on a submitted product's payload (see
+    // product-schema.ts) — formData.barcode (the base selling unit's
+    // barcode) is required by Task 3's schema change for both item types,
+    // so it's always a real value here, not `undefined`.
+    const productId = `${formData.barcode}-${Date.now()}`;
     const isServiceProduct = formData.itemType === 'service';
 
     // Services are performed at the store, not stocked in a warehouse the user
@@ -666,7 +670,13 @@ export async function addProduct(
         // services: cost is required at creation precisely so cost_at_sale is
         // never NULL, and 0 is a legitimate answer for a pure-margin service.
         cost: formData.cost ?? null,
-        sku: formData.sku,
+        // products.sku is retired as a user-facing field (see the
+        // retire-product-sku spec) but the column itself stays populated —
+        // kept in sync with the base unit's barcode — because every other
+        // file still reading products.sku (search, reports, bulk import,
+        // etc.) is migrated to barcode in later, separate sub-projects and
+        // must keep seeing a matching value until then.
+        sku: formData.barcode,
         barcode: formData.barcode || null,
         image_url: formData.image || null,
         image_hint: formData.name.toLowerCase().replace(/\s+/g, '-'),
