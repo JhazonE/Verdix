@@ -82,7 +82,13 @@ export async function POST(request: NextRequest) {
     console.error('Error creating product:', error);
     return NextResponse.json(
       { success: false, error: error.message || 'Failed to create product' },
-      { status: error.message === 'Name and price are required' ? 400 : 500 }
+      {
+        status:
+          error.message === 'Name and price are required' ||
+          error.message === 'Either sku or barcode is required'
+            ? 400
+            : 500,
+      }
     );
   }
 }

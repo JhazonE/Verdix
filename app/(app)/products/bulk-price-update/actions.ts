@@ -100,7 +100,7 @@ export async function createProductsFromExcel(
         name: row.name,
         brand: row.brand,
         sku: row.sku,
-        barcode: row.barcode || undefined,
+        barcode: row.barcode || row.sku,
         description: row.name,
         category: row.category,
         warehouse: warehouseId,

@@ -291,7 +291,7 @@ export function SellingUnitsTab() {
                       <div className="relative">
                         <FormControl>
                           <Input
-                            placeholder="Optional"
+                            placeholder="Required"
                             value={field.value ?? ''}
                             onChange={field.onChange}
                             className="pr-9"

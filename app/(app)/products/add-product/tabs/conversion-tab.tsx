@@ -300,7 +300,7 @@ export function SellingUnitsTab() {
                         <FormLabel className="text-xs">Barcode</FormLabel>
                         <div className="relative">
                           <FormControl>
-                            <Input placeholder="Optional" value={field.value ?? ''} onChange={field.onChange} className="pr-9" />
+                            <Input placeholder="Required" value={field.value ?? ''} onChange={field.onChange} className="pr-9" />
                           </FormControl>
                           <Button
                             type="button"

@@ -139,7 +139,7 @@ export function useEditProductForm({
       brand: product.brand ?? '',
       department: product.department ?? '',
       cost: product.cost ?? undefined,
-      barcode: product.barcode ?? '',
+      barcode: product.sellingUnits?.find(su => su.isBase)?.barcode || product.barcode || '',
       additionalDescription: product.additionalDescription ?? '',
       incomeAccount: product.incomeAccount ?? '',
       expenseAccount: product.expenseAccount ?? '',
@@ -239,7 +239,7 @@ export function useEditProductForm({
           category: product.category ?? '',
           brand: product.brand ?? '',
           cost: product.cost ?? undefined,
-          barcode: product.barcode ?? '',
+          barcode: product.sellingUnits?.find(su => su.isBase)?.barcode || product.barcode || '',
           additionalDescription: product.additionalDescription ?? '',
           incomeAccount: product.incomeAccount ?? '',
           expenseAccount: product.expenseAccount ?? '',
@@ -561,7 +561,7 @@ export function useEditProductForm({
         await logActivity({
           action: 'UPDATE',
           module: 'PRODUCTS',
-          description: `Updated product: ${values.name || product.name} (Barcode: ${values.barcode || product.sku})`,
+          description: `Updated product: ${values.name || product.name} (Barcode: ${values.barcode || product.sellingUnits?.find(su => su.isBase)?.barcode || product.barcode})`,
           referenceId: String(product.id),
         });
         toast({

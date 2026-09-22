@@ -21,6 +21,9 @@ export class CreateProductUseCase {
     if (!request.name || !request.price) {
       throw new Error('Name and price are required');
     }
+    if (!request.sku && !request.barcode) {
+      throw new Error('Either sku or barcode is required');
+    }
 
     const productId = await this.productRepository.create(request);
     return productId;

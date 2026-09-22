@@ -661,8 +661,11 @@ export function useAddProductForm({
           cost: values.cost,
           // `Product.sku` (lib/types.ts) is still a required string — out of
           // scope for this task, which only retires the Add Product form's
-          // OWN sku field. Pass '' rather than reintroducing a sku value here.
-          sku: '',
+          // OWN sku field. Mirror the barcode here (matching how the backend
+          // now derives products.sku) instead of an empty string, keeping
+          // this emitted object internally consistent; nothing currently
+          // reads this field since onProductCreated has no live caller.
+          sku: values.barcode,
           barcode: values.barcode,
           imageUrl: '',
           imageHint: '',
