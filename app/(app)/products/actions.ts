@@ -2441,10 +2441,29 @@ export async function deletePriceLevel(id: string) {
 export async function addSupplierMapping(productId: string, supplierId: string, leadTime: number, rop: number, cost?: number, supplierSku?: string, isPrimary: boolean = false) {
   try {
     const id = `spm_${Date.now()}`;
-    if (isPrimary) {
+
+    const existingCount: any = await query(
+      'SELECT COUNT(*) as count FROM supplier_product_mapping WHERE product_id = ?',
+      [productId]
+    );
+    // A product's very first mapping is always primary — markup, reorder
+    // point, and the selling-unit cost suggestion all read "the primary
+    // mapping", and none of them should have to handle "one mapping exists
+    // but none is primary" as a normal state.
+    // Matches this file's own established unwrap convention for a
+    // `COUNT(*) as count` query — see getProductsCount's `result[0].count`.
+    const isFirstMapping = existingCount[0].count === 0;
+    const resolvedIsPrimary = isFirstMapping ? true : isPrimary;
+
+    if (resolvedIsPrimary) {
       await query('UPDATE supplier_product_mapping SET is_primary = 0 WHERE product_id = ?', [productId]);
     }
-    await query('INSERT INTO supplier_product_mapping (id, product_id, supplier_id, supplier_lead_time, supplier_specific_rop, supplier_cost, supplier_sku, is_primary) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [id, productId, supplierId, leadTime, rop, cost || null, supplierSku || null, isPrimary ? 1 : 0]);
+    await query('INSERT INTO supplier_product_mapping (id, product_id, supplier_id, supplier_lead_time, supplier_specific_rop, supplier_cost, supplier_sku, is_primary) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [id, productId, supplierId, leadTime, rop, cost || null, supplierSku || null, resolvedIsPrimary ? 1 : 0]);
+
+    if (resolvedIsPrimary) {
+      await query('UPDATE products SET reorder_point = ? WHERE id = ?', [rop, productId]);
+    }
+
     return { success: true, message: 'Supplier mapping added successfully.' };
   } catch (error) {
     console.error('Error adding supplier mapping:', error);
