@@ -221,10 +221,19 @@ export function useEditProductForm({
   const lastAutoRetailPrice = useRef<number | null>(null);
   const retailPriceEditedByUser = useRef(false);
 
+  // Mirrors lastAutoRetailPrice/retailPriceEditedByUser above, but for the
+  // base unit's Cost field being suggested from the primary supplier
+  // mapping's own cost. Reset on the same product-open effect as those two,
+  // so a manual edit on a previously-open product doesn't carry into the next.
+  const lastAutoSuggestedCost = useRef<number | null>(null);
+  const costEditedByUser = useRef(false);
+
   useEffect(() => {
     if (product && isOpen) {
       lastAutoRetailPrice.current = null;
       retailPriceEditedByUser.current = false;
+      lastAutoSuggestedCost.current = null;
+      costEditedByUser.current = false;
       const sanitizedProduct = {
           ...product,
           category: product.category ?? '',
@@ -390,6 +399,33 @@ export function useEditProductForm({
       setMarkupSource(null);
     }
   }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, markupSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, isInitialized, priceLevelFields]);
+
+  const [costSuggestionSource, setCostSuggestionSource] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isInitialized || !primarySupplierMapping || primarySupplierMapping.supplierCost == null) {
+      setCostSuggestionSource(null);
+      return;
+    }
+    if (costEditedByUser.current) {
+      // User already overrode a previous suggestion this session — respect
+      // that for the rest of it, same contract as retailPriceEditedByUser.
+      return;
+    }
+
+    const suggested = primarySupplierMapping.supplierCost;
+    const currentValue = form.getValues('cost');
+    // A mismatch against what this effect itself wrote last means the user
+    // changed it in between — respect that and stop suggesting.
+    if (lastAutoSuggestedCost.current !== null && currentValue !== lastAutoSuggestedCost.current) {
+      costEditedByUser.current = true;
+      return;
+    }
+
+    form.setValue('cost', suggested);
+    lastAutoSuggestedCost.current = suggested;
+    setCostSuggestionSource(`Suggested from ${primarySupplierMapping.supplierName || 'the primary supplier'}'s cost`);
+  }, [isInitialized, primarySupplierMapping, form]);
 
   // Auto-update main price when a price level is selected
   useEffect(() => {
@@ -600,6 +636,7 @@ export function useEditProductForm({
     tabErrors,
     selectedPriceLevelId, setSelectedPriceLevelId,
     markupSource,
+    costSuggestionSource,
 
     // handlers
     generateBarcode,
