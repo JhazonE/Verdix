@@ -33,7 +33,6 @@ const baseProductSchema = z.object({
 /** Stocked goods — the existing behaviour, unchanged. */
 const standardProductSchema = baseProductSchema.extend({
   itemType: z.literal('standard'),
-  supplier: z.string().optional(),
   warehouse: z.string().optional(),
   shelfLocationIds: z.array(z.string()).optional(),
   stock: z.coerce.number().int().nonnegative('Initial stock must be a non-negative integer'),
@@ -111,7 +110,6 @@ const serviceProductSchema = baseProductSchema.extend({
   cost: z.coerce.number().nonnegative('Cost is required for services (enter 0 if there is no input cost)'),
   stock: z.literal(0).default(0),
   reorderPoint: z.literal(0).default(0),
-  supplier: z.undefined(),
   warehouse: z.undefined(),
   shelfLocationIds: z.undefined(),
   parentId: z.undefined(),

@@ -651,7 +651,7 @@ export async function addProduct(
         // apply to services, so it is never written for one.
         department: isServiceProduct ? null : (formData.department || null),
         subcategory: formData.subcategory || null,
-        supplier_id: formData.supplier || null,
+        supplier_id: null,
         warehouse_id: resolvedWarehouseId,
         stock: formData.stock || 0,
         reorder_point: formData.reorderPoint || formData.supplierMappings?.find(m => m.isPrimary)?.rop || 0,

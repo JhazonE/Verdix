@@ -161,7 +161,6 @@ export function useAddProductForm({
       additionalDescription: '',
       category: '',
       subcategory: '',
-      supplier: '',
       warehouse: '',
       shelfLocationIds: [],
       unitOfMeasure: '',
@@ -387,7 +386,6 @@ export function useAddProductForm({
       form.setValue('reorderPoint', 0);
       form.setValue('cost', 0);
       form.setValue('department', undefined);
-      form.setValue('supplier', undefined);
       form.setValue('warehouse', undefined);
       form.setValue('shelfLocationIds', undefined);
       form.setValue('parentId', undefined);
@@ -623,7 +621,6 @@ export function useAddProductForm({
           brand: values.brand,
           department: values.department,
           subcategory: values.subcategory,
-          supplier: values.supplier,
           stock: values.stock ?? 0,
           reorderPoint: values.reorderPoint ?? 0,
           avgDailySales: 0,
