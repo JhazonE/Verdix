@@ -177,6 +177,7 @@ export function useAddProductForm({
       priceLevels: [],
       earnsPoints: true,
       isPerishable: false,
+      supplierMappings: [],
     },
   });
 
@@ -188,6 +189,11 @@ export function useAddProductForm({
   const { fields: sellingUnitFields, append: appendSellingUnit, remove: removeSellingUnit } = useFieldArray({
     control: form.control,
     name: "sellingUnits",
+  });
+
+  const { fields: supplierMappingFields, append: appendSupplierMapping, remove: removeSupplierMapping, update: updateSupplierMappingField } = useFieldArray({
+    control: form.control,
+    name: "supplierMappings",
   });
 
   const { fields: priceLevelFields, append: appendPriceLevel, remove: removePriceLevel, replace: replacePriceLevels } = useFieldArray({
@@ -389,6 +395,7 @@ export function useAddProductForm({
       form.setValue('conversionFactors', undefined);
       form.setValue('sellingUnits', undefined);
       form.setValue('isPerishable', undefined);
+      form.setValue('supplierMappings', undefined);
     }
   }, [itemType, form]);
 
@@ -710,6 +717,7 @@ export function useAddProductForm({
     conversionFactorFields, appendConversionFactor, removeConversionFactor,
     sellingUnitFields, appendSellingUnit, removeSellingUnit,
     priceLevelFields, appendPriceLevel, removePriceLevel, replacePriceLevels,
+    supplierMappingFields, appendSupplierMapping, removeSupplierMapping, updateSupplierMappingField,
 
     // derived values
     selectedUnitOfMeasure,

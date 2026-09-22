@@ -23,6 +23,7 @@ import { BasicInfoTab } from './tabs/basic-info-tab';
 import { InventoryTab } from './tabs/inventory-tab';
 import { SellingUnitsTab } from './tabs/conversion-tab';
 import { LoyaltyTab } from './tabs/loyalty-tab';
+import { SuppliersTab } from './tabs/suppliers-tab';
 
 export function AddProductDialog(props: UseAddProductFormProps) {
   const controller = useAddProductForm(props);
@@ -177,6 +178,14 @@ export function AddProductDialog(props: UseAddProductFormProps) {
                       >
                         Loyalty
                       </TabsTrigger>
+                      {itemType === 'standard' && (
+                        <TabsTrigger
+                          value="suppliers"
+                          className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
+                        >
+                          Suppliers
+                        </TabsTrigger>
+                      )}
                     </TabsList>
                     <TabsContent value="basic" className="space-y-4 p-6">
                       <BasicInfoTab />
@@ -192,6 +201,11 @@ export function AddProductDialog(props: UseAddProductFormProps) {
                     <TabsContent value="loyalty" className="space-y-4 p-6">
                       <LoyaltyTab />
                     </TabsContent>
+                    {itemType === 'standard' && (
+                      <TabsContent value="suppliers" className="space-y-4 p-6">
+                        <SuppliersTab />
+                      </TabsContent>
+                    )}
                   </Tabs>
                 </div>
               </form>

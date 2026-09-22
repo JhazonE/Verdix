@@ -78,6 +78,21 @@ const standardProductSchema = baseProductSchema.extend({
     })).optional(),
   })).optional(),
   isPerishable: z.boolean().optional(),
+  /**
+   * Suppliers this product can be sourced from, beyond the single `supplier`
+   * field above. `supplier` still drives markup precedence (see purchase-utils.ts);
+   * these are additional per-supplier SKU/lead-time/ROP/cost records written
+   * to supplier_product_mapping by addProduct in the same transaction as the
+   * product itself. At most one entry may have `isPrimary: true`.
+   */
+  supplierMappings: z.array(z.object({
+    supplierId: z.string().min(1, 'Supplier is required'),
+    supplierSku: z.string().optional(),
+    leadTime: z.coerce.number().int().nonnegative(),
+    rop: z.coerce.number().int().nonnegative(),
+    cost: z.coerce.number().nonnegative().optional(),
+    isPrimary: z.boolean().default(false),
+  })).optional(),
 });
 
 /**
@@ -104,6 +119,7 @@ const serviceProductSchema = baseProductSchema.extend({
   conversionFactors: z.undefined(),
   sellingUnits: z.undefined(),
   isPerishable: z.undefined(),
+  supplierMappings: z.undefined(),
 });
 
 export const productSchema = z.discriminatedUnion('itemType', [

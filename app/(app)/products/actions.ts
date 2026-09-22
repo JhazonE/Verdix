@@ -3,7 +3,7 @@
 import { query, withTransaction } from '@/lib/mysql';
 import { generateBatchId } from '@/lib/batch-utils';
 import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
-import { PriceLevel, Category, Brand, Supplier, Warehouse, Department, UnitOfMeasure, ShelfLocation, Account, TaxRate } from '@/lib/types';
+import { PriceLevel, Category, Brand, Supplier, Warehouse, Department, UnitOfMeasure, ShelfLocation, Account, TaxRate, SupplierProductMapping } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { isValidMarkupValue, MARKUP_MAX } from '@/lib/markup-validation';
 import { updateStockAndRecordMovement } from '@/lib/stock-movements';
@@ -2476,15 +2476,31 @@ export async function deleteSupplierMapping(id: string) {
   }
 }
 
-export async function getSupplierMappings(productId: string) {
+export async function getSupplierMappings(productId: string): Promise<SupplierProductMapping[]> {
   try {
     const sql = `
-      SELECT spm.*, s.name as supplierName 
+      SELECT spm.*, s.name as supplierName
       FROM supplier_product_mapping spm
       JOIN suppliers s ON spm.supplier_id = s.id
       WHERE spm.product_id = ?
     `;
-    return await query(sql, [productId]);
+    const rows: any = await query(sql, [productId]);
+    // Map DB snake_case to the camelCase shape SupplierProductMapping/the UI
+    // expect — spm.* comes back raw (product_id, supplier_lead_time,
+    // is_primary as 0/1), unlike supplierName which is already aliased above.
+    return rows.map((r: any) => ({
+      id: r.id,
+      productId: r.product_id,
+      supplierId: r.supplier_id,
+      supplierName: r.supplierName,
+      supplierSku: r.supplier_sku ?? undefined,
+      supplierLeadTime: r.supplier_lead_time ?? 0,
+      supplierSpecificRop: r.supplier_specific_rop ?? 0,
+      supplierCost: r.supplier_cost != null ? parseFloat(r.supplier_cost) : undefined,
+      isPrimary: !!r.is_primary,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
   } catch (error) {
     console.error('Error fetching supplier mappings:', error);
     return [];
