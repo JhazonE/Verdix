@@ -843,7 +843,17 @@ export async function updateProduct(id: string, formData: ProductFormData) {
         reorder_point: formData.reorderPoint !== undefined ? formData.reorderPoint : existing.reorder_point,
         price: formData.price !== undefined ? formData.price : existing.price,
         cost: (formData.cost !== undefined ? formData.cost : existing.cost) || null,
-        sku: formData.sku ?? existing.sku,
+        // Same mirroring rationale as addProduct (see that function's own
+        // comment on this) — products.sku tracks the base selling unit's
+        // barcode now. formData.barcode is required by the Edit schema for
+        // a standard product's submission (Task 3), but this function is
+        // also reachable for a partial update that doesn't touch the
+        // barcode field at all — falling back to the already-stored
+        // existing.barcode (the products.barcode column, which this
+        // function ALSO mirrors from formData.barcode a few lines below)
+        // keeps sku in sync with whatever barcode value survives this call,
+        // rather than reverting to a stale existing.sku.
+        sku: (formData.barcode !== undefined ? formData.barcode : existing.barcode) || existing.sku,
         barcode: (formData.barcode !== undefined ? formData.barcode : existing.barcode) || null,
         image_url: (formData.image !== undefined ? formData.image : existing.image_url) || null,
         image_hint: formData.name ? formData.name.toLowerCase().replace(/\s+/g, '-') : existing.image_hint,
