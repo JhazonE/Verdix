@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     // Paginated rows
     const sql = `
       SELECT
-        p.id, p.name, p.sku, p.barcode, p.category, p.brand,
+        p.id, p.name, p.barcode, p.category, p.brand,
         p.stock, p.unit_of_measure, p.cost, p.price,
         ${COST_VALUE_EXPR} as cost_value,
         (p.stock * COALESCE(p.price, 0)) as retail_value,
