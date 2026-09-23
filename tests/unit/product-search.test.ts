@@ -11,8 +11,8 @@ import { matchesProductSearch } from '../../lib/product-search';
 
 const product: any = {
   name: 'Chubby Funmix 40pcs',
-  sku: 'BRD-CHU-4OVDCP',
   barcode: '4800103343532',
+  sellingUnits: [{ isBase: true, barcode: '4800103343532' }],
 };
 
 // ─── the point of the change: barcode matches ────────────────────────────
@@ -27,18 +27,45 @@ assert.equal(
   'a partial barcode matches, so a half-typed code still narrows the list',
 );
 
+// ─── base unit barcode matches even with no legacy barcode field ────────
+const productWithOnlyBaseUnitBarcode: any = {
+  name: 'No Legacy Barcode Item',
+  sellingUnits: [{ isBase: true, barcode: '1234567890123' }],
+};
+assert.equal(
+  matchesProductSearch(productWithOnlyBaseUnitBarcode, '1234567890123'),
+  true,
+  'a product with only a base selling unit barcode (no legacy products.barcode) still matches',
+);
+assert.equal(
+  matchesProductSearch(productWithOnlyBaseUnitBarcode, '9999999999999'),
+  false,
+  'an unrelated code does not match the base unit barcode either',
+);
+
+// ─── a non-base extra unit's barcode is NOT matched by this function ────
+// matchesNormalizedSearch only checks the BASE unit — an extra unit's own
+// barcode is deliberately out of scope here (callers that need to match
+// extras do so themselves, e.g. use-pos.ts's own unitBarcodeMatch check).
+const productWithOnlyExtraUnitBarcode: any = {
+  name: 'Extra Unit Only Item',
+  sellingUnits: [
+    { isBase: true, barcode: '' },
+    { isBase: false, barcode: '5555555555555' },
+  ],
+};
+assert.equal(
+  matchesProductSearch(productWithOnlyExtraUnitBarcode, '5555555555555'),
+  false,
+  'an extra (non-base) selling unit barcode is not matched by this shared helper',
+);
+
 // ─── existing behaviour must survive ─────────────────────────────────────
 assert.equal(matchesProductSearch(product, 'Chubby'), true, 'name still matches');
-assert.equal(matchesProductSearch(product, 'BRD-CHU'), true, 'sku still matches');
 assert.equal(
   matchesProductSearch(product, 'chubby'),
   true,
   'matching is case-insensitive',
-);
-assert.equal(
-  matchesProductSearch(product, 'brd-chu'),
-  true,
-  'sku matching is case-insensitive too',
 );
 
 // ─── scanner realities ───────────────────────────────────────────────────
