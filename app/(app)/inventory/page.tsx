@@ -148,14 +148,14 @@ export default function InventoryPage() {
             onChange={(e) => handleSearch(e.target.value)}
           />
         </div>
-        <Select value={sortBy} onValueChange={(v) => setSortBy(v as 'name' | 'stock' | 'sku')}>
+        <Select value={sortBy} onValueChange={(v) => setSortBy(v as 'name' | 'stock' | 'barcode')}>
           <SelectTrigger className="w-full md:w-[180px]">
             <SelectValue placeholder="Sort by" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="name">Name</SelectItem>
             <SelectItem value="stock">Stock Level</SelectItem>
-            <SelectItem value="sku">SKU</SelectItem>
+            <SelectItem value="barcode">Barcode</SelectItem>
           </SelectContent>
         </Select>
         <Select value={typeFilter} onValueChange={(v) => handleTypeFilterChange(v as 'all' | 'standard' | 'service')}>
