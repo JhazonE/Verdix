@@ -71,7 +71,7 @@ export function SourcePane({
             never flickers while typing. */}
         <div className="relative">
           <Input
-            placeholder="Search name, SKU or barcode..."
+            placeholder="Search name or barcode..."
             value={sourceSearch}
             onChange={e => onSearchChange(e.target.value)}
             className="h-8 text-sm pr-8"
@@ -112,7 +112,9 @@ export function SourcePane({
                   <Badge variant="outline" className="text-[9px] px-1 h-3.5 truncate max-w-[80px]">
                     {item.warehouseName}
                   </Badge>
-                  <span className="text-[9px] truncate font-mono">{item.product.sku}</span>
+                  <span className="text-[9px] truncate font-mono">
+                    {item.product.sellingUnits?.find((su) => su.isBase)?.barcode || item.product.barcode}
+                  </span>
                 </div>
               </div>
               <div className="flex justify-end">
