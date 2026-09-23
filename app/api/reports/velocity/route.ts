@@ -35,10 +35,9 @@ export async function GET(request: NextRequest) {
         )
       `;
       sqlSelect = `
-        SELECT 
+        SELECT
           p.id,
           p.name,
-          p.sku,
           p.barcode,
           p.category,
           p.stock,
@@ -72,7 +71,6 @@ export async function GET(request: NextRequest) {
         SELECT
           p.id,
           p.name,
-          p.sku,
           p.barcode,
           p.category,
           p.stock,
@@ -89,7 +87,7 @@ export async function GET(request: NextRequest) {
     let sql = `
       ${sqlSelect}
       ${baseSql}
-      GROUP BY p.id, p.name, p.sku, p.barcode, p.category, p.stock
+      GROUP BY p.id, p.name, p.barcode, p.category, p.stock
     `;
 
     // Sort based on type
