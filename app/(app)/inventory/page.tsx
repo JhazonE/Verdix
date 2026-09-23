@@ -142,7 +142,7 @@ export default function InventoryPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search products by name or SKU..."
+            placeholder="Search products by name or barcode..."
             className="pl-9"
             value={searchTerm}
             onChange={(e) => handleSearch(e.target.value)}
@@ -208,7 +208,6 @@ export default function InventoryPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[300px]">Product</TableHead>
-                <TableHead>SKU</TableHead>
                 <TableHead>Barcode</TableHead>
                 <TableHead>Stock</TableHead>
                 <TableHead>Status</TableHead>
