@@ -53,9 +53,10 @@ export function ProductCard({ product, hasChildren = false, onSuccess, requireAd
                 </Badge>
               )}
             </h3>
-            <p className="text-sm text-muted-foreground">SKU: {product.sku}</p>
-            {product.barcode && (
-              <p className="text-sm text-muted-foreground font-mono">BC: {product.barcode}</p>
+            {(product.sellingUnits?.find((su) => su.isBase)?.barcode || product.barcode) && (
+              <p className="text-sm text-muted-foreground font-mono">
+                Barcode: {product.sellingUnits?.find((su) => su.isBase)?.barcode || product.barcode}
+              </p>
             )}
           </div>
           <div className={cn("flex items-center gap-2", hasChildren && "mr-10")}>
