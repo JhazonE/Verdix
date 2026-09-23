@@ -2680,7 +2680,9 @@ export async function searchProducts(searchQuery: string) {
       SELECT p.id, p.name, p.sku, p.barcode, p.stock, p.unit_of_measure, p.parent_id, p.conversion_factor, p.price, p.cost,
              (SELECT JSON_ARRAYAGG(JSON_OBJECT('unit', unit, 'factor', factor))
               FROM conversion_factors cf
-              WHERE cf.product_id = p.id) as conversion_factors
+              WHERE cf.product_id = p.id) as conversion_factors,
+             (SELECT su.barcode FROM product_selling_units su
+              WHERE su.product_id = p.id AND su.is_base = 1 LIMIT 1) as base_unit_barcode
       FROM products p
       WHERE (p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ? OR EXISTS (
         SELECT 1 FROM product_selling_units su WHERE su.product_id = p.id AND su.barcode LIKE ?
@@ -2694,6 +2696,7 @@ export async function searchProducts(searchQuery: string) {
       name: r.name,
       sku: r.sku,
       barcode: r.barcode,
+      baseUnitBarcode: r.base_unit_barcode,
       stock: r.stock,
       unitOfMeasure: r.unit_of_measure,
       parentId: r.parent_id,
