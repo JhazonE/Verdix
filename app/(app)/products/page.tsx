@@ -135,8 +135,9 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
             </div>
           )}
         </TableCell>
-        <TableCell className="hidden md:table-cell">{product.sku}</TableCell>
-        <TableCell className="hidden lg:table-cell">{product.barcode}</TableCell>
+        <TableCell className="hidden md:table-cell">
+          {product.sellingUnits?.find((su) => su.isBase)?.barcode || product.barcode}
+        </TableCell>
         <TableCell className="hidden sm:table-cell text-center text-muted-foreground">
           {product.unitOfMeasure}
         </TableCell>
@@ -855,8 +856,7 @@ function ProductsContent() {
               <TableRow className="hover:bg-transparent border-b-2 border-border">
                 <TableHead className={cn(HEAD_CLASS, "w-12 hidden sm:table-cell")} />
                 <TableHead className={HEAD_CLASS}>Name</TableHead>
-                <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell")}>SKU</TableHead>
-                <TableHead className={cn(HEAD_CLASS, "hidden lg:table-cell")}>Barcode</TableHead>
+                <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell")}>Barcode</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "hidden sm:table-cell text-center")}>Unit</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "text-center")}>Stock</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell text-right")}>Cost</TableHead>
