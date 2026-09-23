@@ -13,8 +13,8 @@ export type TargetMode = 'search' | 'create';
 export type SearchResult = {
   id: string;
   name: string;
-  sku: string;
   barcode: string;
+  baseUnitBarcode: string | null;
   stock: number;
   unitOfMeasure: string;
   parentId: string | null;
