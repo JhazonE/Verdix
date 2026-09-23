@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         si.id         AS saleItemId,
         si.product_id AS productId,
         p.name        AS productName,
-        p.sku,
+        su.barcode    AS baseUnitBarcode,
         p.barcode,
         p.category,
         si.quantity   AS qtySold,
@@ -52,6 +52,7 @@ export async function GET(request: NextRequest) {
       FROM sale_items si
       JOIN sales_transactions st ON si.sale_id = st.id
       JOIN products p ON si.product_id = p.id
+      LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
       WHERE DATE(st.created_at) BETWEEN ? AND ?
         AND si.batch_source IS NOT NULL
         ${productFilter}
@@ -113,7 +114,7 @@ export async function GET(request: NextRequest) {
           saleReference: row.reference,
           productId: row.productId,
           productName: row.productName,
-          sku: row.sku,
+          baseUnitBarcode: row.baseUnitBarcode,
           barcode: row.barcode,
           category: row.category,
           batchId: split.batchId,
