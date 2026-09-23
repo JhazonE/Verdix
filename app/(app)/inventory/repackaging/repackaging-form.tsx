@@ -104,7 +104,7 @@ export function RepackagingForm({ onSuccess }: { onSuccess?: () => void }) {
                     >
                       <div>
                         <p className="font-bold">{p.name}</p>
-                        <p className="text-sm text-muted-foreground">{p.sku} · Stock: {formatQuantity(p.stock)} {p.unitOfMeasure}</p>
+                        <p className="text-sm text-muted-foreground">{p.baseUnitBarcode || p.barcode} · Stock: {formatQuantity(p.stock)} {p.unitOfMeasure}</p>
                       </div>
                       <Badge variant="outline">Select</Badge>
                     </button>
@@ -117,7 +117,7 @@ export function RepackagingForm({ onSuccess }: { onSuccess?: () => void }) {
                   <div className="flex items-start justify-between">
                     <div>
                       <h4 className="text-xl font-bold text-primary">{selectedSource.name}</h4>
-                      <p className="text-sm text-muted-foreground">{selectedSource.sku}</p>
+                      <p className="text-sm text-muted-foreground">{selectedSource.baseUnitBarcode || selectedSource.barcode}</p>
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => setSelectedSource(null)}>Change</Button>
                   </div>
@@ -206,7 +206,7 @@ export function RepackagingForm({ onSuccess }: { onSuccess?: () => void }) {
                         >
                           <div>
                             <p className="font-bold">{p.name}</p>
-                            <p className="text-sm text-muted-foreground">{p.sku} · {p.unitOfMeasure}</p>
+                            <p className="text-sm text-muted-foreground">{p.baseUnitBarcode || p.barcode} · {p.unitOfMeasure}</p>
                           </div>
                           <Badge variant="outline">Select</Badge>
                         </button>
@@ -218,7 +218,7 @@ export function RepackagingForm({ onSuccess }: { onSuccess?: () => void }) {
                     <div className="p-6 bg-secondary/5 rounded-2xl border border-secondary/20 flex items-center justify-between">
                       <div>
                         <h4 className="text-xl font-bold">{selectedTarget.name}</h4>
-                        <p className="text-sm text-muted-foreground">{selectedTarget.sku} · {selectedTarget.unitOfMeasure}</p>
+                        <p className="text-sm text-muted-foreground">{selectedTarget.baseUnitBarcode || selectedTarget.barcode} · {selectedTarget.unitOfMeasure}</p>
                       </div>
                       <Button variant="ghost" size="sm" onClick={() => setSelectedTarget(null)}>Change</Button>
                     </div>
