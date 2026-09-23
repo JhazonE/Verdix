@@ -109,8 +109,8 @@ export function useBulkAdjustment() {
       filtered = filtered.filter(p => p.warehouseId === warehouseId || p.warehouse === warehouseId);
     }
     // Normalize once rather than re-lowercasing the term for every product on
-    // every keystroke. Matching covers barcode as well as name/SKU, so a
-    // scanner finds the item — see lib/product-search.ts.
+    // every keystroke. Matching covers the base selling unit's barcode as
+    // well as name — see lib/product-search.ts.
     const term = normalizeSearchTerm(search);
     return filtered.filter(p => matchesNormalizedSearch(p, term)).slice(0, 40);
   }, [allProducts, search, warehouseId]);

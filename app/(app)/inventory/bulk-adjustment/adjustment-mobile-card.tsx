@@ -30,7 +30,9 @@ export function AdjustmentMobileCard({
         <div className="flex-1 min-w-0 pr-3">
           <p className="font-semibold text-sm text-foreground leading-snug">{adj.product.name}</p>
           <div className="flex items-center gap-1.5 mt-1">
-            <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{adj.product.sku}</span>
+            <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
+              {adj.product.sellingUnits?.find((su) => su.isBase)?.barcode || adj.product.barcode}
+            </span>
             <Badge variant="outline" className={cn("text-[10px] font-semibold gap-1 h-4 px-1.5 border", cfg.color)}>
               <Icon className="h-2.5 w-2.5" />{cfg.label}
             </Badge>

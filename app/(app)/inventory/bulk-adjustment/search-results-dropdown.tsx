@@ -39,7 +39,9 @@ export function SearchResultsDropdown({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-foreground truncate group-hover:text-primary">{p.name}</p>
-                <p className="text-xs text-muted-foreground font-mono">{p.barcode || p.sku}</p>
+                <p className="text-xs text-muted-foreground font-mono">
+                  {p.sellingUnits?.find((su) => su.isBase)?.barcode || p.barcode}
+                </p>
               </div>
               <div className="shrink-0 flex items-center gap-2">
                 <Badge variant="outline" className="text-[10px] font-bold h-5">
