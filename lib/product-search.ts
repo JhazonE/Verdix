@@ -91,8 +91,9 @@ export function matchesNormalizedSearch(
 }
 
 /**
- * Match a product against a raw (unnormalized) search term, by name, SKU or
- * barcode. Case-insensitive; surrounding whitespace is ignored.
+ * Match a product against a raw (unnormalized) search term, by name, the
+ * base selling unit's barcode, or the legacy barcode column. Case-insensitive;
+ * surrounding whitespace is ignored.
  */
 export function matchesProductSearch(
     product: SearchableProduct | null | undefined,

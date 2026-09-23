@@ -113,7 +113,7 @@ export function PriceInquiryDialog({
                           >
                             <div className="min-w-0">
                               <p className={`font-medium truncate ${isActive || isHighlighted ? 'text-primary' : ''}`}>{product.name}</p>
-                              <p className="text-sm text-muted-foreground truncate">{product.sellingUnits?.find((su: any) => su.isBase)?.barcode || product.barcode} • {product.unitOfMeasure}</p>
+                              <p className="text-sm text-muted-foreground truncate">{product.sellingUnits?.find((su: any) => su.isBase)?.barcode || product.barcode || ''} • {product.unitOfMeasure}</p>
                             </div>
                             {isActive && <Tag className="h-4 w-4 text-primary shrink-0" />}
                           </CommandItem>
@@ -133,7 +133,7 @@ export function PriceInquiryDialog({
                 <h3 className="text-xl font-bold text-center mb-2">{selectedProduct.name}</h3>
 
                 <div className="text-xs text-muted-foreground mb-6 font-mono bg-muted px-2 py-1 rounded">
-                  {selectedProduct.sellingUnits?.find((su: any) => su.isBase)?.barcode || selectedProduct.barcode}
+                  {selectedProduct.sellingUnits?.find((su: any) => su.isBase)?.barcode || selectedProduct.barcode || ''}
                 </div>
 
                 <div className="text-center w-full bg-primary/5 py-8 rounded-xl border-2 border-primary/10 shadow-sm relative overflow-hidden">
