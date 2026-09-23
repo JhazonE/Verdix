@@ -11,8 +11,8 @@ export type Step = 'source' | 'target' | 'calculate';
 export type SearchResult = {
   id: string;
   name: string;
-  sku: string;
   barcode: string;
+  baseUnitBarcode: string | null;
   stock: number;
   unitOfMeasure: string;
   price: number;
