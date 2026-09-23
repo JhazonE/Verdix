@@ -18,7 +18,7 @@ interface ExpiringBatch {
   batchId: string;
   productId: string;
   productName: string;
-  sku: string | null;
+  baseUnitBarcode: string | null;
   quantityRemaining: number;
   expirationDate: string;
   daysUntilExpiry: number;
@@ -46,7 +46,7 @@ export default function ExpiringSoonPage() {
     const search = searchTerm.toLowerCase();
     return (
       item.productName?.toLowerCase().includes(search) ||
-      item.sku?.toLowerCase().includes(search)
+      item.baseUnitBarcode?.toLowerCase().includes(search)
     );
   });
   const filteredExpired = filteredItems.filter((i) => i.isExpired);
@@ -63,7 +63,7 @@ export default function ExpiringSoonPage() {
       subtitle: `Generated ${format(new Date(), 'yyyy-MM-dd')}`,
       columns: [
         { header: 'Product', cell: (r) => r.productName },
-        { header: 'SKU', cell: (r) => r.sku || '—' },
+        { header: 'Barcode', cell: (r) => r.baseUnitBarcode || '—' },
         { header: 'Qty', align: 'right', cell: (r) => r.quantityRemaining },
         { header: 'Expires', cell: (r) => r.expirationDate },
         { header: 'Status', cell: (r) => r.statusLabel },
@@ -82,7 +82,7 @@ export default function ExpiringSoonPage() {
     rows.map(item => (
       <TableRow key={item.batchId}>
         <TableCell className="font-medium">{item.productName}</TableCell>
-        <TableCell className="text-xs font-mono text-muted-foreground">{item.sku || '—'}</TableCell>
+        <TableCell className="text-xs font-mono text-muted-foreground">{item.baseUnitBarcode || '—'}</TableCell>
         <TableCell className="tabular-nums">{item.quantityRemaining}</TableCell>
         <TableCell className="tabular-nums">{item.expirationDate}</TableCell>
         <TableCell>
@@ -106,7 +106,7 @@ export default function ExpiringSoonPage() {
           <ReportSearchInput
             value={searchTerm}
             onChange={setSearchTerm}
-            placeholder="Search product, SKU..."
+            placeholder="Search product, barcode..."
           />
           <Select value={days} onValueChange={setDays}>
             <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
@@ -145,7 +145,7 @@ export default function ExpiringSoonPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Product</TableHead><TableHead>SKU</TableHead>
+                      <TableHead>Product</TableHead><TableHead>Barcode</TableHead>
                       <TableHead>Qty</TableHead><TableHead>Expires</TableHead><TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -162,7 +162,7 @@ export default function ExpiringSoonPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Product</TableHead><TableHead>SKU</TableHead>
+                      <TableHead>Product</TableHead><TableHead>Barcode</TableHead>
                       <TableHead>Qty</TableHead><TableHead>Expires</TableHead><TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
