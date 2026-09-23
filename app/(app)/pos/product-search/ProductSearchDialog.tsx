@@ -249,7 +249,7 @@ export function ProductSearchDialog({
                     return (
                       <CommandItem
                         key={key}
-                        value={`${product.name} ${unit?.name || ''} ${unit?.barcode || product.barcode || ''} ${product.sku}`}
+                        value={`${product.name} ${unit?.name || ''} ${unit?.barcode || product.barcode || ''}`}
                         onSelect={() => handleSelect(key)}
                         className="group mx-2 my-0.5 flex items-center gap-3 rounded-xl px-3 py-2 cursor-pointer transition-colors data-[selected=true]:bg-accent"
                       >
@@ -271,7 +271,7 @@ export function ProductSearchDialog({
                           </p>
                           <div className="mt-0.5 flex items-center gap-1.5">
                             <span className="text-[11px] text-muted-foreground font-mono truncate">
-                              {unit?.barcode || product.barcode || product.sku}
+                              {unit?.barcode || product.sellingUnits?.find((su: any) => su.isBase)?.barcode || product.barcode}
                             </span>
                             {product.brand && (
                               <span className="shrink-0 rounded bg-sky-100 dark:bg-sky-950/40 text-sky-700 dark:text-sky-400 px-1.5 py-px text-[10px] font-medium">
