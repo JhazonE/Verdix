@@ -61,3 +61,4 @@ import './selling-units.test';
 import './selling-unit-rows.test';
 import './pos-cart-units.test';
 import './pricing.test';
+import './process-return-leg.test';
