@@ -28,7 +28,7 @@ export class MySqlStockCountRepository implements StockCountRepository {
              sci.snapshot_quantity as snapshotQuantity, sci.counted_quantity as countedQuantity,
              sci.counted_at as countedAt,
              sci.variance, sci.created_at as createdAt, sci.updated_at as updatedAt,
-             p.name as productName, p.sku, p.barcode
+             p.name as productName, p.barcode
       FROM stock_count_items sci
       JOIN products p ON sci.product_id = p.id
       WHERE sci.stock_count_id IN (${placeholders})
@@ -63,7 +63,6 @@ export class MySqlStockCountRepository implements StockCountRepository {
         snapshotQuantity: parseFloat(item.snapshotQuantity || 0),
         countedQuantity: item.countedQuantity !== null ? parseFloat(item.countedQuantity) : undefined,
         productName: item.productName,
-        sku: item.sku,
         barcode: item.barcode
       });
     });
