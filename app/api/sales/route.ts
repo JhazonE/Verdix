@@ -115,7 +115,6 @@ export async function GET(request: NextRequest) {
           product: {
             id: item.productId,
             name: item.productName || 'Unknown Product',
-            sku: item.sku || '',
             barcode: item.barcode || ''
           }
         })),
