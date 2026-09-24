@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { v4 as uuidv4 } from 'uuid';
-import { generateSku } from '@/lib/sku';
 import { recordStockMovement } from '@/lib/stock-movements';
 import { legacyProductCsvImport } from './legacy';
 
@@ -51,7 +50,10 @@ export async function POST(request: NextRequest) {
           updated++;
         } else {
           const id = uuidv4();
-          const sku = generateSku(p.brand, p.name);
+          // Mirrored from barcode (Sub-project A convention) rather than
+          // generated, so a not-yet-migrated reader elsewhere still sees a
+          // matching value.
+          const sku = barcode;
           const stock = num(p.stock_quantity);
           const cost = num(p.cost_price);
           const price = num(p.selling_price);
@@ -65,6 +67,15 @@ export async function POST(request: NextRequest) {
               p.unit ?? 'pcs', cost, price, stock, num(p.reorder_point), p.image_url ?? null,
               p.conversion_factor != null ? num(p.conversion_factor) : 1, defaultWarehouseId, rowType,
             ],
+          );
+
+          // Every product needs a base selling unit (factor 1, is_base = 1) or
+          // it is unsellable and unmatchable by barcode on a later import —
+          // matches the convention actions.ts's writeSellingUnits() established.
+          await query(
+            `INSERT INTO product_selling_units (id, product_id, name, barcode, factor, cost, price, is_base)
+             VALUES (?, ?, 'Piece', ?, 1, ?, ?, 1)`,
+            [`psu_base_${id}`, id, barcode, cost || null, price],
           );
 
           // Opening stock -> FIFO batch + audit movement (keeps costing correct).

@@ -21,25 +21,42 @@ export async function legacyProductCsvImport(request: NextRequest) {
     const defaultWarehouseId = await getDefaultWarehouseId();
 
     for (const p of productsData) {
-      if (!p.name || !p.sku) { errorCount++; continue; }
+      if (!p.name) { errorCount++; continue; }
+      const barcode = p.barcode ? String(p.barcode).trim() : null;
       try {
-        const [existing]: any = await query('SELECT id FROM products WHERE sku = ?', [p.sku]);
+        // Match on barcode first, else name — same match keys as
+        // lib/import/entity-schemas.ts and the JSON import path (route.ts);
+        // this multipart path previously required and matched on sku, which
+        // this file's own CSV export never even names as a required column.
+        let existing: any = null;
+        if (barcode) {
+          [existing] = await query('SELECT id FROM products WHERE barcode = ? LIMIT 1', [barcode]);
+        }
+        if (!existing) {
+          [existing] = await query('SELECT id FROM products WHERE name = ? LIMIT 1', [p.name]);
+        }
         if (existing) {
           await query(
             `UPDATE products SET name=?, barcode=?, description=?, category=?, brand=?, subcategory=?, unit_of_measure=?,
-               cost=?, price=?, stock=?, reorder_point=?, parent_id=?, image_url=?, conversion_factor=?, updated_at=NOW() WHERE sku=?`,
-            [p.name, p.barcode || null, p.description || '', p.category || 'General', p.brand || null, p.subcategory || null,
+               cost=?, price=?, stock=?, reorder_point=?, parent_id=?, image_url=?, conversion_factor=?, updated_at=NOW() WHERE id=?`,
+            [p.name, barcode, p.description || '', p.category || 'General', p.brand || null, p.subcategory || null,
               p.unit || 'pcs', parseFloat(p.cost_price) || 0, parseFloat(p.selling_price) || 0, parseFloat(p.stock_quantity) || 0,
-              parseFloat(p.reorder_point) || 0, p.parent_id || null, p.image_url || null, parseFloat(p.conversion_factor) || 1, p.sku],
+              parseFloat(p.reorder_point) || 0, p.parent_id || null, p.image_url || null, parseFloat(p.conversion_factor) || 1, existing.id],
           );
           updateCount++;
         } else {
+          const id = uuidv4();
+          const cost = parseFloat(p.cost_price) || 0;
+          const price = parseFloat(p.selling_price) || 0;
+          // products.sku is mirrored from barcode (Sub-project A convention)
+          // rather than left blank, so a not-yet-migrated reader elsewhere
+          // still sees a matching value.
           await query(
             `INSERT INTO products (id, name, sku, barcode, description, category, brand, subcategory, unit_of_measure,
                cost, price, stock, reorder_point, parent_id, image_url, conversion_factor, warehouse_id, type, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-            [uuidv4(), p.name, p.sku, p.barcode || null, p.description || '', p.category || 'General', p.brand || null,
-              p.subcategory || null, p.unit || 'pcs', parseFloat(p.cost_price) || 0, parseFloat(p.selling_price) || 0,
+            [id, p.name, barcode, barcode, p.description || '', p.category || 'General', p.brand || null,
+              p.subcategory || null, p.unit || 'pcs', cost, price,
               parseFloat(p.stock_quantity) || 0, parseFloat(p.reorder_point) || 0, p.parent_id || null, p.image_url || null,
               parseFloat(p.conversion_factor) || 1, defaultWarehouseId,
               // Explicit ternary rather than passing the raw cell through: an
@@ -47,9 +64,18 @@ export async function legacyProductCsvImport(request: NextRequest) {
               // Matches addProduct() and the JSON import path.
               String(p.type || '').toLowerCase() === 'service' ? 'service' : 'standard'],
           );
+
+          // Every product needs a base selling unit (factor 1, is_base = 1) or
+          // it is unsellable and unmatchable by barcode on a later import —
+          // matches the convention actions.ts's writeSellingUnits() established.
+          await query(
+            `INSERT INTO product_selling_units (id, product_id, name, barcode, factor, cost, price, is_base)
+             VALUES (?, ?, 'Piece', ?, 1, ?, ?, 1)`,
+            [`psu_base_${id}`, id, barcode, cost || null, price],
+          );
           successCount++;
         }
-      } catch (err) { console.error(`Failed to import product ${p.sku}:`, err); errorCount++; }
+      } catch (err) { console.error(`Failed to import product ${p.name}:`, err); errorCount++; }
     }
     return NextResponse.json({ success: true, message: `Import processed. Added: ${successCount}, Updated: ${updateCount}, Errors: ${errorCount}` });
   } catch (error: any) {
