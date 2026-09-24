@@ -1675,7 +1675,13 @@ export async function updateProductShelfLocations(updates: {
       if (isApprovalRequired) {
           // Enrich data for approval
           const enrichedUpdates = await Promise.all(updates.map(async u => {
-              const pRows: any = await query('SELECT name, sku, barcode, stock FROM products WHERE id = ?', [u.productId]);
+              const pRows: any = await query(
+                `SELECT p.name, su.barcode as base_unit_barcode, p.barcode, p.stock
+                 FROM products p
+                 LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
+                 WHERE p.id = ?`,
+                [u.productId],
+              );
               const p = pRows[0];
               
               let sourceName = 'Unassigned';
@@ -1693,8 +1699,7 @@ export async function updateProductShelfLocations(updates: {
               return {
                   ...u,
                   productName: p?.name || 'Unknown',
-                  productSku: p?.sku || '',
-                  productBarcode: p?.barcode || '',
+                  productBarcode: p?.base_unit_barcode || p?.barcode || '',
                   sourceShelfName: sourceName,
                   targetShelfName: targetName,
               };
@@ -1705,7 +1710,6 @@ export async function updateProductShelfLocations(updates: {
               items: enrichedUpdates.map(u => ({
                   productId: u.productId,
                   productName: u.productName,
-                  sku: u.productSku,
                   barcode: u.productBarcode,
                   quantity: u.quantity,
                   sourceShelfName: u.sourceShelfName,
