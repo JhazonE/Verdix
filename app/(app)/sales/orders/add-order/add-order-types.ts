@@ -4,8 +4,9 @@ export const salesOrderItemSchema = z.object({
   product: z.object({
     id: z.coerce.string().min(1, 'Product ID is required'),
     name: z.string().min(1, 'Product name is required'),
-    sku: z.string().optional(),
+    barcode: z.string().optional(),
     stock: z.coerce.number().optional(),
+    sellingUnits: z.array(z.object({ isBase: z.boolean().optional(), barcode: z.string().optional() }).passthrough()).optional(),
   }).passthrough(),
   quantity: z.coerce.number().positive('Quantity must be greater than 0'),
   price: z.coerce.number().nonnegative('Price cannot be negative'),

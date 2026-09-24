@@ -58,7 +58,7 @@ export function ProductSelector({
       const needle = code.toLowerCase();
       const match = matches.find((p) =>
         p.barcode?.toLowerCase() === needle ||
-        p.sku?.toLowerCase() === needle ||
+        p.sellingUnits?.find((u) => u.isBase)?.barcode?.toLowerCase() === needle ||
         p.name.toLowerCase() === needle
       );
       if (match) {
@@ -82,7 +82,7 @@ export function ProductSelector({
       <PopoverAnchor asChild>
         <div className="relative pb-2">
           <Input
-            placeholder="Scan barcode, enter SKU, or type product name"
+            placeholder="Scan barcode or type product name"
             value={inputValue}
             onChange={(e) => { setInputValue(e.target.value); setSuggestionsOpen(true); }}
             onFocus={() => setSuggestionsOpen(true)}
@@ -124,7 +124,7 @@ export function ProductSelector({
                       <div className="flex flex-col">
                         <span className="font-bold text-foreground">{product.name}</span>
                         <span className="text-sm text-muted-foreground font-medium">
-                          SKU: {product.sku || 'N/A'} | Barcode: {product.barcode || 'N/A'} | Stock:{' '}
+                          Barcode: {product.sellingUnits?.find((u) => u.isBase)?.barcode || product.barcode || 'N/A'} | Stock:{' '}
                           {formatQuantity(product.stock)}
                         </span>
                       </div>
