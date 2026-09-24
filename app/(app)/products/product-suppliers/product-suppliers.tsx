@@ -23,12 +23,25 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { PlusCircle, Trash2, Star, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
+import type { SupplierProductMapping } from '@/lib/types';
 import { AddSupplierMappingDialog } from '../supplier-mapping/AddSupplierMappingDialog';
 import { useProductSuppliers } from './use-product-suppliers';
 
-export function ProductSuppliers({ productId, onUpdate }: { productId: string, onUpdate?: () => void }) {
+export function ProductSuppliers({
+  productId,
+  onUpdate,
+  mappings,
+  isLoadingMappings,
+  onMappingsChanged,
+}: {
+  productId: string;
+  onUpdate?: () => void;
+  mappings?: SupplierProductMapping[];
+  isLoadingMappings?: boolean;
+  onMappingsChanged?: () => void | Promise<void>;
+}) {
   const {
-    mappings,
+    mappings: resolvedMappings,
     suppliers,
     isLoading,
     isDialogOpen,
@@ -41,7 +54,7 @@ export function ProductSuppliers({ productId, onUpdate }: { productId: string, o
     handleDelete,
     initiateSetPrimary,
     confirmSetPrimary,
-  } = useProductSuppliers({ productId, onUpdate });
+  } = useProductSuppliers({ productId, onUpdate, mappings, isLoadingMappings, onMappingsChanged });
 
   return (
     <div className="space-y-4">
@@ -78,14 +91,14 @@ export function ProductSuppliers({ productId, onUpdate }: { productId: string, o
                   <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                 </TableCell>
               </TableRow>
-            ) : mappings.length === 0 ? (
+            ) : resolvedMappings.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   No suppliers mapped yet.
                 </TableCell>
               </TableRow>
             ) : (
-              mappings.map((mapping) => (
+              resolvedMappings.map((mapping) => (
                 <TableRow key={mapping.id} className={mapping.isPrimary ? 'bg-muted/30' : ''}>
                   <TableCell>
                     {mapping.isPrimary ? (

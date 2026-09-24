@@ -9,8 +9,7 @@ import { z } from 'zod';
 const baseProductSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
   brand: z.string().min(1, 'Brand is required'),
-  sku: z.string().min(1, 'SKU is required'),
-  barcode: z.string().optional(),
+  barcode: z.string().min(1, 'Barcode is required'),
   department: z.string().optional(),
   description: z.string().min(1, 'Description is required'),
   additionalDescription: z.string().optional(),
@@ -33,7 +32,6 @@ const baseProductSchema = z.object({
 /** Stocked goods — the existing behaviour, unchanged. */
 const standardProductSchema = baseProductSchema.extend({
   itemType: z.literal('standard'),
-  supplier: z.string().optional(),
   warehouse: z.string().optional(),
   shelfLocationIds: z.array(z.string()).optional(),
   stock: z.coerce.number().int().nonnegative('Initial stock must be a non-negative integer'),
@@ -78,6 +76,21 @@ const standardProductSchema = baseProductSchema.extend({
     })).optional(),
   })).optional(),
   isPerishable: z.boolean().optional(),
+  /**
+   * Suppliers this product can be sourced from, beyond the single `supplier`
+   * field above. `supplier` still drives markup precedence (see purchase-utils.ts);
+   * these are additional per-supplier SKU/lead-time/ROP/cost records written
+   * to supplier_product_mapping by addProduct in the same transaction as the
+   * product itself. At most one entry may have `isPrimary: true`.
+   */
+  supplierMappings: z.array(z.object({
+    supplierId: z.string().min(1, 'Supplier is required'),
+    supplierSku: z.string().optional(),
+    leadTime: z.coerce.number().int().nonnegative(),
+    rop: z.coerce.number().int().nonnegative(),
+    cost: z.coerce.number().nonnegative().optional(),
+    isPrimary: z.boolean().default(false),
+  })).optional(),
 });
 
 /**
@@ -96,7 +109,6 @@ const serviceProductSchema = baseProductSchema.extend({
   cost: z.coerce.number().nonnegative('Cost is required for services (enter 0 if there is no input cost)'),
   stock: z.literal(0).default(0),
   reorderPoint: z.literal(0).default(0),
-  supplier: z.undefined(),
   warehouse: z.undefined(),
   shelfLocationIds: z.undefined(),
   parentId: z.undefined(),
@@ -104,6 +116,7 @@ const serviceProductSchema = baseProductSchema.extend({
   conversionFactors: z.undefined(),
   sellingUnits: z.undefined(),
   isPerishable: z.undefined(),
+  supplierMappings: z.undefined(),
 });
 
 export const productSchema = z.discriminatedUnion('itemType', [

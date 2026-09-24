@@ -8,7 +8,7 @@ import { AlertCircle, HardDrive, RefreshCw } from 'lucide-react';
 import type { ResetAction } from './data-management-types';
 
 const RESET_DESCRIPTIONS: Record<ResetAction, string> = {
-  clear_sales: 'This will permanently delete all sales history, shift records, and transaction logs including approval items related to sales.',
+  clear_sales: 'This will permanently delete all sales history, purchase orders, shift records, and transaction logs including approval items related to sales.',
   reset_references: 'This will reset all transaction counters and terminal OR numbers. This may cause collision if you have existing records.',
   clear_inventory: 'This will permanently delete ALL products, stock movements, transfers, and warehouse management data.',
   clear_master_data: 'This will permanently delete all customer and supplier records, product categories, and brand definitions.',

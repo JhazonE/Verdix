@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
            SELECT
              p.id as product_id,
              p.name as product_name,
-             p.sku,
+             su.barcode as base_unit_barcode,
              p.barcode,
              p.category,
              p.brand,
@@ -43,7 +43,8 @@ export async function GET(request: NextRequest) {
            JOIN users u ON pt.user_id = u.id
            JOIN pos_transaction_items pti ON pti.sale_item_id = si.id
            JOIN products p ON si.product_id = p.id
-           WHERE pt.terminal_id = ? 
+           LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
+           WHERE pt.terminal_id = ?
            AND (pt.transaction_type = 'sale')
          `;
          params.push(terminalId);
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
              params.push(`%${reference}%`);
         }
         if (search) {
-          whereClause += ` AND (p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?)`;
+          whereClause += ` AND (p.name LIKE ? OR su.barcode LIKE ? OR p.barcode LIKE ?)`;
           params.push(`%${search}%`, `%${search}%`, `%${search}%`);
         }
     } else {
@@ -132,7 +133,7 @@ export async function GET(request: NextRequest) {
           SELECT
             p.id as product_id,
             p.name as product_name,
-            p.sku,
+            su.barcode as base_unit_barcode,
             p.barcode,
             p.category,
             p.brand,
@@ -145,6 +146,7 @@ export async function GET(request: NextRequest) {
             AVG(asi.price) as avg_price_per_unit
           FROM all_sale_items asi
           INNER JOIN products p ON asi.product_id = p.id
+          LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
           WHERE 1=1
         `;
 
@@ -174,14 +176,14 @@ export async function GET(request: NextRequest) {
             params.push(`%${reference}%`);
         }
         if (search) {
-            baseQueryStr += ` AND (p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?)`;
+            baseQueryStr += ` AND (p.name LIKE ? OR su.barcode LIKE ? OR p.barcode LIKE ?)`;
             params.push(`%${search}%`, `%${search}%`, `%${search}%`);
         }
     }
 
     // Combine base query with where clause
     const fullQueryWithoutLimit = baseQueryStr + whereClause + `
-      GROUP BY p.id, p.name, p.sku, p.barcode, p.category, p.brand, p.unit_of_measure
+      GROUP BY p.id, p.name, su.barcode, p.barcode, p.category, p.brand, p.unit_of_measure
     `;
 
     // 1. Get Total Count
@@ -234,7 +236,7 @@ export async function GET(request: NextRequest) {
       product: {
         id: row.product_id,
         name: row.product_name,
-        sku: row.sku,
+        baseUnitBarcode: row.base_unit_barcode,
         barcode: row.barcode,
         category: row.category,
         brand: row.brand,

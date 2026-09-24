@@ -39,7 +39,7 @@ interface ProductSale {
   product: {
     id: string;
     name: string;
-    sku: string;
+    baseUnitBarcode: string | null;
     barcode: string;
     category: string;
     brand: string;
@@ -123,7 +123,7 @@ export default function SalesByProductPage() {
     const search = searchTerm.toLowerCase();
     return (
       record.product.name?.toLowerCase().includes(search) ||
-      record.product.sku?.toLowerCase().includes(search) ||
+      record.product.baseUnitBarcode?.toLowerCase().includes(search) ||
       record.product.barcode?.toLowerCase().includes(search) ||
       record.product.category?.toLowerCase().includes(search) ||
       record.product.brand?.toLowerCase().includes(search)
@@ -149,7 +149,7 @@ export default function SalesByProductPage() {
       ],
       columns: [
         { header: 'Product', width: 35, cell: (r) => r.product.name || 'N/A' },
-        { header: 'Barcode', width: 25, cell: (r) => r.product.barcode || '-' },
+        { header: 'Barcode', width: 25, cell: (r) => r.product.baseUnitBarcode || r.product.barcode || '-' },
         { header: 'Category', width: 25, cell: (r) => r.product.category || '-' },
         { header: 'Brand', width: 25, cell: (r) => r.product.brand || '-' },
         { header: 'Units Sold', width: 18, align: 'right', cell: (r) => r.unitsSold.toString() },
@@ -182,7 +182,7 @@ export default function SalesByProductPage() {
       subtitle: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
       columns: [
         { header: 'Product', cell: (r) => r.product.name || 'N/A' },
-        { header: 'Barcode', cell: (r) => r.product.barcode || '-' },
+        { header: 'Barcode', cell: (r) => r.product.baseUnitBarcode || r.product.barcode || '-' },
         { header: 'Category', cell: (r) => r.product.category || '-' },
         { header: 'Brand', cell: (r) => r.product.brand || '-' },
         { header: 'Units Sold', align: 'right', cell: (r) => r.unitsSold },
@@ -408,7 +408,7 @@ export default function SalesByProductPage() {
                       className="cursor-pointer hover:bg-muted/50 transition-colors text-xs"
                     >
                       <TableCell className="py-2 px-3 font-medium">{record.product.name}</TableCell>
-                      <TableCell className="py-2 px-2 text-muted-foreground">{record.product.barcode || '-'}</TableCell>
+                      <TableCell className="py-2 px-2 text-muted-foreground">{record.product.baseUnitBarcode || record.product.barcode || '-'}</TableCell>
                       <TableCell className="py-2 px-2">{record.product.category || '-'}</TableCell>
                       <TableCell className="py-2 px-2">{record.product.brand || '-'}</TableCell>
                       <TableCell className="py-2 px-2 text-right font-mono font-semibold">

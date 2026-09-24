@@ -32,7 +32,9 @@ export function AdjustmentTableRow({
             {adj.product.name}
           </span>
           <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{adj.product.barcode || adj.product.sku}</span>
+            <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
+              {adj.product.sellingUnits?.find((su) => su.isBase)?.barcode || adj.product.barcode}
+            </span>
             {adj.product.warehouseName && (
               <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
                 <WarehouseIcon className="h-3 w-3" />{adj.product.warehouseName}

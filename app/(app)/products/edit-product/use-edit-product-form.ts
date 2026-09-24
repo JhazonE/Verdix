@@ -11,7 +11,7 @@ import { dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { logActivity } from '@/lib/client-activity-logger';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
-import { Category, Product, Brand, UnitOfMeasure, Supplier, TaxRate, SystemSettings } from '@/lib/types';
+import { Category, Product, Brand, UnitOfMeasure, Supplier, TaxRate, SystemSettings, SupplierProductMapping } from '@/lib/types';
 
 import {
   updateProduct,
@@ -20,6 +20,7 @@ import {
   getSubcategories,
   getUnitsOfMeasure,
   getSuppliers,
+  getSupplierMappings,
   getWarehouses,
   getShelfLocations,
   getDepartments,
@@ -76,6 +77,8 @@ export function useEditProductForm({
   const [subcategories, setSubcategories] = useState<Category[]>([]);
   const [units, setUnits] = useState<UnitOfMeasure[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierMappings, setSupplierMappings] = useState<SupplierProductMapping[]>([]);
+  const [isLoadingSupplierMappings, setIsLoadingSupplierMappings] = useState(false);
   const [warehouses, setWarehouses] = useState<any[]>([]);
   const [shelfLocations, setShelfLocations] = useState<any[]>([]);
   const [isLoadingShelfLocations, setIsLoadingShelfLocations] = useState(false);
@@ -136,14 +139,13 @@ export function useEditProductForm({
       brand: product.brand ?? '',
       department: product.department ?? '',
       cost: product.cost ?? undefined,
-      barcode: product.barcode ?? '',
+      barcode: product.sellingUnits?.find(su => su.isBase)?.barcode || product.barcode || '',
       additionalDescription: product.additionalDescription ?? '',
       incomeAccount: product.incomeAccount ?? '',
       expenseAccount: product.expenseAccount ?? '',
       warehouse: product.warehouse ?? '',
       shelfLocationIds: product.shelfLocationIds || [],
       subcategory: product.subcategory ?? '', // Handle null
-      supplier: product.supplier ?? '', // Handle null
       unitOfMeasure: product.unitOfMeasure ?? '', // Handle null
       conversionFactor: product.conversionFactor ?? 1, // Handle null/0 by defaulting to 1
       conversionFactors: product.conversionFactors || [],
@@ -181,7 +183,6 @@ export function useEditProductForm({
     name: "priceLevels",
   });
 
-  const selectedSupplierId = form.watch('supplier');
   const selectedUnitOfMeasure = form.watch('unitOfMeasure');
   const costValue = form.watch('cost');
   const watchedCost = form.watch('cost');
@@ -198,7 +199,7 @@ export function useEditProductForm({
   // a tab that, for a Standard product, doesn't even contain the field.
   const unitOrCostError = !!(formErrors.unitOfMeasure || formErrors.cost);
   const tabErrors = {
-    basic: !!(formErrors.name || formErrors.brand || formErrors.sku || formErrors.description || formErrors.category),
+    basic: !!(formErrors.name || formErrors.brand || formErrors.description || formErrors.category),
     inventory: product.type === 'service' && unitOrCostError,
     // The base selling unit's price-level overrides bind to the top-level
     // `priceLevels` field (see product-schema.ts), but they render inside
@@ -220,16 +221,25 @@ export function useEditProductForm({
   const lastAutoRetailPrice = useRef<number | null>(null);
   const retailPriceEditedByUser = useRef(false);
 
+  // Mirrors lastAutoRetailPrice/retailPriceEditedByUser above, but for the
+  // base unit's Cost field being suggested from the primary supplier
+  // mapping's own cost. Reset on the same product-open effect as those two,
+  // so a manual edit on a previously-open product doesn't carry into the next.
+  const lastAutoSuggestedCost = useRef<number | null>(null);
+  const costEditedByUser = useRef(false);
+
   useEffect(() => {
     if (product && isOpen) {
       lastAutoRetailPrice.current = null;
       retailPriceEditedByUser.current = false;
+      lastAutoSuggestedCost.current = null;
+      costEditedByUser.current = false;
       const sanitizedProduct = {
           ...product,
           category: product.category ?? '',
           brand: product.brand ?? '',
           cost: product.cost ?? undefined,
-          barcode: product.barcode ?? '',
+          barcode: product.sellingUnits?.find(su => su.isBase)?.barcode || product.barcode || '',
           additionalDescription: product.additionalDescription ?? '',
           incomeAccount: product.incomeAccount ?? '',
           expenseAccount: product.expenseAccount ?? '',
@@ -237,7 +247,6 @@ export function useEditProductForm({
           shelfLocationIds: product.shelfLocationIds || [],
           reorderPoint: product.reorderPoint ?? 0,
           subcategory: product.subcategory ?? '', // Handle null
-          supplier: product.supplier ?? '', // Handle null
           unitOfMeasure: product.unitOfMeasure ?? '', // Handle null
           conversionFactor: product.conversionFactor ?? 1, // Handle null/0 by defaulting to 1
           conversionFactors: product.conversionFactors || [],
@@ -269,6 +278,24 @@ export function useEditProductForm({
     // seed on the rare cold-load race.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product, isOpen, form]);
+
+  const refreshSupplierMappings = async () => {
+    setIsLoadingSupplierMappings(true);
+    try {
+      setSupplierMappings(await getSupplierMappings(product.id));
+    } finally {
+      setIsLoadingSupplierMappings(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      refreshSupplierMappings();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, product.id]);
+
+  const primarySupplierMapping = supplierMappings.find(m => m.isPrimary);
 
   const [markupSource, setMarkupSource] = useState<string | null>(null);
 
@@ -309,6 +336,13 @@ export function useEditProductForm({
     }
   }, [isOpen, priceLevels, watchedPriceLevels, form]);
 
+  // The Supplier field is gone from the form — markup's supplier link now
+  // comes from the primary supplier mapping (see refreshSupplierMappings /
+  // primarySupplierMapping above), falling back to the read-only legacy
+  // `product.supplier` (itself already primary_supplier_id || supplier_id,
+  // resolved by getProducts) for a product with no mapping row yet.
+  const markupSupplierId = primarySupplierMapping?.supplierId ?? product.supplier;
+
   useEffect(() => {
     // Skip if not initialized. A per-product markup is a deliberate entry
     // (not a guess from category/brand/supplier), so it must survive
@@ -326,7 +360,7 @@ export function useEditProductForm({
             category: watchedCategoryName,
             subcategory: watchedSubcategoryName,
             brand: watchedBrandName,
-            supplierId: selectedSupplierId
+            supplierId: markupSupplierId
         },
         systemSettings,
         categories,
@@ -364,7 +398,34 @@ export function useEditProductForm({
     } else {
       setMarkupSource(null);
     }
-  }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, selectedSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, isInitialized, priceLevelFields]);
+  }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, markupSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, isInitialized, priceLevelFields]);
+
+  const [costSuggestionSource, setCostSuggestionSource] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isInitialized || !primarySupplierMapping || primarySupplierMapping.supplierCost == null) {
+      setCostSuggestionSource(null);
+      return;
+    }
+    if (costEditedByUser.current) {
+      // User already overrode a previous suggestion this session — respect
+      // that for the rest of it, same contract as retailPriceEditedByUser.
+      return;
+    }
+
+    const suggested = primarySupplierMapping.supplierCost;
+    const currentValue = form.getValues('cost');
+    // A mismatch against what this effect itself wrote last means the user
+    // changed it in between — respect that and stop suggesting.
+    if (lastAutoSuggestedCost.current !== null && currentValue !== lastAutoSuggestedCost.current) {
+      costEditedByUser.current = true;
+      return;
+    }
+
+    form.setValue('cost', suggested);
+    lastAutoSuggestedCost.current = suggested;
+    setCostSuggestionSource(`Suggested from ${primarySupplierMapping.supplierName || 'the primary supplier'}'s cost`);
+  }, [isInitialized, primarySupplierMapping, form]);
 
   // Auto-update main price when a price level is selected
   useEffect(() => {
@@ -500,7 +561,7 @@ export function useEditProductForm({
         await logActivity({
           action: 'UPDATE',
           module: 'PRODUCTS',
-          description: `Updated product: ${values.name || product.name} (SKU: ${values.sku || product.sku})`,
+          description: `Updated product: ${values.name || product.name} (Barcode: ${values.barcode || product.sellingUnits?.find(su => su.isBase)?.barcode || product.barcode})`,
           referenceId: String(product.id),
         });
         toast({
@@ -554,6 +615,7 @@ export function useEditProductForm({
     subcategories,
     units,
     suppliers,
+    supplierMappings, isLoadingSupplierMappings, refreshSupplierMappings, primarySupplierMapping,
     warehouses,
     shelfLocations, isLoadingShelfLocations,
     priceLevels, isLoadingPriceLevels,
@@ -570,11 +632,11 @@ export function useEditProductForm({
     priceLevelFields, appendPriceLevel, removePriceLevel, replacePriceLevels,
 
     // watched / derived values
-    selectedSupplierId,
     selectedUnitOfMeasure,
     tabErrors,
     selectedPriceLevelId, setSelectedPriceLevelId,
     markupSource,
+    costSuggestionSource,
 
     // handlers
     generateBarcode,

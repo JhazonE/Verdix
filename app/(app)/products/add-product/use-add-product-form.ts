@@ -161,7 +161,6 @@ export function useAddProductForm({
       additionalDescription: '',
       category: '',
       subcategory: '',
-      supplier: '',
       warehouse: '',
       shelfLocationIds: [],
       unitOfMeasure: '',
@@ -169,7 +168,6 @@ export function useAddProductForm({
       reorderPoint: 0,
       price: 0,
       cost: undefined,
-      sku: '',
       barcode: '',
       conversionFactor: 1,
       conversionFactors: [],
@@ -177,6 +175,7 @@ export function useAddProductForm({
       priceLevels: [],
       earnsPoints: true,
       isPerishable: false,
+      supplierMappings: [],
     },
   });
 
@@ -188,6 +187,11 @@ export function useAddProductForm({
   const { fields: sellingUnitFields, append: appendSellingUnit, remove: removeSellingUnit } = useFieldArray({
     control: form.control,
     name: "sellingUnits",
+  });
+
+  const { fields: supplierMappingFields, append: appendSupplierMapping, remove: removeSupplierMapping, update: updateSupplierMappingField } = useFieldArray({
+    control: form.control,
+    name: "supplierMappings",
   });
 
   const { fields: priceLevelFields, append: appendPriceLevel, remove: removePriceLevel, replace: replacePriceLevels } = useFieldArray({
@@ -206,7 +210,7 @@ export function useAddProductForm({
   // a tab that, for a Standard product, doesn't even contain the field.
   const unitOrCostError = !!(formErrors.unitOfMeasure || formErrors.cost);
   const tabErrors = {
-    basic: !!(formErrors.name || formErrors.brand || formErrors.sku || formErrors.description || formErrors.category),
+    basic: !!(formErrors.name || formErrors.brand || formErrors.description || formErrors.category),
     inventory: !!(formErrors.stock) || (itemType === 'service' && unitOrCostError),
     // The base selling unit's price-level overrides bind to the top-level
     // `priceLevels` field (see product-schema.ts), but they render inside
@@ -227,6 +231,12 @@ export function useAddProductForm({
   // one. See the effect further down for the full explanation.
   const lastAutoRetailPrice = useRef<number | null>(null);
   const retailPriceEditedByUser = useRef(false);
+
+  // Mirrors lastAutoRetailPrice/retailPriceEditedByUser above, but for the
+  // base unit's Cost field being suggested from the primary supplier
+  // mapping's own cost.
+  const lastAutoSuggestedCost = useRef<number | null>(null);
+  const costEditedByUser = useRef(false);
 
   // Applies a getProductOptions()-shaped payload to every dropdown's state,
   // whichever source it came from (parent-supplied or self-fetched below).
@@ -291,11 +301,14 @@ export function useAddProductForm({
   useEffect(() => {
     if (isOpen) {
       form.reset();
+      generateBarcode();
       // A fresh product for a fresh session — don't carry a previous
       // product's "user edited Retail price, stop suggesting" state into
       // this one.
       lastAutoRetailPrice.current = null;
       retailPriceEditedByUser.current = false;
+      lastAutoSuggestedCost.current = null;
+      costEditedByUser.current = false;
 
       // Set default tax rate if available and valid
       if (taxRates.length > 0) {
@@ -381,7 +394,6 @@ export function useAddProductForm({
       form.setValue('reorderPoint', 0);
       form.setValue('cost', 0);
       form.setValue('department', undefined);
-      form.setValue('supplier', undefined);
       form.setValue('warehouse', undefined);
       form.setValue('shelfLocationIds', undefined);
       form.setValue('parentId', undefined);
@@ -389,6 +401,7 @@ export function useAddProductForm({
       form.setValue('conversionFactors', undefined);
       form.setValue('sellingUnits', undefined);
       form.setValue('isPerishable', undefined);
+      form.setValue('supplierMappings', undefined);
     }
   }, [itemType, form]);
 
@@ -396,7 +409,8 @@ export function useAddProductForm({
   const watchedCategoryName = form.watch('category');
   const watchedSubcategoryName = form.watch('subcategory');
   const watchedBrandName = form.watch('brand');
-  const watchedSupplierId = form.watch('supplier');
+  const watchedSupplierMappings = form.watch('supplierMappings');
+  const markupSupplierId = (watchedSupplierMappings || []).find(m => m.isPrimary)?.supplierId;
   const [markupSource, setMarkupSource] = useState<string | null>(null);
 
   useEffect(() => {
@@ -411,7 +425,7 @@ export function useAddProductForm({
             category: watchedCategoryName,
             subcategory: watchedSubcategoryName,
             brand: watchedBrandName,
-            supplierId: watchedSupplierId
+            supplierId: markupSupplierId
         },
         systemSettings,
         categories,
@@ -450,7 +464,32 @@ export function useAddProductForm({
       setMarkupSource(null);
     }
 
-  }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, watchedSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, priceLevelFields]);
+  }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, markupSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, priceLevelFields]);
+
+  const [costSuggestionSource, setCostSuggestionSource] = useState<string | null>(null);
+
+  useEffect(() => {
+    const primaryMapping = (watchedSupplierMappings || []).find(m => m.isPrimary);
+    if (!primaryMapping || primaryMapping.cost == null) {
+      setCostSuggestionSource(null);
+      return;
+    }
+    if (costEditedByUser.current) {
+      return;
+    }
+
+    const suggested = primaryMapping.cost;
+    const currentValue = form.getValues('cost');
+    if (lastAutoSuggestedCost.current !== null && currentValue !== lastAutoSuggestedCost.current) {
+      costEditedByUser.current = true;
+      return;
+    }
+
+    form.setValue('cost', suggested);
+    lastAutoSuggestedCost.current = suggested;
+    const supplierName = suppliers.find(s => s.id === primaryMapping.supplierId)?.name;
+    setCostSuggestionSource(`Suggested from ${supplierName || 'the primary supplier'}'s cost`);
+  }, [watchedSupplierMappings, suppliers, form]);
 
   // Auto-update main price when a price level is selected
   useEffect(() => {
@@ -580,7 +619,7 @@ export function useAddProductForm({
         {
           ...values,
           itemType,
-          image: `https://picsum.photos/seed/${values.sku}/400/300`,
+          image: `https://picsum.photos/seed/${values.barcode}/400/300`,
         } as any,
         uid,
       );
@@ -598,7 +637,7 @@ export function useAddProductForm({
         logActivity({
           action: 'CREATE',
           module: 'PRODUCTS',
-          description: `Added product: ${values.name} (SKU: ${values.sku}) — Category: ${values.category || 'N/A'}`,
+          description: `Added product: ${values.name} (Barcode: ${values.barcode}) — Category: ${values.category || 'N/A'}`,
           referenceId: result.productId,
         }).catch(() => {
           // Silently ignore activity logging errors
@@ -615,13 +654,18 @@ export function useAddProductForm({
           brand: values.brand,
           department: values.department,
           subcategory: values.subcategory,
-          supplier: values.supplier,
           stock: values.stock ?? 0,
           reorderPoint: values.reorderPoint ?? 0,
           avgDailySales: 0,
           price: values.price,
           cost: values.cost,
-          sku: values.sku,
+          // `Product.sku` (lib/types.ts) is still a required string — out of
+          // scope for this task, which only retires the Add Product form's
+          // OWN sku field. Mirror the barcode here (matching how the backend
+          // now derives products.sku) instead of an empty string, keeping
+          // this emitted object internally consistent; nothing currently
+          // reads this field since onProductCreated has no live caller.
+          sku: values.barcode,
           barcode: values.barcode,
           imageUrl: '',
           imageHint: '',
@@ -653,13 +697,6 @@ export function useAddProductForm({
       setIsSubmitting(false);
     }
   }
-
-  const generateSku = () => {
-    const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const brandPart = form.getValues('brand')?.substring(0, 3).toUpperCase() || 'BRD';
-    const namePart = form.getValues('name')?.substring(0, 3).toUpperCase() || 'PRO';
-    form.setValue('sku', `${brandPart}-${namePart}-${randomPart}`);
-  };
 
   const generateBarcode = (
     fieldPath: 'barcode' | `sellingUnits.${number}.barcode` = 'barcode',
@@ -710,16 +747,17 @@ export function useAddProductForm({
     conversionFactorFields, appendConversionFactor, removeConversionFactor,
     sellingUnitFields, appendSellingUnit, removeSellingUnit,
     priceLevelFields, appendPriceLevel, removePriceLevel, replacePriceLevels,
+    supplierMappingFields, appendSupplierMapping, removeSupplierMapping, updateSupplierMappingField,
 
     // derived values
     selectedUnitOfMeasure,
     tabErrors,
     selectedPriceLevelId, setSelectedPriceLevelId,
     markupSource,
+    costSuggestionSource,
 
     // handlers
     onSubmit,
-    generateSku,
     generateBarcode,
     refreshBrands,
     refreshDepartments,

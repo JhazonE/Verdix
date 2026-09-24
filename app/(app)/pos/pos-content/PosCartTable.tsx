@@ -164,7 +164,7 @@ export function PosCartTable({
                         )}
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        {unit?.barcode || product.sku}
+                        {unit?.barcode || product.sellingUnits?.find((su: any) => su.isBase)?.barcode || product.barcode || ''}
                       </div>
                     </div>
                     <div className="shrink-0 text-sm font-medium text-muted-foreground">

@@ -25,6 +25,7 @@ import { BasicInfoTab } from './tabs/basic-info-tab';
 import { InventoryTab } from './tabs/inventory-tab';
 import { SellingUnitsTab } from './tabs/conversion-tab';
 import { LoyaltyTab } from './tabs/loyalty-tab';
+import { ProductSuppliers } from '../product-suppliers/product-suppliers';
 
 export function EditProductDialog({
   product,
@@ -58,6 +59,9 @@ export function EditProductDialog({
     tabErrors,
     markupSource,
     saveChanges,
+    supplierMappings,
+    isLoadingSupplierMappings,
+    refreshSupplierMappings,
   } = controller;
   const { toast } = useToast();
 
@@ -171,6 +175,14 @@ export function EditProductDialog({
                         >
                           Loyalty
                         </TabsTrigger>
+                        {product?.type !== 'service' && (
+                          <TabsTrigger
+                            value="suppliers"
+                            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3"
+                          >
+                            Suppliers
+                          </TabsTrigger>
+                        )}
                       </TabsList>
                       <TabsContent value="basic" className="space-y-4 p-6">
                         <BasicInfoTab />
@@ -186,6 +198,17 @@ export function EditProductDialog({
                       <TabsContent value="loyalty" className="space-y-4 p-6">
                         <LoyaltyTab />
                       </TabsContent>
+                      {product?.type !== 'service' && (
+                        <TabsContent value="suppliers" className="space-y-4 p-6">
+                          <ProductSuppliers
+                            productId={product.id}
+                            mappings={supplierMappings}
+                            isLoadingMappings={isLoadingSupplierMappings}
+                            onMappingsChanged={refreshSupplierMappings}
+                            onUpdate={onProductUpdated}
+                          />
+                        </TabsContent>
+                      )}
                     </Tabs>
                   </div>
                 </form>

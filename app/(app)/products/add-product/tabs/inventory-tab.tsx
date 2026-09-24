@@ -2,6 +2,7 @@
 
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { UnitOfMeasure } from '@/lib/types';
 import type { Supplier } from '@/lib/types';
@@ -230,49 +231,37 @@ export function InventoryTab() {
           )}
         />
 
+        {/* Reorder Point is set per supplier mapping on the Suppliers tab
+            (rop) — there's no field for it here, so there's exactly one
+            place to look. */}
         {itemType === 'standard' && (
-          <FormField
-            control={form.control}
-            name="supplier"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Supplier (Optional)</FormLabel>
-                <InlineEditableSelect
-                  items={suppliers}
-                  isLoading={isLoadingSuppliers}
-                  value={field.value}
-                  onChange={field.onChange}
-                  open={selects.suppliers}
-                  onOpenChange={(o) => setSelects((p) => ({ ...p, suppliers: o }))}
-                  placeholder="Select a supplier"
-                  addLabel="Add Supplier"
-                  emptyLabel="No suppliers found"
-                  getId={(s: Supplier) => s.id}
-                  getValue={(s: Supplier) => s.id}
-                  getOptionLabel={(s: Supplier) => s.name}
-                  getName={(s: Supplier) => s.name}
-                  onAdd={async (name) => {
-                    const r = await addSupplier({ name });
-                    if (r.success) {
-                      await refreshSuppliers();
-                      const fresh = await getSuppliers();
-                      const created = fresh.find((s) => s.name === name);
-                      return created?.id;
-                    }
-                    return { error: r.message };
-                  }}
-                  onRename={async (id, name) => {
-                    const existing = suppliers.find((s: Supplier) => s.id === id);
-                    if (!existing) return undefined;
-                    const r = await updateSupplier(id, { ...existing, name });
-                    if (r.success) { await refreshSuppliers(); return id; }
-                    return { error: r.message };
-                  }}
-                />
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          hideInitialStock ? (
+            // A product created from Purchase Order's inline "Add New
+            // Product" gets its stock from that PO's own receiving flow, not
+            // from this form — shown here read-only so it's still visible
+            // (not just silently missing), rather than editable.
+            <div className="space-y-2">
+              <Label>Initial Stock</Label>
+              <div>
+                <Input type="text" value="0" disabled />
+              </div>
+              <p className="text-sm text-muted-foreground">Set when this purchase order is received.</p>
+            </div>
+          ) : (
+            <FormField
+              control={form.control}
+              name="stock"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Initial Stock</FormLabel>
+                  <FormControl>
+                    <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )
         )}
       </div>
 
@@ -382,40 +371,6 @@ export function InventoryTab() {
           )}
         />
       )}
-
-      {/* Cost moved to the Selling Units tab's base row — this point is only
-          reached for a standard item (a service returns earlier above), so
-          Stock and Reorder Point get the full row to themselves now. */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {!hideInitialStock && (
-          <FormField
-            control={form.control}
-            name="stock"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Initial Stock</FormLabel>
-                <FormControl>
-                  <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
-        <FormField
-          control={form.control}
-          name="reorderPoint"
-          render={({ field }) => (
-            <FormItem className={hideInitialStock ? 'sm:col-span-2' : undefined}>
-              <FormLabel>Reorder Point</FormLabel>
-              <FormControl>
-                <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-      </div>
     </>
   );
 }

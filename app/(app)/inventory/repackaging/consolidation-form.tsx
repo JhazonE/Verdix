@@ -120,7 +120,7 @@ export function ConsolidationForm({ onSuccess }: { onSuccess?: () => void }) {
                     >
                       <div>
                         <p className="font-bold">{p.name}</p>
-                        <p className="text-sm text-muted-foreground">{p.sku} · Stock: {formatQuantity(p.stock)} {p.unitOfMeasure}</p>
+                        <p className="text-sm text-muted-foreground">{p.baseUnitBarcode || p.barcode} · Stock: {formatQuantity(p.stock)} {p.unitOfMeasure}</p>
                       </div>
                       <Badge variant="outline">Select</Badge>
                     </button>
@@ -133,7 +133,7 @@ export function ConsolidationForm({ onSuccess }: { onSuccess?: () => void }) {
                   <div className="flex items-start justify-between">
                     <div>
                       <h4 className="text-xl font-bold text-violet-600">{selectedSource.name}</h4>
-                      <p className="text-sm text-muted-foreground">{selectedSource.sku}</p>
+                      <p className="text-sm text-muted-foreground">{selectedSource.baseUnitBarcode || selectedSource.barcode}</p>
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => { setSelectedSource(null); setSourceSearch(''); }}>Change</Button>
                   </div>
@@ -223,7 +223,7 @@ export function ConsolidationForm({ onSuccess }: { onSuccess?: () => void }) {
                         >
                           <div>
                             <p className="font-bold">{p.name}</p>
-                            <p className="text-sm text-muted-foreground">{p.sku} · {p.unitOfMeasure}</p>
+                            <p className="text-sm text-muted-foreground">{p.baseUnitBarcode || p.barcode} · {p.unitOfMeasure}</p>
                           </div>
                           <Badge variant="outline">Select</Badge>
                         </button>
@@ -235,7 +235,7 @@ export function ConsolidationForm({ onSuccess }: { onSuccess?: () => void }) {
                     <div className="p-6 bg-emerald-500/5 rounded-2xl border border-emerald-500/20 flex items-center justify-between">
                       <div>
                         <h4 className="text-xl font-bold">{selectedTarget.name}</h4>
-                        <p className="text-sm text-muted-foreground">{selectedTarget.sku} · {selectedTarget.unitOfMeasure}</p>
+                        <p className="text-sm text-muted-foreground">{selectedTarget.baseUnitBarcode || selectedTarget.barcode} · {selectedTarget.unitOfMeasure}</p>
                         <p className="text-xs text-muted-foreground mt-1">Current stock: {formatQuantity(selectedTarget.stock)} {selectedTarget.unitOfMeasure}</p>
                       </div>
                       <Button variant="ghost" size="sm" onClick={() => { setSelectedTarget(null); setTargetSearch(''); }}>Change</Button>

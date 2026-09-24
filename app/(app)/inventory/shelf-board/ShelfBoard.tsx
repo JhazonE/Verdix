@@ -176,8 +176,9 @@ export default function ShelfBoard() {
   }, [products, shelfLocations]);
 
   const filteredSourceItems = useMemo(() => {
-    // Normalize once, not per row. Matching covers barcode as well as
-    // name/SKU, so a scanner finds the item — see lib/product-search.ts.
+    // Normalize once, not per row. Matching covers the base selling unit's
+    // barcode as well as name, so a scanner finds the item — see
+    // lib/product-search.ts.
     const term = normalizeSearchTerm(sourceSearch);
     return allStockItems
       .filter(i => matchesNormalizedSearch(i.product, term) && i.quantity > 0)
@@ -240,7 +241,7 @@ export default function ShelfBoard() {
                   rather than replacing the board, so the input keeps focus
                   and the list never flickers while typing. */}
               <div className="relative">
-                <Input placeholder="Search name, SKU or barcode..." value={sourceSearch} onChange={e => setSourceSearch(e.target.value)} className="h-8 text-sm pr-8" />
+                <Input placeholder="Search name or barcode..." value={sourceSearch} onChange={e => setSourceSearch(e.target.value)} className="h-8 text-sm pr-8" />
                 {isSearching && (
                   <Loader2 className="h-3.5 w-3.5 animate-spin absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 )}
@@ -258,7 +259,7 @@ export default function ShelfBoard() {
                           <div className="flex justify-center"><Checkbox checked={selectedSourceIds.has(item.uniqueId)} onCheckedChange={() => { const s = new Set(selectedSourceIds); if (s.has(item.uniqueId)) s.delete(item.uniqueId); else s.add(item.uniqueId); setSelectedSourceIds(s); }} /></div>
                           <div className="min-w-0" onClick={() => stageItems(item.uniqueId)}>
                               <p className="text-xs font-bold truncate leading-tight">{item.product.name}</p>
-                              <div className="flex items-center gap-1.5 opacity-70"><Badge variant="outline" className="text-[9px] px-1 h-3.5 truncate max-w-[60px]">{item.shelfName}</Badge><span className="text-[9px] truncate font-mono">{item.product.sku}</span></div>
+                              <div className="flex items-center gap-1.5 opacity-70"><Badge variant="outline" className="text-[9px] px-1 h-3.5 truncate max-w-[60px]">{item.shelfName}</Badge><span className="text-[9px] truncate font-mono">{item.product.sellingUnits?.find((su) => su.isBase)?.barcode || item.product.barcode}</span></div>
                           </div>
                           <div className="flex justify-end"><Button variant="ghost" size="sm" className="h-8 px-1.5 text-xs font-bold" onClick={() => stageItems(item.uniqueId)}>{formatStockQuantity(item.quantity)}</Button></div>
                       </div>

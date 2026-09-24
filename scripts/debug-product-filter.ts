@@ -31,6 +31,7 @@ async function main() {
       name: productName,
       brand: 'Test Brand',
       sku: `SKU-${timestamp}`,
+      barcode: `BARCODE-${timestamp}`,
       description: 'Test Description',
       category: 'Test Category',
       unitOfMeasure: 'pcs',

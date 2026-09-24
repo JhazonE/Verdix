@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
       SELECT 
         poi.product_id as productId,
         poi.product_name as productName,
-        p.sku,
+        su.barcode as baseUnitBarcode,
         p.barcode,
         p.category,
         p.brand,
@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
       JOIN purchase_orders po ON poi.purchase_order_id = po.id
       LEFT JOIN inventory_batches ib ON poi.purchase_order_id = ib.purchase_order_id AND poi.product_id = ib.product_id
       LEFT JOIN products p ON poi.product_id = p.id
+      LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -39,11 +40,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (search) {
-      sql += ' AND (poi.product_name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?)';
+      sql += ' AND (poi.product_name LIKE ? OR su.barcode LIKE ? OR p.barcode LIKE ?)';
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
-    sql += ' GROUP BY poi.product_id, poi.product_name, p.sku, p.barcode, p.category, p.brand, p.unit_of_measure';
+    sql += ' GROUP BY poi.product_id, poi.product_name, su.barcode, p.barcode, p.category, p.brand, p.unit_of_measure';
     sql += ' ORDER BY totalQuantity DESC';
 
     const results = await query(sql, params);

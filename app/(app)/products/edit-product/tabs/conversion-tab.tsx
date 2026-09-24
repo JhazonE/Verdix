@@ -1,11 +1,19 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, PlusCircle, Wand2, X } from 'lucide-react';
+import { ChevronDown, PlusCircle, Truck, Wand2, X } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -151,7 +159,13 @@ export function SellingUnitsTab() {
     units, refreshUnits,
     selectedUnitOfMeasure,
     generateBarcode,
+    costSuggestionSource,
+    supplierMappings,
   } = useEditProductFormContext();
+
+  // Only mappings with a cost actually on file are worth offering — an empty
+  // supplier_cost has nothing to pick.
+  const supplierCostOptions = (supplierMappings || []).filter(m => m.supplierCost != null);
 
   const [baseExpanded, setBaseExpanded] = useState(false);
   const [expandedUnits, setExpandedUnits] = useState<Record<number, boolean>>({});
@@ -277,7 +291,7 @@ export function SellingUnitsTab() {
                       <div className="relative">
                         <FormControl>
                           <Input
-                            placeholder="Optional"
+                            placeholder="Required"
                             value={field.value ?? ''}
                             onChange={field.onChange}
                             className="pr-9"
@@ -310,20 +324,59 @@ export function SellingUnitsTab() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-xs">Cost</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          placeholder="Required"
-                          value={field.value ?? ''}
-                          onChange={(e) => {
-                            const parsed = parseFloat(e.target.value);
-                            field.onChange(Number.isNaN(parsed) ? undefined : parsed);
-                          }}
-                        />
-                      </FormControl>
+                      <div className="relative">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0.01"
+                            placeholder="Required"
+                            className={supplierCostOptions.length > 0 ? 'pr-9' : undefined}
+                            value={field.value ?? ''}
+                            onChange={(e) => {
+                              const parsed = parseFloat(e.target.value);
+                              field.onChange(Number.isNaN(parsed) ? undefined : parsed);
+                            }}
+                          />
+                        </FormControl>
+                        {supplierCostOptions.length > 0 && (
+                          <DropdownMenu modal={false}>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="absolute right-0.5 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
+                              >
+                                <Truck className="h-4 w-4" />
+                                <span className="sr-only">Use a supplier's cost</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuLabel className="text-xs">Use supplier cost</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              {supplierCostOptions.map((mapping) => (
+                                <DropdownMenuItem
+                                  key={mapping.id}
+                                  onClick={() => field.onChange(mapping.supplierCost)}
+                                >
+                                  <span className="flex-1">{mapping.supplierName || 'Unknown supplier'}</span>
+                                  <span className="text-muted-foreground ml-2">
+                                    ₱{mapping.supplierCost?.toFixed(2)}
+                                  </span>
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
                       <FormMessage />
+                      {costSuggestionSource && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Wand2 className="h-3 w-3" />
+                          {costSuggestionSource}
+                        </p>
+                      )}
                     </FormItem>
                   )}
                 />

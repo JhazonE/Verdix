@@ -6,9 +6,11 @@ export type RepackagingLog = {
   id: string;
   sourceProductId: string;
   sourceProductName: string;
+  sourceBarcode: string | null;
   sourceQty: number;
   targetProductId: string;
   targetProductName: string;
+  targetBarcode: string | null;
   targetQtyProduced: number;
   factor: number;
   status: string;
@@ -24,11 +26,13 @@ export async function getRepackagingHistory(limit: number = 50, offset: number =
     const rows: any = await query(
       `SELECT
         rl.*,
-        sp.sku AS source_sku,
-        tp.sku AS target_sku
+        COALESCE(spu.barcode, sp.barcode) AS source_barcode,
+        COALESCE(tpu.barcode, tp.barcode) AS target_barcode
        FROM repackaging_logs rl
        LEFT JOIN products sp ON rl.source_product_id = sp.id
        LEFT JOIN products tp ON rl.target_product_id = tp.id
+       LEFT JOIN product_selling_units spu ON spu.product_id = sp.id AND spu.is_base = 1
+       LEFT JOIN product_selling_units tpu ON tpu.product_id = tp.id AND tpu.is_base = 1
        ORDER BY rl.created_at DESC
        LIMIT ? OFFSET ?`,
       [limit, offset]
@@ -38,11 +42,11 @@ export async function getRepackagingHistory(limit: number = 50, offset: number =
       id: r.id,
       sourceProductId: r.source_product_id,
       sourceProductName: r.source_product_name,
-      sourceSku: r.source_sku,
+      sourceBarcode: r.source_barcode,
       sourceQty: parseFloat(r.source_qty),
       targetProductId: r.target_product_id,
       targetProductName: r.target_product_name,
-      targetSku: r.target_sku,
+      targetBarcode: r.target_barcode,
       targetQtyProduced: parseFloat(r.target_qty_produced),
       factor: parseFloat(r.factor),
       status: r.status,

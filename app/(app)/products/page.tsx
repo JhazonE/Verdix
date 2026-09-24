@@ -135,8 +135,9 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
             </div>
           )}
         </TableCell>
-        <TableCell className="hidden md:table-cell">{product.sku}</TableCell>
-        <TableCell className="hidden lg:table-cell">{product.barcode}</TableCell>
+        <TableCell className="hidden md:table-cell">
+          {product.sellingUnits?.find((su) => su.isBase)?.barcode || product.barcode}
+        </TableCell>
         <TableCell className="hidden sm:table-cell text-center text-muted-foreground">
           {product.unitOfMeasure}
         </TableCell>
@@ -260,7 +261,7 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
 
       {unitsExpanded && extraSellingUnits.length > 0 && (
         <TableRow className="bg-muted/30 hover:bg-muted/30">
-          <TableCell colSpan={11} className="p-0">
+          <TableCell colSpan={10} className="p-0">
             <div className="divide-y divide-border/50">
               {extraSellingUnits.map((unit, idx) => (
                 <div
@@ -323,7 +324,6 @@ function ProductSkeleton() {
       <TableCell className="hidden sm:table-cell w-12"><Skeleton className="h-5 w-5" /></TableCell>
       <TableCell><Skeleton className="h-5 w-32" /></TableCell>
       <TableCell className="hidden md:table-cell"><Skeleton className="h-5 w-24" /></TableCell>
-      <TableCell className="hidden lg:table-cell"><Skeleton className="h-5 w-24" /></TableCell>
       <TableCell className="hidden sm:table-cell"><Skeleton className="h-5 w-10 mx-auto" /></TableCell>
       <TableCell><Skeleton className="h-5 w-12 mx-auto mb-1" /><Skeleton className="h-4 w-16 mx-auto rounded-full" /></TableCell>
       <TableCell className="hidden md:table-cell text-right"><Skeleton className="h-5 w-20 ml-auto" /></TableCell>
@@ -855,8 +855,7 @@ function ProductsContent() {
               <TableRow className="hover:bg-transparent border-b-2 border-border">
                 <TableHead className={cn(HEAD_CLASS, "w-12 hidden sm:table-cell")} />
                 <TableHead className={HEAD_CLASS}>Name</TableHead>
-                <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell")}>SKU</TableHead>
-                <TableHead className={cn(HEAD_CLASS, "hidden lg:table-cell")}>Barcode</TableHead>
+                <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell")}>Barcode</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "hidden sm:table-cell text-center")}>Unit</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "text-center")}>Stock</TableHead>
                 <TableHead className={cn(HEAD_CLASS, "hidden md:table-cell text-right")}>Cost</TableHead>
@@ -888,7 +887,7 @@ function ProductsContent() {
               )}
               {!isLoadingProducts && filteredProducts.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={11} className="h-24 text-center">
+                  <TableCell colSpan={10} className="h-24 text-center">
                     No products found.
                   </TableCell>
                 </TableRow>

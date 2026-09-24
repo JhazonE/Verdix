@@ -14,8 +14,15 @@
 
 type SearchableProduct = {
     name?: string | null;
-    sku?: string | null;
     barcode?: string | null;
+    /**
+     * The base selling unit's own barcode is the real identifier now (see
+     * docs/superpowers/specs/2026-09-22-retire-sku-search-pos-inventory-design.md)
+     * — `sku` is retired from this matcher's own vocabulary. `barcode` above
+     * stays as the legacy `products.barcode` column fallback only; it is
+     * never the primary source once a caller supplies `sellingUnits`.
+     */
+    sellingUnits?: { isBase?: boolean; barcode?: string | null }[] | null;
 };
 
 /**
@@ -74,16 +81,19 @@ export function matchesNormalizedSearch(
     if (!normalizedTerm) return true;
     if (!product) return false;
 
+    const baseUnitBarcode = product.sellingUnits?.find(su => su.isBase)?.barcode ?? '';
+
     return (
         (product.name?.toLowerCase() ?? '').includes(normalizedTerm) ||
-        (product.sku?.toLowerCase() ?? '').includes(normalizedTerm) ||
-        (product.barcode?.toLowerCase() ?? '').includes(normalizedTerm)
+        (product.barcode?.toLowerCase() ?? '').includes(normalizedTerm) ||
+        baseUnitBarcode.toLowerCase().includes(normalizedTerm)
     );
 }
 
 /**
- * Match a product against a raw (unnormalized) search term, by name, SKU or
- * barcode. Case-insensitive; surrounding whitespace is ignored.
+ * Match a product against a raw (unnormalized) search term, by name, the
+ * base selling unit's barcode, or the legacy barcode column. Case-insensitive;
+ * surrounding whitespace is ignored.
  */
 export function matchesProductSearch(
     product: SearchableProduct | null | undefined,

@@ -98,7 +98,7 @@ export default function BulkAdjustmentClient() {
                 <div className="relative flex-1">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                   <Input
-                    placeholder="Search products by name or SKU..."
+                    placeholder="Search products by name or barcode..."
                     className="pl-10 h-11 bg-muted/40 focus:bg-background transition-colors"
                     value={search}
                     onChange={e => { setSearch(e.target.value); setShowResults(true); }}

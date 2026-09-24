@@ -3,7 +3,7 @@
 import { query, withTransaction } from '@/lib/mysql';
 import { generateBatchId } from '@/lib/batch-utils';
 import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
-import { PriceLevel, Category, Brand, Supplier, Warehouse, Department, UnitOfMeasure, ShelfLocation, Account, TaxRate } from '@/lib/types';
+import { PriceLevel, Category, Brand, Supplier, Warehouse, Department, UnitOfMeasure, ShelfLocation, Account, TaxRate, SupplierProductMapping } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { isValidMarkupValue, MARKUP_MAX } from '@/lib/markup-validation';
 import { updateStockAndRecordMovement } from '@/lib/stock-movements';
@@ -12,8 +12,13 @@ import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 export type ProductFormData = {
   name: string;
   brand: string;
-  sku: string;
-  barcode?: string;
+  // Edit Product's own form no longer collects a SKU (retired in favor of
+  // the base selling unit's barcode) — updateProduct's `formData.sku ??
+  // existing.sku` fallback already handles an absent value by preserving
+  // the existing DB row, so this only needed to stop being required.
+  // `products.sku` the DB column is unaffected and out of scope here.
+  sku?: string;
+  barcode: string;
   description: string;
   additionalDescription?: string;
   category: string;
@@ -621,7 +626,11 @@ export async function addProduct(
       throw error;
     }
 
-    const productId = `${formData.sku}-${Date.now()}`;
+    // formData.sku no longer exists on a submitted product's payload (see
+    // product-schema.ts) — formData.barcode (the base selling unit's
+    // barcode) is required by Task 3's schema change for both item types,
+    // so it's always a real value here, not `undefined`.
+    const productId = `${formData.barcode}-${Date.now()}`;
     const isServiceProduct = formData.itemType === 'service';
 
     // Services are performed at the store, not stocked in a warehouse the user
@@ -651,7 +660,7 @@ export async function addProduct(
         // apply to services, so it is never written for one.
         department: isServiceProduct ? null : (formData.department || null),
         subcategory: formData.subcategory || null,
-        supplier_id: formData.supplier || null,
+        supplier_id: null,
         warehouse_id: resolvedWarehouseId,
         stock: formData.stock || 0,
         reorder_point: formData.reorderPoint || formData.supplierMappings?.find(m => m.isPrimary)?.rop || 0,
@@ -661,7 +670,13 @@ export async function addProduct(
         // services: cost is required at creation precisely so cost_at_sale is
         // never NULL, and 0 is a legitimate answer for a pure-margin service.
         cost: formData.cost ?? null,
-        sku: formData.sku,
+        // products.sku is retired as a user-facing field (see the
+        // retire-product-sku spec) but the column itself stays populated —
+        // kept in sync with the base unit's barcode — because every other
+        // file still reading products.sku (search, reports, bulk import,
+        // etc.) is migrated to barcode in later, separate sub-projects and
+        // must keep seeing a matching value until then.
+        sku: formData.barcode,
         barcode: formData.barcode || null,
         image_url: formData.image || null,
         image_hint: formData.name.toLowerCase().replace(/\s+/g, '-'),
@@ -828,7 +843,17 @@ export async function updateProduct(id: string, formData: ProductFormData) {
         reorder_point: formData.reorderPoint !== undefined ? formData.reorderPoint : existing.reorder_point,
         price: formData.price !== undefined ? formData.price : existing.price,
         cost: (formData.cost !== undefined ? formData.cost : existing.cost) || null,
-        sku: formData.sku ?? existing.sku,
+        // Same mirroring rationale as addProduct (see that function's own
+        // comment on this) — products.sku tracks the base selling unit's
+        // barcode now. formData.barcode is required by the Edit schema for
+        // a standard product's submission (Task 3), but this function is
+        // also reachable for a partial update that doesn't touch the
+        // barcode field at all — falling back to the already-stored
+        // existing.barcode (the products.barcode column, which this
+        // function ALSO mirrors from formData.barcode a few lines below)
+        // keeps sku in sync with whatever barcode value survives this call,
+        // rather than reverting to a stale existing.sku.
+        sku: (formData.barcode !== undefined ? formData.barcode : existing.barcode) || existing.sku,
         barcode: (formData.barcode !== undefined ? formData.barcode : existing.barcode) || null,
         image_url: (formData.image !== undefined ? formData.image : existing.image_url) || null,
         image_hint: formData.name ? formData.name.toLowerCase().replace(/\s+/g, '-') : existing.image_hint,
@@ -2441,10 +2466,29 @@ export async function deletePriceLevel(id: string) {
 export async function addSupplierMapping(productId: string, supplierId: string, leadTime: number, rop: number, cost?: number, supplierSku?: string, isPrimary: boolean = false) {
   try {
     const id = `spm_${Date.now()}`;
-    if (isPrimary) {
+
+    const existingCount: any = await query(
+      'SELECT COUNT(*) as count FROM supplier_product_mapping WHERE product_id = ?',
+      [productId]
+    );
+    // A product's very first mapping is always primary — markup, reorder
+    // point, and the selling-unit cost suggestion all read "the primary
+    // mapping", and none of them should have to handle "one mapping exists
+    // but none is primary" as a normal state.
+    // Matches this file's own established unwrap convention for a
+    // `COUNT(*) as count` query — see getProductsCount's `result[0].count`.
+    const isFirstMapping = existingCount[0].count === 0;
+    const resolvedIsPrimary = isFirstMapping ? true : isPrimary;
+
+    if (resolvedIsPrimary) {
       await query('UPDATE supplier_product_mapping SET is_primary = 0 WHERE product_id = ?', [productId]);
     }
-    await query('INSERT INTO supplier_product_mapping (id, product_id, supplier_id, supplier_lead_time, supplier_specific_rop, supplier_cost, supplier_sku, is_primary) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [id, productId, supplierId, leadTime, rop, cost || null, supplierSku || null, isPrimary ? 1 : 0]);
+    await query('INSERT INTO supplier_product_mapping (id, product_id, supplier_id, supplier_lead_time, supplier_specific_rop, supplier_cost, supplier_sku, is_primary) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [id, productId, supplierId, leadTime, rop, cost || null, supplierSku || null, resolvedIsPrimary ? 1 : 0]);
+
+    if (resolvedIsPrimary) {
+      await query('UPDATE products SET reorder_point = ? WHERE id = ?', [rop, productId]);
+    }
+
     return { success: true, message: 'Supplier mapping added successfully.' };
   } catch (error) {
     console.error('Error adding supplier mapping:', error);
@@ -2454,11 +2498,28 @@ export async function addSupplierMapping(productId: string, supplierId: string, 
 
 export async function updateSupplierMapping(id: string, leadTime: number, rop: number, cost?: number, supplierSku?: string, isPrimary: boolean = false) {
   try {
-    const [mapping]: any = await query('SELECT product_id FROM supplier_product_mapping WHERE id = ?', [id]);
-    if (isPrimary && mapping) {
-      await query('UPDATE supplier_product_mapping SET is_primary = 0 WHERE product_id = ?', [mapping.product_id]);
+    const [existing]: any = await query('SELECT product_id, is_primary FROM supplier_product_mapping WHERE id = ?', [id]);
+    if (!existing) {
+      return { success: false, message: 'Supplier mapping not found.' };
+    }
+
+    if (isPrimary) {
+      await query('UPDATE supplier_product_mapping SET is_primary = 0 WHERE product_id = ?', [existing.product_id]);
     }
     await query('UPDATE supplier_product_mapping SET supplier_lead_time = ?, supplier_specific_rop = ?, supplier_cost = ?, supplier_sku = ?, is_primary = ? WHERE id = ?', [leadTime, rop, cost || null, supplierSku || null, isPrimary ? 1 : 0, id]);
+
+    // The row being edited was already primary (is_primary=1 before this
+    // update, and isPrimary wasn't explicitly turned off — this function has
+    // no "demote" path, only "promote via isPrimary:true"), or was just
+    // promoted by this call. Either way, if it is primary AFTER this update,
+    // its rop must be what products.reorder_point reflects — otherwise
+    // editing an already-primary row's ROP here would silently desync it
+    // until someone re-triggered setPrimarySupplier.
+    const isNowPrimary = isPrimary || !!existing.is_primary;
+    if (isNowPrimary) {
+      await query('UPDATE products SET reorder_point = ? WHERE id = ?', [rop, existing.product_id]);
+    }
+
     return { success: true, message: 'Supplier mapping updated successfully.' };
   } catch (error) {
     console.error('Error updating supplier mapping:', error);
@@ -2476,15 +2537,31 @@ export async function deleteSupplierMapping(id: string) {
   }
 }
 
-export async function getSupplierMappings(productId: string) {
+export async function getSupplierMappings(productId: string): Promise<SupplierProductMapping[]> {
   try {
     const sql = `
-      SELECT spm.*, s.name as supplierName 
+      SELECT spm.*, s.name as supplierName
       FROM supplier_product_mapping spm
       JOIN suppliers s ON spm.supplier_id = s.id
       WHERE spm.product_id = ?
     `;
-    return await query(sql, [productId]);
+    const rows: any = await query(sql, [productId]);
+    // Map DB snake_case to the camelCase shape SupplierProductMapping/the UI
+    // expect — spm.* comes back raw (product_id, supplier_lead_time,
+    // is_primary as 0/1), unlike supplierName which is already aliased above.
+    return rows.map((r: any) => ({
+      id: r.id,
+      productId: r.product_id,
+      supplierId: r.supplier_id,
+      supplierName: r.supplierName,
+      supplierSku: r.supplier_sku ?? undefined,
+      supplierLeadTime: r.supplier_lead_time ?? 0,
+      supplierSpecificRop: r.supplier_specific_rop ?? 0,
+      supplierCost: r.supplier_cost != null ? parseFloat(r.supplier_cost) : undefined,
+      isPrimary: !!r.is_primary,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }));
   } catch (error) {
     console.error('Error fetching supplier mappings:', error);
     return [];
@@ -2603,7 +2680,9 @@ export async function searchProducts(searchQuery: string) {
       SELECT p.id, p.name, p.sku, p.barcode, p.stock, p.unit_of_measure, p.parent_id, p.conversion_factor, p.price, p.cost,
              (SELECT JSON_ARRAYAGG(JSON_OBJECT('unit', unit, 'factor', factor))
               FROM conversion_factors cf
-              WHERE cf.product_id = p.id) as conversion_factors
+              WHERE cf.product_id = p.id) as conversion_factors,
+             (SELECT su.barcode FROM product_selling_units su
+              WHERE su.product_id = p.id AND su.is_base = 1 LIMIT 1) as base_unit_barcode
       FROM products p
       WHERE (p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ? OR EXISTS (
         SELECT 1 FROM product_selling_units su WHERE su.product_id = p.id AND su.barcode LIKE ?
@@ -2617,6 +2696,7 @@ export async function searchProducts(searchQuery: string) {
       name: r.name,
       sku: r.sku,
       barcode: r.barcode,
+      baseUnitBarcode: r.base_unit_barcode,
       stock: r.stock,
       unitOfMeasure: r.unit_of_measure,
       parentId: r.parent_id,

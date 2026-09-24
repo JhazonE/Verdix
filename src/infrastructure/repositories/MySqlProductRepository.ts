@@ -266,9 +266,14 @@ export class MySqlProductRepository implements ProductRepository {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
+    // This path is reachable independently of app/(app)/products/actions.ts
+    // (see the class-level comment further down in this file) and its own
+    // CreateProductRequest no longer requires sku — mirror it from barcode
+    // the same way addProduct/updateProduct do, so products.sku stays
+    // populated for every creation path, not just the primary one.
     await query(sql, [
       id, product.name, product.description, product.category, product.brand, product.department,
-      product.stock || 0, product.price, product.cost, product.sku, product.barcode, 0, 0
+      product.stock || 0, product.price, product.cost, product.sku ?? product.barcode ?? null, product.barcode, 0, 0
     ]);
 
     // POST /api/products (CreateProductUseCase) IS a live, E2E-tested caller

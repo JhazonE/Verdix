@@ -125,9 +125,10 @@ export function useTransferBoard() {
 
   const filteredSourceItems = useMemo(() => {
     // The server has already matched this term (name/SKU/barcode) across the
-    // whole catalogue. Re-applying the same match locally only hides rows
-    // still on screen from the previous term during the debounce window, so
-    // the list never shows results that contradict what has been typed.
+    // whole catalogue. Re-applying a local name/base-unit-barcode match only
+    // hides rows still on screen from the previous term during the debounce
+    // window, so the list never shows results that contradict what has been
+    // typed.
     const term = normalizeSearchTerm(sourceSearch);
     return allStockItems
       .filter(i => matchesNormalizedSearch(i.product, term) && i.quantity > 0)

@@ -657,16 +657,17 @@ export function usePOS() {
     for (const p of list) {
       if (seen.has(p.id)) continue;
       seen.add(p.id);
-      const sku = (p.sku || '').toLowerCase();
       const barcode = (p.barcode || '').toLowerCase();
       const name = (p.name || '').toLowerCase();
+      const baseUnitBarcode = ((p.sellingUnits || []).find((u: any) => u.isBase)?.barcode || '').toLowerCase();
       const unitBarcodeMatch = (p.sellingUnits || []).some((u: any) => !u.isBase && (u.barcode || '').toLowerCase() === q);
-      if (sku === q || barcode === q || unitBarcodeMatch) exactCode.push(p);
+      if (baseUnitBarcode === q || barcode === q || unitBarcodeMatch) exactCode.push(p);
       else if (name === q) exactName.push(p);
-      // Fuzzy/partial matching stays product-name/SKU/barcode only — matching
-      // partial text against every unit's barcode too would surface confusing
-      // unit-level partial hits for what should read as a product-name search.
-      else if (sku.includes(q) || barcode.includes(q) || name.includes(q)) partial.push(p);
+      // Fuzzy/partial matching stays product-name/barcode only (base unit's
+      // own barcode included) — matching partial text against every EXTRA
+      // unit's barcode too would surface confusing unit-level partial hits
+      // for what should read as a product-name search.
+      else if (baseUnitBarcode.includes(q) || barcode.includes(q) || name.includes(q)) partial.push(p);
     }
     return [...exactCode, ...exactName, ...partial];
   };
@@ -709,7 +710,7 @@ export function usePOS() {
   // the debounced server results so products outside the cached page still
   // auto-add once their search response lands.
   const matchesProductOrUnitCode = (p: any, q: string) =>
-    (p.sku || '').toLowerCase() === q ||
+    ((p.sellingUnits || []).find((u: any) => u.isBase)?.barcode || '').toLowerCase() === q ||
     (p.barcode || '').toLowerCase() === q ||
     (p.sellingUnits || []).some((u: any) => !u.isBase && (u.barcode || '').toLowerCase() === q);
 

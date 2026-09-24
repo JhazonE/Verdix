@@ -234,49 +234,17 @@ export function InventoryTab() {
           )}
         />
 
+        {/* Stock is standard-only. Reorder Point is set per supplier
+            mapping on the Suppliers tab (supplier_specific_rop) — there's
+            no field for it here, so there's exactly one place to look. */}
         {!isServiceProduct && (
-        <FormField
-          control={form.control}
-          name="supplier"
-          render={({ field }) => (
-            <FormItem className="col-span-1">
-              <FormLabel>Supplier (Optional)</FormLabel>
-              <InlineEditableSelect
-                items={suppliers}
-                isLoading={false}
-                value={field.value}
-                onChange={field.onChange}
-                open={selects.suppliers}
-                onOpenChange={(o) => setSelects((p) => ({ ...p, suppliers: o }))}
-                placeholder="Select a supplier"
-                addLabel="Add Supplier"
-                emptyLabel="No suppliers found"
-                getId={(s: Supplier) => s.id}
-                getValue={(s: Supplier) => s.id}
-                getOptionLabel={(s: Supplier) => s.name}
-                getName={(s: Supplier) => s.name}
-                onAdd={async (name) => {
-                  const r = await addSupplier({ name });
-                  if (r.success) {
-                    await refreshSuppliers();
-                    const fresh = await getSuppliers();
-                    const created = fresh.find((s) => s.name === name);
-                    return created?.id;
-                  }
-                  return { error: r.message };
-                }}
-                onRename={async (id, name) => {
-                  const existing = suppliers.find((s: Supplier) => s.id === id);
-                  if (!existing) return undefined;
-                  const r = await updateSupplier(id, { ...existing, name });
-                  if (r.success) { await refreshSuppliers(); return id; }
-                  return { error: r.message };
-                }}
-              />
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="space-y-2">
+          <Label>Initial Stock</Label>
+          <div>
+            <Input type="text" value={formatQuantity(product.stock || 0)} disabled />
+          </div>
+          <p className="text-sm text-muted-foreground">Stock is updated via transactions.</p>
+        </div>
         )}
       </div>
 
@@ -368,34 +336,6 @@ export function InventoryTab() {
           )}
         />
         )}
-      </div>
-
-      {/* Stock and Reorder Point are standard-only, leaving Cost alone here for
-          a service — kept at two columns so it lines up with every field
-          above it. Cost moved to the Selling Units tab's base row — this
-          point is standard-item-only, so Stock and Reorder Point get the
-          full row now. Mirrors the Add form. */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label>Initial Stock</Label>
-          <div>
-            <Input type="text" value={formatQuantity(product.stock || 0)} disabled />
-          </div>
-          <p className="text-sm text-muted-foreground">Stock is updated via transactions.</p>
-        </div>
-        <FormField
-          control={form.control}
-          name="reorderPoint"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Reorder Point</FormLabel>
-              <FormControl>
-                <Input type="number" placeholder="0" value={field.value != null ? formatQuantity(field.value) : ''} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
       </div>
     </div>
   );

@@ -80,8 +80,8 @@ export function StockTransferDialog({ product, children, onSuccess, requireConfi
                 <span className="font-semibold">{formatQuantity(product.stock)} {product.unitOfMeasure}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">SKU / Barcode:</span>
-                <span>{product.sku || product.barcode || 'N/A'}</span>
+                <span className="text-muted-foreground">Barcode:</span>
+                <span>{product.sellingUnits?.find((su) => su.isBase)?.barcode || product.barcode || 'N/A'}</span>
               </div>
             </div>
 

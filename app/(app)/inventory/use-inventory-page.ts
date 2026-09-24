@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { useLiveRefresh } from '@/hooks/use-live-refresh';
+import { matchesNormalizedSearch, normalizeSearchTerm } from '@/lib/product-search';
 import type { Product } from '@/lib/types';
 
 import { getProducts } from '../products/actions';
@@ -11,7 +12,7 @@ import type { ProductWithChildren } from './product-list-types';
 
 export function useInventoryPage() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState<'name' | 'stock' | 'sku'>('name');
+  const [sortBy, setSortBy] = useState<'name' | 'stock' | 'barcode'>('name');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [typeFilter, setTypeFilter] = useState<'all' | 'standard' | 'service'>('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -39,11 +40,10 @@ export function useInventoryPage() {
   useLiveRefresh(refetch);
 
   const products = useMemo(() => {
-    const lower = searchTerm.toLowerCase().trim();
-    const matches = (p: Product) =>
-      (p.name?.toLowerCase() ?? '').includes(lower) ||
-      (p.sku?.toLowerCase() ?? '').includes(lower) ||
-      (p.barcode?.toLowerCase() ?? '').includes(lower);
+    // Normalize once rather than re-lowercasing the term for every product on
+    // every keystroke. Matching covers the base selling unit's barcode as well
+    // as name — see lib/product-search.ts.
+    const term = normalizeSearchTerm(searchTerm);
 
     const matchesType = (p: Product) =>
       typeFilter === 'all' || (p.type ?? 'standard') === typeFilter;
@@ -52,13 +52,17 @@ export function useInventoryPage() {
     // packaging now lives in its selling units, not in separate child products,
     // so there is no tree to build and nothing to keep grouped.
     const visible: ProductWithChildren[] = allLoadedProducts
-      .filter((p: Product) => (!lower || matches(p)) && matchesType(p))
+      .filter((p: Product) => matchesNormalizedSearch(p, term) && matchesType(p))
       .map((p: Product) => ({ ...p, children: [] }));
 
     visible.sort((a, b) => {
       if (sortBy === 'name') return a.name.localeCompare(b.name);
       if (sortBy === 'stock') return b.stock - a.stock;
-      if (sortBy === 'sku') return a.sku.localeCompare(b.sku);
+      if (sortBy === 'barcode') {
+        const aBarcode = a.sellingUnits?.find((su) => su.isBase)?.barcode ?? a.barcode ?? '';
+        const bBarcode = b.sellingUnits?.find((su) => su.isBase)?.barcode ?? b.barcode ?? '';
+        return aBarcode.localeCompare(bBarcode);
+      }
       return 0;
     });
 

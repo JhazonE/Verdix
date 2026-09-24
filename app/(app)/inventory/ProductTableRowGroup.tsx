@@ -56,8 +56,9 @@ export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmen
             )}
           </div>
         </TableCell>
-        <TableCell>{productGroup.sku}</TableCell>
-        <TableCell className="font-mono text-xs">{productGroup.barcode || '-'}</TableCell>
+        <TableCell className="font-mono text-xs">
+          {productGroup.sellingUnits?.find((su) => su.isBase)?.barcode || productGroup.barcode || '-'}
+        </TableCell>
         <TableCell>
           <span className="font-medium">{formatStockQuantity(displayStock, productGroup.unitOfMeasure)}</span> <span className="text-muted-foreground text-xs">{productGroup.unitOfMeasure}</span>
         </TableCell>
@@ -96,8 +97,9 @@ export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmen
                   )}
                 </div>
               </TableCell>
-              <TableCell className="text-sm">{child.sku}</TableCell>
-              <TableCell className="text-sm font-mono text-xs">{child.barcode || '-'}</TableCell>
+              <TableCell className="text-sm font-mono text-xs">
+                {child.sellingUnits?.find((su) => su.isBase)?.barcode || child.barcode || '-'}
+              </TableCell>
               <TableCell className="text-sm">
                  <span className="font-medium">{formatStockQuantity(child.stock, child.unitOfMeasure)}</span> <span className="text-muted-foreground text-xs">{child.unitOfMeasure}</span>
               </TableCell>

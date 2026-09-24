@@ -179,7 +179,7 @@ export function BreakPackDialog({ parentProduct, onPackBroken, trigger }: {
                           >
                             <div>
                               <p className="text-sm font-bold">{p.name}</p>
-                              <p className="text-xs text-muted-foreground">{p.sku} · {p.unitOfMeasure}</p>
+                              <p className="text-xs text-muted-foreground">{p.baseUnitBarcode || p.barcode} · {p.unitOfMeasure}</p>
                             </div>
                             <PlusCircle className="h-4 w-4 text-primary opacity-50" />
                           </button>

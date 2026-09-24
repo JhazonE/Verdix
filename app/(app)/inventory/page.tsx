@@ -142,20 +142,20 @@ export default function InventoryPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search products by name or SKU..."
+            placeholder="Search products by name or barcode..."
             className="pl-9"
             value={searchTerm}
             onChange={(e) => handleSearch(e.target.value)}
           />
         </div>
-        <Select value={sortBy} onValueChange={(v) => setSortBy(v as 'name' | 'stock' | 'sku')}>
+        <Select value={sortBy} onValueChange={(v) => setSortBy(v as 'name' | 'stock' | 'barcode')}>
           <SelectTrigger className="w-full md:w-[180px]">
             <SelectValue placeholder="Sort by" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="name">Name</SelectItem>
             <SelectItem value="stock">Stock Level</SelectItem>
-            <SelectItem value="sku">SKU</SelectItem>
+            <SelectItem value="barcode">Barcode</SelectItem>
           </SelectContent>
         </Select>
         <Select value={typeFilter} onValueChange={(v) => handleTypeFilterChange(v as 'all' | 'standard' | 'service')}>
@@ -208,7 +208,6 @@ export default function InventoryPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[300px]">Product</TableHead>
-                <TableHead>SKU</TableHead>
                 <TableHead>Barcode</TableHead>
                 <TableHead>Stock</TableHead>
                 <TableHead>Status</TableHead>
