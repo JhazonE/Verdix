@@ -35,7 +35,6 @@ import { format } from 'date-fns';
 interface Product {
   id: string;
   name: string;
-  sku: string;
   barcode: string;
   category: string;
   brand: string;

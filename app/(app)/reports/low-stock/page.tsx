@@ -49,7 +49,6 @@ import {
 interface Product {
   id: string;
   name: string;
-  sku: string;
   barcode: string;
   category: string;
   brand: string;
