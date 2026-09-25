@@ -39,7 +39,7 @@ export type ProductFormData = {
   parentId?: string;
   conversionFactor?: number;
   conversionFactors?: { unit: string; factor: number }[];
-  priceLevels?: { levelId: string; price: number; minQuantity?: number }[];
+  priceLevels?: { levelId: string; price: number }[];
   supplierMappings?: {
     supplierId: string;
     leadTime: number;
@@ -69,7 +69,7 @@ export type SellingUnitInput = {
   barcode?: string;
   cost?: number;
   price: number;
-  priceLevels?: { levelId: string; price: number; minQuantity?: number }[];
+  priceLevels?: { levelId: string; price: number }[];
 };
 
 /** Thrown for a selling-unit problem we can describe to the user by name. */
@@ -183,7 +183,7 @@ function rethrowSellingUnitDupe(error: any): never {
 async function replaceSellingUnitPriceLevels(
   connection: any,
   sellingUnitId: string,
-  priceLevels: { levelId: string; price: number; minQuantity?: number }[] | undefined,
+  priceLevels: { levelId: string; price: number }[] | undefined,
 ) {
   await connection.query(
     'DELETE FROM product_selling_unit_price_levels WHERE selling_unit_id = ?',
@@ -192,8 +192,8 @@ async function replaceSellingUnitPriceLevels(
   if (priceLevels && priceLevels.length > 0) {
     for (const pl of priceLevels) {
       await connection.query(
-        'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)',
-        [sellingUnitId, pl.levelId, pl.price, pl.minQuantity || 0],
+        'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price) VALUES (?, ?, ?)',
+        [sellingUnitId, pl.levelId, pl.price],
       );
     }
   }
@@ -213,7 +213,7 @@ async function writeSellingUnits(
   baseCost: number | null,
   baseBarcode: string | null,
   extras: SellingUnitInput[],
-  basePriceLevels?: { levelId: string; price: number; minQuantity?: number }[],
+  basePriceLevels?: { levelId: string; price: number }[],
 ) {
   const baseName = String(baseUnitName ?? '').trim() || 'Piece';
   try {
@@ -227,8 +227,8 @@ async function writeSellingUnits(
     if (basePriceLevels && basePriceLevels.length > 0) {
       for (const pl of basePriceLevels) {
         await connection.query(
-          'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)',
-          [baseUnitId, pl.levelId, pl.price, pl.minQuantity || 0],
+          'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price) VALUES (?, ?, ?)',
+          [baseUnitId, pl.levelId, pl.price],
         );
       }
     }
@@ -252,8 +252,8 @@ async function writeSellingUnits(
       if (unit.priceLevels && unit.priceLevels.length > 0) {
         for (const pl of unit.priceLevels) {
           await connection.query(
-            'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)',
-            [sellingUnitId, pl.levelId, pl.price, pl.minQuantity || 0],
+            'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price) VALUES (?, ?, ?)',
+            [sellingUnitId, pl.levelId, pl.price],
           );
         }
       }
@@ -404,7 +404,6 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
       sulpByUnit.get(row.selling_unit_id)!.push({
         levelId: row.price_level_id,
         price: Number(row.price),
-        minQuantity: row.min_quantity ?? 0,
       });
     }
 
@@ -417,8 +416,7 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
       const baseUnit = productSellingUnits.find((su: any) => su.isBase);
       const basePriceLevels = (baseUnit ? sulpByUnit.get(baseUnit.id) : undefined) || [];
       const retailPriceOverrides = basePriceLevels
-        .filter((pl: any) => pl.levelId === defaultLevelId)
-        .sort((a: any, b: any) => (a.minQuantity || 0) - (b.minQuantity || 0));
+        .filter((pl: any) => pl.levelId === defaultLevelId);
 
       const effectivePrice = retailPriceOverrides.length > 0
         ? retailPriceOverrides[0].price
@@ -1108,22 +1106,18 @@ export async function updateProductPrice(id: string, newPrice: number) {
       const baseUnitId = baseRows.length > 0 ? baseRows[0].id : null;
 
       if (baseUnitId) {
-        // Preserve a manually-edited default-tier row rather than blindly
-        // overwriting it: only UPDATE an existing (min_quantity IS NULL OR 0)
-        // row, else INSERT one. See
-        // docs/superpowers/plans/2026-08-04-price-level-row-no-auto-recalc.md
-        // for the bug this check prevents.
-        const checkSql = `SELECT * FROM product_selling_unit_price_levels WHERE selling_unit_id = ? AND price_level_id = ? AND (min_quantity IS NULL OR min_quantity = 0)`;
+        // Upsert on the real PK (selling_unit_id, price_level_id).
+        const checkSql = `SELECT * FROM product_selling_unit_price_levels WHERE selling_unit_id = ? AND price_level_id = ?`;
         const existing = await connection.query(checkSql, [baseUnitId, defaultLevelId]);
 
         if (existing.length > 0) {
           await connection.query(
-            'UPDATE product_selling_unit_price_levels SET price = ? WHERE selling_unit_id = ? AND price_level_id = ? AND (min_quantity IS NULL OR min_quantity = 0)',
+            'UPDATE product_selling_unit_price_levels SET price = ? WHERE selling_unit_id = ? AND price_level_id = ?',
             [newPrice, baseUnitId, defaultLevelId]
           );
         } else {
           await connection.query(
-            'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, 0)',
+            'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price) VALUES (?, ?, ?)',
             [baseUnitId, defaultLevelId, newPrice]
           );
         }
@@ -2416,7 +2410,6 @@ export async function getPriceLevels(): Promise<PriceLevel[]> {
       calculationBase: level.calculation_base,
       adjustmentType: level.adjustment_type === 'fixed' ? 'fixed' : 'percentage',
       percentageAdjustment: parseFloat(level.percentage_adjustment),
-      minQuantity: level.min_quantity,
       createdAt: level.created_at,
       updatedAt: level.updated_at
     }));
@@ -2426,13 +2419,13 @@ export async function getPriceLevels(): Promise<PriceLevel[]> {
   }
 }
 
-export async function addPriceLevel(name: string, description: string, isDefault: boolean, percentageAdjustment: number, minQuantity: number = 0, calculationBase: 'retail' | 'cost' = 'retail', adjustmentType: 'percentage' | 'fixed' = 'percentage') {
+export async function addPriceLevel(name: string, description: string, isDefault: boolean, percentageAdjustment: number, calculationBase: 'retail' | 'cost' = 'retail', adjustmentType: 'percentage' | 'fixed' = 'percentage') {
   try {
     const id = `pl_${Date.now()}`;
     if (isDefault) {
       await query('UPDATE price_levels SET is_default = 0', []);
     }
-    await query('INSERT INTO price_levels (id, name, description, is_default, percentage_adjustment, min_quantity, calculation_base, adjustment_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [id, name, description || null, isDefault ? 1 : 0, percentageAdjustment, minQuantity, calculationBase, adjustmentType]);
+    await query('INSERT INTO price_levels (id, name, description, is_default, percentage_adjustment, calculation_base, adjustment_type) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, name, description || null, isDefault ? 1 : 0, percentageAdjustment, calculationBase, adjustmentType]);
     return { success: true, message: 'Price level added successfully.' };
   } catch (error) {
     console.error('Error adding price level:', error);
@@ -2440,12 +2433,12 @@ export async function addPriceLevel(name: string, description: string, isDefault
   }
 }
 
-export async function updatePriceLevel(id: string, name: string, description: string, isDefault: boolean, percentageAdjustment: number, minQuantity: number = 0, calculationBase: 'retail' | 'cost' = 'retail', adjustmentType: 'percentage' | 'fixed' = 'percentage') {
+export async function updatePriceLevel(id: string, name: string, description: string, isDefault: boolean, percentageAdjustment: number, calculationBase: 'retail' | 'cost' = 'retail', adjustmentType: 'percentage' | 'fixed' = 'percentage') {
   try {
     if (isDefault) {
       await query('UPDATE price_levels SET is_default = 0', []);
     }
-    await query('UPDATE price_levels SET name = ?, description = ?, is_default = ?, percentage_adjustment = ?, min_quantity = ?, calculation_base = ?, adjustment_type = ? WHERE id = ?', [name, description || null, isDefault ? 1 : 0, percentageAdjustment, minQuantity, calculationBase, adjustmentType, id]);
+    await query('UPDATE price_levels SET name = ?, description = ?, is_default = ?, percentage_adjustment = ?, calculation_base = ?, adjustment_type = ? WHERE id = ?', [name, description || null, isDefault ? 1 : 0, percentageAdjustment, calculationBase, adjustmentType, id]);
     return { success: true, message: 'Price level updated successfully.' };
   } catch (error) {
     console.error('Error updating price level:', error);

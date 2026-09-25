@@ -44,8 +44,8 @@ function PriceLevelOverrides({
   requireDefaultLevel = false,
 }: {
   basePath: string;
-  values: { levelId: string; price?: number; minQuantity?: number }[];
-  onChange: (next: { levelId: string; price?: number; minQuantity?: number }[]) => void;
+  values: { levelId: string; price?: number }[];
+  onChange: (next: { levelId: string; price?: number }[]) => void;
   /**
    * The base unit has no standalone price any more — its default (Retail)
    * price-level row IS the product's price, so that one row can never be
@@ -93,51 +93,25 @@ function PriceLevelOverrides({
     onChange(next);
   };
 
-  const setMinQuantity = (levelId: string, raw: string) => {
-    const next = [...values];
-    const idx = next.findIndex(v => v.levelId === levelId);
-    const parsed = raw === '' ? undefined : parseInt(raw, 10);
-    if (idx === -1) {
-      // No price yet — a min-quantity with no override price is meaningless,
-      // so there is nothing to store until a price is entered.
-      return;
-    }
-    next[idx] = { ...next[idx], minQuantity: Number.isNaN(parsed as number) ? undefined : parsed };
-    onChange(next);
-  };
-
   return (
     <div className="space-y-2 pt-2">
       {priceLevels.map((level: any) => {
         const entry = values.find(v => v.levelId === level.id);
         const isRequired = level.id === defaultLevelId;
         return (
-          <div key={level.id} className="flex gap-3 items-end">
-            <div className="flex-1">
-              <Label className="text-xs text-muted-foreground">
-                {level.name}
-                {isRequired && <span className="text-destructive"> *</span>}
-              </Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder={isRequired ? 'Required' : 'No override'}
-                value={entry?.price ?? ''}
-                onChange={(e) => setPrice(level.id, e.target.value)}
-              />
-            </div>
-            <div className="w-[100px]">
-              <Label className="text-xs text-nowrap text-muted-foreground">Min Qty</Label>
-              <Input
-                type="number"
-                min="0"
-                placeholder="0"
-                value={entry?.minQuantity ?? ''}
-                onChange={(e) => setMinQuantity(level.id, e.target.value)}
-                disabled={!entry}
-              />
-            </div>
+          <div key={level.id}>
+            <Label className="text-xs text-muted-foreground">
+              {level.name}
+              {isRequired && <span className="text-destructive"> *</span>}
+            </Label>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder={isRequired ? 'Required' : 'No override'}
+              value={entry?.price ?? ''}
+              onChange={(e) => setPrice(level.id, e.target.value)}
+            />
           </div>
         );
       })}
@@ -192,16 +166,16 @@ export function SellingUnitsTab() {
   // (same one the old standalone Price Levels tab bound to), keyed by levelId
   // rather than by array index so "blank = no row" holds here too.
   const allPriceLevelValues = form.watch('priceLevels') || [];
-  const basePriceLevelValues: { levelId: string; price?: number; minQuantity?: number }[] =
-    allPriceLevelValues.filter((v) => !!v?.levelId) as { levelId: string; price?: number; minQuantity?: number }[];
+  const basePriceLevelValues: { levelId: string; price?: number }[] =
+    allPriceLevelValues.filter((v) => !!v?.levelId) as { levelId: string; price?: number }[];
 
-  const setBasePriceLevels = (next: { levelId: string; price?: number; minQuantity?: number }[]) => {
+  const setBasePriceLevels = (next: { levelId: string; price?: number }[]) => {
     // One atomic swap via useFieldArray's own replace(), not a remove-loop
     // followed by an append-loop — that used to fire on every keystroke (a
     // new onChange each time the user typed a digit) and momentarily left
     // the field array empty between the removes and the appends, which
     // dropped focus from the input the user was actively typing into.
-    replacePriceLevels(next.map(entry => ({ levelId: entry.levelId, price: entry.price ?? 0, minQuantity: entry.minQuantity })));
+    replacePriceLevels(next.map(entry => ({ levelId: entry.levelId, price: entry.price ?? 0 })));
   };
 
   return (

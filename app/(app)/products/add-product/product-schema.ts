@@ -22,7 +22,6 @@ const baseProductSchema = z.object({
   priceLevels: z.array(z.object({
     levelId: z.string().min(1, 'Price level is required'),
     price: z.number().min(0, 'Price cannot be negative'),
-    minQuantity: z.number().min(0).optional(),
   })).optional(),
   vatStatus: z.string().default('YES (Subject to 12% VAT)'),
   availability: z.string().default('Available'),
@@ -72,7 +71,6 @@ const standardProductSchema = baseProductSchema.extend({
     priceLevels: z.array(z.object({
       levelId: z.string(),
       price: z.number().min(0).optional(),
-      minQuantity: z.number().min(0).optional(),
     })).optional(),
   })).optional(),
   isPerishable: z.boolean().optional(),

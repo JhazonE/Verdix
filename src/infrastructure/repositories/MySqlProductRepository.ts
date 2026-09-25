@@ -129,7 +129,6 @@ export class MySqlProductRepository implements ProductRepository {
           sulpByUnit.get(row.selling_unit_id)!.push({
             levelId: row.price_level_id,
             price: Number(row.price),
-            minQuantity: row.min_quantity ?? 0,
           });
         }
       }
@@ -170,8 +169,7 @@ export class MySqlProductRepository implements ProductRepository {
         if (defaultLevelId) {
             const baseUnit = product.sellingUnits.find((u: any) => u.isBase);
             const baseOverrides = (baseUnit?.priceLevels ?? [])
-                .filter((pl: any) => pl.levelId === defaultLevelId)
-                .sort((a: any, b: any) => (a.minQuantity || 0) - (b.minQuantity || 0));
+                .filter((pl: any) => pl.levelId === defaultLevelId);
 
             if (baseOverrides.length > 0) {
                 product.price = baseOverrides[0].price;
@@ -298,8 +296,8 @@ export class MySqlProductRepository implements ProductRepository {
     if (product.priceLevels && product.priceLevels.length > 0) {
       for (const pl of product.priceLevels) {
         await query(
-          'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)',
-          [baseUnitId, pl.levelId, pl.price, pl.minQuantity || 0],
+          'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price) VALUES (?, ?, ?)',
+          [baseUnitId, pl.levelId, pl.price],
         );
       }
     }
