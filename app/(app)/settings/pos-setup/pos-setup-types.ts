@@ -77,6 +77,7 @@ export interface PosSettings {
   posMode?: 'default' | 'pharmacy';
   membershipFee?: number;
   membershipDurationMonths?: number;
+  enableQuickAddCustomer?: boolean;
 }
 
 export const DEFAULT_POS_SETTINGS: PosSettings = {
@@ -158,4 +159,5 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   posMode: 'default',
   membershipFee: 0,
   membershipDurationMonths: 12,
+  enableQuickAddCustomer: true,
 };

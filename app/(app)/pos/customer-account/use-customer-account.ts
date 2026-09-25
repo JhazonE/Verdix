@@ -29,6 +29,7 @@ export function useCustomerAccount({ isOpen, onOpenChange, onSelectCustomer, ini
   const [membershipCard, setMembershipCard] = useState<{ rfid_code: string | null; expiry_date: string | null; isExpired: boolean } | null>(null);
   const [isMembershipCardLoading, setIsMembershipCardLoading] = useState(false);
   const [isMembershipDialogOpen, setIsMembershipDialogOpen] = useState(false);
+  const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
 
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -312,6 +313,11 @@ export function useCustomerAccount({ isOpen, onOpenChange, onSelectCustomer, ini
     }
   };
 
+  const handleCustomerAdded = (customer: any) => {
+    setCustomers(prev => prev.some(c => c.id === customer.id) ? prev : [...prev, customer]);
+    setSelectedCustomerId(customer.id);
+  };
+
   const handleSelect = () => {
     const customer = customers.find(c => c.id === selectedCustomerId) || WALK_IN_CUSTOMER;
     onSelectCustomer(customer);
@@ -392,6 +398,7 @@ export function useCustomerAccount({ isOpen, onOpenChange, onSelectCustomer, ini
     isMembershipDialogOpen,
     setIsMembershipDialogOpen,
     fetchMembershipCard,
+    isAddCustomerOpen, setIsAddCustomerOpen, handleCustomerAdded,
     format, differenceInDays, formatQuantity,
   };
 }
