@@ -9,19 +9,19 @@ const levelDefs = [
 // no existing rows -> seeds a default-level row from the live price
 assert.deepEqual(
   seedDefaultPriceLevel([], levelDefs, 100),
-  [{ levelId: 'retail-level', price: 100, minQuantity: 0 }],
+  [{ levelId: 'retail-level', price: 100 }],
   'seeds a default row when there are no existing price levels',
 );
 
 // price given as a string (e.g. a MySQL decimal column) is coerced correctly
 assert.deepEqual(
   seedDefaultPriceLevel([], levelDefs, '133.5'),
-  [{ levelId: 'retail-level', price: 133.5, minQuantity: 0 }],
+  [{ levelId: 'retail-level', price: 133.5 }],
   'coerces a string price and rounds to 2 decimals',
 );
 
 // existing rows are never touched, even if only a non-default level is present
-const existing = [{ levelId: 'wholesale-level', price: 90, minQuantity: 5 }];
+const existing = [{ levelId: 'wholesale-level', price: 90 }];
 assert.deepEqual(
   seedDefaultPriceLevel(existing, levelDefs, 100),
   existing,

@@ -31,12 +31,11 @@ export interface ProductEntity {
     cost?: number;
     price: number;
     isBase?: boolean;
-    priceLevels?: { levelId: string; price: number; minQuantity?: number }[];
+    priceLevels?: { levelId: string; price: number }[];
   }[];
 }
 
 export interface ProductPriceLevel {
   levelId: string;
   price: number;
-  minQuantity: number;
 }

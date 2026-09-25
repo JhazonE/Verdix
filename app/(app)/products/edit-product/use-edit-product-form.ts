@@ -537,7 +537,7 @@ export function useEditProductForm({
     // Retail price-level entry IS that unit's price.
     const sellingUnitsForSubmit = values.sellingUnits?.map(unit => {
       const unitPriceLevels = (unit.priceLevels || []).filter(
-        (pl): pl is { levelId: string; price: number; minQuantity?: number } => pl.price !== undefined,
+        (pl): pl is { levelId: string; price: number } => pl.price !== undefined,
       );
       const unitRetailEntry = unitPriceLevels.find((pl) => pl.levelId === defaultLevelDef?.id);
       return {

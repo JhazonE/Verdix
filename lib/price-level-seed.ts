@@ -7,13 +7,13 @@
  * otherwise returns the existing rows untouched.
  */
 export function seedDefaultPriceLevel(
-  existingPriceLevels: { levelId: string; price: number; minQuantity?: number }[],
+  existingPriceLevels: { levelId: string; price: number }[],
   priceLevelDefs: any[],
   currentPrice: number | string | null | undefined,
-): { levelId: string; price: number; minQuantity?: number }[] {
+): { levelId: string; price: number }[] {
   if (existingPriceLevels.length > 0) return existingPriceLevels;
   const defaultLevel = priceLevelDefs.find((l: any) => l.isDefault);
   const price = currentPrice == null ? NaN : Number(currentPrice);
   if (!defaultLevel || !Number.isFinite(price)) return existingPriceLevels;
-  return [{ levelId: defaultLevel.id, price: parseFloat(price.toFixed(2)), minQuantity: 0 }];
+  return [{ levelId: defaultLevel.id, price: parseFloat(price.toFixed(2)) }];
 }

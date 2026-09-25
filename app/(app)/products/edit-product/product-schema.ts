@@ -58,13 +58,11 @@ export function buildProductSchema(isService: boolean) {
       priceLevels: z.array(z.object({
         levelId: z.string(),
         price: z.number().min(0).optional(),
-        minQuantity: z.number().min(0).optional(),
       })).optional(),
     })).optional(),
     priceLevels: z.array(z.object({
       levelId: z.string().min(1, 'Level is required'),
       price: z.coerce.number().nonnegative('Price must be non-negative'),
-      minQuantity: z.number().min(0).optional(),
     })).optional(),
     vatStatus: z.string().default('YES (Subject to 12% VAT)'),
     availability: z.string().default('Available'),

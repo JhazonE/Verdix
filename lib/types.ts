@@ -59,7 +59,7 @@ export interface Product {
     price: number;
     isBase?: boolean;
     /** This unit's own price-level overrides — never another unit's. */
-    priceLevels?: { levelId: string; price: number; minQuantity?: number }[];
+    priceLevels?: { levelId: string; price: number }[];
   }[];
 
   // Timestamps
@@ -67,7 +67,7 @@ export interface Product {
   updatedAt?: string;
 
   // Price Levels
-  priceLevels?: { levelId: string; price: number; minQuantity?: number }[];
+  priceLevels?: { levelId: string; price: number }[];
 
   // Supplier Mapping
   primarySupplierRop?: number;
@@ -86,7 +86,6 @@ export interface PriceLevel {
   calculationBase?: 'retail' | 'cost';
   adjustmentType?: 'percentage' | 'fixed'; // 'percentage' (default) or 'fixed' peso amount
   percentageAdjustment?: number; // a percent when adjustmentType is 'percentage', a peso amount when 'fixed'
-  minQuantity?: number;
   createdAt?: string;
   updatedAt?: string;
 }

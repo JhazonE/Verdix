@@ -152,14 +152,14 @@ export class TransferStockService {
         if (sourceBaseUnits && sourceBaseUnits.length > 0) {
             const sourceBaseUnitId = sourceBaseUnits[0].id;
             const [priceLevels]: any = await connection.query(
-                'SELECT price_level_id, price, min_quantity FROM product_selling_unit_price_levels WHERE selling_unit_id = ?',
+                'SELECT price_level_id, price FROM product_selling_unit_price_levels WHERE selling_unit_id = ?',
                 [sourceBaseUnitId]
             );
 
             for (const pl of priceLevels) {
                 await connection.query(
-                    'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)',
-                    [targetBaseUnitId, pl.price_level_id, pl.price, pl.min_quantity]
+                    'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price) VALUES (?, ?, ?)',
+                    [targetBaseUnitId, pl.price_level_id, pl.price]
                 );
             }
         }
