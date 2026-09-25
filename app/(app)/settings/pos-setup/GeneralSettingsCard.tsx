@@ -32,6 +32,13 @@ export function GeneralSettingsCard({ settings, set }: Props) {
           </div>
           <Switch id="enableNegativeInventory" checked={!!settings.enableNegativeInventory} onCheckedChange={v => set('enableNegativeInventory', v)} />
         </div>
+        <div className="flex items-center justify-between pt-4 border-t">
+          <div className="space-y-0.5">
+            <Label htmlFor="enableQuickAddCustomer">Enable Quick Add Customer</Label>
+            <p className="text-sm text-muted-foreground">Allow cashiers to add a new customer directly from the POS customer drawer</p>
+          </div>
+          <Switch id="enableQuickAddCustomer" checked={settings.enableQuickAddCustomer !== false} onCheckedChange={v => set('enableQuickAddCustomer', v)} />
+        </div>
       </CardContent>
     </Card>
   );
