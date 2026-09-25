@@ -12,6 +12,7 @@ import { ReturnSuccessView } from './ReturnSuccessView';
 import { ExchangeBalanceView } from './ExchangeBalanceView';
 import { ExchangeSuccessView } from './ExchangeSuccessView';
 import { CreditSlipView } from '../credit-slip/CreditSlipView';
+import { ExchangeSlipView } from './ExchangeSlipView';
 import { ProductSearchDialog } from '../product-search/ProductSearchDialog';
 import { useReturnSales } from './use-return-sales';
 import type { ReturnSalesDialogProps } from './return-sales-types';
@@ -29,6 +30,7 @@ export function ReturnSalesDialog({
   activeLevelId
 }: ReturnSalesDialogProps) {
   const creditSlipRef = useRef<HTMLDivElement>(null);
+  const exchangeSlipRef = useRef<HTMLDivElement>(null);
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
 
   const {
@@ -65,6 +67,7 @@ export function ReturnSalesDialog({
     handleBackFromReplacement,
     handlePickReplacement,
     handleSettleBalance,
+    handlePrintExchangeSlip,
   } = useReturnSales({
     isOpen,
     onOpenChange,
@@ -72,6 +75,7 @@ export function ReturnSalesDialog({
     terminalId,
     printMode,
     creditSlipRef,
+    exchangeSlipRef,
   });
 
   useEffect(() => {
@@ -120,7 +124,7 @@ export function ReturnSalesDialog({
               siNumber={exchangeResult.siNumber}
               balance={exchangeResult.balance}
               onClose={handleCloseSuccess}
-              onPrint={() => { /* Task 7 wires real printing */ }}
+              onPrint={handlePrintExchangeSlip}
             />
           ) : step === 'settle_balance' && exchangeReturnItem && replacementItem ? (
             <ExchangeBalanceView
@@ -244,6 +248,32 @@ export function ReturnSalesDialog({
               cashierName: currentUser?.name || currentUser?.displayName || currentUser?.username || 'Cashier',
               items: returnedItems,
               totalAmount: returnedTotal
+            }}
+            settings={posSettings}
+          />
+        )}
+        {exchangeReturnItem && replacementItem && exchangeResult && (
+          <ExchangeSlipView
+            ref={exchangeSlipRef}
+            exchangeDetails={{
+              mcNumber: exchangeResult.mcNumber,
+              siNumber: exchangeResult.siNumber,
+              date: new Date().toISOString(),
+              cashierName: currentUser?.name || currentUser?.displayName || currentUser?.username || 'Cashier',
+              customerName: selectedSale?.customer?.name || 'Walk-in Customer',
+              returnedItem: {
+                name: exchangeReturnItem.product.name,
+                quantity: exchangeReturnItem.quantity,
+                price: exchangeReturnItem.price,
+                total: exchangeReturnItem.quantity * exchangeReturnItem.price,
+              },
+              newItem: {
+                name: replacementItem.product.name,
+                quantity: replacementItem.quantity,
+                price: replacementItem.product.price,
+                total: replacementItem.quantity * replacementItem.product.price,
+              },
+              balance: exchangeResult.balance,
             }}
             settings={posSettings}
           />

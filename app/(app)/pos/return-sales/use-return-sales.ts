@@ -6,6 +6,7 @@ import type { Sale, SaleItem, Product } from '@/lib/types';
 import { usePrinter } from '@/lib/use-printer';
 import { useToast } from '@/hooks/use-toast';
 import { CreditSlipGenerator, CreditSlipData } from '@/lib/credit-slip-generator';
+import { ExchangeSlipGenerator, ExchangeSlipData } from '@/lib/exchange-slip-generator';
 import { getApiUrl } from '@/lib/api-config';
 import { useReactToPrint } from 'react-to-print';
 import { buildRecentSalesQuery } from '../transaction-search/build-recent-sales-query';
@@ -19,6 +20,7 @@ type Options = {
   terminalId?: string;
   printMode: 'browser' | 'escpos' | 'usb' | 'native';
   creditSlipRef?: React.RefObject<HTMLDivElement>;
+  exchangeSlipRef?: React.RefObject<HTMLDivElement>;
 };
 
 export function useReturnSales({
@@ -27,7 +29,8 @@ export function useReturnSales({
   currentUser,
   terminalId,
   printMode,
-  creditSlipRef
+  creditSlipRef,
+  exchangeSlipRef
 }: Options) {
   const [step, setStep] = useState<'loading' | 'auth' | 'input_so' | 'select_items' | 'pick_replacement' | 'settle_balance' | 'exchange_success' | 'success'>('loading');
   const [sales, setSales] = useState<Sale[]>([]);
@@ -64,6 +67,22 @@ export function useReturnSales({
   const handleBrowserPrint = useReactToPrint({
     contentRef: creditSlipRef,
     documentTitle: `CreditSlip-${new Date().getTime()}`,
+    pageStyle: `
+      @page {
+        size: 58mm auto;
+        margin: 0;
+      }
+      @media print {
+        body {
+          -webkit-print-color-adjust: exact;
+        }
+      }
+    `
+  });
+
+  const handleBrowserPrintExchange = useReactToPrint({
+    contentRef: exchangeSlipRef,
+    documentTitle: `ExchangeSlip-${new Date().getTime()}`,
     pageStyle: `
       @page {
         size: 58mm auto;
@@ -349,6 +368,63 @@ export function useReturnSales({
     }
   }, [selectedSale, returnedItems, returnedTotal, mcNumber, printMode, isConnected, connect, print, posSettings, currentUser, handleBrowserPrint, toast]);
 
+  const handlePrintExchangeSlip = useCallback(async () => {
+    if (!exchangeReturnItem || !replacementItem || !exchangeResult) return;
+
+    if (printMode === 'browser') {
+      handleBrowserPrintExchange();
+      return;
+    }
+
+    if (!isConnected) {
+      const success = await connect();
+      if (!success) return;
+    }
+
+    try {
+      const generator = new ExchangeSlipGenerator();
+      const slipData: ExchangeSlipData = {
+        mcNumber: exchangeResult.mcNumber,
+        siNumber: exchangeResult.siNumber,
+        date: new Date().toISOString(),
+        cashierName: currentUser?.name || currentUser?.displayName || currentUser?.username || 'Cashier',
+        customerName: selectedSale?.customer?.name || 'Walk-in Customer',
+        returnedItem: {
+          name: exchangeReturnItem.product.name,
+          quantity: exchangeReturnItem.quantity,
+          price: exchangeReturnItem.price,
+          total: exchangeReturnItem.quantity * exchangeReturnItem.price,
+        },
+        newItem: {
+          name: replacementItem.product.name,
+          quantity: replacementItem.quantity,
+          price: replacementItem.product.price,
+          total: replacementItem.quantity * replacementItem.product.price,
+        },
+        balance: exchangeResult.balance,
+        businessSettings: {
+          businessName: posSettings?.businessName,
+          address: posSettings?.address,
+          contactNumber: posSettings?.contactNumber,
+          tin: posSettings?.tin,
+          minNumber: posSettings?.minNumber,
+          serialNumber: posSettings?.serialNumber,
+          currencySymbol: posSettings?.currencySymbol || '₱',
+          currencyCode: posSettings?.currencyCode || 'PHP',
+          timezone: posSettings?.timezone || 'Asia/Manila',
+          dateFormat: posSettings?.dateFormat || 'MM/dd/yyyy'
+        }
+      };
+
+      const bytes = generator.generate(slipData);
+      await print(bytes);
+      toast({ title: "Success", description: "Exchange slip sent to printer." });
+    } catch (err) {
+      console.error("Print error", err);
+      toast({ title: "Print Failed", description: "Could not send data to printer.", variant: "destructive" });
+    }
+  }, [exchangeReturnItem, replacementItem, exchangeResult, selectedSale, printMode, isConnected, connect, print, posSettings, currentUser, handleBrowserPrintExchange, toast]);
+
   return {
     step,
     setStep,
@@ -383,5 +459,6 @@ export function useReturnSales({
     handleBackFromReplacement,
     handlePickReplacement,
     handleSettleBalance,
+    handlePrintExchangeSlip,
   };
 }
