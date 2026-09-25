@@ -57,4 +57,20 @@ const retailLevel = 'retail-level';
   );
 }
 
+// --- the other side of the same removal: a row for the ACTIVE level with
+// leftover minQuantity data now applies unconditionally, even at quantity 1
+// (below its old tier threshold). This is the exact behavior change the
+// migration's data audit warns about for real min_quantity > 1 rows. ---
+{
+  const bulkUnitActiveLevel = {
+    price: 100,
+    priceLevels: [{ levelId: wholesaleLevel, price: 90, minQuantity: 12 } as any],
+  };
+  assert.equal(
+    calculateEffectivePriceForUnit(bulkUnitActiveLevel, 1, wholesaleLevel, retailLevel),
+    90,
+    'an active-level row now applies from quantity 1, even with leftover minQuantity > 1',
+  );
+}
+
 console.log('✅ pricing tests passed');
