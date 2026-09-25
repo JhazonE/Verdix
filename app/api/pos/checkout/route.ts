@@ -219,7 +219,11 @@ export async function POST(request: NextRequest) {
         // would leak a loyalty-specific concern into the shared function), so
         // re-fetch the small set of columns loyalty actually needs.
         const [loyaltyProdResult]: any = await connection.query(
-          'SELECT markup_percentage, earns_points FROM products p LEFT JOIN categories c ON p.category = c.name WHERE p.id = ?',
+          // c.markup_percentage, qualified: products ALSO has a markup_percentage
+          // column (per-product pricing override, migration 117), so the bare
+          // name is ambiguous (ER_NON_UNIQ_ERROR). The loyalty 5% rule has always
+          // been keyed on the CATEGORY's markup, matching the pre-refactor query.
+          'SELECT c.markup_percentage, p.earns_points FROM products p LEFT JOIN categories c ON p.category = c.name WHERE p.id = ?',
           [item.id]
         );
         const loyaltyProd = loyaltyProdResult?.[0];
