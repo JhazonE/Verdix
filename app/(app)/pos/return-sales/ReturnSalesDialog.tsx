@@ -129,33 +129,42 @@ export function ReturnSalesDialog({
       <Sheet open={isOpen && (step === 'input_so' || step === 'select_items' || step === 'settle_balance' || step === 'exchange_success' || step === 'success')} onOpenChange={onOpenChange}>
         <SheetContent side="right" className="sm:max-w-xl w-full flex flex-col">
           {step === 'exchange_success' && exchangeResult ? (
-            <ExchangeSuccessView
-              mcNumber={exchangeResult.mcNumber}
-              siNumber={exchangeResult.siNumber}
-              balance={exchangeResult.balance}
-              onClose={handleCloseSuccess}
-              onPrint={handlePrintExchangeSlip}
-            />
+            <>
+              <SheetTitle className="sr-only">Exchange Complete</SheetTitle>
+              <ExchangeSuccessView
+                mcNumber={exchangeResult.mcNumber}
+                siNumber={exchangeResult.siNumber}
+                balance={exchangeResult.balance}
+                onClose={handleCloseSuccess}
+                onPrint={handlePrintExchangeSlip}
+              />
+            </>
           ) : step === 'settle_balance' && exchangeReturnItem && replacementItem ? (
-            <ExchangeBalanceView
-              returnItemLabel={exchangeReturnItem.product.name}
-              returnTotal={exchangeReturnItem.price * exchangeReturnItem.quantity}
-              newItemLabel={replacementItem.product.name}
-              newTotal={replacementItem.product.price * replacementItem.quantity}
-              balance={exchangeBalance ?? 0}
-              hasCustomer={!!(selectedSale?.customer?.id && selectedSale.customer.id !== 'walk-in')}
-              paymentMethods={paymentMethods}
-              isLoading={isLoading}
-              onConfirm={handleSettleBalance}
-              onBack={() => setStep('pick_replacement')}
-            />
+            <>
+              <SheetTitle className="sr-only">Settle Exchange Balance</SheetTitle>
+              <ExchangeBalanceView
+                returnItemLabel={exchangeReturnItem.product.name}
+                returnTotal={exchangeReturnItem.price * exchangeReturnItem.quantity}
+                newItemLabel={replacementItem.product.name}
+                newTotal={replacementItem.product.price * replacementItem.quantity}
+                balance={exchangeBalance ?? 0}
+                hasCustomer={!!(selectedSale?.customer?.id && selectedSale.customer.id !== 'walk-in')}
+                paymentMethods={paymentMethods}
+                isLoading={isLoading}
+                onConfirm={handleSettleBalance}
+                onBack={() => setStep('pick_replacement')}
+              />
+            </>
           ) : step === 'success' ? (
-            <ReturnSuccessView
-              returnedTotal={returnedTotal}
-              saleId={String(selectedSale?.orderNumber || selectedSale?.id || '')}
-              onClose={handleCloseSuccess}
-              onPrint={handlePrintCredit}
-            />
+            <>
+              <SheetTitle className="sr-only">Merchandise Credit Complete</SheetTitle>
+              <ReturnSuccessView
+                returnedTotal={returnedTotal}
+                saleId={String(selectedSale?.orderNumber || selectedSale?.id || '')}
+                onClose={handleCloseSuccess}
+                onPrint={handlePrintCredit}
+              />
+            </>
           ) : step === 'select_items' && selectedSale ? (
             <SelectItemsView
               sale={selectedSale}
