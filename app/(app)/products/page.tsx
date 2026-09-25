@@ -163,9 +163,6 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
                 return (
                   <span key={pl.levelId} className="text-xs whitespace-nowrap">
                     <span className="text-muted-foreground">{levelName}:</span> ₱{pl.price.toFixed(2)}
-                    {typeof pl.minQuantity === 'number' && pl.minQuantity > 0 && (
-                      <span className="text-muted-foreground"> (min {pl.minQuantity})</span>
-                    )}
                   </span>
                 );
               })}
@@ -285,9 +282,6 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
                     return (
                       <span key={pl.levelId} className="text-muted-foreground">
                         {levelName}: <span className="text-foreground">₱{pl.price.toFixed(2)}</span>
-                        {typeof pl.minQuantity === 'number' && pl.minQuantity > 0 && (
-                          <span className="text-xs text-muted-foreground"> (min {pl.minQuantity})</span>
-                        )}
                       </span>
                     );
                   })}
