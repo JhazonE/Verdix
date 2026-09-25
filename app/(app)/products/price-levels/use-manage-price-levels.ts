@@ -44,7 +44,7 @@ export function useManagePriceLevels({ onLevelAdded }: UseManagePriceLevelsProps
     calculationBase: 'retail' | 'cost',
     adjustmentType: 'percentage' | 'fixed'
   ): Promise<boolean> => {
-    const result = await addPriceLevel(name, description, isDefault, percentageAdjustment, 0, calculationBase, adjustmentType);
+    const result = await addPriceLevel(name, description, isDefault, percentageAdjustment, calculationBase, adjustmentType);
     if (result.success) {
       await refreshLevels();
       onLevelAdded?.();
@@ -63,7 +63,7 @@ export function useManagePriceLevels({ onLevelAdded }: UseManagePriceLevelsProps
     calculationBase: 'retail' | 'cost',
     adjustmentType: 'percentage' | 'fixed'
   ): Promise<boolean> => {
-    const result = await updatePriceLevel(id, name, description, isDefault, percentageAdjustment, 0, calculationBase, adjustmentType);
+    const result = await updatePriceLevel(id, name, description, isDefault, percentageAdjustment, calculationBase, adjustmentType);
     if (result.success) {
       await refreshLevels();
       onLevelAdded?.();

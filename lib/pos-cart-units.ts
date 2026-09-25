@@ -14,7 +14,7 @@ export type CartSellingUnit = {
   cost?: number;
   price: number;
   isBase?: boolean;
-  priceLevels?: { levelId: string; price: number; minQuantity?: number }[];
+  priceLevels?: { levelId: string; price: number }[];
 };
 
 type CartProduct = {

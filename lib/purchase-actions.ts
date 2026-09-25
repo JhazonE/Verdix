@@ -246,8 +246,8 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
         );
         if (baseUnitRows.length > 0) {
           await connection.query(`
-            INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity)
-            VALUES (?, ?, ?, 0)
+            INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price)
+            VALUES (?, ?, ?)
             ON DUPLICATE KEY UPDATE price = VALUES(price)
           `, [baseUnitRows[0].id, defaultLevelId, finalPrice]);
         }

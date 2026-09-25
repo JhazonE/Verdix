@@ -329,19 +329,18 @@ export async function applyMatchedItems(
           } else if (item.field === 'cost') {
             await connection.query('UPDATE products SET cost = ? WHERE id = ?', [newValue, item.productId]);
           } else if (item.field === 'priceLevel' && item.priceLevelId) {
-            // Upsert on the real PK (selling_unit_id, price_level_id); min_quantity is
-            // not part of it, so an existence check filtered on min_quantity can
-            // miss a row and hit a duplicate-PK error. Price levels are per selling
-            // unit now (product_selling_unit_price_levels); write onto the product's
-            // base selling unit, matching every other write path in this codebase.
+            // Upsert on the real PK (selling_unit_id, price_level_id). Price
+            // levels are per selling unit now (product_selling_unit_price_levels);
+            // write onto the product's base selling unit, matching every other
+            // write path in this codebase.
             const [baseUnitRows]: any = await connection.query(
               'SELECT id FROM product_selling_units WHERE product_id = ? AND is_base = 1 LIMIT 1',
               [item.productId],
             );
             if (baseUnitRows.length > 0) {
               await connection.query(
-                `INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity)
-                 VALUES (?, ?, ?, 0)
+                `INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price)
+                 VALUES (?, ?, ?)
                  ON DUPLICATE KEY UPDATE price = VALUES(price)`,
                 [baseUnitRows[0].id, item.priceLevelId, newValue],
               );
