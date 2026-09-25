@@ -11,7 +11,7 @@ export interface CreateProductRequest {
   cost?: number;
   sku?: string;
   barcode?: string;
-  priceLevels?: { levelId: string; price: number; minQuantity: number }[];
+  priceLevels?: { levelId: string; price: number }[];
 }
 
 export class CreateProductUseCase {
