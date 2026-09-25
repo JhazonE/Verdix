@@ -351,6 +351,7 @@ export function useReturnSales({
 
   return {
     step,
+    setStep,
     isLoading,
     searchText,
     setSearchText,

@@ -9,7 +9,10 @@ import { AdminAuthDialog } from '../admin-auth/AdminAuthDialog';
 import { TransactionPickRow } from './TransactionPickRow';
 import { SelectItemsView } from './SelectItemsView';
 import { ReturnSuccessView } from './ReturnSuccessView';
+import { ExchangeBalanceView } from './ExchangeBalanceView';
+import { ExchangeSuccessView } from './ExchangeSuccessView';
 import { CreditSlipView } from '../credit-slip/CreditSlipView';
+import { ProductSearchDialog } from '../product-search/ProductSearchDialog';
 import { useReturnSales } from './use-return-sales';
 import type { ReturnSalesDialogProps } from './return-sales-types';
 import { format } from 'date-fns';
@@ -20,13 +23,17 @@ export function ReturnSalesDialog({
   onOpenChange,
   currentUser,
   terminalId,
-  printMode
+  printMode,
+  paymentMethods,
+  warehouseId,
+  activeLevelId
 }: ReturnSalesDialogProps) {
   const creditSlipRef = useRef<HTMLDivElement>(null);
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
 
   const {
     step,
+    setStep,
     isLoading,
     searchText,
     setSearchText,
@@ -43,6 +50,10 @@ export function ReturnSalesDialog({
     recentSales,
     isRecentLoading,
     posSettings,
+    exchangeReturnItem,
+    replacementItem,
+    exchangeBalance,
+    exchangeResult,
     handlePickSale,
     handleAuthSuccess,
     handleAuthClose,
@@ -50,6 +61,10 @@ export function ReturnSalesDialog({
     handleBackToSearch,
     handleCloseSuccess,
     handlePrintCredit,
+    handleStartExchange,
+    handleBackFromReplacement,
+    handlePickReplacement,
+    handleSettleBalance,
   } = useReturnSales({
     isOpen,
     onOpenChange,
@@ -97,9 +112,30 @@ export function ReturnSalesDialog({
 
   return (
     <>
-      <Sheet open={isOpen && (step === 'input_so' || step === 'select_items' || step === 'success')} onOpenChange={onOpenChange}>
+      <Sheet open={isOpen && (step === 'input_so' || step === 'select_items' || step === 'settle_balance' || step === 'exchange_success' || step === 'success')} onOpenChange={onOpenChange}>
         <SheetContent side="right" className="sm:max-w-xl w-full flex flex-col">
-          {step === 'success' ? (
+          {step === 'exchange_success' && exchangeResult ? (
+            <ExchangeSuccessView
+              mcNumber={exchangeResult.mcNumber}
+              siNumber={exchangeResult.siNumber}
+              balance={exchangeResult.balance}
+              onClose={handleCloseSuccess}
+              onPrint={() => { /* Task 7 wires real printing */ }}
+            />
+          ) : step === 'settle_balance' && exchangeReturnItem && replacementItem ? (
+            <ExchangeBalanceView
+              returnItemLabel={exchangeReturnItem.product.name}
+              returnTotal={exchangeReturnItem.price * exchangeReturnItem.quantity}
+              newItemLabel={replacementItem.product.name}
+              newTotal={replacementItem.product.price * replacementItem.quantity}
+              balance={exchangeBalance ?? 0}
+              hasCustomer={!!(selectedSale?.customer?.id && selectedSale.customer.id !== 'walk-in')}
+              paymentMethods={paymentMethods}
+              isLoading={isLoading}
+              onConfirm={handleSettleBalance}
+              onBack={() => setStep('pick_replacement')}
+            />
+          ) : step === 'success' ? (
             <ReturnSuccessView
               returnedTotal={returnedTotal}
               saleId={String(selectedSale?.orderNumber || selectedSale?.id || '')}
@@ -111,6 +147,7 @@ export function ReturnSalesDialog({
               sale={selectedSale}
               onReturnItems={handleReturnItems}
               onBack={handleBackToSearch}
+              onExchangeItem={handleStartExchange}
             />
           ) : (
             <div className="flex h-full flex-col">
@@ -179,6 +216,17 @@ export function ReturnSalesDialog({
         } : null}
         title="Return Authorization"
         description="Enter authorized credentials to access return functions."
+      />
+
+      <ProductSearchDialog
+        isOpen={isOpen && step === 'pick_replacement'}
+        onOpenChange={(open) => { if (!open) handleBackFromReplacement(); }}
+        onSelectProduct={(product) => {
+          handlePickReplacement(product, 1);
+          setStep('settle_balance');
+        }}
+        warehouseId={warehouseId}
+        activeLevelId={activeLevelId}
       />
 
       <div style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}>

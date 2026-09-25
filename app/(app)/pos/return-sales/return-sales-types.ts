@@ -4,6 +4,9 @@ export interface ReturnSalesDialogProps {
   currentUser?: any;
   terminalId?: string;
   printMode: 'browser' | 'escpos' | 'usb' | 'native';
+  paymentMethods: { id: string; name: string; isReferenceRequired?: boolean }[];
+  warehouseId?: string;
+  activeLevelId?: string;
 }
 
 export interface ExchangeReplacementItem {

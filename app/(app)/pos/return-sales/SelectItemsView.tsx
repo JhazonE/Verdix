@@ -16,9 +16,10 @@ interface SelectItemsViewProps {
   sale: Sale;
   onReturnItems: (items: SaleItem[]) => void;
   onBack: () => void;
+  onExchangeItem: (item: SaleItem) => void;
 }
 
-export function SelectItemsView({ sale, onReturnItems, onBack }: SelectItemsViewProps) {
+export function SelectItemsView({ sale, onReturnItems, onBack, onExchangeItem }: SelectItemsViewProps) {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
@@ -225,6 +226,20 @@ export function SelectItemsView({ sale, onReturnItems, onBack }: SelectItemsView
       <SheetFooter className="mt-4 shrink-0">
         <Button variant="outline" onClick={onBack}>
           Cancel
+        </Button>
+        <Button
+          variant="outline"
+          className="border-amber-600 text-amber-700 hover:bg-amber-50"
+          disabled={selectedItems.size !== 1}
+          title={selectedItems.size !== 1 ? 'Select exactly one item to exchange' : undefined}
+          onClick={() => {
+            const only = sale.items.find(item => selectedItems.has(item.product.id));
+            if (only) {
+              onExchangeItem({ ...only, quantity: returnQuantities[only.product.id] || only.quantity });
+            }
+          }}
+        >
+          Exchange for Another Item
         </Button>
         <Button
           className="bg-amber-600 hover:bg-amber-700 text-white"
