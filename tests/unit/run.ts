@@ -63,3 +63,4 @@ import './pos-cart-units.test';
 import './pricing.test';
 import './process-return-leg.test';
 import './process-sale-leg.test';
+import './exchange-balance.test';
