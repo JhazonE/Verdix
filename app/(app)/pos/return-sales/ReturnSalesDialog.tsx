@@ -32,6 +32,16 @@ export function ReturnSalesDialog({
   const creditSlipRef = useRef<HTMLDivElement>(null);
   const exchangeSlipRef = useRef<HTMLDivElement>(null);
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
+  // ProductSearchDialog's handleSelect calls onSelectProduct(product) and THEN
+  // onOpenChange(false) synchronously in the same click handler (see
+  // use-product-search.ts). Both onSelectProduct below and onOpenChange read
+  // the same stale `step` closure from this render, so onOpenChange cannot
+  // tell "closed because a product was picked" apart from "closed because the
+  // cashier hit Escape/backdrop" by checking `step` — it would still read
+  // 'pick_replacement' either way. A ref flag set synchronously inside
+  // onSelectProduct (before onOpenChange runs) is what actually distinguishes
+  // the two, since ref writes are not batched/deferred like state.
+  const justPickedReplacementRef = useRef(false);
 
   const {
     step,
@@ -224,8 +234,19 @@ export function ReturnSalesDialog({
 
       <ProductSearchDialog
         isOpen={isOpen && step === 'pick_replacement'}
-        onOpenChange={(open) => { if (!open) handleBackFromReplacement(); }}
+        onOpenChange={(open) => {
+          if (!open) {
+            if (justPickedReplacementRef.current) {
+              // This close is the dialog's own post-selection close, not the
+              // cashier backing out — the pick already advanced the step.
+              justPickedReplacementRef.current = false;
+            } else {
+              handleBackFromReplacement();
+            }
+          }
+        }}
         onSelectProduct={(product) => {
+          justPickedReplacementRef.current = true;
           handlePickReplacement(product, 1);
           setStep('settle_balance');
         }}
