@@ -13,7 +13,7 @@ const retailLevel = 'retail-level';
 {
   const caseUnit = {
     price: 1591.5,
-    priceLevels: [{ levelId: wholesaleLevel, price: 1400, minQuantity: 0 }],
+    priceLevels: [{ levelId: wholesaleLevel, price: 1400 }],
   };
   const price = calculateEffectivePriceForUnit(caseUnit, 1, wholesaleLevel, retailLevel);
   assert.equal(price, 1400, 'a unit with a matching level override uses it');
@@ -40,21 +40,20 @@ const retailLevel = 'retail-level';
   assert.equal(price, 1591.5, 'falls back to its own price exactly');
 }
 
-// --- tiered minimum-quantity overrides still work, per unit ---
+// --- tiered/quantity-break pricing has been removed: a price-level row for
+// a level that is neither the active nor the default level must never apply,
+// no matter how high the quantity is. Under the old tiered logic, a row
+// carrying a minQuantity > 1 would win once quantity crossed that threshold
+// even for an unrelated level — that behavior must be gone. ---
 {
   const bulkUnit = {
     price: 100,
-    priceLevels: [{ levelId: retailLevel, price: 90, minQuantity: 10 }],
+    priceLevels: [{ levelId: 'some-other-level', price: 90, minQuantity: 10 } as any],
   };
   assert.equal(
-    calculateEffectivePriceForUnit(bulkUnit, 5, retailLevel, retailLevel),
+    calculateEffectivePriceForUnit(bulkUnit, 50, retailLevel, retailLevel),
     100,
-    'below the tier minimum, the tier price does not apply',
-  );
-  assert.equal(
-    calculateEffectivePriceForUnit(bulkUnit, 10, retailLevel, retailLevel),
-    90,
-    'at the tier minimum, the tier price applies',
+    'a row for an unmatched level never applies, no matter the quantity or any leftover minQuantity data',
   );
 }
 
