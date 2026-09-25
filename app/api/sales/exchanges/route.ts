@@ -6,6 +6,7 @@ import { getBatchCostingSettings } from '@/lib/batch-deduction';
 import { isService } from '@/lib/product-type';
 import { ensureCustomerCreditColumn } from '@/lib/ensure-customer-credit';
 import { saveEJournalFiles } from '@/lib/ejournal/ejournal-writer';
+import { EXCHANGE_CREDIT_TENDER, isExchangeBalanceTender } from '@/lib/pos/exchange-tender';
 
 /**
  * POST /api/sales/exchanges — 1-for-1 item exchange.
@@ -46,10 +47,34 @@ export async function POST(request: NextRequest) {
     // Server-side backstops — the UI is expected to validate these too, but
     // this route must not trust that: balance > 0 needs enough tendered cash,
     // balance < 0 (a downsell) needs a customer to credit the difference to.
+    const balanceReference: string | null =
+      typeof balancePayment?.reference === 'string' && balancePayment.reference.trim()
+        ? balancePayment.reference.trim()
+        : null;
     if (balance > 0) {
       const tendered = Number(balancePayment?.amountTendered ?? 0);
       if (!balancePayment || !Number.isFinite(tendered) || tendered < balance) {
         return NextResponse.json({ success: false, error: `Insufficient payment for balance of ${balance.toFixed(2)}` }, { status: 400 });
+      }
+      // Spec Global Constraint: the balance is settled by cash or card only.
+      // The view filters its dropdown the same way, but this is the real
+      // enforcement — POINTS would record a paid sale with no points deducted,
+      // CHARGE a 'Paid' sale with no receivable.
+      if (!isExchangeBalanceTender(balancePayment.method)) {
+        return NextResponse.json({ success: false, error: `Exchange balance must be paid by cash or card, not "${balancePayment.method ?? ''}"` }, { status: 400 });
+      }
+      // A method configured with require_reference (e.g. Credit Card) needs a
+      // reference number. The regular tender only checks this client-side
+      // (use-tender.ts, from payment_methods.require_reference); this route
+      // reads the same column so a direct call can't skip it. A method with
+      // no payment_methods row falls back to "not required", matching the
+      // client's `method?.isReferenceRequired || false`.
+      const methodRows: any = await query(
+        'SELECT require_reference FROM payment_methods WHERE UPPER(name) = UPPER(?) LIMIT 1',
+        [balancePayment.method]
+      );
+      if (methodRows?.[0]?.require_reference && !balanceReference) {
+        return NextResponse.json({ success: false, error: `A reference number is required for ${balancePayment.method} payments` }, { status: 400 });
       }
     }
     if (balance < 0 && !customerId) {
@@ -92,20 +117,26 @@ export async function POST(request: NextRequest) {
         finalShiftId = openShift?.[0]?.id || null;
       }
 
-      const mcNumber = await getNextMCNumber(connection);
+      // Training mode skips BOTH numbering series (spec Global Constraints):
+      // a training exchange must not burn a real MC number any more than a
+      // real SI number, or the printed slip sequence shows a gap.
+      const mcNumber = isTrainingMode ? null : await getNextMCNumber(connection);
       const siNumber = isTrainingMode ? null : await getNextSINumber(connection);
 
       // --- RETURN LEG ---
+      // is_training is set on this leg too, exactly like the sale leg: X/Z
+      // filter on pt.is_training = 0, so an unflagged return leg would count a
+      // training exchange as a REAL return and drop real net sales.
       await connection.query(
         `INSERT INTO pos_transactions (
           id, sale_id, shift_id, user_id, terminal_id, transaction_type, mc_number,
           subtotal, tax_amount, discount_amount, total_amount, payment_method,
-          payment_status, notes, exchange_group_id, transaction_time, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 'return', ?, ?, 0, 0, ?, 'Return', 'completed', ?, ?, NOW(), NOW(), NOW())`,
+          payment_status, notes, is_training, exchange_group_id, transaction_time, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'return', ?, ?, 0, 0, ?, 'Return', 'completed', ?, ?, ?, NOW(), NOW(), NOW())`,
         [
           returnPosTransId, saleId, finalShiftId, finalUserId, terminalId || null,
           mcNumber, -returnTotal, -returnTotal,
-          'Exchange (return leg)', exchangeGroupId,
+          'Exchange (return leg)', isTrainingMode, exchangeGroupId,
         ]
       );
 
@@ -130,6 +161,23 @@ export async function POST(request: NextRequest) {
         ]
       );
 
+      // --- SALE LEG TENDER ---
+      // The sale leg is paid by (a) the returned item's value, up to newTotal,
+      // and (b) on an upsell, the balance the cashier actually collected. Only
+      // (b) is new money in the drawer. Both are written as payment_details
+      // rows below: without them every reconciler falls back to counting the
+      // FULL pt.total_amount under pt.payment_method, which made each exchange
+      // look like newTotal of fresh cash had been received (a phantom drawer
+      // shortage equal to the returned value).
+      const creditPortion = Math.round(Math.min(returnTotal, newTotal) * 100) / 100;
+      const collectsBalance = balance > 0;
+      // Same convention as checkout / use-tender.ts: 'MULTIPLE' when the sale
+      // has more than one payment_details row.
+      const saleLegPaymentMethod = collectsBalance
+        ? (creditPortion > 0 ? 'MULTIPLE' : String(balancePayment.method))
+        : EXCHANGE_CREDIT_TENDER;
+      const firstPaymentDetailsId = `PD-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+
       // --- SALE LEG ---
       // sales_transactions must be inserted BEFORE processSaleLeg runs: it
       // writes sale_items rows FK'd to sales_transactions(id), so newSaleId
@@ -140,7 +188,7 @@ export async function POST(request: NextRequest) {
         ) VALUES (?, ?, NULL, ?, ?, CURDATE(), CURDATE(), ?, ?, 'Paid', 'POS', ?, ?, NOW(), NOW())`,
         [
           newSaleId, `EXG-REF-${newSaleId}`, siNumber,
-          customerId || null, newTotal, balancePayment?.method || 'CASH',
+          customerId || null, newTotal, saleLegPaymentMethod,
           'Exchange (sale leg)', isTrainingMode,
         ]
       );
@@ -166,14 +214,46 @@ export async function POST(request: NextRequest) {
         `INSERT INTO pos_transactions (
           id, sale_id, shift_id, user_id, terminal_id, transaction_type, si_number,
           subtotal, tax_amount, discount_amount, total_amount, payment_method,
-          payment_status, notes, is_training, exchange_group_id, transaction_time, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 'sale', ?, ?, 0, 0, ?, ?, 'completed', ?, ?, ?, NOW(), NOW(), NOW())`,
+          payment_status, payment_details_id, payment_validated_at,
+          notes, is_training, exchange_group_id, transaction_time, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'sale', ?, ?, 0, 0, ?, ?, 'completed', ?, NOW(), ?, ?, ?, NOW(), NOW(), NOW())`,
         [
           salePosTransId, newSaleId, finalShiftId, finalUserId, terminalId || null,
-          siNumber, newTotal, newTotal, balancePayment?.method || 'CASH',
+          siNumber, newTotal, newTotal, saleLegPaymentMethod, firstPaymentDetailsId,
           'Exchange (sale leg)', isTrainingMode, exchangeGroupId,
         ]
       );
+
+      // payment_details for the sale leg — same insert shape as checkout's
+      // split-tender path. Reconcilers sum (amount_tendered - change_given)
+      // per payment_method, so: EXCHANGE CREDIT nets to creditPortion (never
+      // cash), and the balance row nets to exactly `balance` under its real
+      // cash/card method.
+      const paymentRows: any[][] = [];
+      if (creditPortion > 0) {
+        paymentRows.push([
+          firstPaymentDetailsId, salePosTransId, EXCHANGE_CREDIT_TENDER, null,
+          creditPortion, 0, `Returned item value (${exchangeGroupId})`,
+        ]);
+      }
+      if (collectsBalance) {
+        const tendered = Math.round(Number(balancePayment.amountTendered) * 100) / 100;
+        const changeGiven = Math.round((tendered - balance) * 100) / 100;
+        paymentRows.push([
+          paymentRows.length === 0 ? firstPaymentDetailsId : `PD-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          salePosTransId, String(balancePayment.method), balanceReference,
+          tendered, changeGiven, `Exchange balance (${exchangeGroupId})`,
+        ]);
+      }
+      for (const row of paymentRows) {
+        await connection.query(
+          `INSERT INTO payment_details (
+            id, transaction_id, payment_method, gateway_reference,
+            amount_tendered, change_given, notes, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+          row
+        );
+      }
 
       await connection.query(
         `INSERT INTO pos_transaction_items (
@@ -191,8 +271,8 @@ export async function POST(request: NextRequest) {
 
       // --- BALANCE SETTLEMENT ---
       // balance > 0 (customer owes more) is collected via balancePayment and
-      // recorded as the sale leg's payment_method/total above — no separate
-      // write needed. balance < 0 (customer is owed) credits their account.
+      // recorded as the sale leg's second payment_details row above.
+      // balance < 0 (customer is owed) credits their account.
       if (balance < 0 && customerId) {
         await connection.query(
           'UPDATE customers SET credit_balance = COALESCE(credit_balance, 0) + ?, updated_at = NOW() WHERE id = ?',

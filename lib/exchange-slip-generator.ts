@@ -4,7 +4,8 @@ import { SystemSettings } from './types';
 import { formatSINumber } from './si-number';
 
 export interface ExchangeSlipData {
-    mcNumber: string;
+    /** null in training mode, like siNumber — the MC series is skipped. */
+    mcNumber: string | null;
     siNumber: string | null;
     date: string;
     cashierName: string;
@@ -60,7 +61,7 @@ export class ExchangeSlipGenerator {
         // ─── SLIP HEADER ───────────────────────────────────────────
         enc.raw([0x1b, 0x61, 0x31]).line('EXCHANGE SLIP').raw([0x1b, 0x61, 0x30]);
         if (data.siNumber) enc.line(`SI NO.: ${formatSINumber(data.siNumber)}`);
-        enc.line(`MC NO.: ${data.mcNumber}`);
+        if (data.mcNumber) enc.line(`MC NO.: ${data.mcNumber}`);
         enc.line(`Cust: ${data.customerName}`);
         enc.line(`Cashier: ${data.cashierName}`);
         enc.line('-'.repeat(COLS)); // dashed border

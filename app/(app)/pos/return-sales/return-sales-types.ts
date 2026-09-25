@@ -16,7 +16,8 @@ export interface ExchangeReplacementItem {
 }
 
 export interface ExchangeResult {
-  mcNumber: string;
+  /** null in training mode — the route skips the real MC series, as for SI. */
+  mcNumber: string | null;
   siNumber: string | null;
   balance: number;
 }

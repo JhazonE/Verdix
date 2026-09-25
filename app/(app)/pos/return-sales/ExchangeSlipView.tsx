@@ -4,7 +4,7 @@ import type { SystemSettings } from '@/lib/types';
 
 export interface ExchangeSlipViewProps {
   exchangeDetails: {
-    mcNumber: string;
+    mcNumber: string | null;
     siNumber: string | null;
     date: string;
     cashierName: string;
@@ -38,7 +38,7 @@ export const ExchangeSlipView = forwardRef<HTMLDivElement, ExchangeSlipViewProps
           Exchange Slip
         </div>
         {siNumber && <div className="mt-1">SI NO.: {siNumber}</div>}
-        <div className="font-bold text-xs">MC NO.: {mcNumber}</div>
+        {mcNumber && <div className="font-bold text-xs">MC NO.: {mcNumber}</div>}
         <div>Cust: {customerName}</div>
         <div>Cashier: {cashierName}</div>
       </div>

@@ -266,3 +266,223 @@ test.describe('POST /api/sales/exchanges', () => {
     await testQuery("DELETE FROM customers WHERE id = 'SEEDED-CUSTOMER-1'");
   });
 });
+
+/**
+ * Drawer reconciliation, tender restriction and training mode — the final
+ * whole-branch review's C2, I2 and I1. Every assertion here reads the REAL
+ * report endpoints (X-reading and shift close), not arithmetic in isolation.
+ */
+test.describe('POST /api/sales/exchanges — drawer, tender and training mode', () => {
+  const SHIFT_ID = 'shift-exchange-drawer';
+  const STARTING_CASH = 1000;
+  const CARD_METHOD_ID = 'pm-seeded-exchange-card';
+
+  // Returning Product A (50) for Product B (newPrice). Original sale is seeded
+  // by SQL; the shift starts with a known float so cashInDrawer is exact.
+  async function seedExchangeFixture(newPrice: number) {
+    await seedProductWithBaseUnit({ id: 'SEEDED-PRODUCT-A', name: 'Product A', price: 50, cost: 30, stock: 9 });
+    await seedProductWithBaseUnit({ id: 'SEEDED-PRODUCT-B', name: 'Product B', price: newPrice, cost: 30, stock: 10 });
+    await seedBatch({ id: 'batch-b-drawer', productId: 'SEEDED-PRODUCT-B', qty: 10, unitCost: 30, sellingPrice: newPrice });
+    await testQuery(
+      `INSERT INTO sales_transactions (id, reference, receipt_number, total, payment_method, status, transaction_source, date, created_at, updated_at)
+       VALUES ('SEEDED-SALE-1', 'REF-SEEDED-1', 'RCPT-SEEDED-1', 50, 'Cash', 'Paid', 'POS', CURDATE(), NOW(), NOW())`
+    );
+    await testQuery(
+      `INSERT INTO sale_items (id, sale_id, product_id, product_name, quantity, price, selling_unit_id, selling_unit_name, selling_unit_factor, created_at)
+       VALUES ('sale-item-seeded-1', 'SEEDED-SALE-1', 'SEEDED-PRODUCT-A', 'Product A', 1, 50, 'psu-base-SEEDED-PRODUCT-A', 'Piece', 1, NOW())`
+    );
+    await testQuery(
+      `INSERT INTO shifts (id, user_id, terminal_id, status, start_time, starting_cash)
+       VALUES (?, ?, ?, 'active', NOW(), ?)`,
+      [SHIFT_ID, ADMIN_UID, TERMINAL_ID, STARTING_CASH]
+    );
+  }
+
+  function exchangeBody(newPrice: number, balancePayment?: Record<string, unknown>) {
+    return {
+      saleId: 'SEEDED-SALE-1',
+      returnItem: { productId: 'SEEDED-PRODUCT-A', productName: 'Product A', quantity: 1, price: 50 },
+      newItem: { productId: 'SEEDED-PRODUCT-B', productName: 'Product B', quantity: 1, price: newPrice },
+      balancePayment,
+      userId: ADMIN_UID,
+      terminalId: TERMINAL_ID,
+      shiftId: SHIFT_ID,
+    };
+  }
+
+  async function readXReading(request: import('@playwright/test').APIRequestContext) {
+    const res = await request.get(`/api/sales/x-reading?shiftId=${SHIFT_ID}`);
+    expect(res.ok()).toBe(true);
+    const body = await res.json();
+    expect(body.data).toHaveLength(1);
+    return body.data[0];
+  }
+
+  async function readShiftClose(request: import('@playwright/test').APIRequestContext) {
+    const res = await request.get(`/api/pos/shifts?shiftId=${SHIFT_ID}`);
+    expect(res.ok()).toBe(true);
+    return (await res.json()).data;
+  }
+
+  async function cleanupAll() {
+    await testQuery(
+      `DELETE pd FROM payment_details pd JOIN pos_transactions pt ON pd.transaction_id = pt.id WHERE pt.shift_id = ?`,
+      [SHIFT_ID]
+    );
+    await testQuery('DELETE FROM payment_methods WHERE id = ?', [CARD_METHOD_ID]);
+    await testQuery('UPDATE pos_settings SET is_training_mode = 0');
+    await cleanupSeededProducts();
+  }
+
+  test.beforeEach(async () => {
+    await cleanupAll();
+    await resetPosState();
+  });
+
+  test.afterEach(async () => {
+    await cleanupAll();
+  });
+
+  test('even exchange leaves cashSales and cashInDrawer unchanged (no phantom shortage)', async ({ request }) => {
+    await seedExchangeFixture(50);
+
+    const res = await request.post('/api/sales/exchanges', { data: exchangeBody(50) });
+    expect(res.ok()).toBe(true);
+    const body = await res.json();
+    expect(body.data.balance).toBe(0);
+
+    const x = await readXReading(request);
+    expect(x.cashSales).toBe(0);
+    expect(x.cashInDrawer).toBe(STARTING_CASH);
+    // The replacement is still a real ₱50 sale, paid by the returned item's value.
+    expect(x.netSales).toBe(50);
+    const credit = x.paymentMethods.find((p: any) => p.name === 'EXCHANGE CREDIT');
+    expect(credit?.amount).toBe(50);
+
+    const shift = await readShiftClose(request);
+    expect(shift.cashSales).toBe(0);
+    expect(shift.expectedCash).toBe(STARTING_CASH);
+
+    const legs: any[] = await testQuery(
+      "SELECT payment_method FROM pos_transactions WHERE exchange_group_id = ? AND transaction_type = 'sale'",
+      [body.data.exchangeGroupId]
+    );
+    expect(legs[0].payment_method).toBe('EXCHANGE CREDIT');
+  });
+
+  test('upsell counts ONLY the collected balance as cash, with change netted out', async ({ request }) => {
+    await seedExchangeFixture(80); // 80 - 50 = ₱30 due
+
+    const res = await request.post('/api/sales/exchanges', {
+      data: exchangeBody(80, { method: 'Cash', amountTendered: 100 }),
+    });
+    expect(res.ok()).toBe(true);
+    const body = await res.json();
+    expect(body.data.balance).toBe(30);
+
+    const x = await readXReading(request);
+    expect(x.cashSales).toBe(30);
+    expect(x.cashInDrawer).toBe(STARTING_CASH + 30);
+    expect(x.paymentMethods.find((p: any) => p.name === 'EXCHANGE CREDIT')?.amount).toBe(50);
+
+    const shift = await readShiftClose(request);
+    expect(shift.cashSales).toBe(30);
+    expect(shift.expectedCash).toBe(STARTING_CASH + 30);
+
+    const rows: any[] = await testQuery(
+      `SELECT pt.payment_method AS pt_method, pd.payment_method, pd.amount_tendered, pd.change_given
+       FROM pos_transactions pt JOIN payment_details pd ON pd.transaction_id = pt.id
+       WHERE pt.exchange_group_id = ? AND pt.transaction_type = 'sale'
+       ORDER BY pd.payment_method`,
+      [body.data.exchangeGroupId]
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows[0].pt_method).toBe('MULTIPLE');
+    expect(rows.map(r => [r.payment_method, Number(r.amount_tendered), Number(r.change_given)])).toEqual([
+      ['Cash', 100, 70],
+      ['EXCHANGE CREDIT', 50, 0],
+    ]);
+  });
+
+  test('card upsell stores the reference, adds nothing to cash, and requires the reference', async ({ request }) => {
+    await seedExchangeFixture(80);
+    await testQuery(
+      "INSERT INTO payment_methods (id, name, is_active, require_reference) VALUES (?, 'Credit Card', 1, 1)",
+      [CARD_METHOD_ID]
+    );
+
+    // Reference required by payment_methods.require_reference — rejected without one.
+    const missing = await request.post('/api/sales/exchanges', {
+      data: exchangeBody(80, { method: 'Credit Card', amountTendered: 30 }),
+    });
+    expect(missing.status()).toBe(400);
+    expect((await missing.json()).error).toMatch(/reference/i);
+
+    const res = await request.post('/api/sales/exchanges', {
+      data: exchangeBody(80, { method: 'Credit Card', amountTendered: 30, reference: 'AUTH-12345' }),
+    });
+    expect(res.ok()).toBe(true);
+    const body = await res.json();
+
+    const card: any[] = await testQuery(
+      `SELECT pd.gateway_reference, pd.amount_tendered FROM pos_transactions pt
+       JOIN payment_details pd ON pd.transaction_id = pt.id
+       WHERE pt.exchange_group_id = ? AND pd.payment_method = 'Credit Card'`,
+      [body.data.exchangeGroupId]
+    );
+    expect(card).toHaveLength(1);
+    expect(card[0].gateway_reference).toBe('AUTH-12345');
+    expect(Number(card[0].amount_tendered)).toBe(30);
+
+    const x = await readXReading(request);
+    expect(x.cashSales).toBe(0);
+    expect(x.cashInDrawer).toBe(STARTING_CASH);
+    expect(x.paymentMethods.find((p: any) => p.name === 'Credit Card')?.amount).toBe(30);
+  });
+
+  test('rejects a non cash/card balance tender (POINTS, CHARGE) and writes nothing', async ({ request }) => {
+    await seedExchangeFixture(80);
+    for (const method of ['POINTS', 'CHARGE', 'GCash']) {
+      const res = await request.post('/api/sales/exchanges', {
+        data: exchangeBody(80, { method, amountTendered: 30 }),
+      });
+      expect(res.status(), method).toBe(400);
+      expect((await res.json()).error).toMatch(/cash or card/i);
+    }
+    const rows: any[] = await testQuery('SELECT id FROM pos_transactions WHERE shift_id = ?', [SHIFT_ID]);
+    expect(rows).toHaveLength(0);
+  });
+
+  test('training mode skips BOTH MC and SI numbering and flags both legs as training', async ({ request }) => {
+    await seedExchangeFixture(50);
+    await testQuery('UPDATE pos_settings SET is_training_mode = 1');
+    const refBefore: any[] = await testQuery('SELECT si_number, mc_number FROM transaction_references WHERE id = 1');
+
+    const res = await request.post('/api/sales/exchanges', { data: exchangeBody(50) });
+    expect(res.ok()).toBe(true);
+    const body = await res.json();
+    expect(body.data.mcNumber).toBeNull();
+    expect(body.data.siNumber).toBeNull();
+
+    const refAfter: any[] = await testQuery('SELECT si_number, mc_number FROM transaction_references WHERE id = 1');
+    expect(refAfter[0].mc_number).toBe(refBefore[0].mc_number);
+    expect(refAfter[0].si_number).toBe(refBefore[0].si_number);
+
+    const legs: any[] = await testQuery(
+      // transaction_type is an ENUM, so ORDER BY would sort by enum index
+      // ('sale' before 'return') — look each leg up by type instead.
+      'SELECT transaction_type, is_training, mc_number FROM pos_transactions WHERE exchange_group_id = ?',
+      [body.data.exchangeGroupId]
+    );
+    const returnLeg = legs.find(l => l.transaction_type === 'return');
+    const saleLeg = legs.find(l => l.transaction_type === 'sale');
+    expect(Number(returnLeg.is_training)).toBe(1);
+    expect(Number(saleLeg.is_training)).toBe(1);
+    expect(returnLeg.mc_number).toBeNull();
+
+    // Neither leg reaches real X-reading figures.
+    const x = await readXReading(request);
+    expect(x.returns).toBe(0);
+    expect(x.netSales).toBe(0);
+  });
+});

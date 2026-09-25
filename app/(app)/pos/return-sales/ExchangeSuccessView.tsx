@@ -6,7 +6,7 @@ import { Printer, CheckCircle2 } from 'lucide-react';
 import { peso } from './return-sales-utils';
 
 interface ExchangeSuccessViewProps {
-  mcNumber: string;
+  mcNumber: string | null;
   siNumber: string | null;
   balance: number;
   onClose: () => void;
@@ -25,7 +25,7 @@ export function ExchangeSuccessView({ mcNumber, siNumber, balance, onClose, onPr
         </div>
         <h2 className="mt-4 text-xl font-bold">Exchange Complete</h2>
         <div className="mt-4 space-y-1 text-sm text-muted-foreground">
-          <p>MC No.: <span className="font-mono font-medium text-foreground">{mcNumber}</span></p>
+          {mcNumber && <p>MC No.: <span className="font-mono font-medium text-foreground">{mcNumber}</span></p>}
           {siNumber && <p>SI No.: <span className="font-mono font-medium text-foreground">{siNumber}</span></p>}
         </div>
         {!isEven && (

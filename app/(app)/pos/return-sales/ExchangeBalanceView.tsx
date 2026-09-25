@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { SheetFooter } from '@/components/ui/sheet';
 import { ArrowLeftRight, Loader2 } from 'lucide-react';
 import { peso } from './return-sales-utils';
+import { isExchangeBalanceTender } from '@/lib/pos/exchange-tender';
 
 interface ExchangeBalanceViewProps {
   returnItemLabel: string;
@@ -26,7 +27,18 @@ export function ExchangeBalanceView({
   returnItemLabel, returnTotal, newItemLabel, newTotal, balance,
   hasCustomer, paymentMethods, isLoading, onConfirm, onBack,
 }: ExchangeBalanceViewProps) {
-  const [method, setMethod] = useState(paymentMethods[0]?.name || 'CASH');
+  // Spec: the balance is settled by cash or card only, never POINTS / CHARGE /
+  // gift checks. The route enforces the same rule (isExchangeBalanceTender);
+  // this just keeps the cashier from picking something it would reject.
+  const balanceMethods = useMemo(
+    () => paymentMethods.filter(m => isExchangeBalanceTender(m.name)),
+    [paymentMethods]
+  );
+  const [method, setMethod] = useState(
+    () => balanceMethods.find(m => m.name.trim().toUpperCase() === 'CASH')?.name
+      || balanceMethods[0]?.name
+      || 'CASH'
+  );
   const [amountTendered, setAmountTendered] = useState('');
   const [reference, setReference] = useState('');
 
@@ -75,7 +87,7 @@ export function ExchangeBalanceView({
             <Select value={method} onValueChange={setMethod}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                {paymentMethods.map(m => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}
+                {balanceMethods.map(m => <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

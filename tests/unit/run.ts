@@ -65,3 +65,4 @@ import './process-return-leg.test';
 import './process-sale-leg.test';
 import './exchange-balance.test';
 import './exchange-slip-generator.test';
+import './exchange-tender.test';
