@@ -61,9 +61,11 @@ export async function GET(
         sii.price,
         sii.selling_unit_name,
         p.unit_of_measure as uom,
-        p.sku
+        su.barcode as base_unit_barcode,
+        p.barcode
       FROM sales_invoice_items sii
       LEFT JOIN products p ON sii.product_id = p.id
+      LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
       WHERE sii.sales_invoice_id = ?
     `;
 
@@ -89,7 +91,7 @@ export async function GET(
         id: item.id,
         productId: item.product_id,
         productName: item.product_name,
-        sku: item.sku || '',
+        barcode: item.base_unit_barcode || item.barcode || '',
         quantity: parseFloat(item.quantity),
         price: parseFloat(item.price),
         // The unit actually sold, e.g. "Case" vs "Piece" — falls back to the

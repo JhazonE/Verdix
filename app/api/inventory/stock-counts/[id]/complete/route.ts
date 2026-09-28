@@ -35,9 +35,10 @@ export async function POST(
 
       // Fetch all items for the approval record
       const itemsSql = `
-        SELECT sci.*, p.name as productName, p.sku as productSku, p.barcode as productBarcode, p.cost as product_cost
+        SELECT sci.*, p.name as productName, COALESCE(su.barcode, p.barcode) as productBarcode, p.cost as product_cost
         FROM stock_count_items sci
         JOIN products p ON sci.product_id = p.id
+        LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
         WHERE sci.stock_count_id = ?
         ORDER BY p.name ASC
       `;

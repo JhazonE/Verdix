@@ -179,9 +179,9 @@ export function ReviewDialog({
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">{item.product_name}</p>
-                        {(item.product_sku || item.product_barcode) && (
+                        {(item.base_unit_barcode || item.product_barcode) && (
                           <p className="text-xs text-muted-foreground">
-                            {item.product_sku || item.product_barcode}
+                            {item.base_unit_barcode || item.product_barcode}
                           </p>
                         )}
                       </div>
@@ -215,7 +215,7 @@ export function ReviewDialog({
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
-                    <TableHead>SKU / Barcode</TableHead>
+                    <TableHead>Barcode</TableHead>
                     <TableHead className="text-right">Expected</TableHead>
                     <TableHead className="text-right">Counted</TableHead>
                     <TableHead className="text-right">Variance</TableHead>
@@ -243,7 +243,7 @@ export function ReviewDialog({
                       }>
                         <TableCell className="font-medium">{item.product_name}</TableCell>
                         <TableCell className="text-muted-foreground text-xs">
-                          {item.product_sku || item.product_barcode || '—'}
+                          {item.base_unit_barcode || item.product_barcode || '—'}
                         </TableCell>
                         <TableCell className="text-right">{item.snapshot_quantity}</TableCell>
                         <TableCell className="text-right font-medium">

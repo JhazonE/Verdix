@@ -39,7 +39,13 @@ export async function POST(request: NextRequest) {
     if (isApprovalRequired) {
       // Fetch names for enrichment
       const [productRes, sourceRes, targetRes]: any = await Promise.all([
-        query(`SELECT name, sku, barcode FROM products WHERE id = ?`, [body.productId]),
+        query(
+          `SELECT p.name, su.barcode as base_unit_barcode, p.barcode
+           FROM products p
+           LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
+           WHERE p.id = ?`,
+          [body.productId],
+        ),
         query(`SELECT name FROM warehouses WHERE id = ?`, [body.fromWarehouseId || body.warehouseId || body.sourceWarehouseId]),
         query(`SELECT name FROM warehouses WHERE id = ?`, [body.toWarehouseId || body.targetWarehouseId])
       ]);
@@ -47,8 +53,7 @@ export async function POST(request: NextRequest) {
       const enrichedData = {
         ...body,
         productName: productRes[0]?.name || 'Unknown Product',
-        productSku: productRes[0]?.sku || '',
-        productBarcode: productRes[0]?.barcode || '',
+        productBarcode: productRes[0]?.base_unit_barcode || productRes[0]?.barcode || '',
         fromWarehouseName: sourceRes[0]?.name || 'Unknown Warehouse',
         toWarehouseName: targetRes[0]?.name || 'Unknown Warehouse'
       };

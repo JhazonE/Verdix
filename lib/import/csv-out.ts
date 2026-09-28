@@ -21,7 +21,7 @@ export function buildTemplateCsv(schema: EntitySchema): string {
 
 // Column list for an entity export. Uses the exact import-template fields (so
 // export -> edit -> re-import round-trips cleanly), plus any extra reference-only
-// columns (e.g. products append `sku`, which import ignores but users like to see).
+// columns an entity wants to append that import itself ignores.
 export function exportColumns(schema: EntitySchema, extra: string[] = []): string[] {
   return [...schema.fields.map((f) => f.key), ...extra];
 }

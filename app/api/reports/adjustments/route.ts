@@ -48,7 +48,6 @@ export async function GET(request: NextRequest) {
         sa.new_stock,
         sa.created_at,
         p.name as product_name,
-        p.sku,
         p.barcode,
         p.unit_of_measure
       ${baseSql}

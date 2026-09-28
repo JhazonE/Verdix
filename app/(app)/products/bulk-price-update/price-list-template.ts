@@ -3,7 +3,6 @@ import type { ParsedFile } from '@/lib/import/parse-file';
 import type { PriceListRow } from './actions';
 
 interface TemplateProduct {
-  sku: string;
   barcode: string;
   name: string;
   brand: string;
@@ -18,10 +17,10 @@ export function downloadPriceListTemplate(products: TemplateProduct[], warehouse
   // pre-existing column — inserting them in the middle shifted
   // current_price/current_cost/etc. to different positions and was
   // confusing for anyone used to the original layout.
-  const header = ['sku', 'barcode', 'name', 'current_price', 'current_cost', 'current_markup_pct', 'new_price', 'new_cost', 'new_markup_pct', 'brand', 'category', 'unit_of_measure'];
+  const header = ['barcode', 'name', 'current_price', 'current_cost', 'current_markup_pct', 'new_price', 'new_cost', 'new_markup_pct', 'brand', 'category', 'unit_of_measure'];
   const rows = products.map(p => {
     const markup = p.cost > 0 ? Math.round(((p.price / p.cost) - 1) * 10000) / 100 : 0;
-    return [p.sku, p.barcode, p.name, p.price, p.cost, markup, '', '', '', p.brand, p.category, p.unitOfMeasure];
+    return [p.barcode, p.name, p.price, p.cost, markup, '', '', '', p.brand, p.category, p.unitOfMeasure];
   });
   const sheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
   const wb = XLSX.utils.book_new();
@@ -42,7 +41,6 @@ export function mapParsedRowsToPriceListRows(parsed: ParsedFile): PriceListRow[]
     return t === '' ? undefined : t;
   };
   return parsed.rows.map(row => ({
-    sku: row.sku || '',
     barcode: row.barcode || '',
     name: str(row.name),
     brand: str(row.brand),

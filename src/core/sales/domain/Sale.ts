@@ -26,7 +26,6 @@ export interface SaleItemEntity {
   productName: string;
   quantity: number;
   price: number;
-  sku?: string;
   barcode?: string;
   createdAt?: string;
   /** The selling unit this line was sold in. Undefined/null means base unit. */

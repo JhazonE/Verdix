@@ -209,6 +209,9 @@ export function PosDialogs(pos: Props) {
         currentUser={pos.currentUser}
         terminalId={pos.selectedTerminalId}
         printMode={pos.businessSettings?.printMode || 'browser'}
+        paymentMethods={pos.paymentMethods}
+        warehouseId={pos.inventoryLocation}
+        activeLevelId={pos.activeLevelId}
       />
 
       <PriceInquiryDialog

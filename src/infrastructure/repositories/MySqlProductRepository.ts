@@ -58,6 +58,14 @@ export class MySqlProductRepository implements ProductRepository {
       // products.barcode itself. Without this, a scan only resolves for
       // products already sitting in the client's small local cache page;
       // everything else in the catalog silently fails to be found.
+      //
+      // products.sku is NOT yet dropped from this matcher, unlike
+      // lib/product-search.ts: several e2e fixtures search by a seeded
+      // product's sku value where it differs from that product's barcode
+      // (e.g. tests/e2e/fixtures/test-data.ts's BULK_PRICE_PRODUCT), so
+      // removing it here breaks real tests. Retire it once those fixtures
+      // are updated (tracked as part of the still-open e2e-test cluster of
+      // the sku-retirement effort), not before.
       sql += ` AND (
         products.name LIKE ? OR products.sku LIKE ? OR products.barcode LIKE ?
         OR EXISTS (
@@ -250,9 +258,12 @@ export class MySqlProductRepository implements ProductRepository {
     const rows = await query(productSql, [id]);
     if (rows.length === 0) return null;
     
-    // We would also need price levels for a single product... 
+    // We would also need price levels for a single product...
     // For brevity, let's reuse a more specific method or implement properly later.
-    const products = await this.findAll(1, 0, { search: rows[0].sku }); // Hacky
+    // Searches by barcode, not sku: products.sku is only ever a mirror of
+    // barcode, so barcode is the identifier guaranteed to keep working once
+    // the sku column is eventually dropped.
+    const products = await this.findAll(1, 0, { search: rows[0].barcode }); // Hacky
     return products[0] || null;
   }
 

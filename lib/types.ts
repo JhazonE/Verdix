@@ -436,6 +436,7 @@ export interface SystemSettings {
   cashTransferAuthUsername?: string | null;
   cashTransferAuthPassword?: string | null;
   posMode?: 'default' | 'pharmacy';
+  enableQuickAddCustomer?: boolean;
 }
 
 export interface User {

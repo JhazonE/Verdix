@@ -67,7 +67,7 @@ export function AddInvoiceItemsTable({ form, fields, remove, total, vatAmount, h
                         )}
                       </div>
                       <div className="text-xs text-muted-foreground flex gap-2">
-                        <span>{field.product.sku || 'No SKU'}</span>
+                        <span>{(field.product as Product).sellingUnits?.find((u) => u.isBase)?.barcode || field.product.barcode || 'No Barcode'}</span>
                         {field.product.stock !== undefined && (
                           <span className={field.product.stock <= 0 ? 'text-destructive' : 'text-emerald-600'}>
                             Stock: {formatQuantity(field.product.stock)}

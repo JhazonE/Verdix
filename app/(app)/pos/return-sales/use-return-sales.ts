@@ -2,13 +2,16 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { format } from 'date-fns';
-import type { Sale, SaleItem } from '@/lib/types';
+import type { Sale, SaleItem, Product } from '@/lib/types';
 import { usePrinter } from '@/lib/use-printer';
 import { useToast } from '@/hooks/use-toast';
 import { CreditSlipGenerator, CreditSlipData } from '@/lib/credit-slip-generator';
+import { ExchangeSlipGenerator, ExchangeSlipData } from '@/lib/exchange-slip-generator';
 import { getApiUrl } from '@/lib/api-config';
 import { useReactToPrint } from 'react-to-print';
 import { buildRecentSalesQuery } from '../transaction-search/build-recent-sales-query';
+import { calculateExchangeBalance } from '@/lib/pos/exchange-balance';
+import type { ExchangeReplacementItem, ExchangeResult } from './return-sales-types';
 
 type Options = {
   isOpen: boolean;
@@ -17,6 +20,7 @@ type Options = {
   terminalId?: string;
   printMode: 'browser' | 'escpos' | 'usb' | 'native';
   creditSlipRef?: React.RefObject<HTMLDivElement>;
+  exchangeSlipRef?: React.RefObject<HTMLDivElement>;
 };
 
 export function useReturnSales({
@@ -25,9 +29,10 @@ export function useReturnSales({
   currentUser,
   terminalId,
   printMode,
-  creditSlipRef
+  creditSlipRef,
+  exchangeSlipRef
 }: Options) {
-  const [step, setStep] = useState<'loading' | 'auth' | 'input_so' | 'select_items' | 'success'>('loading');
+  const [step, setStep] = useState<'loading' | 'auth' | 'input_so' | 'select_items' | 'pick_replacement' | 'settle_balance' | 'exchange_success' | 'success'>('loading');
   const [sales, setSales] = useState<Sale[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -44,6 +49,16 @@ export function useReturnSales({
   const [mcNumber, setMcNumber] = useState('');
   const [recentSales, setRecentSales] = useState<Sale[]>([]);
   const [isRecentLoading, setIsRecentLoading] = useState(false);
+  const [exchangeReturnItem, setExchangeReturnItem] = useState<SaleItem | null>(null);
+  const [replacementItem, setReplacementItem] = useState<ExchangeReplacementItem | null>(null);
+  const [exchangeResult, setExchangeResult] = useState<ExchangeResult | null>(null);
+
+  const exchangeBalance = replacementItem && exchangeReturnItem
+    ? calculateExchangeBalance(
+        { quantity: exchangeReturnItem.quantity, price: exchangeReturnItem.price },
+        { quantity: replacementItem.quantity, price: replacementItem.product.price }
+      )
+    : null;
   const nativePrinterName = typeof window !== 'undefined' ? localStorage.getItem('pos_printer_name') || undefined : undefined;
   const { isPrinting, isConnected, connect, print } = usePrinter(printMode, nativePrinterName);
   const { toast } = useToast();
@@ -52,6 +67,22 @@ export function useReturnSales({
   const handleBrowserPrint = useReactToPrint({
     contentRef: creditSlipRef,
     documentTitle: `CreditSlip-${new Date().getTime()}`,
+    pageStyle: `
+      @page {
+        size: 58mm auto;
+        margin: 0;
+      }
+      @media print {
+        body {
+          -webkit-print-color-adjust: exact;
+        }
+      }
+    `
+  });
+
+  const handleBrowserPrintExchange = useReactToPrint({
+    contentRef: exchangeSlipRef,
+    documentTitle: `ExchangeSlip-${new Date().getTime()}`,
     pageStyle: `
       @page {
         size: 58mm auto;
@@ -78,6 +109,9 @@ export function useReturnSales({
       setReturnedTotal(0);
       setReturnedItems([]);
       setMcNumber('');
+      setExchangeReturnItem(null);
+      setReplacementItem(null);
+      setExchangeResult(null);
 
       fetch(getApiUrl(`/pos-settings?_t=${Date.now()}`), { cache: 'no-store' })
         .then(res => res.json())
@@ -192,6 +226,73 @@ export function useReturnSales({
     }
   }, [selectedSale, terminalId, posSettings, currentUser, toast]);
 
+  const handleStartExchange = useCallback((item: SaleItem) => {
+    setExchangeReturnItem(item);
+    setStep('pick_replacement');
+  }, []);
+
+  const handleBackFromReplacement = useCallback(() => {
+    setReplacementItem(null);
+    setStep('select_items');
+  }, []);
+
+  const handlePickReplacement = useCallback((product: Product, quantity: number, sellingUnitId?: string) => {
+    setReplacementItem({ product, quantity, sellingUnitId });
+  }, []);
+
+  const handleSettleBalance = useCallback(async (payment?: { method: string; amountTendered: number; reference?: string }) => {
+    if (!selectedSale || !exchangeReturnItem || !replacementItem) return;
+
+    setIsLoading(true);
+    try {
+      const response = await fetch(getApiUrl('/sales/exchanges'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          saleId: selectedSale.id,
+          returnItem: {
+            productId: exchangeReturnItem.product.id,
+            productName: exchangeReturnItem.product.name,
+            quantity: exchangeReturnItem.quantity,
+            price: exchangeReturnItem.price,
+            sellingUnitId: exchangeReturnItem.sellingUnitId,
+            sellingUnitName: exchangeReturnItem.sellingUnitName,
+            sellingUnitFactor: exchangeReturnItem.sellingUnitFactor,
+          },
+          newItem: {
+            productId: replacementItem.product.id,
+            productName: replacementItem.product.name,
+            quantity: replacementItem.quantity,
+            price: replacementItem.product.price,
+            sellingUnitId: replacementItem.sellingUnitId,
+          },
+          balancePayment: payment,
+          terminalId: terminalId || posSettings?.terminalId,
+          userId: currentUser?.uid || currentUser?.id || null,
+          shiftId: typeof window !== 'undefined' ? localStorage.getItem('pos_current_shift_id') : null,
+          customerId: selectedSale.customer?.id && selectedSale.customer.id !== 'walk-in' ? selectedSale.customer.id : null,
+        }),
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        setExchangeResult({
+          mcNumber: result.data.mcNumber,
+          siNumber: result.data.siNumber,
+          balance: result.data.balance,
+        });
+        setStep('exchange_success');
+      } else {
+        toast({ title: 'Exchange Failed', description: result.error || 'Failed to process exchange', variant: 'destructive' });
+      }
+    } catch (err) {
+      console.error('Error processing exchange:', err);
+      toast({ title: 'Exchange Failed', description: 'Error processing exchange. Please try again.', variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedSale, exchangeReturnItem, replacementItem, terminalId, posSettings, currentUser, toast]);
+
   const handleBackToSearch = useCallback(() => {
     setStep('input_so');
     setSelectedSale(null);
@@ -267,8 +368,66 @@ export function useReturnSales({
     }
   }, [selectedSale, returnedItems, returnedTotal, mcNumber, printMode, isConnected, connect, print, posSettings, currentUser, handleBrowserPrint, toast]);
 
+  const handlePrintExchangeSlip = useCallback(async () => {
+    if (!exchangeReturnItem || !replacementItem || !exchangeResult) return;
+
+    if (printMode === 'browser') {
+      handleBrowserPrintExchange();
+      return;
+    }
+
+    if (!isConnected) {
+      const success = await connect();
+      if (!success) return;
+    }
+
+    try {
+      const generator = new ExchangeSlipGenerator();
+      const slipData: ExchangeSlipData = {
+        mcNumber: exchangeResult.mcNumber,
+        siNumber: exchangeResult.siNumber,
+        date: new Date().toISOString(),
+        cashierName: currentUser?.name || currentUser?.displayName || currentUser?.username || 'Cashier',
+        customerName: selectedSale?.customer?.name || 'Walk-in Customer',
+        returnedItem: {
+          name: exchangeReturnItem.product.name,
+          quantity: exchangeReturnItem.quantity,
+          price: exchangeReturnItem.price,
+          total: exchangeReturnItem.quantity * exchangeReturnItem.price,
+        },
+        newItem: {
+          name: replacementItem.product.name,
+          quantity: replacementItem.quantity,
+          price: replacementItem.product.price,
+          total: replacementItem.quantity * replacementItem.product.price,
+        },
+        balance: exchangeResult.balance,
+        businessSettings: {
+          businessName: posSettings?.businessName,
+          address: posSettings?.address,
+          contactNumber: posSettings?.contactNumber,
+          tin: posSettings?.tin,
+          minNumber: posSettings?.minNumber,
+          serialNumber: posSettings?.serialNumber,
+          currencySymbol: posSettings?.currencySymbol || '₱',
+          currencyCode: posSettings?.currencyCode || 'PHP',
+          timezone: posSettings?.timezone || 'Asia/Manila',
+          dateFormat: posSettings?.dateFormat || 'MM/dd/yyyy'
+        }
+      };
+
+      const bytes = generator.generate(slipData);
+      await print(bytes);
+      toast({ title: "Success", description: "Exchange slip sent to printer." });
+    } catch (err) {
+      console.error("Print error", err);
+      toast({ title: "Print Failed", description: "Could not send data to printer.", variant: "destructive" });
+    }
+  }, [exchangeReturnItem, replacementItem, exchangeResult, selectedSale, printMode, isConnected, connect, print, posSettings, currentUser, handleBrowserPrintExchange, toast]);
+
   return {
     step,
+    setStep,
     isLoading,
     searchText,
     setSearchText,
@@ -285,6 +444,10 @@ export function useReturnSales({
     recentSales,
     isRecentLoading,
     posSettings,
+    exchangeReturnItem,
+    replacementItem,
+    exchangeBalance,
+    exchangeResult,
     handlePickSale,
     handleAuthSuccess,
     handleAuthClose,
@@ -292,5 +455,10 @@ export function useReturnSales({
     handleBackToSearch,
     handleCloseSuccess,
     handlePrintCredit,
+    handleStartExchange,
+    handleBackFromReplacement,
+    handlePickReplacement,
+    handleSettleBalance,
+    handlePrintExchangeSlip,
   };
 }

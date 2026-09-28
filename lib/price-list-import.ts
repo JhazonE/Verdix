@@ -1,10 +1,9 @@
 import { applyAdjustment, isValidPriceValue, type AdjustmentType } from '@/lib/price-update-math';
-import { generateSku } from '@/lib/sku';
 import { query, withTransaction } from '@/lib/mysql';
 
 export interface PriceUpdateItem {
   productId: string;
-  sku: string;
+  baseUnitBarcode: string;
   barcode: string;
   productName: string;
   field: 'price' | 'cost' | 'priceLevel';
@@ -17,7 +16,6 @@ export interface PriceUpdateItem {
 }
 
 export interface PriceListRow {
-  sku: string;
   barcode: string;
   name?: string;
   brand?: string;
@@ -29,7 +27,6 @@ export interface PriceListRow {
 }
 
 export interface NewProductFromExcel {
-  sku: string;
   barcode: string;
   name: string;
   brand: string;
@@ -45,73 +42,40 @@ export interface PriceListPreviewResult {
   skipped: { row: PriceListRow; reason: string }[];
 }
 
-/** A product row as loaded by the batched lookup queries. */
+/** A product row as loaded by the batched lookup queries, keyed by its base selling unit's barcode. */
 export interface ProductLookup {
   id: string;
   name: string;
-  sku: string;
+  baseUnitBarcode: string | null;
   barcode: string | null;
   price: string | number;
   cost: string | number | null;
 }
 
-/**
- * Pre-loaded lookups replacing the per-row SELECT pair. `allSkus` covers every
- * SKU in the warehouse, not just the ones in the file — it is what makes the
- * generated-SKU collision check possible (see generateUniqueSku).
- */
+/** Pre-loaded lookups replacing the per-row SELECT pair. */
 export interface MatchMaps {
-  bySku: Map<string, ProductLookup>;
-  byBarcode: Map<string, ProductLookup>;
-  allSkus: Set<string>;
-}
-
-/**
- * Generates a SKU that collides with neither an existing product nor one
- * already claimed by an earlier row in this file.
- *
- * The previous inline `generateSku()` call checked only the in-file set, so a
- * generated code could duplicate an existing product's SKU and produce either
- * a failed insert or a duplicate SKU in the catalogue. generateSku draws a
- * 6-char base36 suffix (~2.2 billion values), so a collision is already
- * unlikely; the retries make it bounded rather than merely improbable, and
- * returning null lets the caller skip the one row instead of failing the file.
- */
-export function generateUniqueSku(
-  brand: string | undefined,
-  name: string | undefined,
-  taken: Set<string>,
-  attempts = 10,
-): string | null {
-  for (let i = 0; i < attempts; i++) {
-    const candidate = generateSku(brand, name);
-    if (!taken.has(candidate)) return candidate;
-  }
-  return null;
+  byBaseUnitBarcode: Map<string, ProductLookup>;
 }
 
 export function matchPriceListRows(rows: PriceListRow[], maps: MatchMaps): PriceListPreviewResult {
   const matched: PriceUpdateItem[] = [];
   const toCreate: NewProductFromExcel[] = [];
   const skipped: PriceListPreviewResult['skipped'] = [];
-  const seenSkus = new Set<string>();
+  const seenBarcodes = new Set<string>();
 
   for (const row of rows) {
-    const sku = (row.sku || '').trim();
     const barcode = (row.barcode || '').trim();
 
-    if (!sku && !barcode) {
-      skipped.push({ row, reason: 'Missing SKU and barcode' });
+    if (!barcode) {
+      skipped.push({ row, reason: 'Missing barcode' });
       continue;
     }
-    if (sku && seenSkus.has(sku)) {
-      skipped.push({ row, reason: `Duplicate SKU "${sku}" (earlier row in this file superseded)` });
+    if (seenBarcodes.has(barcode)) {
+      skipped.push({ row, reason: `Duplicate barcode "${barcode}" (earlier row in this file superseded)` });
       continue;
     }
 
-    let product: ProductLookup | undefined;
-    if (sku) product = maps.bySku.get(sku);
-    if (!product && barcode) product = maps.byBarcode.get(barcode);
+    const product = maps.byBaseUnitBarcode.get(barcode);
 
     if (!product) {
       const missing: string[] = [];
@@ -134,36 +98,21 @@ export function matchPriceListRows(rows: PriceListRow[], maps: MatchMaps): Price
         continue;
       }
 
-      let newSku = sku;
-      if (!newSku) {
-        // Check against BOTH the catalogue and the SKUs this file already
-        // claimed. `maps.allSkus` is the fix for the collision bug.
-        const generated = generateUniqueSku(row.brand, row.name, new Set([...maps.allSkus, ...seenSkus]));
-        if (!generated) {
-          skipped.push({ row, reason: 'Could not generate a unique SKU for this product' });
-          continue;
-        }
-        newSku = generated;
-      }
-      if (seenSkus.has(newSku) || maps.allSkus.has(newSku)) {
-        skipped.push({ row, reason: `Duplicate SKU "${newSku}" (earlier row in this file superseded)` });
-        continue;
-      }
-      seenSkus.add(newSku);
+      seenBarcodes.add(barcode);
       toCreate.push({
-        sku: newSku, barcode, name: row.name!, brand: row.brand!, category: row.category!,
+        barcode, name: row.name!, brand: row.brand!, category: row.category!,
         unitOfMeasure: row.unitOfMeasure!, price: row.newPrice!, cost: row.newCost,
       });
       continue;
     }
-    if (sku) seenSkus.add(sku);
+    seenBarcodes.add(barcode);
 
     if (row.newPrice != null) {
       if (!isValidPriceValue(row.newPrice)) {
         skipped.push({ row, reason: 'new_price must be a non-negative number' });
       } else {
         matched.push({
-          productId: product.id, sku: product.sku, barcode: product.barcode || '', productName: product.name,
+          productId: product.id, baseUnitBarcode: product.baseUnitBarcode || '', barcode: product.barcode || '', productName: product.name,
           field: 'price', oldValue: parseFloat(String(product.price)), newValue: row.newPrice,
           adjustmentType: 'exact', adjustmentValue: row.newPrice,
         });
@@ -174,7 +123,7 @@ export function matchPriceListRows(rows: PriceListRow[], maps: MatchMaps): Price
         skipped.push({ row, reason: 'new_cost must be a non-negative number' });
       } else {
         matched.push({
-          productId: product.id, sku: product.sku, barcode: product.barcode || '', productName: product.name,
+          productId: product.id, baseUnitBarcode: product.baseUnitBarcode || '', barcode: product.barcode || '', productName: product.name,
           field: 'cost', oldValue: parseFloat(String(product.cost || 0)), newValue: row.newCost,
           adjustmentType: 'exact', adjustmentValue: row.newCost,
         });
@@ -190,7 +139,7 @@ export function matchPriceListRows(rows: PriceListRow[], maps: MatchMaps): Price
           skipped.push({ row, reason: 'Computed price from new_markup_pct is invalid (check product cost)' });
         } else {
           matched.push({
-            productId: product.id, sku: product.sku, barcode: product.barcode || '', productName: product.name,
+            productId: product.id, baseUnitBarcode: product.baseUnitBarcode || '', barcode: product.barcode || '', productName: product.name,
             field: 'price', oldValue: parseFloat(String(product.price)), newValue: newPrice,
             adjustmentType: 'markup', adjustmentValue: row.newMarkupPct,
           });
@@ -222,39 +171,27 @@ export const APPLY_CHUNK_SIZE = 500;
  * instead of one or two SELECTs per row. A 15,000-row file goes from up to
  * 30,000 sequential round-trips to roughly 30.
  *
- * `allSkus` additionally loads every SKU in the warehouse (not just the ones
- * named in the file) so generateUniqueSku can avoid colliding with a product
- * the file never mentions.
+ * Matches against the base selling unit's barcode (`product_selling_units`
+ * with `is_base = 1`), not the legacy `products.barcode` column — this is
+ * the one identifier the rest of the sku-retirement effort standardized on.
  */
 export async function loadMatchMaps(warehouseId: string, rows: PriceListRow[]): Promise<MatchMaps> {
-  const skus = [...new Set(rows.map(r => (r.sku || '').trim()).filter(Boolean))];
   const barcodes = [...new Set(rows.map(r => (r.barcode || '').trim()).filter(Boolean))];
 
-  const bySku = new Map<string, ProductLookup>();
-  const byBarcode = new Map<string, ProductLookup>();
-
-  for (const part of chunk(skus, LOOKUP_CHUNK_SIZE)) {
-    const rowsOut: any = await query(
-      `SELECT id, name, sku, barcode, price, cost FROM products
-       WHERE warehouse_id = ? AND sku IN (${part.map(() => '?').join(',')})`,
-      [warehouseId, ...part],
-    );
-    for (const p of rowsOut ?? []) if (p.sku) bySku.set(p.sku, p);
-  }
+  const byBaseUnitBarcode = new Map<string, ProductLookup>();
 
   for (const part of chunk(barcodes, LOOKUP_CHUNK_SIZE)) {
     const rowsOut: any = await query(
-      `SELECT id, name, sku, barcode, price, cost FROM products
-       WHERE warehouse_id = ? AND barcode IN (${part.map(() => '?').join(',')})`,
+      `SELECT p.id, p.name, su.barcode as baseUnitBarcode, p.barcode, p.price, p.cost
+       FROM products p
+       JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
+       WHERE p.warehouse_id = ? AND su.barcode IN (${part.map(() => '?').join(',')})`,
       [warehouseId, ...part],
     );
-    for (const p of rowsOut ?? []) if (p.barcode) byBarcode.set(p.barcode, p);
+    for (const p of rowsOut ?? []) if (p.baseUnitBarcode) byBaseUnitBarcode.set(p.baseUnitBarcode, p);
   }
 
-  const allSkuRows: any = await query('SELECT sku FROM products WHERE warehouse_id = ? AND sku IS NOT NULL', [warehouseId]);
-  const allSkus = new Set<string>((allSkuRows ?? []).map((r: any) => r.sku));
-
-  return { bySku, byBarcode, allSkus };
+  return { byBaseUnitBarcode };
 }
 
 /**
@@ -371,23 +308,30 @@ const PRODUCTS_PLACEHOLDERS = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
 /**
  * Builds a products.id that can never exceed the column's VARCHAR(50) limit.
  *
- * Overhead beyond the SKU is fixed: '-' + 13-digit Date.now() + '-' + a 6-char
- * base36 suffix = 21 chars. Truncating the SKU portion to 29 chars keeps the
- * total at 50 even for a SKU at its own column's max length (VARCHAR(100)).
- * Truncating here (not the SKU column itself) means a long SKU still saves
- * correctly — only this synthetic id is shortened.
+ * Overhead beyond the barcode is fixed: '-' + 13-digit Date.now() + '-' + a
+ * 6-char base36 suffix = 21 chars. Truncating the barcode portion to 29 chars
+ * keeps the total at 50 even for a barcode at its own column's max length.
+ * Truncating here (not the barcode column itself) means a long barcode still
+ * saves correctly — only this synthetic id is shortened.
  */
-function buildProductId(sku: string): string {
+function buildProductId(barcode: string): string {
   const suffix = `-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-  const maxSkuLen = 50 - suffix.length;
-  return `${sku.slice(0, maxSkuLen)}${suffix}`;
+  const maxLen = 50 - suffix.length;
+  return `${barcode.slice(0, maxLen)}${suffix}`;
 }
 
-/** Column values for one products row, in PRODUCTS_COLUMNS order. */
+/**
+ * Column values for one products row, in PRODUCTS_COLUMNS order.
+ *
+ * `sku` is mirrored from `barcode` rather than left blank — Sub-project A of
+ * the sku-retirement effort established that every write path keeps
+ * products.sku in sync with the base unit's barcode so any not-yet-migrated
+ * reader keeps seeing a matching value.
+ */
 function buildProductValues(r: NewProductFromExcel, warehouseId: string, productId: string): any[] {
   return [
     productId, r.name, r.name, r.category, r.brand, warehouseId, 0, 0,
-    0, r.price, r.cost ?? null, r.sku, r.barcode || null,
+    0, r.price, r.cost ?? null, r.barcode, r.barcode,
     r.name.toLowerCase().replace(/\s+/g, '-'), r.unitOfMeasure, 1,
     'YES (Subject to 12% VAT)', 'Available', 1, 0, 'standard',
   ];
@@ -395,11 +339,16 @@ function buildProductValues(r: NewProductFromExcel, warehouseId: string, product
 
 /**
  * Inserts new products with multi-row INSERTs instead of one addProduct() call
- * (and therefore one transaction) per row.
+ * (and therefore one transaction) per row, plus one base selling-unit row per
+ * product (factor 1, is_base = 1, barcode = the product's own barcode) —
+ * matching the convention `actions.ts`'s writeSellingUnits() established,
+ * since a product without a base unit is unsellable and unmatchable by a
+ * later price-list upload (loadMatchMaps only matches on the base unit's
+ * barcode).
  *
- * Safe because the Excel path supplies none of addProduct's optional
- * sub-entities — no shelf locations, conversion factors, price levels or
- * supplier mappings — and stock 0, so addProduct reduces to this single INSERT.
+ * Safe because the Excel path supplies none of addProduct's other optional
+ * sub-entities — no shelf locations, extra selling units, price levels or
+ * supplier mappings — and stock 0.
  * If addProduct's column defaults change, change them here too.
  */
 export async function insertNewProducts(
@@ -411,17 +360,21 @@ export async function insertNewProducts(
   let done = 0;
   const failed: { row: NewProductFromExcel; reason: string }[] = [];
 
+  const insertOne = async (connection: any, r: NewProductFromExcel, productId: string) => {
+    await connection.query(`INSERT INTO products (${PRODUCTS_COLUMNS}) VALUES ${PRODUCTS_PLACEHOLDERS}`, buildProductValues(r, warehouseId, productId));
+    await connection.query(
+      `INSERT INTO product_selling_units (id, product_id, name, barcode, factor, cost, price, is_base)
+       VALUES (?, ?, 'Piece', ?, 1, ?, ?, 1)`,
+      [`psu_base_${productId}`, productId, r.barcode, r.cost ?? null, r.price],
+    );
+  };
+
   for (const part of chunk(rows, APPLY_CHUNK_SIZE)) {
-    const values: any[] = [];
-    const placeholders: string[] = [];
-    for (const r of part) {
-      placeholders.push(PRODUCTS_PLACEHOLDERS);
-      values.push(...buildProductValues(r, warehouseId, buildProductId(r.sku)));
-    }
+    const productIds = part.map(r => buildProductId(r.barcode));
 
     try {
       await withTransaction(async (connection) => {
-        await connection.query(`INSERT INTO products (${PRODUCTS_COLUMNS}) VALUES ${placeholders.join(', ')}`, values);
+        for (let i = 0; i < part.length; i++) await insertOne(connection, part[i], productIds[i]);
       });
       created += part.length;
     } catch {
@@ -432,26 +385,24 @@ export async function insertNewProducts(
       // actually in the DB before retrying anything, so an already-committed row is
       // never re-inserted (which would otherwise hit the sku+warehouse unique index
       // and get misreported as failed even though it succeeded).
-      const skusInPart = part.map(r => r.sku);
-      const existingSkuRows: any = await query(
-        `SELECT sku FROM products WHERE warehouse_id = ? AND sku IN (${skusInPart.map(() => '?').join(',')})`,
-        [warehouseId, ...skusInPart],
+      const barcodesInPart = part.map(r => r.barcode);
+      const existingRows: any = await query(
+        `SELECT barcode FROM products WHERE warehouse_id = ? AND barcode IN (${barcodesInPart.map(() => '?').join(',')})`,
+        [warehouseId, ...barcodesInPart],
       );
-      const alreadyLanded = new Set<string>((existingSkuRows ?? []).map((row: any) => row.sku));
+      const alreadyLanded = new Set<string>((existingRows ?? []).map((row: any) => row.barcode));
 
-      for (const r of part) {
-        if (alreadyLanded.has(r.sku)) {
+      for (let i = 0; i < part.length; i++) {
+        const r = part[i];
+        if (alreadyLanded.has(r.barcode)) {
           // The chunk insert actually succeeded for this row before the
           // connection-level failure; count it as created, do not re-insert.
           created++;
           continue;
         }
         try {
-          const productId = buildProductId(r.sku);
-          await query(
-            `INSERT INTO products (${PRODUCTS_COLUMNS}) VALUES ${PRODUCTS_PLACEHOLDERS}`,
-            buildProductValues(r, warehouseId, productId),
-          );
+          const productId = buildProductId(r.barcode);
+          await withTransaction(async (connection) => insertOne(connection, r, productId));
           created++;
         } catch (rowError: any) {
           failed.push({ row: r, reason: rowError.message || 'Failed to create product' });

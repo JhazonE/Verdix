@@ -12,7 +12,6 @@ export async function getStockAdjustments(limit?: number, offset?: number) {
         sa.*,
         'Completed' as status,
         p.name as product_name,
-        p.sku as product_sku,
         p.category,
         p.brand
       FROM stock_adjustments sa
@@ -23,10 +22,9 @@ export async function getStockAdjustments(limit?: number, offset?: number) {
 
     // 2. Fetch pending adjustments from approval queue
     let queueSql = `
-      SELECT 
+      SELECT
         aq.*,
         p.name as product_name,
-        p.sku as product_sku,
         p.category,
         p.brand
       FROM approval_queue aq
@@ -48,7 +46,6 @@ export async function getStockAdjustments(limit?: number, offset?: number) {
       product: adj.product_name ? {
         id: adj.product_id,
         name: adj.product_name,
-        sku: adj.product_sku,
         category: adj.category,
         brand: adj.brand
       } : undefined
@@ -68,7 +65,6 @@ export async function getStockAdjustments(limit?: number, offset?: number) {
         product: item.product_name ? {
             id: txData.productId,
             name: item.product_name,
-            sku: item.product_sku,
             category: item.category,
             brand: item.brand
         } : undefined
@@ -132,8 +128,7 @@ export async function getStockAdjustmentsByProduct(productId: string, limit?: nu
     let sql = `
       SELECT
         sa.*,
-        p.name as product_name,
-        p.sku as product_sku
+        p.name as product_name
       FROM stock_adjustments sa
       LEFT JOIN products p ON sa.product_id = p.id
       WHERE sa.product_id = ?
@@ -159,8 +154,7 @@ export async function getStockAdjustmentsByProduct(productId: string, limit?: nu
       newStock: parseInt(adj.new_stock),
       product: adj.product_name ? {
         id: adj.product_id,
-        name: adj.product_name,
-        sku: adj.product_sku
+        name: adj.product_name
       } : undefined
     })) as StockAdjustment[];
   } catch (error) {
@@ -222,13 +216,14 @@ export async function adjustStock(productId: string, quantity: number, reason: s
     if (isApprovalRequired) {
       // Get product info for enrichment
       const productInfoRes: any = await query(`
-        SELECT p.name, p.stock, p.sku, p.barcode, w.name as warehouse_name, s.name as shelf_name
+        SELECT p.name, p.stock, su.barcode as base_unit_barcode, p.barcode, w.name as warehouse_name, s.name as shelf_name
         FROM products p
+        LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
         LEFT JOIN warehouses w ON p.warehouse_id = w.id
         LEFT JOIN shelf_locations s ON p.shelf_location_id = s.id
         WHERE p.id = ?
       `, [productId]);
-      const productInfo = productInfoRes[0] || { name: 'Unknown', stock: 0, sku: '', barcode: '', warehouse_name: null, shelf_name: null };
+      const productInfo = productInfoRes[0] || { name: 'Unknown', stock: 0, base_unit_barcode: '', barcode: '', warehouse_name: null, shelf_name: null };
 
       // Submit to approval queue instead of executing
       console.log('Stock adjustment submitted for approval:', { productId, quantity, reason });
@@ -237,8 +232,7 @@ export async function adjustStock(productId: string, quantity: number, reason: s
         quantity,
         reason,
         productName: productInfo.name,
-        productSku: productInfo.sku,
-        productBarcode: productInfo.barcode,
+        productBarcode: productInfo.base_unit_barcode || productInfo.barcode,
         warehouseName: productInfo.warehouse_name,
         shelfName: productInfo.shelf_name,
         currentStock: parseInt(productInfo.stock || 0),

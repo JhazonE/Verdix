@@ -16,44 +16,48 @@ interface SelectItemsViewProps {
   sale: Sale;
   onReturnItems: (items: SaleItem[]) => void;
   onBack: () => void;
+  onExchangeItem: (item: SaleItem) => void;
 }
 
-export function SelectItemsView({ sale, onReturnItems, onBack }: SelectItemsViewProps) {
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
-  const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
+export function SelectItemsView({ sale, onReturnItems, onBack, onExchangeItem }: SelectItemsViewProps) {
+  // Keyed by row index, not product.id: the same product can appear as more
+  // than one line on a sale (e.g. sold at two different prices/units), and
+  // product.id would then wrongly select every line sharing that product.
+  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
+  const [returnQuantities, setReturnQuantities] = useState<Record<number, number>>({});
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
 
-  const handleItemToggle = (item: SaleItem) => {
-    const itemId = item.product.id;
+  const handleItemToggle = (item: SaleItem, index: number) => {
     const newSelected = new Set(selectedItems);
 
-    if (newSelected.has(itemId)) {
-      newSelected.delete(itemId);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
       const newQuantities = { ...returnQuantities };
-      delete newQuantities[itemId];
+      delete newQuantities[index];
       setReturnQuantities(newQuantities);
     } else {
-      newSelected.add(itemId);
-      setReturnQuantities(prev => ({ ...prev, [itemId]: item.quantity }));
+      newSelected.add(index);
+      setReturnQuantities(prev => ({ ...prev, [index]: item.quantity }));
     }
 
     setSelectedItems(newSelected);
   };
 
-  const handleQuantityChange = (item: SaleItem, value: string) => {
+  const handleQuantityChange = (item: SaleItem, index: number, value: string) => {
     const qty = parseFloat(value);
     if (isNaN(qty) || qty <= 0) return;
 
     const validQty = Math.min(qty, item.quantity);
-    setReturnQuantities(prev => ({ ...prev, [item.product.id]: validQty }));
+    setReturnQuantities(prev => ({ ...prev, [index]: validQty }));
   };
 
   const handleConfirmReturn = () => {
     const itemsToReturn = sale.items
-      .filter(item => selectedItems.has(item.product.id))
-      .map(item => ({
+      .map((item, index) => ({ item, index }))
+      .filter(({ index }) => selectedItems.has(index))
+      .map(({ item, index }) => ({
         ...item,
-        quantity: returnQuantities[item.product.id] || item.quantity
+        quantity: returnQuantities[index] || item.quantity
       }));
 
     onReturnItems(itemsToReturn);
@@ -81,7 +85,7 @@ export function SelectItemsView({ sale, onReturnItems, onBack }: SelectItemsView
         case 'Space':
           e.preventDefault();
           if (highlightedIndex !== null) {
-            handleItemToggle(sale.items[highlightedIndex]);
+            handleItemToggle(sale.items[highlightedIndex], highlightedIndex);
           }
           break;
         case 'Enter':
@@ -109,29 +113,29 @@ export function SelectItemsView({ sale, onReturnItems, onBack }: SelectItemsView
       setSelectedItems(new Set());
       setReturnQuantities({});
     } else {
-      const all = new Set<string>();
-      const q: Record<string, number> = {};
+      const all = new Set<number>();
+      const q: Record<number, number> = {};
       // Skip fully-returned lines (no quantity left to return).
-      sale.items.forEach(it => { if (it.quantity > 0) { all.add(it.product.id); q[it.product.id] = it.quantity; } });
+      sale.items.forEach((it, index) => { if (it.quantity > 0) { all.add(index); q[index] = it.quantity; } });
       setSelectedItems(all);
       setReturnQuantities(q);
     }
   };
 
-  const step = (item: SaleItem, delta: number) => {
-    const current = returnQuantities[item.product.id] || 1;
+  const step = (item: SaleItem, index: number, delta: number) => {
+    const current = returnQuantities[index] || 1;
     const next = Math.min(item.quantity, Math.max(1, current + delta));
-    setReturnQuantities(prev => ({ ...prev, [item.product.id]: next }));
+    setReturnQuantities(prev => ({ ...prev, [index]: next }));
   };
 
-  const creditTotal = sale.items.reduce((sum, item) => {
-    if (!selectedItems.has(item.product.id)) return sum;
-    const qty = returnQuantities[item.product.id] || item.quantity;
+  const creditTotal = sale.items.reduce((sum, item, index) => {
+    if (!selectedItems.has(index)) return sum;
+    const qty = returnQuantities[index] || item.quantity;
     return sum + item.price * qty;
   }, 0);
 
-  const totalReturnQty = sale.items.reduce((sum, item) =>
-    selectedItems.has(item.product.id) ? sum + (returnQuantities[item.product.id] || item.quantity) : sum, 0
+  const totalReturnQty = sale.items.reduce((sum, item, index) =>
+    selectedItems.has(index) ? sum + (returnQuantities[index] || item.quantity) : sum, 0
   );
 
   return (
@@ -161,18 +165,18 @@ export function SelectItemsView({ sale, onReturnItems, onBack }: SelectItemsView
             const alreadyReturned = item.returnedQuantity ?? 0;
             const remaining = item.quantity; // net still returnable
             const fullyReturned = remaining <= 0;
-            const checked = selectedItems.has(item.product.id);
-            const rQty = returnQuantities[item.product.id] || remaining;
+            const checked = selectedItems.has(index);
+            const rQty = returnQuantities[index] || remaining;
             const isHighlighted = highlightedIndex === index;
             return (
               <div
                 key={index}
-                className={`flex items-center gap-3 border-b border-border/50 px-3 py-3 transition-colors ${
+                className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border/50 px-3 py-3 transition-colors ${
                   fullyReturned ? 'opacity-60' : isHighlighted ? 'bg-amber-100/70 dark:bg-amber-950/40 ring-2 ring-amber-500' : checked ? 'bg-amber-50/60 dark:bg-amber-950/20' : 'hover:bg-muted/40'
                 }`}
               >
-                <Checkbox checked={checked} disabled={fullyReturned} onCheckedChange={() => handleItemToggle(item)} />
-                <div className={`min-w-0 flex-1 ${fullyReturned ? '' : 'cursor-pointer'}`} onClick={() => { if (!fullyReturned) handleItemToggle(item); }}>
+                <Checkbox checked={checked} disabled={fullyReturned} onCheckedChange={() => handleItemToggle(item, index)} />
+                <div className={`min-w-0 flex-1 ${fullyReturned ? '' : 'cursor-pointer'}`} onClick={() => { if (!fullyReturned) handleItemToggle(item, index); }}>
                   <p className="truncate text-sm font-medium">{item.product.name}</p>
                   <p className="text-xs text-muted-foreground">
                     Sold: {formatQuantity(soldQty)} {item.product.unitOfMeasure || ''} · {peso(item.price)} ea
@@ -187,7 +191,7 @@ export function SelectItemsView({ sale, onReturnItems, onBack }: SelectItemsView
                   <span className="shrink-0 text-xs font-medium text-amber-600 dark:text-amber-400">Fully returned</span>
                 ) : checked ? (
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <Button variant="outline" size="icon" className="h-7 w-7" disabled={rQty <= 1} onClick={() => step(item, -1)}>
+                    <Button variant="outline" size="icon" className="h-7 w-7" disabled={rQty <= 1} onClick={() => step(item, index, -1)}>
                       <Minus className="h-3 w-3" />
                     </Button>
                     <Input
@@ -195,17 +199,17 @@ export function SelectItemsView({ sale, onReturnItems, onBack }: SelectItemsView
                       min="1"
                       max={remaining}
                       className="h-7 w-12 px-1 text-center font-mono"
-                      value={returnQuantities[item.product.id] || ''}
-                      onChange={(e) => handleQuantityChange(item, e.target.value)}
+                      value={returnQuantities[index] || ''}
+                      onChange={(e) => handleQuantityChange(item, index, e.target.value)}
                     />
-                    <Button variant="outline" size="icon" className="h-7 w-7" disabled={rQty >= remaining} onClick={() => step(item, 1)}>
+                    <Button variant="outline" size="icon" className="h-7 w-7" disabled={rQty >= remaining} onClick={() => step(item, index, 1)}>
                       <Plus className="h-3 w-3" />
                     </Button>
                   </div>
                 ) : (
                   <span className="shrink-0 text-xs text-muted-foreground">Not returning</span>
                 )}
-                <div className="w-20 shrink-0 text-right font-mono text-sm font-semibold">
+                <div className="ml-auto shrink-0 text-right font-mono text-sm font-semibold whitespace-nowrap">
                   {checked ? peso(item.price * rQty) : '—'}
                 </div>
               </div>
@@ -225,6 +229,21 @@ export function SelectItemsView({ sale, onReturnItems, onBack }: SelectItemsView
       <SheetFooter className="mt-4 shrink-0">
         <Button variant="outline" onClick={onBack}>
           Cancel
+        </Button>
+        <Button
+          variant="outline"
+          className="border-amber-600 text-amber-700 hover:bg-amber-50"
+          disabled={selectedItems.size !== 1}
+          title={selectedItems.size !== 1 ? 'Select exactly one item to exchange' : undefined}
+          onClick={() => {
+            const onlyIndex = [...selectedItems][0];
+            const only = onlyIndex !== undefined ? sale.items[onlyIndex] : undefined;
+            if (only) {
+              onExchangeItem({ ...only, quantity: returnQuantities[onlyIndex] || only.quantity });
+            }
+          }}
+        >
+          Exchange for Another Item
         </Button>
         <Button
           className="bg-amber-600 hover:bg-amber-700 text-white"

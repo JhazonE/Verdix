@@ -118,16 +118,17 @@ export async function GET(request: NextRequest) {
             ABS(SUM(LEAST(si.quantity, 0))) as returned_quantity,
             SUM(si.quantity) as quantity,
             COALESCE(MIN(pti.unit_price), si.price) as original_price,
-            p.sku,
+            su.barcode as base_unit_barcode,
             p.barcode,
             p.unit_of_measure,
             p.vat_status,
             COALESCE(SUM(pti.discount_amount), 0) as discount_amount
           FROM sale_items si
           LEFT JOIN products p ON si.product_id = p.id
+          LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
           LEFT JOIN pos_transaction_items pti ON si.id = pti.sale_item_id
           WHERE si.sale_id = ?
-          GROUP BY si.product_id, si.product_name, si.price, p.sku, p.barcode, p.unit_of_measure, p.vat_status
+          GROUP BY si.product_id, si.product_name, si.price, su.barcode, p.barcode, p.unit_of_measure, p.vat_status
           HAVING SUM(GREATEST(si.quantity, 0)) > 0
         `;
         const items = await query(itemsQuery, [sale.id]);
@@ -182,8 +183,7 @@ export async function GET(request: NextRequest) {
             product: {
               id: item.product_id,
               name: item.product_name,
-              sku: item.sku || '',
-              barcode: item.barcode || '',
+              barcode: item.base_unit_barcode || item.barcode || '',
               price: parseFloat(item.original_price || item.price),
               unitOfMeasure: item.unit_of_measure || '',
               taxType: (() => {

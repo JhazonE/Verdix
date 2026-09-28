@@ -9,7 +9,11 @@ import { AdminAuthDialog } from '../admin-auth/AdminAuthDialog';
 import { TransactionPickRow } from './TransactionPickRow';
 import { SelectItemsView } from './SelectItemsView';
 import { ReturnSuccessView } from './ReturnSuccessView';
+import { ExchangeBalanceView } from './ExchangeBalanceView';
+import { ExchangeSuccessView } from './ExchangeSuccessView';
 import { CreditSlipView } from '../credit-slip/CreditSlipView';
+import { ExchangeSlipView } from './ExchangeSlipView';
+import { ProductSearchDialog } from '../product-search/ProductSearchDialog';
 import { useReturnSales } from './use-return-sales';
 import type { ReturnSalesDialogProps } from './return-sales-types';
 import { format } from 'date-fns';
@@ -20,13 +24,28 @@ export function ReturnSalesDialog({
   onOpenChange,
   currentUser,
   terminalId,
-  printMode
+  printMode,
+  paymentMethods,
+  warehouseId,
+  activeLevelId
 }: ReturnSalesDialogProps) {
   const creditSlipRef = useRef<HTMLDivElement>(null);
+  const exchangeSlipRef = useRef<HTMLDivElement>(null);
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
+  // ProductSearchDialog's handleSelect calls onSelectProduct(product) and THEN
+  // onOpenChange(false) synchronously in the same click handler (see
+  // use-product-search.ts). Both onSelectProduct below and onOpenChange read
+  // the same stale `step` closure from this render, so onOpenChange cannot
+  // tell "closed because a product was picked" apart from "closed because the
+  // cashier hit Escape/backdrop" by checking `step` — it would still read
+  // 'pick_replacement' either way. A ref flag set synchronously inside
+  // onSelectProduct (before onOpenChange runs) is what actually distinguishes
+  // the two, since ref writes are not batched/deferred like state.
+  const justPickedReplacementRef = useRef(false);
 
   const {
     step,
+    setStep,
     isLoading,
     searchText,
     setSearchText,
@@ -43,6 +62,10 @@ export function ReturnSalesDialog({
     recentSales,
     isRecentLoading,
     posSettings,
+    exchangeReturnItem,
+    replacementItem,
+    exchangeBalance,
+    exchangeResult,
     handlePickSale,
     handleAuthSuccess,
     handleAuthClose,
@@ -50,6 +73,11 @@ export function ReturnSalesDialog({
     handleBackToSearch,
     handleCloseSuccess,
     handlePrintCredit,
+    handleStartExchange,
+    handleBackFromReplacement,
+    handlePickReplacement,
+    handleSettleBalance,
+    handlePrintExchangeSlip,
   } = useReturnSales({
     isOpen,
     onOpenChange,
@@ -57,6 +85,7 @@ export function ReturnSalesDialog({
     terminalId,
     printMode,
     creditSlipRef,
+    exchangeSlipRef,
   });
 
   useEffect(() => {
@@ -97,20 +126,51 @@ export function ReturnSalesDialog({
 
   return (
     <>
-      <Sheet open={isOpen && (step === 'input_so' || step === 'select_items' || step === 'success')} onOpenChange={onOpenChange}>
+      <Sheet open={isOpen && (step === 'input_so' || step === 'select_items' || step === 'settle_balance' || step === 'exchange_success' || step === 'success')} onOpenChange={onOpenChange}>
         <SheetContent side="right" className="sm:max-w-xl w-full flex flex-col">
-          {step === 'success' ? (
-            <ReturnSuccessView
-              returnedTotal={returnedTotal}
-              saleId={String(selectedSale?.orderNumber || selectedSale?.id || '')}
-              onClose={handleCloseSuccess}
-              onPrint={handlePrintCredit}
-            />
+          {step === 'exchange_success' && exchangeResult ? (
+            <>
+              <SheetTitle className="sr-only">Exchange Complete</SheetTitle>
+              <ExchangeSuccessView
+                mcNumber={exchangeResult.mcNumber}
+                siNumber={exchangeResult.siNumber}
+                balance={exchangeResult.balance}
+                onClose={handleCloseSuccess}
+                onPrint={handlePrintExchangeSlip}
+              />
+            </>
+          ) : step === 'settle_balance' && exchangeReturnItem && replacementItem ? (
+            <>
+              <SheetTitle className="sr-only">Settle Exchange Balance</SheetTitle>
+              <ExchangeBalanceView
+                returnItemLabel={exchangeReturnItem.product.name}
+                returnTotal={exchangeReturnItem.price * exchangeReturnItem.quantity}
+                newItemLabel={replacementItem.product.name}
+                newTotal={replacementItem.product.price * replacementItem.quantity}
+                balance={exchangeBalance ?? 0}
+                hasCustomer={!!(selectedSale?.customer?.id && selectedSale.customer.id !== 'walk-in')}
+                paymentMethods={paymentMethods}
+                isLoading={isLoading}
+                onConfirm={handleSettleBalance}
+                onBack={() => setStep('pick_replacement')}
+              />
+            </>
+          ) : step === 'success' ? (
+            <>
+              <SheetTitle className="sr-only">Merchandise Credit Complete</SheetTitle>
+              <ReturnSuccessView
+                returnedTotal={returnedTotal}
+                saleId={String(selectedSale?.orderNumber || selectedSale?.id || '')}
+                onClose={handleCloseSuccess}
+                onPrint={handlePrintCredit}
+              />
+            </>
           ) : step === 'select_items' && selectedSale ? (
             <SelectItemsView
               sale={selectedSale}
               onReturnItems={handleReturnItems}
               onBack={handleBackToSearch}
+              onExchangeItem={handleStartExchange}
             />
           ) : (
             <div className="flex h-full flex-col">
@@ -181,6 +241,28 @@ export function ReturnSalesDialog({
         description="Enter authorized credentials to access return functions."
       />
 
+      <ProductSearchDialog
+        isOpen={isOpen && step === 'pick_replacement'}
+        onOpenChange={(open) => {
+          if (!open) {
+            if (justPickedReplacementRef.current) {
+              // This close is the dialog's own post-selection close, not the
+              // cashier backing out — the pick already advanced the step.
+              justPickedReplacementRef.current = false;
+            } else {
+              handleBackFromReplacement();
+            }
+          }
+        }}
+        onSelectProduct={(product) => {
+          justPickedReplacementRef.current = true;
+          handlePickReplacement(product, 1);
+          setStep('settle_balance');
+        }}
+        warehouseId={warehouseId}
+        activeLevelId={activeLevelId}
+      />
+
       <div style={{ position: 'absolute', top: '-9999px', left: '-9999px' }}>
         {selectedSale && returnedItems.length > 0 && (
           <CreditSlipView
@@ -196,6 +278,32 @@ export function ReturnSalesDialog({
               cashierName: currentUser?.name || currentUser?.displayName || currentUser?.username || 'Cashier',
               items: returnedItems,
               totalAmount: returnedTotal
+            }}
+            settings={posSettings}
+          />
+        )}
+        {exchangeReturnItem && replacementItem && exchangeResult && (
+          <ExchangeSlipView
+            ref={exchangeSlipRef}
+            exchangeDetails={{
+              mcNumber: exchangeResult.mcNumber,
+              siNumber: exchangeResult.siNumber,
+              date: new Date().toISOString(),
+              cashierName: currentUser?.name || currentUser?.displayName || currentUser?.username || 'Cashier',
+              customerName: selectedSale?.customer?.name || 'Walk-in Customer',
+              returnedItem: {
+                name: exchangeReturnItem.product.name,
+                quantity: exchangeReturnItem.quantity,
+                price: exchangeReturnItem.price,
+                total: exchangeReturnItem.quantity * exchangeReturnItem.price,
+              },
+              newItem: {
+                name: replacementItem.product.name,
+                quantity: replacementItem.quantity,
+                price: replacementItem.product.price,
+                total: replacementItem.quantity * replacementItem.product.price,
+              },
+              balance: exchangeResult.balance,
             }}
             settings={posSettings}
           />

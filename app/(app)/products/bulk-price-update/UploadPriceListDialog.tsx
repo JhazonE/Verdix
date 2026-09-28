@@ -126,16 +126,16 @@ export function UploadPriceListDialog({ open, onOpenChange, warehouseId, onUpdat
                     <TableHeader>
                       <TableRow>
                         <TableHead>Name</TableHead>
-                        <TableHead>SKU</TableHead>
+                        <TableHead>Barcode</TableHead>
                         <TableHead>Brand</TableHead>
                         <TableHead className="text-right">Price</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {up.preview.toCreateSample.map((row: any, i: number) => (
-                        <TableRow key={`${row.sku}-${i}`}>
+                        <TableRow key={`${row.barcode}-${i}`}>
                           <TableCell>{row.name}</TableCell>
-                          <TableCell>{row.sku}</TableCell>
+                          <TableCell>{row.barcode}</TableCell>
                           <TableCell>{row.brand}</TableCell>
                           <TableCell className="text-right">₱{Number(row.price).toFixed(2)}</TableCell>
                         </TableRow>

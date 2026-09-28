@@ -46,7 +46,7 @@ interface InvoiceDetail {
   items: {
     id: string;
     productName: string;
-    sku?: string;
+    barcode?: string;
     quantity: number;
     price: number;
     total: number;
@@ -167,7 +167,7 @@ export default function ViewInvoiceDialog({ invoiceId, children }: ViewInvoiceDi
         <thead>
           <tr>
             <th>Product</th>
-            <th>SKU</th>
+            <th>Barcode</th>
             <th class="text-right">Quantity</th>
             <th class="text-right">Price per Item</th>
             <th class="text-right">Subtotal</th>
@@ -177,7 +177,7 @@ export default function ViewInvoiceDialog({ invoiceId, children }: ViewInvoiceDi
           ${invoice.items.map(item => `
             <tr>
               <td>${item.productName}</td>
-              <td>${item.sku || '-'}</td>
+              <td>${item.barcode || '-'}</td>
               <td class="text-right">${item.quantity}</td>
               <td class="text-right">${formatCurrency(item.price)}</td>
               <td class="text-right">${formatCurrency(item.total)}</td>

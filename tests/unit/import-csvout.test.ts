@@ -19,13 +19,17 @@ assert.ok((sp.meta.fields ?? []).includes('_error'), 'has _error column');
 assert.equal(sp.data[0]._error, 'Missing required "Product Name"');
 
 // exportColumns: export uses the same field order as the import template.
-const prodCols = exportColumns(ENTITY_SCHEMAS.products, ['sku']);
+// products.sku is retired (Sub-project D of the sku-retirement effort) and no
+// longer passed as a trailing extra column here — this exercises the generic
+// "extra" mechanism with a placeholder column instead of a real product field.
+const prodCols = exportColumns(ENTITY_SCHEMAS.products, ['_reference_only']);
 assert.deepEqual(
   prodCols.slice(0, ENTITY_SCHEMAS.products.fields.length),
   ENTITY_SCHEMAS.products.fields.map((f) => f.key),
   'product export columns match template order',
 );
-assert.equal(prodCols[prodCols.length - 1], 'sku', 'sku is a trailing extra column');
+assert.equal(prodCols[prodCols.length - 1], '_reference_only', 'extra columns append after the template fields');
+assert.deepEqual(exportColumns(ENTITY_SCHEMAS.products), ENTITY_SCHEMAS.products.fields.map((f) => f.key), 'no extra columns by default, matching the real products export');
 assert.deepEqual(exportColumns(ENTITY_SCHEMAS.suppliers), ENTITY_SCHEMAS.suppliers.fields.map((f) => f.key));
 
 // buildEntityExportCsv: header order fixed by schema; missing keys emit blanks (round-trippable).

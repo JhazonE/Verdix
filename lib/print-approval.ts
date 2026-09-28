@@ -109,7 +109,7 @@ export const printApproval = (data: ApprovalItem) => {
           <thead>
             <tr>
               <th width="40%">PRODUCT NAME</th>
-              <th>SKU / PART NO</th>
+              <th>BARCODE</th>
               <th class="numeric">CHANGE</th>
               <th class="numeric">PREV BAL</th>
               <th class="numeric">NEW BAL</th>
@@ -118,7 +118,7 @@ export const printApproval = (data: ApprovalItem) => {
           <tbody>
             <tr>
               <td>${data.transaction_data.productName}</td>
-              <td class="id-value">${data.transaction_data.productSku}</td>
+              <td class="id-value">${data.transaction_data.productBarcode || data.transaction_data.productSku || '-'}</td>
               <td class="numeric ${data.transaction_data.quantity > 0 ? 'positive' : 'negative'}">${data.transaction_data.quantity > 0 ? '+' : ''}${data.transaction_data.quantity}</td>
               <td class="numeric">${data.transaction_data.currentStock ?? '-'}</td>
               <td class="numeric">${data.transaction_data.currentStock !== undefined ? (Number(data.transaction_data.currentStock) + Number(data.transaction_data.quantity)) : '-'}</td>
@@ -194,7 +194,7 @@ export const printApproval = (data: ApprovalItem) => {
           <thead>
             <tr>
               <th width="40%">PRODUCT / ITEM</th>
-              <th>SKU</th>
+              <th>BARCODE</th>
               <th class="numeric">SNAPSHOT</th>
               <th class="numeric">COUNTED</th>
               <th class="numeric">VARIANCE</th>
@@ -206,12 +206,12 @@ export const printApproval = (data: ApprovalItem) => {
               const counted = Number(it.counted_quantity ?? it.countedQuantity ?? 0);
               const variance = counted - snap;
               const pName = it.productName || it.product_name || 'Unknown Item';
-              const pSku = it.productSku || it.product_sku || 'N/A';
-              
+              const pBarcode = it.productBarcode || it.productSku || it.product_sku || 'N/A';
+
               return `
               <tr>
                 <td>${pName}</td>
-                <td class="id-value">${pSku}</td>
+                <td class="id-value">${pBarcode}</td>
                 <td class="numeric">${snap}</td>
                 <td class="numeric">${counted}</td>
                 <td class="numeric ${variance > 0 ? 'positive' : variance < 0 ? 'negative' : ''}">${variance > 0 ? '+' : ''}${variance}</td>
@@ -230,7 +230,7 @@ export const printApproval = (data: ApprovalItem) => {
           <thead>
             <tr>
               <th width="40%">PRODUCT NAME</th>
-              <th>SKU / BARCODE</th>
+              <th>BARCODE</th>
               <th class="numeric">QTY</th>
               <th class="numeric">COST</th>
               <th class="numeric">SUBTOTAL</th>
@@ -240,7 +240,7 @@ export const printApproval = (data: ApprovalItem) => {
             ${(data.transaction_data.receivedItems || []).map((it: any) => `
               <tr>
                 <td>${it.productName || it.name || it.productId}</td>
-                <td class="id-value">${it.sku || it.barcode || '-'}</td>
+                <td class="id-value">${it.barcode || '-'}</td>
                 <td class="numeric font-bold">${it.quantity}</td>
                 <td class="numeric">₱${(it.cost || 0).toLocaleString()}</td>
                 <td class="numeric font-bold">₱${(it.subtotal || 0).toLocaleString()}</td>

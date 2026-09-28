@@ -159,7 +159,6 @@ export async function GET(request: NextRequest) {
             soi.id,
             soi.product_id,
             soi.product_name,
-            p.sku,
             p.barcode,
             soi.quantity,
             soi.price,
@@ -181,7 +180,6 @@ export async function GET(request: NextRequest) {
           product: {
             id: item.product_id,
             name: item.product_name,
-            sku: item.sku || '',
             barcode: item.barcode || '',
             price: parseFloat(item.price),
           },

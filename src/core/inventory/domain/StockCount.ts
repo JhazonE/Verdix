@@ -22,7 +22,6 @@ export interface StockCountItemEntity {
   stockCountId: string;
   productId: string;
   productName?: string;
-  sku?: string;
   barcode?: string;
   snapshotQuantity: number;
   countedQuantity?: number;

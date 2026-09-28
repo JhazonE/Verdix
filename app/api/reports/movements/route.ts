@@ -65,7 +65,6 @@ export async function GET(request: NextRequest) {
         sm.reference_type,
         sm.notes,
         sm.created_at,
-        p.sku,
         p.barcode,
         p.unit_of_measure
       ${baseSql}
