@@ -40,8 +40,12 @@ export function PoItemsTable({ order, products }: PoItemsTableProps) {
           {order.items.map((item, index) => {
             const product = products.find((p) => p.id === item.productId);
             const currentStock = product ? product.stock : (item.currentStock || 0);
-            const results = calculatePurchaseCosts(order.items as any, order.shippingFee || 0);
+            const results = calculatePurchaseCosts(
+              order.items.map((i) => ({ ...i, sellingUnitFactor: (i as any).sellingUnitFactor })) as any,
+              order.shippingFee || 0,
+            );
             const landedCost = results.items[index]?.landedCostPerUnit || 0;
+            const unitLabel = (item as any).sellingUnitName || 'pc';
 
             return (
               <TableRow key={index} className="hover:bg-zinc-50 border-zinc-300">
@@ -62,7 +66,7 @@ export function PoItemsTable({ order, products }: PoItemsTableProps) {
                   ₱{item.cost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </TableCell>
                 <TableCell className="text-right text-zinc-900 font-bold">
-                  {formatQuantity(item.quantity)} <span className="text-xs text-zinc-700">pc</span>
+                  {formatQuantity(item.quantity)} <span className="text-xs text-zinc-700">{unitLabel}</span>
                 </TableCell>
                 <TableCell className="text-right italic text-zinc-800 bg-zinc-100/50 font-mono text-xs font-bold border-l border-zinc-200">
                   ₱{landedCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
