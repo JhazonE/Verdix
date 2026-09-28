@@ -124,7 +124,9 @@ import './123_add_cost_at_sale_to_invoice_items';
 import './124_add_vat_to_sales_invoices';
 import './125_add_vat_to_sales_orders';
 import './126_backfill_base_unit_barcode_from_sku';
+import './127_add_exchange_group_id_to_pos_transactions';
 import './128_drop_price_level_min_quantity';
+import './129_add_voided_status_to_sales_invoices';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';

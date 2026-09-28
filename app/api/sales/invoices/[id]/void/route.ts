@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withTransaction } from '@/lib/mysql';
+import { query, withTransaction } from '@/lib/mysql';
 import { baseQuantity } from '@/lib/selling-units';
 import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 
@@ -8,6 +8,17 @@ export async function POST(
     { params }: { params: Promise<{ id: string }> }
 ) {
     const { id: invoiceId } = await params;
+    const { uid } = await request.json().catch(() => ({ uid: undefined }));
+
+    if (!uid) {
+        return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const permissions: any = await query('SELECT permission FROM user_permissions WHERE user_uid = ?', [uid]);
+    const canVoid = permissions.some((p: any) => p.permission === 'void_invoices');
+    if (!canVoid) {
+        return NextResponse.json({ success: false, error: 'You do not have permission to void invoices' }, { status: 403 });
+    }
 
     try {
         return await withTransaction(async (connection: any) => {

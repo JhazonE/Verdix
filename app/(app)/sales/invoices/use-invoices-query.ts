@@ -34,7 +34,13 @@ export function useInvoicesQuery({ setVoidDialogOpen }: QueryParams) {
 
   const voidMutation = useMutation({
     mutationFn: async (saleId: string) => {
-      const res = await fetch(getApiUrl(`/sales/invoices/${saleId}/void`), { method: 'POST' });
+      const raw = localStorage.getItem('mock-user-session');
+      const uid = raw ? JSON.parse(raw).uid : undefined;
+      const res = await fetch(getApiUrl(`/sales/invoices/${saleId}/void`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid }),
+      });
       return res.json();
     },
     onSuccess: async (result, saleId) => {
