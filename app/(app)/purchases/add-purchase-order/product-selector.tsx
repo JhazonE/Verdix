@@ -15,11 +15,51 @@ import { formatQuantity } from '@/lib/utils';
 // ProductSelector
 // ---------------------------------------------------------------------------
 
+type SellingUnit = NonNullable<Product['sellingUnits']>[number];
+
+// Mirrors POS's expandToUnitSuggestions (app/(app)/pos/pos-content/use-pos.ts):
+// a product with more than one selling unit renders as one row per unit so a
+// Case and a Piece are two distinct, individually-priced choices instead of
+// one ambiguous row that always adds the base unit.
+function expandToUnitSuggestions(products: Product[]): { product: Product; unit?: SellingUnit }[] {
+  const rows: { product: Product; unit?: SellingUnit }[] = [];
+  for (const product of products) {
+    const units = product.sellingUnits || [];
+    if (units.length > 1) {
+      for (const unit of units) rows.push({ product, unit });
+    } else {
+      rows.push({ product, unit: units[0] });
+    }
+  }
+  return rows;
+}
+
+// Mirrors POS's matchesProductOrUnitCode: an exact scan/enter match also
+// checks every non-base selling unit's own barcode, so scanning a Case's
+// printed barcode resolves straight to that unit.
+function findExactUnitMatch(products: Product[], code: string): { product: Product; unit?: SellingUnit } | undefined {
+  const needle = code.toLowerCase();
+  for (const product of products) {
+    const units = product.sellingUnits || [];
+    const baseUnit = units.find((u) => u.isBase);
+    if (
+      product.barcode?.toLowerCase() === needle ||
+      baseUnit?.barcode?.toLowerCase() === needle ||
+      product.name.toLowerCase() === needle
+    ) {
+      return { product, unit: baseUnit };
+    }
+    const nonBaseMatch = units.find((u) => !u.isBase && u.barcode?.toLowerCase() === needle);
+    if (nonBaseMatch) return { product, unit: nonBaseMatch };
+  }
+  return undefined;
+}
+
 export function ProductSelector({
   onSelectProduct,
   supplierId,
 }: {
-  onSelectProduct: (product: Product) => void;
+  onSelectProduct: (product: Product, unit?: SellingUnit) => void;
   supplierId?: string;
 }) {
   const [inputValue, setInputValue] = useState('');
@@ -55,14 +95,9 @@ export function ProductSelector({
         .map(mapApiProduct)
         .filter((p: Product) => p.type !== 'service');
 
-      const needle = code.toLowerCase();
-      const match = matches.find((p) =>
-        p.barcode?.toLowerCase() === needle ||
-        p.sellingUnits?.find((u) => u.isBase)?.barcode?.toLowerCase() === needle ||
-        p.name.toLowerCase() === needle
-      );
+      const match = findExactUnitMatch(matches, code);
       if (match) {
-        onSelectProduct(match);
+        onSelectProduct(match.product, match.unit);
         setInputValue('');
         setSuggestionsOpen(false);
       }
@@ -71,8 +106,8 @@ export function ProductSelector({
     }
   };
 
-  const selectProduct = (product: Product) => {
-    onSelectProduct(product);
+  const selectProduct = (product: Product, unit?: SellingUnit) => {
+    onSelectProduct(product, unit);
     setInputValue('');
     setSuggestionsOpen(false);
   };
@@ -115,16 +150,28 @@ export function ProductSelector({
               <>
                 <CommandEmpty>No products found.</CommandEmpty>
                 <CommandGroup>
-                  {products.map((product) => (
+                  {expandToUnitSuggestions(products).map(({ product, unit }) => (
                     <CommandItem
-                      key={product.id}
-                      value={product.id}
-                      onSelect={() => selectProduct(product)}
+                      key={unit ? `${product.id}:${unit.id}` : product.id}
+                      value={unit ? `${product.id}:${unit.id}` : product.id}
+                      onSelect={() => selectProduct(product, unit)}
                     >
-                      <div className="flex flex-col">
-                        <span className="font-bold text-foreground">{product.name}</span>
+                      <div className="flex flex-col w-full">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-foreground">
+                            {product.name}
+                            {unit && !unit.isBase && (
+                              <span className="ml-1.5 text-xs font-semibold text-blue-600">— {unit.name}</span>
+                            )}
+                          </span>
+                          {unit && (
+                            <span className="font-mono text-xs text-muted-foreground shrink-0">
+                              ₱{Number(unit.cost ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          )}
+                        </div>
                         <span className="text-sm text-muted-foreground font-medium">
-                          Barcode: {product.sellingUnits?.find((u) => u.isBase)?.barcode || product.barcode || 'N/A'} | Stock:{' '}
+                          Barcode: {unit?.barcode || product.sellingUnits?.find((u) => u.isBase)?.barcode || product.barcode || 'N/A'} | Stock:{' '}
                           {formatQuantity(product.stock)}
                         </span>
                       </div>
