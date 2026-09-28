@@ -358,6 +358,29 @@ export const PO_PRODUCT = {
   supplierId: TEST_SUPPLIER.id,
 };
 
+/**
+ * Product para sa selling-unit PO test: naay Case unit (factor 24) ibabaw sa
+ * iyang base Piece unit, aron ma-verify nga ang pag-order/receive per-Case
+ * mo-convert og husto padulong sa base-unit (piece) figures.
+ */
+export const PO_CASE_PRODUCT = {
+  id: 'test-po-case-product-1',
+  name: 'PO Case Item',
+  sku: 'PO-CASE-001',
+  price: 5, // per-piece price (base unit)
+  cost: 3,  // per-piece cost (base unit)
+  stock: 0,
+  supplierId: TEST_SUPPLIER.id,
+};
+
+export const PO_CASE_UNIT = {
+  id: 'psu_case_test-po-case-product-1',
+  name: 'Case',
+  factor: 24,
+  cost: 60,   // ₱60/Case = ₱2.50/pc — deliberately different from base unit's own cost
+  price: 100, // ₱100/Case = ~₱4.17/pc
+};
+
 /** Customer para sa sales-order flow (ang SO nagkinahanglan ug customer_id). */
 export const SO_CUSTOMER = { id: 'cust-so-test', name: 'SO Test Customer' };
 
