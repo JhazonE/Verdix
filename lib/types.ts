@@ -208,6 +208,10 @@ export interface PurchaseOrder {
     landedCostPerUnit?: number;
     shippingAllocation?: number;
     landedCostTotal?: number;
+    /** Selling unit this line was ordered/received in, snapshotted at order time. Absent/1 means base unit. */
+    sellingUnitId?: string;
+    sellingUnitName?: string;
+    sellingUnitFactor?: number;
   }[];
   total: number;
   paymentMethod: string;
