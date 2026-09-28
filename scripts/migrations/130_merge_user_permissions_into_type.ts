@@ -53,19 +53,23 @@ const migration: Migration = {
       }
     }
 
-    // Seed the void-feature defaults onto Super Admin regardless of what the merge produced.
+    // Seed the void-feature default onto Super Admin regardless of what the
+    // merge produced. pos_frontliner is deliberately NOT included here — it
+    // is a POS-mode restriction flag, not an additive capability: a user who
+    // has it is blocked from normal POS checkout outside pharmacy mode, and
+    // reduced to "tag orders only" inside it. Granting it to Super Admin
+    // would downgrade that account's own POS access, which is the opposite
+    // of what "Super Admin" should mean.
     const superAdminId = typeIdByName.get('Super Admin');
     if (superAdminId) {
       const current = typePermSet.get(superAdminId) || new Set();
-      for (const perm of ['void_invoices', 'pos_frontliner']) {
-        if (!current.has(perm)) {
-          toInsert.push({ typeId: superAdminId, permission: perm });
-          current.add(perm);
-        }
+      if (!current.has('void_invoices')) {
+        toInsert.push({ typeId: superAdminId, permission: 'void_invoices' });
+        current.add('void_invoices');
       }
       typePermSet.set(superAdminId, current);
     } else {
-      console.warn('⚠️  No "Super Admin" user_types row found — void_invoices/pos_frontliner not seeded anywhere');
+      console.warn('⚠️  No "Super Admin" user_types row found — void_invoices not seeded anywhere');
     }
 
     if (toInsert.length === 0) {
@@ -90,7 +94,7 @@ const migration: Migration = {
   },
 
   async down(): Promise<void> {
-    // Best-effort only: removes the two void-feature seeds from Super Admin.
+    // Best-effort only: removes the void-feature seed from Super Admin.
     // The per-user merge is not reversed — those merged permissions stay,
     // since we cannot tell which ones came from the merge vs. were already
     // there, and removing them could re-introduce the exact access loss
@@ -98,10 +102,10 @@ const migration: Migration = {
     const superAdmin: any[] = await query("SELECT id FROM user_types WHERE name = 'Super Admin'");
     if (superAdmin.length > 0) {
       await query(
-        "DELETE FROM user_type_permissions WHERE user_type_id = ? AND permission IN ('void_invoices', 'pos_frontliner')",
+        "DELETE FROM user_type_permissions WHERE user_type_id = ? AND permission = 'void_invoices'",
         [superAdmin[0].id]
       );
-      console.log('✅ removed void_invoices/pos_frontliner from Super Admin (merged per-user permissions were left in place)');
+      console.log('✅ removed void_invoices from Super Admin (merged per-user permissions were left in place)');
     }
   }
 };

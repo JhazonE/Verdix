@@ -114,13 +114,28 @@ async function seedFixtures(): Promise<void> {
     database: TEST_DB_NAME,
   });
 
-  // --- user_types (login mo-LEFT JOIN niini para sa roleId) ---
+  // --- user_types (login mo-LEFT JOIN niini para sa roleId; permissions
+  // gina-resolve karon pinaagi sa user_type_permissions, dili na sa
+  // per-user user_permissions — see
+  // docs/superpowers/specs/2026-09-28-user-type-permission-live-sync-design.md) ---
+  const typePerms: Record<string, string[]> = {
+    Admin: ['access_pos', 'view_dashboard', 'view_sales', 'view_reports', 'manage_products'],
+    Cashier: ['access_pos'],
+  };
   for (const name of ['Admin', 'Cashier']) {
+    const typeId = `ut-${name.toLowerCase()}`;
     await conn.query('INSERT INTO user_types (id, name, description) VALUES (?, ?, ?)', [
-      `ut-${name.toLowerCase()}`,
+      typeId,
       name,
       `Test ${name} role`,
     ]);
+    for (const p of typePerms[name]) {
+      await conn.query('INSERT INTO user_type_permissions (id, user_type_id, permission) VALUES (?, ?, ?)', [
+        `${typeId}-${p}`,
+        typeId,
+        p,
+      ]);
+    }
   }
 
   // --- users (real bcrypt hash aron molampos ang tinuod nga login flow) ---
@@ -130,17 +145,6 @@ async function seedFixtures(): Promise<void> {
       'INSERT INTO users (uid, username, password, display_name, user_type, disabled) VALUES (?, ?, ?, ?, ?, 0)',
       [u.uid, u.username, passwordHash, u.displayName, u.userType],
     );
-    // Admin → tagai ug access_pos + view_dashboard permissions.
-    const perms = u.userType === 'Admin'
-      ? ['access_pos', 'view_dashboard', 'view_sales', 'view_reports', 'manage_products']
-      : ['access_pos'];
-    for (const p of perms) {
-      await conn.query('INSERT INTO user_permissions (id, user_uid, permission) VALUES (?, ?, ?)', [
-        `${u.uid}-${p}`,
-        u.uid,
-        p,
-      ]);
-    }
   }
 
   // --- pos_settings (single row; app layout mo-fetch sa businessName) ---

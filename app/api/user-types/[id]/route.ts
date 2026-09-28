@@ -16,6 +16,17 @@ export async function PATCH(
         const updates: string[] = [];
         const values: any[] = [];
 
+        // Permissions are matched to users by TYPE NAME (users.user_type),
+        // not by this row's id — see
+        // docs/superpowers/specs/2026-09-28-user-type-permission-live-sync-design.md.
+        // A rename must cascade to every user on the old name, or they
+        // silently lose all access on their next login/permission read.
+        let oldName: string | undefined;
+        if (name !== undefined) {
+          const [existing]: any = await connection.query('SELECT name FROM user_types WHERE id = ?', [id]);
+          oldName = existing?.[0]?.name;
+        }
+
         if (name !== undefined) {
           updates.push('name = ?');
           values.push(name);
@@ -30,6 +41,10 @@ export async function PATCH(
           `UPDATE user_types SET ${updates.join(', ')} WHERE id = ?`,
           values
         );
+
+        if (oldName !== undefined && oldName !== name) {
+          await connection.execute('UPDATE users SET user_type = ? WHERE user_type = ?', [name, oldName]);
+        }
       }
 
       if (permissions !== undefined) {
