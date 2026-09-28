@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
   console.log('[ROOT API/Users] POST request received');
   try {
     const body = await request.json();
-    const { password, userType, permissions, displayName } = body;
+    const { password, userType, displayName } = body;
     const username = body.username || body.email;
 
     if (!username) {
@@ -80,16 +80,6 @@ export async function POST(request: NextRequest) {
         'INSERT INTO users (uid, username, password, user_type, display_name, photo_url, disabled, creation_time) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
         [uid, username, hashedPassword, userType || 'User', displayName || username.split('@')[0], '', false]
       );
-
-      // Insert permissions
-      if (permissions && permissions.length > 0) {
-        for (const permission of permissions) {
-          await connection.execute(
-            'INSERT INTO user_permissions (id, user_uid, permission) VALUES (?, ?, ?)',
-            [uuidv4(), uid, permission]
-          );
-        }
-      }
     });
 
     return NextResponse.json({
@@ -101,7 +91,6 @@ export async function POST(request: NextRequest) {
       photoURL: '',
       disabled: false,
       creationTime,
-      permissions: permissions || [],
     });
   } catch (error: any) {
     console.error('Error creating user:', error);
