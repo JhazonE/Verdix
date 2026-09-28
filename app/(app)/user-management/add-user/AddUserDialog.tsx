@@ -92,7 +92,7 @@ export function AddUserDialog({ onUserAdded }: { onUserAdded: () => void }) {
                     <h3 className="text-lg font-semibold border-b pb-2">Permissions & Access</h3>
                     <p className="text-sm text-muted-foreground">Select individual access rights for this user.</p>
                   </div>
-                  <UserPermissionsGrid form={form} disabledForCashier />
+                  <UserPermissionsGrid form={form} />
                   <FormField
                     control={form.control}
                     name="permissions"
