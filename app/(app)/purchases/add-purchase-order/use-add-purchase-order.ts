@@ -271,6 +271,9 @@ export function useAddPurchaseOrder({
             expirationDate: '',
             currentStock: currentProduct ? currentProduct.stock : 0,
             barcode: currentProduct ? currentProduct.barcode : '',
+            sellingUnitId: (item as any).sellingUnitId,
+            sellingUnitName: (item as any).sellingUnitName,
+            sellingUnitFactor: (item as any).sellingUnitFactor ?? 1,
           };
         }),
       });
@@ -290,6 +293,9 @@ export function useAddPurchaseOrder({
           expirationDate: '',
           currentStock: currentProduct ? currentProduct.stock : 0,
           barcode: currentProduct ? currentProduct.barcode : '',
+          sellingUnitId: (item as any).sellingUnitId,
+          sellingUnitName: (item as any).sellingUnitName,
+          sellingUnitFactor: (item as any).sellingUnitFactor ?? 1,
         };
       });
       form.reset({
@@ -332,8 +338,11 @@ export function useAddPurchaseOrder({
 
   // ---- product actions -----------------------------------------------------
 
-  function handleAddProduct(product: Product) {
-    const existingItemIndex = fields.findIndex((field) => field.productId === product.id);
+  function handleAddProduct(product: Product, unit?: NonNullable<Product['sellingUnits']>[number]) {
+    const resolvedUnit = unit ?? product.sellingUnits?.find((u) => u.isBase);
+    const existingItemIndex = fields.findIndex(
+      (field) => field.productId === product.id && (field.sellingUnitId || undefined) === (resolvedUnit?.id || undefined),
+    );
     if (existingItemIndex !== -1) {
       const existingItem = fields[existingItemIndex];
       update(existingItemIndex, { ...existingItem, quantity: existingItem.quantity + 1 });
@@ -342,16 +351,21 @@ export function useAddPurchaseOrder({
         productId: product.id,
         productName: product.name,
         quantity: 1,
-        cost: product.cost || 0,
-        sellingPrice: product.price || 0,
+        // "No computed multiples": a unit's own cost/price is used as-is,
+        // never derived from the base unit's cost/price times its factor.
+        cost: resolvedUnit?.cost ?? product.cost ?? 0,
+        sellingPrice: resolvedUnit?.price ?? product.price ?? 0,
         discount: 0,
         discountType: 'amount',
         vatSubject: product.vatStatus === 'Vatable' || product.vatStatus === 'Yes' || false,
-        barcode: product.barcode || '',
+        barcode: resolvedUnit?.barcode || product.barcode || '',
         currentStock: product.stock || 0,
         avgDailySales: product.avgDailySales || 0,
         reorderPoint: product.reorderPoint || 0,
         expirationDate: '',
+        sellingUnitId: resolvedUnit?.id,
+        sellingUnitName: resolvedUnit?.name,
+        sellingUnitFactor: resolvedUnit?.factor ?? 1,
       });
     }
   }
