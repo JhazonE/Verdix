@@ -50,9 +50,16 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Fetch permissions
+        // Permissions live on the user's TYPE now, not per-user — see
+        // docs/superpowers/specs/2026-09-28-user-type-permission-live-sync-design.md.
+        // Editing a type in Manage User Types changes every user of that
+        // type's access on their next login.
         const permissions = await query(
-            'SELECT permission FROM user_permissions WHERE user_uid = ?',
+            `SELECT utp.permission
+             FROM users u
+             JOIN user_types ut ON u.user_type = ut.name
+             JOIN user_type_permissions utp ON utp.user_type_id = ut.id
+             WHERE u.uid = ?`,
             [user.uid]
         ) as any[];
 
