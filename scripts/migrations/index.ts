@@ -128,6 +128,7 @@ import './127_add_exchange_group_id_to_pos_transactions';
 import './128_drop_price_level_min_quantity';
 import './129_add_voided_status_to_sales_invoices';
 import './130_merge_user_permissions_into_type';
+import './131_add_selling_unit_to_purchase_order_items';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';
