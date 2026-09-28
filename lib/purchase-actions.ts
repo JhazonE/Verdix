@@ -91,8 +91,9 @@ export async function processPurchaseOrderCreation(body: any, userId: string = '
     const insertItemQuery = `
       INSERT INTO purchase_order_items (
         id, purchase_order_id, product_id, product_name, quantity, cost,
-        selling_price, discount, discount_type, vat_subject, subtotal
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        selling_price, discount, discount_type, vat_subject, subtotal,
+        selling_unit_id, selling_unit_name, selling_unit_factor
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     for (const item of items) {
@@ -101,7 +102,7 @@ export async function processPurchaseOrderCreation(body: any, userId: string = '
       const cost = toSafeNumber(item.cost);
       const discount = toSafeNumber(item.discount);
       const discountType = item.discountType || 'amount';
-      
+
       let itemSubtotal = quantity * cost;
       if (discountType === 'percentage') {
         itemSubtotal = itemSubtotal - (itemSubtotal * (discount / 100));
@@ -120,7 +121,10 @@ export async function processPurchaseOrderCreation(body: any, userId: string = '
         discount,
         discountType,
         item.vatSubject ? 1 : 0,
-        itemSubtotal
+        itemSubtotal,
+        item.sellingUnitId || null,
+        item.sellingUnitName || null,
+        item.sellingUnitFactor ? toSafeNumber(item.sellingUnitFactor) : null,
       ]);
     }
 
@@ -158,7 +162,7 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
 
     // 2. We need items to calculate correct landed cost distribution
     const [itemRows]: any = await connection.query(
-      'SELECT product_id as productId, product_name as productName, quantity, cost, selling_price as sellingPrice, discount, discount_type as discountType, vat_subject as vatSubject FROM purchase_order_items WHERE purchase_order_id = ?',
+      'SELECT product_id as productId, product_name as productName, quantity, cost, selling_price as sellingPrice, discount, discount_type as discountType, vat_subject as vatSubject, selling_unit_factor as sellingUnitFactor FROM purchase_order_items WHERE purchase_order_id = ?',
       [orderId]
     );
 
@@ -178,11 +182,17 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
       const calculatedItem = calculations.items.find(ci => ci.productId === receivedItem.productId);
       if (!calculatedItem) continue;
 
-      const quantityAdded = toSafeNumber(receivedItem.quantity);
+      const factor = toSafeNumber(receivedItem.sellingUnitFactor ?? itemRows.find((i: any) => i.productId === receivedItem.productId)?.sellingUnitFactor) || 1;
+
+      // Convert once, at the boundary into base-unit-contracted tables
+      // (inventory_batches, products.stock/cost/price, price levels).
+      // Everything past this point is unchanged from before this feature.
+      const quantityAdded = toSafeNumber(receivedItem.quantity) * factor;
       if (quantityAdded <= 0) continue;
 
-      const landedCost = toSafeNumber(calculatedItem.landedCostPerUnit);
-      const sellingPrice = toSafeNumber(receivedItem.sellingPrice || itemRows.find((i: any) => i.productId === receivedItem.productId)?.sellingPrice);
+      const landedCost = toSafeNumber(calculatedItem.landedCostPerUnit); // already per-piece (Task 3)
+      const rawSellingPrice = toSafeNumber(receivedItem.sellingPrice || itemRows.find((i: any) => i.productId === receivedItem.productId)?.sellingPrice);
+      const sellingPrice = rawSellingPrice / factor;
 
       // "Highest wins" rule (applies to both cost AND retail price):
       // Fetch the product's current cost and price from the DB. If the new landed cost
