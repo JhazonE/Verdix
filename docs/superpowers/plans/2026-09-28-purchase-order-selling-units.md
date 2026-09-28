@@ -32,8 +32,8 @@
 ## File Structure
 
 **New files:**
-- `scripts/migrations/130_add_selling_unit_to_purchase_order_items.ts` — schema migration
-- `scripts/migrations/131_backfill_purchase_order_items_selling_unit.ts` — backfill migration
+- `scripts/migrations/131_add_selling_unit_to_purchase_order_items.ts` — schema migration
+- `scripts/migrations/132_backfill_purchase_order_items_selling_unit.ts` — backfill migration
 
 **Modified files:**
 - `lib/purchase-utils.ts` — `PurchaseItem` type + `calculatePurchaseCosts` conversion
@@ -56,7 +56,7 @@
 ### Task 1: Schema migration — add selling unit columns to `purchase_order_items`
 
 **Files:**
-- Create: `scripts/migrations/130_add_selling_unit_to_purchase_order_items.ts`
+- Create: `scripts/migrations/131_add_selling_unit_to_purchase_order_items.ts`
 
 **Interfaces:**
 - Produces: `purchase_order_items.selling_unit_id VARCHAR(100) NULL`, `.selling_unit_name VARCHAR(100) NULL`, `.selling_unit_factor DECIMAL(12,4) NULL` — consumed by every later task that reads/writes this table.
@@ -70,7 +70,7 @@ import { query } from '../../lib/mysql';
 /**
  * Records which selling unit a PO line was ordered/received in (e.g. Case
  * vs Piece), mirroring migration 120's sale_items columns. Unlike 120,
- * existing rows here are backfilled to the base unit in migration 131
+ * existing rows here are backfilled to the base unit in migration 132
  * rather than left NULL — a PO's landed-cost/receiving math needs a
  * concrete factor to convert by, so "NULL means base" would require every
  * consumer to re-derive that fallback instead of reading it once.
@@ -85,7 +85,7 @@ async function hasColumn(column: string): Promise<boolean> {
 }
 
 const migration: Migration = {
-  name: '130_add_selling_unit_to_purchase_order_items',
+  name: '131_add_selling_unit_to_purchase_order_items',
   timestamp: '2026-09-28_09-00-00',
 
   async up(): Promise<void> {
@@ -130,7 +130,7 @@ Expected: `selling_unit_id`, `selling_unit_name`, `selling_unit_factor` present,
 - [ ] **Step 4: Commit**
 
 ```bash
-git add scripts/migrations/130_add_selling_unit_to_purchase_order_items.ts
+git add scripts/migrations/131_add_selling_unit_to_purchase_order_items.ts
 git commit -m "migrate: add selling unit columns to purchase_order_items"
 ```
 
@@ -139,7 +139,7 @@ git commit -m "migrate: add selling unit columns to purchase_order_items"
 ### Task 2: Backfill migration — set existing rows to their product's base unit
 
 **Files:**
-- Create: `scripts/migrations/131_backfill_purchase_order_items_selling_unit.ts`
+- Create: `scripts/migrations/132_backfill_purchase_order_items_selling_unit.ts`
 
 **Interfaces:**
 - Consumes: `purchase_order_items.selling_unit_id/name/factor` (Task 1), `product_selling_units` (existing table, `is_base = 1` rows from migration 119).
@@ -162,7 +162,7 @@ import { query } from '../../lib/mysql';
  * every downstream reader treats NULL factor as 1, so this is safe.
  */
 const migration: Migration = {
-  name: '131_backfill_purchase_order_items_selling_unit',
+  name: '132_backfill_purchase_order_items_selling_unit',
   timestamp: '2026-09-28_09-05-00',
 
   async up(): Promise<void> {
@@ -204,7 +204,7 @@ Expected: `0`
 - [ ] **Step 4: Commit**
 
 ```bash
-git add scripts/migrations/131_backfill_purchase_order_items_selling_unit.ts
+git add scripts/migrations/132_backfill_purchase_order_items_selling_unit.ts
 git commit -m "migrate: backfill purchase_order_items selling unit to base unit"
 ```
 
