@@ -34,7 +34,7 @@ export function AddUserDialog({ onUserAdded }: { onUserAdded: () => void }) {
         <DialogHeader className="p-8 pb-4 bg-muted/30">
           <DialogTitle className="text-2xl font-bold">Add New User</DialogTitle>
           <DialogDescription className="text-base">
-            Enter the details for the new user and assign specific permissions.
+            Enter the details for the new user and choose their user type.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -90,18 +90,9 @@ export function AddUserDialog({ onUserAdded }: { onUserAdded: () => void }) {
                 <div className="space-y-6">
                   <div className="space-y-2">
                     <h3 className="text-lg font-semibold border-b pb-2">Permissions & Access</h3>
-                    <p className="text-sm text-muted-foreground">Select individual access rights for this user.</p>
+                    <p className="text-sm text-muted-foreground">Access is determined by the selected user type.</p>
                   </div>
-                  <UserPermissionsGrid form={form} disabledForCashier />
-                  <FormField
-                    control={form.control}
-                    name="permissions"
-                    render={() => (
-                      <FormItem>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <UserPermissionsGrid form={form} />
                 </div>
               </div>
             </ScrollArea>

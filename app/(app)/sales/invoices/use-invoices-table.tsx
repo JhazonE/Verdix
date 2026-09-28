@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Printer, MoreHorizontal, X, ArrowUp, ArrowDown, ArrowUpDown, Loader2 } from 'lucide-react';
 import type { Sale } from '@/lib/types';
+import { useUser } from '@/hooks/use-user';
 import { formatAmount, getStatusInfo } from './use-invoices-utils';
 
 function SortBtn({ column, children }: { column: any; children: React.ReactNode }) {
@@ -47,6 +48,8 @@ export function useInvoicesTable({
 }: TableParams) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const { user } = useUser();
+  const canVoid = !!user?.permissions?.includes('void_invoices');
 
   const columns = useMemo<ColumnDef<Sale>[]>(() => [
     {
@@ -171,7 +174,7 @@ export function useInvoicesTable({
                 <DropdownMenuItem onClick={() => handlePrint(sale, 'Delivery Note')}>
                   <Printer className="mr-2 h-4 w-4" /> Delivery Note
                 </DropdownMenuItem>
-                {sale.status !== 'Voided' && (
+                {sale.status !== 'Voided' && canVoid && (
                   <DropdownMenuItem onClick={() => setVoidDialogOpen(sale.id)} className="text-destructive focus:text-destructive">
                     <X className="mr-2 h-4 w-4" /> Void
                   </DropdownMenuItem>
@@ -184,7 +187,7 @@ export function useInvoicesTable({
       enableSorting: false,
       enableHiding: false,
     },
-  ], [expandedRows, handlePrint, setVoidDialogOpen]);
+  ], [expandedRows, handlePrint, setVoidDialogOpen, canVoid]);
 
   const table = useReactTable({
     data: relevantSales,

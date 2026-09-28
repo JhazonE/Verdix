@@ -13,4 +13,5 @@ export const ALL_PERMISSIONS = [
     { id: 'manage_approval_settings', label: 'Manage Approval Settings' },
     { id: 'manage_users', label: 'Manage Users' },
     { id: 'manage_settings', label: 'Manage Settings' },
+    { id: 'void_invoices', label: 'Void Sales Invoices' },
 ] as const;

@@ -59,7 +59,6 @@ export function useAddUser({ onUserAdded }: { onUserAdded: () => void }) {
           email: values.username,
           password: values.password,
           userType: values.userType,
-          permissions: values.permissions,
         }),
       });
       const result = await response.json();

@@ -19,21 +19,26 @@ export async function GET() {
     // Fetch users from MySQL
     const users = await query('SELECT uid, username, username as email, user_type as userType, display_name as displayName, photo_url as photoURL, disabled, creation_time as creationTime FROM users ORDER BY creation_time DESC');
 
-    // Fetch permissions for each user
-    const permissions = await query('SELECT user_uid, permission FROM user_permissions');
+    // Permissions are derived from each user's TYPE now (Manage User
+    // Types), not stored per-user — see
+    // docs/superpowers/specs/2026-09-28-user-type-permission-live-sync-design.md.
+    const typePermRows: any[] = await query(`
+      SELECT ut.name AS typeName, utp.permission
+      FROM user_types ut
+      JOIN user_type_permissions utp ON utp.user_type_id = ut.id
+    `);
 
-    // Group permissions by user
-    const permissionsByUser = (permissions || []).reduce((acc: any, curr: any) => {
-      if (!acc[curr.user_uid]) acc[curr.user_uid] = [];
-      acc[curr.user_uid].push(curr.permission);
+    const permissionsByType = typePermRows.reduce((acc: any, curr: any) => {
+      if (!acc[curr.typeName]) acc[curr.typeName] = [];
+      acc[curr.typeName].push(curr.permission);
       return acc;
     }, {});
 
-    // Map users with their permissions
+    // Map users with their effective (type-derived) permissions
     const usersWithPermissions = (users || []).map((user: any) => ({
       ...user,
       disabled: !!user.disabled,
-      permissions: permissionsByUser[user.uid] || [],
+      permissions: permissionsByType[user.userType] || [],
     }));
 
     return NextResponse.json(usersWithPermissions);
@@ -50,7 +55,7 @@ export async function POST(request: NextRequest) {
   console.log('[ROOT API/Users] POST request received');
   try {
     const body = await request.json();
-    const { password, userType, permissions, displayName } = body;
+    const { password, userType, displayName } = body;
     const username = body.username || body.email;
 
     if (!username) {
@@ -75,16 +80,6 @@ export async function POST(request: NextRequest) {
         'INSERT INTO users (uid, username, password, user_type, display_name, photo_url, disabled, creation_time) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
         [uid, username, hashedPassword, userType || 'User', displayName || username.split('@')[0], '', false]
       );
-
-      // Insert permissions
-      if (permissions && permissions.length > 0) {
-        for (const permission of permissions) {
-          await connection.execute(
-            'INSERT INTO user_permissions (id, user_uid, permission) VALUES (?, ?, ?)',
-            [uuidv4(), uid, permission]
-          );
-        }
-      }
     });
 
     return NextResponse.json({
@@ -96,7 +91,6 @@ export async function POST(request: NextRequest) {
       photoURL: '',
       disabled: false,
       creationTime,
-      permissions: permissions || [],
     });
   } catch (error: any) {
     console.error('Error creating user:', error);

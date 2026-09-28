@@ -90,7 +90,6 @@ export function useEditUser({ user, onUserUpdated, open, onOpenChange }: Props) 
           displayName: values.displayName,
           password: values.password,
           userType: values.userType,
-          permissions: values.permissions,
         }),
       });
       const result = await response.json();
