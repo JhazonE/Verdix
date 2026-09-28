@@ -140,8 +140,9 @@ export async function PATCH(
         const insertItemQuery = `
           INSERT INTO purchase_order_items (
             id, purchase_order_id, product_id, product_name, quantity, cost,
-            selling_price, discount, discount_type, vat_subject, expiration_date
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            selling_price, discount, discount_type, vat_subject, expiration_date,
+            selling_unit_id, selling_unit_name, selling_unit_factor
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         for (const item of items) {
@@ -157,7 +158,10 @@ export async function PATCH(
             toSafeNumber(item.discount),
             item.discountType || 'amount',
             item.vatSubject ? 1 : 0,
-            item.expirationDate ? new Date(item.expirationDate).toISOString().slice(0, 10) : null
+            item.expirationDate ? new Date(item.expirationDate).toISOString().slice(0, 10) : null,
+            item.sellingUnitId || null,
+            item.sellingUnitName || null,
+            item.sellingUnitFactor ? toSafeNumber(item.sellingUnitFactor) : null,
           ]);
         }
       }
