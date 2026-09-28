@@ -127,6 +127,7 @@ import './126_backfill_base_unit_barcode_from_sku';
 import './127_add_exchange_group_id_to_pos_transactions';
 import './128_drop_price_level_min_quantity';
 import './129_add_voided_status_to_sales_invoices';
+import './130_merge_user_permissions_into_type';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';
