@@ -14,7 +14,14 @@ export async function POST(
         return NextResponse.json({ success: false, error: 'Not authenticated' }, { status: 401 });
     }
 
-    const permissions: any = await query('SELECT permission FROM user_permissions WHERE user_uid = ?', [uid]);
+    const permissions: any = await query(
+        `SELECT utp.permission
+         FROM users u
+         JOIN user_types ut ON u.user_type = ut.name
+         JOIN user_type_permissions utp ON utp.user_type_id = ut.id
+         WHERE u.uid = ?`,
+        [uid]
+    );
     const canVoid = permissions.some((p: any) => p.permission === 'void_invoices');
     if (!canVoid) {
         return NextResponse.json({ success: false, error: 'You do not have permission to void invoices' }, { status: 403 });
