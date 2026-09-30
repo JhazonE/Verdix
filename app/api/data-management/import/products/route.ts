@@ -3,6 +3,7 @@ import { query } from '@/lib/mysql';
 import { v4 as uuidv4 } from 'uuid';
 import { recordStockMovement } from '@/lib/stock-movements';
 import { legacyProductCsvImport } from './legacy';
+import { ensureCategoryExists, ensureBrandExists, ensureSubcategoryExists, ensureUnitOfMeasureExists } from '@/lib/ensure-lookup-values';
 
 export async function POST(request: NextRequest) {
   const contentType = request.headers.get('content-type') || '';
@@ -26,6 +27,27 @@ export async function POST(request: NextRequest) {
       }
       try {
         const barcode = p.barcode ? String(p.barcode).trim() : null;
+
+        // The Excel/CSV template lets a row name any category/brand/
+        // subcategory/unit as free text, which lands straight on
+        // products.category/.brand/.subcategory/.unit_of_measure. Without
+        // this, that value never appears in the categories/brands/
+        // subcategories/units_of_measure lookup tables the Manage dialogs
+        // (and category-markup precedence) read from — mirrors what the Add
+        // Product form's dropdowns do when the user types a new value.
+        // Category runs before the others (not in the same Promise.all) so
+        // ensureSubcategoryExists's own category lookup can't race a
+        // concurrent insert of the same new category name.
+        // Pass the same 'General' fallback the INSERT/UPDATE below store, or
+        // a row with no category saves 'General' onto the product without
+        // ever creating it in `categories`.
+        await ensureCategoryExists(p.category ?? 'General');
+        await Promise.all([
+          ensureBrandExists(p.brand),
+          ensureSubcategoryExists(p.subcategory, p.category ?? 'General'),
+          ensureUnitOfMeasureExists(p.unit),
+        ]);
+
         // Match on barcode first, else name.
         let existing: any = null;
         if (barcode) {

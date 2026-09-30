@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import Papa from 'papaparse';
 import { v4 as uuidv4 } from 'uuid';
+import { ensureCategoryExists, ensureBrandExists, ensureSubcategoryExists, ensureUnitOfMeasureExists } from '@/lib/ensure-lookup-values';
 
 // Legacy multipart CSV import, kept for backward compatibility. The wizard uses the JSON path.
 export async function legacyProductCsvImport(request: NextRequest) {
@@ -24,6 +25,20 @@ export async function legacyProductCsvImport(request: NextRequest) {
       if (!p.name) { errorCount++; continue; }
       const barcode = p.barcode ? String(p.barcode).trim() : null;
       try {
+        // Same reasoning as the JSON import path (route.ts): a free-text
+        // category/brand/subcategory/unit typed into the CSV template must
+        // also land in the categories/brands/subcategories/units_of_measure
+        // lookup tables, or it never shows up in the Manage dialogs.
+        // Category runs before the others so ensureSubcategoryExists's own
+        // category lookup can't race a concurrent insert of the same name.
+        // Same 'General' fallback the INSERT/UPDATE below store.
+        await ensureCategoryExists(p.category || 'General');
+        await Promise.all([
+          ensureBrandExists(p.brand),
+          ensureSubcategoryExists(p.subcategory, p.category || 'General'),
+          ensureUnitOfMeasureExists(p.unit),
+        ]);
+
         // Match on barcode first, else name — same match keys as
         // lib/import/entity-schemas.ts and the JSON import path (route.ts);
         // this multipart path previously required and matched on sku, which
