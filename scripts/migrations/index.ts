@@ -130,6 +130,7 @@ import './129_add_voided_status_to_sales_invoices';
 import './130_merge_user_permissions_into_type';
 import './131_add_selling_unit_to_purchase_order_items';
 import './132_backfill_purchase_order_items_selling_unit';
+import './133_add_selling_units_to_repackaging_logs';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';

@@ -2,6 +2,7 @@
 
 import { AlertTriangle } from 'lucide-react';
 import { formatCurrency, toSafeNumber } from '@/lib/utils';
+import { fmtQty, fmtVariance } from './count-format';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -191,13 +192,13 @@ export function ReviewDialog({
                         <span className={`flex-shrink-0 text-sm font-bold ${
                           !hasVar ? 'text-muted-foreground' : variance! < 0 ? 'text-red-500' : 'text-emerald-500'
                         }`}>
-                          {!hasVar ? '±0' : variance! > 0 ? `+${variance}` : variance}
+                          {!hasVar ? '±0' : fmtVariance(item, variance!)}
                         </span>
                       )}
                     </div>
                     <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
-                      <span>Expected: {item.snapshot_quantity}</span>
-                      <span>Counted: {isUncounted ? '—' : item.counted_quantity}</span>
+                      <span>Expected: {fmtQty(item, item.snapshot_quantity)}</span>
+                      <span>Counted: {isUncounted ? '—' : fmtQty(item, item.counted_quantity)}</span>
                       {!isUncounted && (
                         <span className={!hasVar ? 'text-muted-foreground' : variance! < 0 ? 'text-red-500' : 'text-emerald-500'}>
                           {formatCurrency(varianceAmt!)}
@@ -245,9 +246,9 @@ export function ReviewDialog({
                         <TableCell className="text-muted-foreground text-xs">
                           {item.base_unit_barcode || item.product_barcode || '—'}
                         </TableCell>
-                        <TableCell className="text-right">{item.snapshot_quantity}</TableCell>
+                        <TableCell className="text-right">{fmtQty(item, item.snapshot_quantity)}</TableCell>
                         <TableCell className="text-right font-medium">
-                          {isUncounted ? <span className="text-amber-500">—</span> : item.counted_quantity}
+                          {isUncounted ? <span className="text-amber-500">—</span> : fmtQty(item, item.counted_quantity)}
                         </TableCell>
                         <TableCell className={`text-right font-bold ${
                           isUncounted
@@ -258,7 +259,7 @@ export function ReviewDialog({
                             ? 'text-red-500'
                             : 'text-emerald-500'
                         }`}>
-                          {isUncounted ? 'Not counted' : !hasVar ? '±0' : variance! > 0 ? `+${variance}` : variance}
+                          {isUncounted ? 'Not counted' : !hasVar ? '±0' : fmtVariance(item, variance!)}
                         </TableCell>
                         <TableCell className={`text-right font-medium ${
                           !hasVar || isUncounted

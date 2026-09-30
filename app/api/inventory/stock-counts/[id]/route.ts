@@ -24,13 +24,35 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
       WHERE sci.stock_count_id = ?
     `;
-    const items = await query(itemsSql, [id]);
+    const items: any = await query(itemsSql, [id]);
+
+    // Attach each product's selling units so the count screen can take a quantity
+    // per unit (2 Case + 5 Piece). One query for the whole count rather than one
+    // per item: a count can cover thousands of products. Counts stay stored in
+    // base units — the units are only for entry and display.
+    const unitRows: any = await query(
+      `SELECT id, product_id, name, factor, is_base
+       FROM product_selling_units
+       WHERE product_id IN (SELECT product_id FROM stock_count_items WHERE stock_count_id = ?)
+       ORDER BY factor ASC`,
+      [id]
+    );
+    const unitsByProduct = new Map<string, any[]>();
+    for (const u of unitRows || []) {
+      const list = unitsByProduct.get(u.product_id) ?? [];
+      list.push({ id: u.id, name: u.name, factor: Number(u.factor), isBase: u.is_base === 1 });
+      unitsByProduct.set(u.product_id, list);
+    }
+    const itemsWithUnits = (items || []).map((item: any) => ({
+      ...item,
+      selling_units: unitsByProduct.get(item.product_id) ?? [],
+    }));
 
     return NextResponse.json({
       success: true,
       data: {
         ...count,
-        items
+        items: itemsWithUnits
       }
     });
 

@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn, formatStockQuantity } from '@/lib/utils';
+import { formatUnitBreakdown } from '@/lib/unit-quantity';
 import type { Product } from '@/lib/types';
 import { isService } from '@/lib/product-type';
 
@@ -32,6 +33,8 @@ export function ProductCard({ product, hasChildren = false, onSuccess, requireAd
   const isProductService = isService(product);
 
   const displayStock = product.stock;
+  const sellingUnits = product.sellingUnits ?? [];
+  const hasUnitBreakdown = !isProductService && sellingUnits.length > 1;
 
   const { badgeVariant, badgeTextFull: badgeText } = useStockStatus(
     displayStock,
@@ -120,7 +123,11 @@ export function ProductCard({ product, hasChildren = false, onSuccess, requireAd
 
         <div className="mt-auto pt-4 flex flex-wrap items-center gap-4 border-t border-muted/30 text-xs sm:text-sm">
           <span className="text-sm">
-            <span className="font-medium">{formatStockQuantity(displayStock, product.unitOfMeasure)}</span> {product.unitOfMeasure}
+            {hasUnitBreakdown ? (
+              <span className="font-medium">{formatUnitBreakdown(displayStock, sellingUnits)}</span>
+            ) : (
+              <><span className="font-medium">{formatStockQuantity(displayStock, product.unitOfMeasure)}</span> {product.unitOfMeasure}</>
+            )}
           </span>
           <Badge variant={badgeVariant} className="text-xs">{badgeText}</Badge>
           {product.type === 'service' && (

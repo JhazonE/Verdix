@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { toSafeNumber } from '@/lib/utils';
+import { fmtQty, fmtVariance, multiUnits } from './count-format';
 
 /**
  * Exports every item in a stock count to a paginated PDF, independent of the
@@ -45,11 +46,19 @@ export function exportStockCountToPDF(count: any, items: any[]) {
     return [
       item.product_name || '',
       item.product_barcode || '-',
-      item.snapshot_quantity ?? 0,
-      item.counted_quantity !== null ? item.counted_quantity : '',
+      fmtQty(item, item.snapshot_quantity ?? 0),
+      item.counted_quantity !== null
+        ? fmtQty(item, item.counted_quantity)
+        : multiUnits(item)
+        ? multiUnits(item)!
+            .slice()
+            .sort((a, b) => b.factor - a.factor)
+            .map((u) => `___ ${u.name}`)
+            .join('  ')
+        : '',
       `P${costAmount.toFixed(2)}`,
       `P${retailAmount.toFixed(2)}`,
-      variance === null ? '-' : variance > 0 ? `+${variance}` : String(variance),
+      variance === null ? '-' : fmtVariance(item, variance),
       varianceAmount === null ? '-' : `P${varianceAmount.toFixed(2)}`,
     ];
   });

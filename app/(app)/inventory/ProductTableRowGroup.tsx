@@ -9,7 +9,8 @@ import {
   TableCell,
   TableRow,
 } from '@/components/ui/table';
-import { cn, formatStockQuantity } from '@/lib/utils';
+import { cn, formatCurrency, formatStockQuantity } from '@/lib/utils';
+import { formatUnitBreakdown } from '@/lib/unit-quantity';
 
 import type { ProductWithChildren } from './product-list-types';
 import { ProductRowActions } from './ProductRowActions';
@@ -18,6 +19,11 @@ import { getStockStatus, useStockStatus } from './use-stock-status';
 export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmentConfirmation, requireTransferConfirmation, lowStockThreshold }: { productGroup: ProductWithChildren, onSuccess?: () => void, requireAdjustmentConfirmation?: boolean, requireTransferConfirmation?: boolean, lowStockThreshold?: number }) {
   const [isExpanded, setIsExpanded] = useState(productGroup.defaultExpanded ?? false);
   const hasChildren = productGroup.children && productGroup.children.length > 0;
+  // Packaging lives in selling units: with more than one, stock reads as a mix
+  // ("5 Case + 12 Piece") and the row expands to show each unit's own figures.
+  const sellingUnits = productGroup.sellingUnits ?? [];
+  const hasUnitBreakdown = productGroup.type !== 'service' && sellingUnits.length > 1;
+  const isExpandable = hasChildren || hasUnitBreakdown;
 
   const displayStock = productGroup.stock;
   const { badgeVariant, badgeTextFull: badgeText } = useStockStatus(
@@ -29,10 +35,10 @@ export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmen
 
   return (
     <>
-      <TableRow className={cn(hasChildren && isExpanded ? "border-b-0" : "")}>
+      <TableRow className={cn(isExpandable && isExpanded ? "border-b-0" : "")}>
         <TableCell className="font-medium">
           <div className="flex items-center gap-2">
-            {hasChildren && (
+            {isExpandable && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -42,7 +48,7 @@ export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmen
                 <ChevronDown className={cn("h-4 w-4 transition-transform", isExpanded && "rotate-180")} />
               </Button>
             )}
-            {!hasChildren && <div className="w-6" />}
+            {!isExpandable && <div className="w-6" />}
             {productGroup.name}
             {hasChildren && (
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
@@ -60,7 +66,13 @@ export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmen
           {productGroup.sellingUnits?.find((su) => su.isBase)?.barcode || productGroup.barcode || '-'}
         </TableCell>
         <TableCell>
-          <span className="font-medium">{formatStockQuantity(displayStock, productGroup.unitOfMeasure)}</span> <span className="text-muted-foreground text-xs">{productGroup.unitOfMeasure}</span>
+          {hasUnitBreakdown ? (
+            <span className="font-medium">{formatUnitBreakdown(displayStock, sellingUnits)}</span>
+          ) : (
+            <>
+              <span className="font-medium">{formatStockQuantity(displayStock, productGroup.unitOfMeasure)}</span> <span className="text-muted-foreground text-xs">{productGroup.unitOfMeasure}</span>
+            </>
+          )}
         </TableCell>
         <TableCell>
           <div className="flex items-center gap-1.5">
@@ -80,6 +92,28 @@ export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmen
           />
         </TableCell>
       </TableRow>
+      {isExpanded && hasUnitBreakdown && [...sellingUnits].sort((a, b) => a.factor - b.factor).map((unit) => (
+        <TableRow key={unit.id} className="bg-muted/30" data-testid="selling-unit-row">
+          <TableCell className="pl-8">
+            <div className="flex items-center gap-2 text-sm">
+              <CornerDownRight className="h-4 w-4 text-muted-foreground" />
+              {unit.name}
+              <span className="text-xs text-muted-foreground">
+                {unit.isBase ? 'base unit' : `×${unit.factor}`}
+              </span>
+            </div>
+          </TableCell>
+          <TableCell className="font-mono text-xs">{unit.barcode || '-'}</TableCell>
+          <TableCell className="text-sm">
+            <span className="font-medium">{parseFloat((displayStock / unit.factor).toFixed(2))}</span>{' '}
+            <span className="text-muted-foreground text-xs">{unit.name} equiv.</span>
+          </TableCell>
+          <TableCell className="text-xs text-muted-foreground" colSpan={2}>
+            Cost {unit.cost != null ? formatCurrency(unit.cost) : '-'} · Price {formatCurrency(unit.price)}
+          </TableCell>
+          <TableCell />
+        </TableRow>
+      ))}
       {isExpanded && hasChildren && productGroup.children!.map((child) => {
           const { badgeVariant: childBadgeVariant, badgeTextFull: childBadgeText } =
             getStockStatus(child.stock, child.reorderPoint, child.type, lowStockThreshold);

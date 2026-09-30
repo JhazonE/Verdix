@@ -2679,7 +2679,10 @@ export async function searchProducts(searchQuery: string) {
               FROM conversion_factors cf
               WHERE cf.product_id = p.id) as conversion_factors,
              (SELECT su.barcode FROM product_selling_units su
-              WHERE su.product_id = p.id AND su.is_base = 1 LIMIT 1) as base_unit_barcode
+              WHERE su.product_id = p.id AND su.is_base = 1 LIMIT 1) as base_unit_barcode,
+             (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', su.id, 'name', su.name, 'factor', su.factor, 'isBase', su.is_base = 1))
+              FROM product_selling_units su
+              WHERE su.product_id = p.id) as selling_units
       FROM products p
       WHERE (p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ? OR EXISTS (
         SELECT 1 FROM product_selling_units su WHERE su.product_id = p.id AND su.barcode LIKE ?
@@ -2701,6 +2704,12 @@ export async function searchProducts(searchQuery: string) {
       price: parseFloat(r.price) || 0,
       cost: r.cost ? parseFloat(r.cost) : undefined,
       conversionFactors: typeof r.conversion_factors === 'string' ? JSON.parse(r.conversion_factors) : (r.conversion_factors || []),
+      sellingUnits: (typeof r.selling_units === 'string' ? JSON.parse(r.selling_units) : (r.selling_units || [])).map((u: any) => ({
+        id: u.id as string,
+        name: u.name as string,
+        factor: Number(u.factor),
+        isBase: Boolean(u.isBase),
+      })),
     }));
   } catch (error) {
     console.error('Error searching products:', error);

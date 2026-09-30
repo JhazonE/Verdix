@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import { Scissors, RefreshCw, History, Scissors as ScissorsIcon, ArrowRight, Clock, CheckCircle2, PackagePlus } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { RepackagingForm } from './repackaging-form';
-import { ConsolidationForm } from './consolidation-form';
+import { UnitRepackForm } from './unit-repack-form';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getRepackagingHistory, type RepackagingLog } from './actions';
 import { Badge } from '@/components/ui/badge';
@@ -116,7 +115,12 @@ function RepackagingHistoryTable() {
                       : <ScissorsIcon className="h-3.5 w-3.5 text-primary" />
                     }
                   </div>
-                  <span className="truncate">{log.sourceProductName}</span>
+                  <span className="truncate">
+                    {log.sourceProductName}
+                    {log.sourceUnitName && (
+                      <span className="text-muted-foreground font-normal"> ({log.sourceUnitName})</span>
+                    )}
+                  </span>
                 </div>
 
                 <div className={cn(
@@ -134,7 +138,17 @@ function RepackagingHistoryTable() {
                   <div className="h-7 w-7 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                   </div>
-                  <span className="truncate">{log.targetProductName}</span>
+                  <span className="truncate">
+                    {log.targetProductName}
+                    {log.targetUnitName && (
+                      <span className="text-muted-foreground font-normal"> ({log.targetUnitName})</span>
+                    )}
+                    {!!log.shortfallBaseQty && (
+                      <span className="ml-1 text-[10px] font-normal text-amber-600">
+                        {log.shortfallBaseQty} short
+                      </span>
+                    )}
+                  </span>
                 </div>
 
                 <div className="col-span-3 md:col-span-1 text-right font-black text-emerald-600">
@@ -183,7 +197,7 @@ export default function RepackagingPage() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Repackaging</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Convert bulk inventory into individual packs — or merge packs back into bulk.
+            Open a case into pieces, or merge pieces back into cases. Stock stays one shared count.
           </p>
         </div>
       </div>
@@ -191,48 +205,27 @@ export default function RepackagingPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="h-10">
           <TabsTrigger value="repackage" className="gap-2">
-            <Scissors className="h-4 w-4" /> Break Pack
-          </TabsTrigger>
-          <TabsTrigger value="consolidate" className="gap-2">
-            <PackagePlus className="h-4 w-4" /> Pack → Bulk
+            <Scissors className="h-4 w-4" /> Repackage
           </TabsTrigger>
           <TabsTrigger value="history" className="gap-2">
             <History className="h-4 w-4" /> History
           </TabsTrigger>
         </TabsList>
 
-        {/* ── BREAK PACK ── */}
+        {/* ── REPACKAGE ── */}
         <TabsContent value="repackage" className="mt-0">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Scissors className="h-5 w-5 text-primary" />
-                Break Pack — Bulk to Packs
+                Repackage
               </CardTitle>
               <CardDescription>
-                Deconstruct a bulk unit into smaller individual pack products.
+                Convert between a product's selling units — for example 1 Case into 24 Pieces.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <RepackagingForm key={formKey} onSuccess={handleSuccess} />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ── CONSOLIDATION ── */}
-        <TabsContent value="consolidate" className="mt-0">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <PackagePlus className="h-5 w-5 text-violet-600" />
-                Pack → Bulk Consolidation
-              </CardTitle>
-              <CardDescription>
-                Return pack units back into a bulk product — the reverse of Break Pack.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ConsolidationForm key={`cons-${formKey}`} onSuccess={handleSuccess} />
+              <UnitRepackForm key={formKey} onSuccess={handleSuccess} />
             </CardContent>
           </Card>
         </TabsContent>

@@ -1,4 +1,5 @@
 import { formatCurrency, toSafeNumber } from '@/lib/utils';
+import { fmtQty, fmtVariance, multiUnits } from './count-format';
 
 export function PrintLayout({
   count,
@@ -89,10 +90,18 @@ export function PrintLayout({
                   {item.product_barcode || '-'}
                 </td>
                 <td className="py-3 px-2 border-b border-gray-200 text-right">
-                  {item.snapshot_quantity}
+                  {fmtQty(item, item.snapshot_quantity)}
                 </td>
                 <td className="py-3 px-2 border-b border-gray-200 text-right font-semibold">
-                  {item.counted_quantity !== null ? item.counted_quantity : '______'}
+                  {item.counted_quantity !== null
+                    ? fmtQty(item, item.counted_quantity)
+                    : multiUnits(item)
+                    ? multiUnits(item)!
+                        .slice()
+                        .sort((a, b) => b.factor - a.factor)
+                        .map((u) => `____ ${u.name}`)
+                        .join('  ')
+                    : '______'}
                 </td>
                 <td className="py-3 px-2 border-b border-gray-200 text-right">
                   {formatCurrency(costAmount)}
@@ -103,9 +112,7 @@ export function PrintLayout({
                 <td className="py-3 px-2 border-b border-gray-200 text-right">
                   {item.counted_quantity === null
                     ? '-'
-                    : variance >= 0
-                    ? `+${variance}`
-                    : variance}
+                    : fmtVariance(item, variance)}
                 </td>
                 <td className="py-3 px-2 border-b border-gray-200 text-right">
                   {item.counted_quantity === null
