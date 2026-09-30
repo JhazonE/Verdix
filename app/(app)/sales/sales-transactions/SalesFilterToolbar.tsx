@@ -56,7 +56,7 @@ export function SalesFilterToolbar({
     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-4">
       <div className="relative flex-1 max-w-sm">
         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input type="search" placeholder="Search by ID or customer..." className="pl-8 w-full" value={searchTerm} onChange={(e) => onSearchChange(e.target.value)} />
+        <Input type="search" placeholder="Search SI No., customer..." className="pl-8 w-full" value={searchTerm} onChange={(e) => onSearchChange(e.target.value)} />
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">

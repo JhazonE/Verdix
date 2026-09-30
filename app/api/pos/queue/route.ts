@@ -76,7 +76,10 @@ export async function POST(request: NextRequest) {
   try {
     await ensureTable();
     const body = await request.json();
-    const { items, customerId, customerName, queueNotes, fronlinerId, frontlinerName, terminalId, terminalName, shiftId } = body;
+    const {
+      items, customerId, customerName, queueNotes, fronlinerId, frontlinerName,
+      terminalId, terminalName, shiftId, keepDailyQueueNumber,
+    } = body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ success: false, error: 'No items in order' }, { status: 400 });
@@ -85,54 +88,62 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Frontliner ID required' }, { status: 400 });
     }
 
-    // Ensure counter table exists (may not exist on first run)
-    await query(`
-      CREATE TABLE IF NOT EXISTS pos_queue_counter (
-        id INT PRIMARY KEY DEFAULT 1,
-        current_number INT NOT NULL DEFAULT 0,
-        max_number INT NOT NULL DEFAULT 999,
-        auto_reset_daily TINYINT(1) NOT NULL DEFAULT 1,
-        last_reset_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        last_reset_date DATE NULL
-      )
-    `);
-    await query(`INSERT IGNORE INTO pos_queue_counter (id) VALUES (1)`);
+    let dailyQueueNumber: number;
 
-    // Get counter config and compute next queue number
-    // (dateDiffDays > 0 means last_reset_date is before today, compared server-side
-    // in MySQL's own timezone to avoid local-Date/UTC round-trip mismatches)
-    const [counter] = await query(
-      `SELECT current_number AS currentNumber, max_number AS maxNumber,
-              auto_reset_daily AS autoResetDaily,
-              DATEDIFF(CURDATE(), last_reset_date) AS dateDiffDays
-       FROM pos_queue_counter WHERE id = 1`
-    ) as any[];
+    if (keepDailyQueueNumber) {
+      // Re-sending an order recalled for editing: keep the same customer-facing
+      // number instead of drawing a new one from the counter.
+      dailyQueueNumber = Number(keepDailyQueueNumber);
+    } else {
+      // Ensure counter table exists (may not exist on first run)
+      await query(`
+        CREATE TABLE IF NOT EXISTS pos_queue_counter (
+          id INT PRIMARY KEY DEFAULT 1,
+          current_number INT NOT NULL DEFAULT 0,
+          max_number INT NOT NULL DEFAULT 999,
+          auto_reset_daily TINYINT(1) NOT NULL DEFAULT 1,
+          last_reset_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          last_reset_date DATE NULL
+        )
+      `);
+      await query(`INSERT IGNORE INTO pos_queue_counter (id) VALUES (1)`);
 
-    let nextNumber = (Number(counter?.currentNumber) || 0) + 1;
-    const maxNumber = Number(counter?.maxNumber) || 999;
-    const autoResetDaily = counter?.autoResetDaily ?? 1;
+      // Get counter config and compute next queue number
+      // (dateDiffDays > 0 means last_reset_date is before today, compared server-side
+      // in MySQL's own timezone to avoid local-Date/UTC round-trip mismatches)
+      const [counter] = await query(
+        `SELECT current_number AS currentNumber, max_number AS maxNumber,
+                auto_reset_daily AS autoResetDaily,
+                DATEDIFF(CURDATE(), last_reset_date) AS dateDiffDays
+         FROM pos_queue_counter WHERE id = 1`
+      ) as any[];
 
-    // Auto-reset daily if enabled and date changed
-    if (autoResetDaily) {
-      const dateDiffDays = counter?.dateDiffDays;
-      if (dateDiffDays === null || Number(dateDiffDays) !== 0) {
+      let nextNumber = (Number(counter?.currentNumber) || 0) + 1;
+      const maxNumber = Number(counter?.maxNumber) || 999;
+      const autoResetDaily = counter?.autoResetDaily ?? 1;
+
+      // Auto-reset daily if enabled and date changed
+      if (autoResetDaily) {
+        const dateDiffDays = counter?.dateDiffDays;
+        if (dateDiffDays === null || Number(dateDiffDays) !== 0) {
+          await query(
+            `UPDATE pos_queue_counter SET current_number = 0, last_reset_at = NOW(), last_reset_date = CURDATE() WHERE id = 1`
+          );
+          nextNumber = 1;
+        }
+      }
+
+      // Auto-reset when max reached
+      if (nextNumber > maxNumber) {
         await query(
           `UPDATE pos_queue_counter SET current_number = 0, last_reset_at = NOW(), last_reset_date = CURDATE() WHERE id = 1`
         );
         nextNumber = 1;
       }
-    }
 
-    // Auto-reset when max reached
-    if (nextNumber > maxNumber) {
-      await query(
-        `UPDATE pos_queue_counter SET current_number = 0, last_reset_at = NOW(), last_reset_date = CURDATE() WHERE id = 1`
-      );
-      nextNumber = 1;
+      await query(`UPDATE pos_queue_counter SET current_number = ? WHERE id = 1`, [nextNumber]);
+      dailyQueueNumber = nextNumber;
     }
-
-    await query(`UPDATE pos_queue_counter SET current_number = ? WHERE id = 1`, [nextNumber]);
-    const dailyQueueNumber = nextNumber;
 
     const id = uuidv4();
     await query(
@@ -169,11 +180,13 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE - cashier claims/removes a queued order
+// DELETE - cashier claims an order, or a frontliner recalls their own order back to cart
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const action = searchParams.get('action'); // 'recall' when a frontliner pulls their own order back
+    const requesterId = searchParams.get('requesterId');
     if (!id) return NextResponse.json({ success: false, error: 'ID required' }, { status: 400 });
 
     await ensureTable();
@@ -188,9 +201,16 @@ export async function DELETE(request: NextRequest) {
 
     if (!row) return NextResponse.json({ success: false, error: 'Order not found or already claimed' }, { status: 404 });
 
-    await query(
-      `UPDATE pos_queued_orders SET status = 'claimed', claimed_at = NOW() WHERE id = ?`, [id]
-    );
+    if (action === 'recall') {
+      if (!requesterId || requesterId !== row.fronlinerId) {
+        return NextResponse.json({ success: false, error: 'Only the frontliner who sent this order can recall it' }, { status: 403 });
+      }
+      await query(`DELETE FROM pos_queued_orders WHERE id = ?`, [id]);
+    } else {
+      await query(
+        `UPDATE pos_queued_orders SET status = 'claimed', claimed_at = NOW() WHERE id = ?`, [id]
+      );
+    }
 
     return NextResponse.json({
       success: true,

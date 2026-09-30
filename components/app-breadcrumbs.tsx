@@ -12,8 +12,45 @@ import {
 } from '@/components/ui/breadcrumb';
 import { Fragment } from 'react';
 
+// POS Reports live under /sales/* (linked from the Reports page). The generic
+// logic strips "sales", which would leave them with no "Reports" parent.
+const POS_REPORT_LABELS: Record<string, string> = {
+  '': 'POS Sales Transaction',
+  'details': 'POS Sales Detail',
+  'by-product': 'Sales by Product/Service',
+  'by-date': 'Sales by Date',
+  'returns': 'Merchandise Credits',
+  'voids': 'Post Void',
+  'cash-transfer': 'POS Cash Transfer',
+  'z-reading': 'POS Z-Reading',
+  'x-reading': 'POS X-Reading',
+  'overall-reading': 'POS Overall Reading',
+  'analysis': 'Sales Analysis',
+};
+
 export function AppBreadcrumbs() {
   const pathname = usePathname();
+  const parts = pathname.split('/').filter(Boolean);
+  const posReportLabel = parts[0] === 'sales' && parts.length <= 2 ? POS_REPORT_LABELS[parts[1] ?? ''] : undefined;
+  if (posReportLabel) {
+    return (
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink href="/">Home</BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbLink href="/reports">Reports</BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>{posReportLabel}</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+    );
+  }
   const segments = pathname.split('/').filter(Boolean).filter(segment => segment !== 'sales' && segment !== 'purchases');
 
   return (

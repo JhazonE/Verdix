@@ -41,6 +41,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn, formatQuantity, formatStockQuantity } from '@/lib/utils';
+import { formatUnitStockText } from '@/components/unit-stock-view';
 import { ViewProductDialog } from './view-product/view-product-dialog';
 import { getProducts, getProductsCount, deleteProduct, getDepartments } from './actions';
 import { useToast } from '@/hooks/use-toast';
@@ -273,6 +274,9 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
                   </span>
                   <span className="text-muted-foreground">
                     Barcode: <span className="text-foreground">{unit.barcode || '—'}</span>
+                  </span>
+                  <span className="text-muted-foreground">
+                    Stock: <span className="font-bold text-foreground">{formatUnitStockText(product.stock, unit.factor, unit.name)}</span>
                   </span>
                   <span className="text-muted-foreground">
                     Cost: <span className="text-foreground">{typeof unit.cost === 'number' ? `₱${unit.cost.toFixed(2)}` : '—'}</span>

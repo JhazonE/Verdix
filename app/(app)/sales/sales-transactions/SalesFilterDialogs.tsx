@@ -100,7 +100,7 @@ export function SalesFilterDialogs({
       <Dialog open={salesStatusDialogOpen} onOpenChange={setSalesStatusDialogOpen}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader><DialogTitle>Filter by Sales Status</DialogTitle><DialogDescription>Select the sales status to filter transactions.</DialogDescription></DialogHeader>
-          <div className="py-4"><Label>Sales Status</Label><Select value={tempSalesStatus} onValueChange={setTempSalesStatus}><SelectTrigger className="mt-2"><SelectValue placeholder="Select status" /></SelectTrigger><SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Pending">Pending</SelectItem><SelectItem value="Returned">Returned</SelectItem><SelectItem value="Voided">Voided</SelectItem></SelectContent></Select></div>
+          <div className="py-4"><Label>Sales Status</Label><Select value={tempSalesStatus} onValueChange={setTempSalesStatus}><SelectTrigger className="mt-2"><SelectValue placeholder="Select status" /></SelectTrigger><SelectContent><SelectItem value="all">All Statuses</SelectItem><SelectItem value="Paid">Paid</SelectItem><SelectItem value="Pending">Pending</SelectItem><SelectItem value="Returned">Returned</SelectItem></SelectContent></Select></div>
           <DialogFooter><Button variant="outline" onClick={() => setSalesStatusDialogOpen(false)}>Cancel</Button><Button onClick={onApplySalesStatus}>Apply Filter</Button></DialogFooter>
         </DialogContent>
       </Dialog>

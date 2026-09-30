@@ -111,8 +111,13 @@ export function useRecordBadOrder({ onSuccess }: UseRecordBadOrderProps) {
 
   // ---- product actions -----------------------------------------------------
 
-  function handleAddProduct(product: Product) {
-    const existingIndex = fields.findIndex((f) => f.productId === product.id);
+  // The unit is fixed at add-time by which suggestion row was picked; a Piece
+  // line and a Case line for the same product are two distinct rows.
+  function handleAddProduct(product: Product, unit?: NonNullable<Product['sellingUnits']>[number]) {
+    const resolvedUnit = unit ?? product.sellingUnits?.find((u) => u.isBase);
+    const existingIndex = fields.findIndex(
+      (f) => f.productId === product.id && f.sellingUnitId === resolvedUnit?.id
+    );
     if (existingIndex !== -1) {
       const existing = fields[existingIndex];
       update(existingIndex, { ...existing, quantity: existing.quantity + 1 });
@@ -121,11 +126,14 @@ export function useRecordBadOrder({ onSuccess }: UseRecordBadOrderProps) {
         productId: product.id,
         productName: product.name,
         quantity: 1,
-        cost: product.cost || 0,
+        cost: resolvedUnit?.cost ?? product.cost ?? 0,
         reason: 'Damaged',
         description: '',
-        barcode: product.barcode || '',
+        barcode: resolvedUnit?.barcode || product.barcode || '',
         currentStock: product.stock || 0,
+        sellingUnitId: resolvedUnit?.id,
+        sellingUnitName: resolvedUnit?.name,
+        sellingUnitFactor: resolvedUnit?.factor ?? 1,
       });
     }
   }
@@ -230,6 +238,9 @@ export function useRecordBadOrder({ onSuccess }: UseRecordBadOrderProps) {
         cost: item.cost,
         reason: item.reason,
         description: item.description,
+        sellingUnitId: item.sellingUnitId,
+        sellingUnitName: item.sellingUnitName,
+        sellingUnitFactor: item.sellingUnitFactor ?? 1,
       }));
 
       const response = await fetch(getApiUrl('/bad-orders'), {

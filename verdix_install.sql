@@ -1783,7 +1783,6 @@ LOCK TABLES `sales_areas` WRITE;
 INSERT  IGNORE INTO `sales_areas` VALUES ('area_1','North','Northern Region',1,'2026-01-13 09:03:11','2026-01-13 09:03:11'),('area_2','South','Southern Region',1,'2026-01-13 09:03:11','2026-01-13 09:03:11');
 UNLOCK TABLES;
 LOCK TABLES `sales_persons` WRITE;
-INSERT  IGNORE INTO `sales_persons` VALUES ('sp_1','John Doe','+1-555-0101',1,'2026-07-23 09:19:46','2026-07-23 09:19:46'),('sp_2','Jane Smith','+1-555-0102',1,'2026-07-23 09:19:46','2026-07-23 09:19:46'),('sp_3','Mike Johnson','+1-555-0103',1,'2026-07-23 09:19:46','2026-07-23 09:19:46'),('sp_4','Sarah Wilson','+1-555-0104',1,'2026-07-23 09:19:46','2026-07-23 09:19:46');
 UNLOCK TABLES;
 LOCK TABLES `accounts` WRITE;
 INSERT  IGNORE INTO `accounts` VALUES ('account_1766975829472','FREIGHT COLLECTED','expense','8989','2025-12-29 02:37:09','2025-12-29 02:38:10'),('account_1766975873773','FREIGHT PAID','income','7851','2025-12-29 02:37:53','2025-12-29 03:11:42'),('account_1766975401622','General Product Purchased','expense','6000','2025-12-29 02:30:01','2025-12-29 02:30:01'),('account_1766975376027','General Sales','income','5000','2025-12-29 02:29:36','2025-12-29 02:29:36'),('account_1765251132577','SALES REVENUE','expense','4000','2025-12-09 03:32:12','2025-12-29 03:11:57');

@@ -52,6 +52,7 @@ import { InlineSupplierSelect } from '../../components/inline-selects/inline-sup
 
 import { calculateMarkupPercentage, calculateSuggestedPrice } from '@/lib/purchase-utils';
 import { formatQuantity } from '@/lib/utils';
+import { UnitStockView } from '@/components/unit-stock-view';
 import { useToast } from '@/hooks/use-toast';
 
 import { useAddPurchaseOrder, type UseAddPurchaseOrderProps } from './use-add-purchase-order';
@@ -406,9 +407,12 @@ export function AddPurchaseOrderDialog(props: UseAddPurchaseOrderProps & { trigg
                                 </TableCell>
 
                                 <TableCell className="py-2 text-center border-r font-mono text-xs">
-                                  <span className={(field.currentStock || 0) <= 0 ? 'text-destructive font-black' : 'text-muted-foreground font-bold'}>
-                                    {formatQuantity(field.currentStock || 0)}
-                                  </span>
+                                  <UnitStockView
+                                    stock={field.currentStock || 0}
+                                    factor={field.sellingUnitFactor}
+                                    unitName={field.sellingUnitName}
+                                    className={Math.floor((field.currentStock || 0) / (field.sellingUnitFactor || 1)) <= 0 ? 'text-destructive font-black' : 'text-muted-foreground font-bold'}
+                                  />
                                 </TableCell>
 
                                 <TableCell className="py-2 border-r">

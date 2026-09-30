@@ -228,10 +228,10 @@ export default function SplitPaymentsReportPage() {
         <CardContent>
           <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">From Date</label>
+              <label className="block text-sm font-medium">From Date</label>
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-[180px] justify-start text-left font-normal">
+                  <Button variant="outline" className="w-[210px] justify-start text-left font-normal">
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {fromDate ? format(fromDate, "PPP") : "Select date"}
                   </Button>
@@ -243,10 +243,10 @@ export default function SplitPaymentsReportPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">To Date</label>
+              <label className="block text-sm font-medium">To Date</label>
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-[180px] justify-start text-left font-normal">
+                  <Button variant="outline" className="w-[210px] justify-start text-left font-normal">
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {toDate ? format(toDate, "PPP") : "Select date"}
                   </Button>

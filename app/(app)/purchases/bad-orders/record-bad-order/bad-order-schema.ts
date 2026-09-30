@@ -9,6 +9,9 @@ export const badOrderItemSchema = z.object({
   description: z.string().optional().default(''),
   barcode: z.string().optional(),
   currentStock: z.coerce.number().optional(),
+  sellingUnitId: z.string().optional(),
+  sellingUnitName: z.string().optional(),
+  sellingUnitFactor: z.coerce.number().positive().optional(),
 });
 
 export const badOrderSchema = z.object({

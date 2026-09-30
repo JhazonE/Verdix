@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import Link from 'next/link';
-import { Package, ArrowLeftRight, AlertTriangle, TrendingUp, ClipboardList, Receipt, Package2, Percent, Undo, Users, BarChart, LineChart, PhilippinePeso, ShoppingCart, Layers, CreditCard, ShieldCheck, Landmark, Calendar, CalendarClock } from 'lucide-react';
+import { Package, ArrowLeftRight, AlertTriangle, TrendingUp, ClipboardList, Receipt, Package2, Percent, Undo, Users, BarChart, LineChart, PhilippinePeso, ShoppingCart, Layers, CreditCard, ShieldCheck, Landmark, Calendar, CalendarClock, Tags, FileBarChart, ReceiptText, ClipboardCheck, ActivitySquare, ListChecks, FileSearch, CalendarDays, Ban, Banknote } from 'lucide-react';
 
 export default function ReportsPage() {
   return (
@@ -102,6 +102,160 @@ export default function ReportsPage() {
                   Expiring Soon
                 </CardTitle>
                 <CardDescription>Stock on hand approaching its expiration date.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+
+          <Link href="/reports/barcode-labels">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Tags className="h-5 w-5 text-slate-600" />
+                  Print Barcode Labels
+                </CardTitle>
+                <CardDescription>Bulk-print or export barcode labels for a whole product category.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+      </div>
+
+      {/* POS Reports Section */}
+      <div className="space-y-2 mt-8">
+        <h2 className="text-2xl font-bold tracking-tight">POS Reports</h2>
+        <p className="text-muted-foreground">
+          Cashier shift readings and BIR-mandated locked reports.
+        </p>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <Link href="/sales">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ListChecks className="h-5 w-5 text-blue-600" />
+                  POS Sales Transaction
+                </CardTitle>
+                <CardDescription>List of all POS sales to customers with filters and summary totals.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+
+          <Link href="/sales/details">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileSearch className="h-5 w-5 text-blue-500" />
+                  POS Sales Detail
+                </CardTitle>
+                <CardDescription>Line-item level detail behind each POS sale.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+
+          <Link href="/sales/by-product">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Package2 className="h-5 w-5 text-green-600" />
+                  Sales by Product/Service
+                </CardTitle>
+                <CardDescription>Product/service performance breakdown from the Sales module.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+
+          <Link href="/sales/by-date">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CalendarDays className="h-5 w-5 text-indigo-500" />
+                  Sales by Date
+                </CardTitle>
+                <CardDescription>Sales totals broken down by date.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+
+          <Link href="/sales/returns">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Undo className="h-5 w-5 text-orange-600" />
+                  Merchandise Credits
+                </CardTitle>
+                <CardDescription>Returns and merchandise credit processing history.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+
+          <Link href="/sales/voids">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Ban className="h-5 w-5 text-red-500" />
+                  Post Void
+                </CardTitle>
+                <CardDescription>Voided sales transactions log.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+
+          <Link href="/sales/cash-transfer">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Banknote className="h-5 w-5 text-emerald-600" />
+                  POS Cash Transfer
+                </CardTitle>
+                <CardDescription>Cash drawer transfers between cashiers and terminals.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+
+          <Link href="/sales/z-reading">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ReceiptText className="h-5 w-5 text-red-600" />
+                  POS Z-Reading
+                </CardTitle>
+                <CardDescription>End-of-day locked sales report required for tax filing.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+
+          <Link href="/sales/x-reading">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileBarChart className="h-5 w-5 text-orange-600" />
+                  POS X-Reading
+                </CardTitle>
+                <CardDescription>Shift-in-progress sales reading without resetting totals.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+
+          <Link href="/sales/overall-reading">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ClipboardCheck className="h-5 w-5 text-teal-600" />
+                  POS Overall Reading
+                </CardTitle>
+                <CardDescription>Combined sales reading across all terminals.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+
+          <Link href="/sales/analysis">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ActivitySquare className="h-5 w-5 text-violet-600" />
+                  Sales Analysis
+                </CardTitle>
+                <CardDescription>Trend analysis across sales activity over time.</CardDescription>
               </CardHeader>
             </Card>
           </Link>

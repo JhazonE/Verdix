@@ -33,6 +33,7 @@ type Props = {
   isFrontliner?: boolean;
   handleSendToQueue?: () => void;
   posMode?: 'default' | 'pharmacy';
+  editingQueueOrder?: { dailyQueueNumber: number } | null;
 };
 
 export function PosTotalsPanel({
@@ -40,6 +41,7 @@ export function PosTotalsPanel({
   selectedCustomer, handleSelectCustomer, setIsCustomerSelectOpen,
   totalDue, numberOfItems, subTotal, vatSales, vatAmount, taxDetails,
   items, handleDefaultTender, isFrontliner, handleSendToQueue, posMode,
+  editingQueueOrder,
 }: Props) {
   return (
     <div className="w-96 bg-background border-l shadow-2xl z-20 flex flex-col h-full">
@@ -72,7 +74,7 @@ export function PosTotalsPanel({
           <div className="flex items-center gap-1 shrink-0">
             {posMode === 'pharmacy' && (
               <span className="rounded-md bg-cyan-500/80 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white">
-                Pharmacy
+                Ordering
               </span>
             )}
             {isFrontliner && (
@@ -171,7 +173,12 @@ export function PosTotalsPanel({
       </div>
 
       {/* Action Button */}
-      <div className="p-5 bg-muted/10 border-t">
+      <div className="p-5 bg-muted/10 border-t space-y-2">
+        {isFrontliner && editingQueueOrder && (
+          <div className="flex items-center justify-center gap-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 px-3 py-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
+            Editing Order #{String(editingQueueOrder.dailyQueueNumber).padStart(3, '0')} — will keep the same number
+          </div>
+        )}
         {isFrontliner ? (
           <Button
             size="lg"
@@ -179,7 +186,7 @@ export function PosTotalsPanel({
             onClick={handleSendToQueue}
             disabled={items.length === 0}
           >
-            <span className="flex-1 text-left pl-4">SEND TO QUEUE</span>
+            <span className="flex-1 text-left pl-4">{editingQueueOrder ? 'RESEND TO QUEUE' : 'SEND TO QUEUE'}</span>
             <div className="bg-white/20 rounded-lg p-2 mr-2">
               <SendToBack className="w-8 h-8" />
             </div>

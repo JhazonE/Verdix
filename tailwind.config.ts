@@ -102,6 +102,22 @@ export default {
   					height: '0'
   				}
   			},
+  			'collapsible-down': {
+  				from: {
+  					height: '0'
+  				},
+  				to: {
+  					height: 'var(--radix-collapsible-content-height)'
+  				}
+  			},
+  			'collapsible-up': {
+  				from: {
+  					height: 'var(--radix-collapsible-content-height)'
+  				},
+  				to: {
+  					height: '0'
+  				}
+  			},
   			'fade-in': {
   				from: {
   					opacity: '0'
@@ -160,6 +176,8 @@ export default {
   			'toast-progress': 'toast-progress 4s linear forwards',
   			'accordion-down': 'accordion-down 0.2s ease-out',
   			'accordion-up': 'accordion-up 0.2s ease-out',
+  			'collapsible-down': 'collapsible-down 0.2s ease-out',
+  			'collapsible-up': 'collapsible-up 0.2s ease-out',
   			'fade-in': 'fade-in 0.3s ease-in-out',
   			'slide-in': 'slide-in-from-right 0.4s ease-out',
   			'dialog-content-show': 'dialog-content-show 500ms cubic-bezier(0.16, 1, 0.3, 1)',

@@ -13,7 +13,7 @@ import { getApiUrl } from '@/lib/api-config';
 type PosMode = 'default' | 'pharmacy';
 
 /**
- * POS Mode (Default / Pharmacy) plus the Pharmacy-only Queue Number settings.
+ * POS Mode (Default / Ordering) plus the Ordering-only Queue Number settings.
  * Self-contained: posMode persists through /api/pos-settings, the queue config
  * through /api/pos/queue/config — the same two APIs the old Settings card used.
  * Rendered on the Developer Options page.
@@ -64,7 +64,7 @@ export function PosModeCard() {
       });
       const result = await res.json();
       if (!result.success) throw new Error();
-      toast({ title: 'POS Mode updated', description: mode === 'pharmacy' ? 'Pharmacy mode enabled.' : 'Default retail mode enabled.' });
+      toast({ title: 'POS Mode updated', description: mode === 'pharmacy' ? 'Ordering mode enabled.' : 'Default retail mode enabled.' });
     } catch {
       setPosMode(previous); // revert on failure
       toast({ title: 'Update failed', description: 'Could not change POS mode.', variant: 'destructive' });
@@ -110,7 +110,7 @@ export function PosModeCard() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2"><Store className="h-5 w-5" />POS Mode</CardTitle>
         <CardDescription>
-          Choose the operating mode for the Point of Sale terminal. Pharmacy mode enables frontliner queue workflow.
+          Choose the operating mode for the Point of Sale terminal. Ordering mode enables frontliner queue workflow.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -140,12 +140,12 @@ export function PosModeCard() {
             }`}
           >
             <FlaskConical className={`h-6 w-6 ${posMode === 'pharmacy' ? 'text-cyan-600' : 'text-muted-foreground'}`} />
-            <span className="text-sm font-semibold">Pharmacy</span>
+            <span className="text-sm font-semibold">Ordering</span>
             <span className="text-xs text-muted-foreground">Frontliner queue enabled</span>
           </button>
         </div>
 
-        {/* Queue Number Settings — shown only when Pharmacy mode */}
+        {/* Queue Number Settings — shown only when Ordering mode */}
         {posMode === 'pharmacy' && (
           <div className="space-y-4 pt-4 border-t">
             <div className="flex items-center gap-2">

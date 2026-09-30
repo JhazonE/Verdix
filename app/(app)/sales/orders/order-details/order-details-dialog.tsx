@@ -41,6 +41,7 @@ export function OrderDetailsDialog({ order, open, onOpenChange, mode = 'order' }
         <OrderDetailsActions
           onPrint={print.handlePrint}
           onPrintPOSInvoice={print.handlePrintPOSInvoice}
+          onPrintTemplate={print.handlePrintTemplate}
           onClose={() => onOpenChange(false)}
         />
       </DialogContent>

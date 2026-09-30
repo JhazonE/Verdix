@@ -41,8 +41,8 @@ export function FrontlinerModePrompt({ open, onOpenChange, blocked = false, user
                 {userName ? `Sorry, ${userName}` : 'Login Not Allowed'}
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
-                This is a <span className="font-semibold text-violet-600 dark:text-violet-400">Pharmacy Frontliner</span> account.
-                It can only be used when the POS is set to <span className="font-semibold">Pharmacy Mode</span>.
+                This is an <span className="font-semibold text-violet-600 dark:text-violet-400">Ordering Frontliner</span> account.
+                It can only be used when the POS is set to <span className="font-semibold">Ordering Mode</span>.
               </DialogDescription>
             </DialogHeader>
 
@@ -53,14 +53,14 @@ export function FrontlinerModePrompt({ open, onOpenChange, blocked = false, user
                 <div>
                   <p className="text-xs font-semibold text-rose-600 dark:text-rose-400">POS is in Default Mode</p>
                   <p className="text-[11px] text-rose-500/80 dark:text-rose-500 mt-0.5">
-                    Frontliner accounts are only allowed when Pharmacy Mode is enabled in POS Settings.
+                    Frontliner accounts are only allowed when Ordering Mode is enabled in POS Settings.
                   </p>
                 </div>
               </div>
               <div className="flex items-start gap-2.5 rounded-lg bg-muted/40 border px-3 py-2.5">
                 <Ban className="h-4 w-4 text-muted-foreground shrink-0 mt-px" />
                 <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Please contact your administrator to switch the POS to Pharmacy Mode, or log in with a regular cashier account.
+                  Please contact your administrator to switch the POS to Ordering Mode, or log in with a regular cashier account.
                 </p>
               </div>
             </div>
@@ -78,7 +78,7 @@ export function FrontlinerModePrompt({ open, onOpenChange, blocked = false, user
     );
   }
 
-  // ── Pharmacy welcome prompt ──
+  // ── Ordering welcome prompt ──
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm p-0 overflow-hidden gap-0">
@@ -88,7 +88,7 @@ export function FrontlinerModePrompt({ open, onOpenChange, blocked = false, user
               <FlaskConical className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs font-medium text-violet-200">Pharmacy Mode</p>
+              <p className="text-xs font-medium text-violet-200">Ordering Mode</p>
               <p className="text-base font-bold leading-tight">Frontliner Account</p>
             </div>
           </div>
@@ -100,7 +100,7 @@ export function FrontlinerModePrompt({ open, onOpenChange, blocked = false, user
               {userName ? `Welcome, ${userName}!` : 'Welcome!'}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground leading-relaxed">
-              This account is set up for <span className="font-semibold text-violet-600 dark:text-violet-400">Pharmacy Frontliner</span> mode only.
+              This account is set up for <span className="font-semibold text-violet-600 dark:text-violet-400">Ordering Frontliner</span> mode only.
             </DialogDescription>
           </DialogHeader>
 

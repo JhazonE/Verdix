@@ -11,12 +11,12 @@ export function useSalesDetails() {
     dateRange: filters.dateRange,
     terminalId: filters.terminalId,
     paymentTypeFilter: filters.paymentTypeFilter,
+    searchTerm: filters.searchTerm,
     currentPage: filters.currentPage,
     limit: filters.limit,
   });
   const { filteredSales, summaryTotals, exportToCSV, exportToPDF } = useDetailsUtils({
     sales,
-    searchTerm: filters.searchTerm,
     dateRange: filters.dateRange,
     terminalId: filters.terminalId,
     paymentTypeFilter: filters.paymentTypeFilter,
