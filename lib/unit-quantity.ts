@@ -23,7 +23,10 @@ const EPSILON = 1e-9;
  * not split — it is reported on the base unit as-is, since "-1 Case + 6 Piece"
  * would obscure the fact that stock has gone below zero.
  */
-export function splitIntoUnits<U extends QuantityUnit>(baseQty: number, units: U[]): UnitEntry<U>[] {
+export function splitIntoUnits<U extends QuantityUnit>(baseQtyInput: number, units: U[]): UnitEntry<U>[] {
+  // MySQL DECIMAL columns reach the client as strings ("50.0000"); coerce so a
+  // numeric string is not mistaken for a non-finite value and shown as zero.
+  const baseQty = Number(baseQtyInput);
   if (!Number.isFinite(baseQty) || baseQty === 0 || units.length === 0) return [];
 
   const base = units.find((u) => u.isBase) ?? units.find((u) => u.factor === 1) ?? units[0];
@@ -51,10 +54,11 @@ export function splitIntoUnits<U extends QuantityUnit>(baseQty: number, units: U
 
 /** "5 Case + 2 Pack + 3 Piece". A product with no selling units shows a plain figure. */
 export function formatUnitBreakdown(
-  baseQty: number,
+  baseQtyInput: number,
   units?: QuantityUnit[],
   fallbackLabel?: string,
 ): string {
+  const baseQty = Number(baseQtyInput);
   if (!units || units.length === 0) {
     return fallbackLabel ? `${baseQty} ${fallbackLabel}` : String(baseQty);
   }
@@ -71,7 +75,8 @@ export function formatUnitBreakdown(
  * The sign applies to the whole quantity, so a multi-part shortfall is wrapped
  * rather than left reading like "-1 Case + 6 Piece".
  */
-export function formatSignedUnitBreakdown(baseQty: number, units?: QuantityUnit[]): string {
+export function formatSignedUnitBreakdown(baseQtyInput: number, units?: QuantityUnit[]): string {
+  const baseQty = Number(baseQtyInput);
   if (!baseQty) return '0';
   if (!units || units.length === 0) return baseQty > 0 ? `+${baseQty}` : String(baseQty);
   const body = formatUnitBreakdown(Math.abs(baseQty), units);

@@ -80,4 +80,8 @@ assert.throws(() => repackOutcome({ quantity: 0, fromFactor: 24, toFactor: 1 }),
 assert.throws(() => repackOutcome({ quantity: 1, fromFactor: 0, toFactor: 1 }), /factor/i);
 assert.throws(() => repackOutcome({ quantity: 1, fromFactor: 24, toFactor: 1, actualProduced: -1 }), /negative/i);
 
+// MySQL DECIMALs arrive as strings
+assert.equal(formatUnitBreakdown('135.0000' as any, units), '5 Case + 2 Pack + 3 Piece', 'numeric strings are coerced');
+assert.equal(formatSignedUnitBreakdown('-30.0000' as any, units), '-(1 Case + 1 Pack)');
+
 console.log('unit-quantity tests passed');
