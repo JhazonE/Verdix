@@ -292,7 +292,7 @@ function CollapsibleNavSection({ label, icon: Icon, isActive, items, pathname }:
     <SidebarMenuItem>
       <Collapsible defaultOpen={isActive} className="group/collapsible group-data-[collapsible=icon]:items-center">
         <CollapsibleTrigger asChild>
-          <SidebarMenuButton isActive={isActive} tooltip={{ children: label }} className="relative justify-between gap-3 px-4 py-2.5 font-medium rounded-lg transition-all duration-200 hover:shadow-sm data-[active=true]:before:absolute data-[active=true]:before:left-0 data-[active=true]:before:top-1/2 data-[active=true]:before:h-5 data-[active=true]:before:w-1 data-[active=true]:before:-translate-y-1/2 data-[active=true]:before:rounded-r-full data-[active=true]:before:bg-primary data-[active=true]:text-primary">
+          <SidebarMenuButton isActive={isActive} tooltip={{ children: label }} className="relative justify-between gap-3 px-4 py-2.5 font-medium rounded-lg transition-all duration-200 hover:shadow-sm data-[active=true]:before:absolute data-[active=true]:before:left-0 data-[active=true]:before:top-1/2 data-[active=true]:before:h-5 data-[active=true]:before:w-1 data-[active=true]:before:-translate-y-1/2 data-[active=true]:before:rounded-r-full data-[active=true]:before:bg-primary data-[active=true]:text-primary group-data-[state=open]/collapsible:bg-sidebar-accent/40">
             <div className="flex items-center gap-3">
               <Icon />
               <span className="text-[14px]">{label}</span>
@@ -301,10 +301,10 @@ function CollapsibleNavSection({ label, icon: Icon, isActive, items, pathname }:
           </SidebarMenuButton>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <SidebarMenuSub className="ml-5 border-l-2 border-sidebar-border/40 pl-3 my-2 space-y-1">
+          <SidebarMenuSub className="mx-3 mt-1 mb-2 translate-x-0 space-y-0.5 rounded-lg border-0 bg-sidebar-accent/20 px-1.5 py-1.5">
             {items.map(item => (
               <SidebarMenuItem key={item.href}>
-                <SidebarMenuSubButton asChild isActive={pathname === item.href} className="relative text-[13px] h-9 rounded-md hover:bg-sidebar-accent/50 transition-colors duration-200 data-[active=true]:before:absolute data-[active=true]:before:-left-[13px] data-[active=true]:before:top-1/2 data-[active=true]:before:h-1.5 data-[active=true]:before:w-1.5 data-[active=true]:before:-translate-y-1/2 data-[active=true]:before:rounded-full data-[active=true]:before:bg-primary">
+                <SidebarMenuSubButton asChild isActive={pathname === item.href} className="relative h-auto translate-x-0 py-2 text-[13px] rounded-md hover:bg-sidebar-accent/70 transition-colors duration-200 data-[active=true]:bg-sidebar-accent data-[active=true]:font-medium data-[active=true]:before:absolute data-[active=true]:before:left-1 data-[active=true]:before:top-1/2 data-[active=true]:before:h-1.5 data-[active=true]:before:w-1.5 data-[active=true]:before:-translate-y-1/2 data-[active=true]:before:rounded-full data-[active=true]:before:bg-primary data-[active=true]:pl-4">
                   <Link href={item.href}>{item.label}</Link>
                 </SidebarMenuSubButton>
               </SidebarMenuItem>

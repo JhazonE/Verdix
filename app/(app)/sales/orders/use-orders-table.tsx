@@ -9,7 +9,7 @@ import { UseMutationResult } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import {
   MoreHorizontal, FileText, Truck, Edit, Ban,
-  ClipboardList, Receipt, ArrowUpDown, ArrowUp, ArrowDown,
+  ClipboardList, FileCheck2, ArrowUpDown, ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -172,7 +172,7 @@ export function useOrdersTable({
                 {/* Step 3: invoice a delivered order, exactly once */}
                 {isDelivered && !sale.hasInvoice && (
                   <DropdownMenuItem onClick={() => onMakeInvoice(sale)}>
-                    <Receipt className="mr-2 h-4 w-4" /> Make Invoice
+                    <FileCheck2 className="mr-2 h-4 w-4" /> Make Invoice
                   </DropdownMenuItem>
                 )}
 

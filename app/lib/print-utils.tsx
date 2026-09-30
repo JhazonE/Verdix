@@ -2,9 +2,19 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import React from 'react';
 
+// Pending timers from a prior in-flight call to printReactComponent. If a second
+// print is triggered (e.g. a double-clicked Print button) before the first one's
+// print()/removeChild() timers fire, those timers still hold a reference to the
+// iframe this call is about to remove. Once removed, that iframe is detached and
+// Chrome reports it as a cross-origin frame, so iframe.contentWindow.print() throws
+// a SecurityError instead of silently no-oping. Cancelling them here prevents that.
+let pendingPrintTimers: ReturnType<typeof setTimeout>[] = [];
 
 export const printReactComponent = (component: React.ReactNode, paperSize: '58mm' | '80mm' = '80mm') => {
     // Clean up any existing print iframes first
+    pendingPrintTimers.forEach(clearTimeout);
+    pendingPrintTimers = [];
+
     const existingIframe = document.getElementById('print-iframe');
     if (existingIframe) {
         document.body.removeChild(existingIframe);
@@ -78,7 +88,7 @@ export const printReactComponent = (component: React.ReactNode, paperSize: '58mm
     });
 
     // Wait for content (slightly longer)
-    setTimeout(() => {
+    const printTimer = setTimeout(() => {
         try {
             if (iframe.contentWindow) {
                 iframe.contentWindow.focus();
@@ -88,11 +98,13 @@ export const printReactComponent = (component: React.ReactNode, paperSize: '58mm
             console.error("Print failed:", error);
         } finally {
             // Delay removal
-            setTimeout(() => {
+            const removeTimer = setTimeout(() => {
                 if (document.body.contains(iframe)) {
                     document.body.removeChild(iframe);
                 }
-            }, 3000); 
+            }, 3000);
+            pendingPrintTimers.push(removeTimer);
         }
-    }, 1500); 
+    }, 1500);
+    pendingPrintTimers.push(printTimer);
 };

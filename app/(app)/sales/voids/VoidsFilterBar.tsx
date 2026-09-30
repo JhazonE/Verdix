@@ -40,10 +40,10 @@ export function VoidsFilterBar({ fromDate, setFromDate, toDate, setToDate, isLoa
       <CardContent>
         <div className="flex flex-wrap items-end gap-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">From Date</label>
+            <label className="block text-sm font-medium">From Date</label>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className={cn('w-[180px] justify-start text-left font-normal', !fromDate && 'text-muted-foreground')}>
+                <Button variant="outline" className={cn('w-[210px] justify-start text-left font-normal', !fromDate && 'text-muted-foreground')}>
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {fromDate ? format(fromDate, 'PPP') : 'Select date'}
                 </Button>
@@ -55,10 +55,10 @@ export function VoidsFilterBar({ fromDate, setFromDate, toDate, setToDate, isLoa
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">To Date</label>
+            <label className="block text-sm font-medium">To Date</label>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className={cn('w-[180px] justify-start text-left font-normal', !toDate && 'text-muted-foreground')}>
+                <Button variant="outline" className={cn('w-[210px] justify-start text-left font-normal', !toDate && 'text-muted-foreground')}>
                   <CalendarIcon className="mr-2 h-4 w-4" />
                   {toDate ? format(toDate, 'PPP') : 'Select date'}
                 </Button>

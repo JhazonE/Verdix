@@ -9,6 +9,13 @@ import {
     SheetTitle,
     SheetDescription,
 } from '@/components/ui/sheet';
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,13 +26,14 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Printer, User, Star, Info, AlertCircle, CheckCircle2, Wallet, CreditCard, Banknote } from 'lucide-react';
+import { Loader2, Printer, User, Star, Info, AlertCircle, CheckCircle2, Wallet, CreditCard, Banknote, FileText } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import type { SaleItem } from '../pos-content/pos-types';
 import type { SystemSettings } from '@/lib/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useReactToPrint } from 'react-to-print';
 import { ReceiptView } from '../receipt/ReceiptView';
+import { LargeInvoiceView } from '../receipt/LargeInvoiceView';
 import { usePrinter } from '@/lib/use-printer';
 import { ReceiptGenerator, saleOpensDrawer } from '@/lib/receipt-generator';
 import { useTender } from './use-tender';
@@ -38,11 +46,13 @@ function ReceiptActionView({
     saleDetails,
     onNewSale,
     onPrint,
+    onPrintLarge,
     settings
 }: {
     saleDetails: any;
     onNewSale: () => void;
     onPrint: () => void;
+    onPrintLarge: () => void;
     settings?: SystemSettings | null;
 }) {
     return (
@@ -56,6 +66,10 @@ function ReceiptActionView({
                  <Button onClick={onPrint} size="lg" className="w-40">
                     <Printer className="mr-2 h-4 w-4" />
                     Reprint
+                </Button>
+                <Button onClick={onPrintLarge} size="lg" className="w-40" variant="outline">
+                    <FileText className="mr-2 h-4 w-4" />
+                    Large Invoice
                 </Button>
                 <Button onClick={onNewSale} size="lg" className="w-40" variant="secondary">
                     New Sale
@@ -105,8 +119,12 @@ export function TenderDialog(props: TenderDialogProps) {
 
 
     const [isReprintPrint, setIsReprintPrint] = useState(false);
+    const [isLargeInvoicePreviewOpen, setIsLargeInvoicePreviewOpen] = useState(false);
+    const [pendingLargeInvoiceCompletes, setPendingLargeInvoiceCompletes] = useState(false);
 
     const receiptRef = useRef<HTMLDivElement>(null);
+    const largeInvoiceRef = useRef<HTMLDivElement>(null);
+    const largeInvoicePreviewRef = useRef<HTMLDivElement>(null);
     const yesButtonRef = useRef<HTMLButtonElement>(null);
     const noButtonRef = useRef<HTMLButtonElement>(null);
     const paymentMethodRef = useRef<HTMLButtonElement>(null);
@@ -138,6 +156,35 @@ export function TenderDialog(props: TenderDialogProps) {
             }
         `
     });
+
+    const handlePrintLargeInvoice = useReactToPrint({
+        contentRef: largeInvoicePreviewRef,
+        documentTitle: `Invoice-${new Date().getTime()}`,
+        pageStyle: `
+            @page { size: 5.5in 8.5in; margin: 0; }
+            @media print {
+                body { -webkit-print-color-adjust: exact; margin: 0; padding: 0; }
+                .printable-area { box-shadow: none !important; margin: 0 !important; }
+            }
+        `
+    });
+
+    const openLargeInvoicePreview = (completesAfterPrint: boolean) => {
+        setPendingLargeInvoiceCompletes(completesAfterPrint);
+        setIsLargeInvoicePreviewOpen(true);
+    };
+
+    const handlePrintFromPreview = async () => {
+        handlePrintLargeInvoice();
+        if (!pendingLargeInvoiceCompletes || !completedSale) return;
+
+        await kickDrawerOnly(completedSale);
+        setIsLargeInvoicePreviewOpen(false);
+        setTimeout(() => {
+            props.onSuccess(selectedMethod, props.totalDue);
+            onOpenChange(false);
+        }, 500);
+    };
 
     const handlePrintReceipt = async (dataToPrint?: any, isReprint = false) => {
          const details = dataToPrint || completedSale;
@@ -220,10 +267,25 @@ export function TenderDialog(props: TenderDialogProps) {
             onOpenChange(false);
         }
     };
-    
+
+    // Large invoice always goes through the browser print dialog, never the
+    // ESC/POS thermal bridge — it's a full-page A5-ish layout, not a receipt.
+    // Shown as an on-screen preview first so the cashier can check the layout
+    // before committing paper to it.
+    const handleConfirmPrintLarge = () => {
+        if (!completedSale) return;
+        openLargeInvoicePreview(true);
+    };
+
     const handleSmartPrint = () => {
         if (completedSale) {
              handlePrintReceipt(completedSale, true);
+        }
+    };
+
+    const handleSmartPrintLarge = () => {
+        if (completedSale) {
+            openLargeInvoicePreview(false);
         }
     };
 
@@ -313,10 +375,11 @@ export function TenderDialog(props: TenderDialogProps) {
 
 
     return (
+        <>
         <Sheet open={isOpen} onOpenChange={onOpenChange}>
             <SheetContent side="right" className="w-full sm:max-w-[460px] overflow-hidden flex flex-col p-0 gap-0 [&>button]:hidden" onInteractOutside={(e) => e.preventDefault()} onKeyDown={handleKeyDown}>
                 {view === 'receipt' && completedSale ? (
-                    <ReceiptActionView saleDetails={completedSale} onNewSale={handleNewSale} onPrint={handleSmartPrint} settings={settings} />
+                    <ReceiptActionView saleDetails={completedSale} onNewSale={handleNewSale} onPrint={handleSmartPrint} onPrintLarge={handleSmartPrintLarge} settings={settings} />
                 ) : view === 'change' && completedSale ? (
                     <div className="flex flex-col h-full animate-in fade-in duration-200">
                         <div className="flex-1 flex flex-col items-center justify-center p-8 space-y-6 bg-gradient-to-b from-green-50/60 to-transparent">
@@ -390,6 +453,15 @@ export function TenderDialog(props: TenderDialogProps) {
                                     Yes, Print
                                 </Button>
                             </div>
+                            <Button
+                                variant="outline"
+                                size="lg"
+                                className="w-full h-12 text-sm font-bold"
+                                onClick={handleConfirmPrintLarge}
+                            >
+                                <FileText className="mr-2 h-4 w-4" />
+                                Print Large Invoice
+                            </Button>
                             <p className="text-center text-[10px] text-muted-foreground uppercase tracking-wider">
                                 Arrow keys to navigate • Y for Yes • N for No
                             </p>
@@ -713,6 +785,33 @@ export function TenderDialog(props: TenderDialogProps) {
                 </div>
             </SheetContent>
         </Sheet>
+
+        <Dialog open={isLargeInvoicePreviewOpen} onOpenChange={setIsLargeInvoicePreviewOpen}>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+                <DialogHeader className="px-6 py-4 border-b text-left space-y-0.5">
+                    <DialogTitle className="text-lg font-bold flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-primary" />
+                        Large Invoice Preview
+                    </DialogTitle>
+                    <DialogDescription>Review the layout before printing.</DialogDescription>
+                </DialogHeader>
+                <div className="flex-1 overflow-auto bg-muted/40 p-6 flex justify-center">
+                    <div className="bg-white shadow-md h-fit">
+                        {completedSale && <LargeInvoiceView ref={largeInvoicePreviewRef} saleDetails={completedSale} settings={settings} />}
+                    </div>
+                </div>
+                <div className="p-4 border-t bg-background flex justify-end gap-3">
+                    <Button variant="outline" size="lg" onClick={() => setIsLargeInvoicePreviewOpen(false)}>
+                        Close
+                    </Button>
+                    <Button size="lg" onClick={handlePrintFromPreview}>
+                        <Printer className="mr-2 h-4 w-4" />
+                        Print
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+        </>
     );
 };
 

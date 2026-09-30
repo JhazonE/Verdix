@@ -97,6 +97,25 @@ export function PosHeader({
             )}
           </Button>
         )}
+
+        {/* Frontliner: view own queued orders */}
+        {isFrontliner && setIsQueuePanelOpen && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="group relative flex h-[3.25rem] w-full max-w-[4.25rem] min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl border border-violet-400/60 bg-violet-50 px-1 font-normal shadow-sm transition-all hover:-translate-y-0.5 hover:bg-violet-100 dark:bg-violet-950/30 dark:hover:bg-violet-900/40"
+            onClick={() => setIsQueuePanelOpen(true)}
+          >
+            <Inbox className="h-4 w-4 transition-transform group-hover:scale-110 text-violet-600" />
+            <span className="w-full truncate text-center text-[10px] leading-none font-medium text-foreground">My Queue</span>
+            <kbd className="rounded bg-muted px-1 py-px text-[8px] font-mono font-semibold leading-none text-muted-foreground">Ctrl+Q</kbd>
+            {queuedOrdersCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-violet-600 text-[9px] font-bold text-white shadow-sm ring-2 ring-background">
+                {queuedOrdersCount > 9 ? '9+' : queuedOrdersCount}
+              </span>
+            )}
+          </Button>
+        )}
       </div>
 
       <div className="flex items-center gap-2 border-l pl-4 ml-2 shrink-0">

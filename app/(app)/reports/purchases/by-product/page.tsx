@@ -207,13 +207,13 @@ export default function PurchasesByProductPage() {
         <CardContent>
           <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">From Date</label>
+              <label className="block text-sm font-medium">From Date</label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
                     className={cn(
-                      "w-[180px] justify-start text-left font-normal",
+                      "w-[210px] justify-start text-left font-normal",
                       !fromDate && "text-muted-foreground"
                     )}
                   >
@@ -233,13 +233,13 @@ export default function PurchasesByProductPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">To Date</label>
+              <label className="block text-sm font-medium">To Date</label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
                     className={cn(
-                      "w-[180px] justify-start text-left font-normal",
+                      "w-[210px] justify-start text-left font-normal",
                       !toDate && "text-muted-foreground"
                     )}
                   >

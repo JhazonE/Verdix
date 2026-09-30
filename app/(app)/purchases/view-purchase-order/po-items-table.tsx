@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/table';
 import { calculatePurchaseCosts } from '@/lib/purchase-utils';
 import { formatQuantity } from '@/lib/utils';
+import { UnitStockView } from '@/components/unit-stock-view';
 import { type PurchaseOrder } from '@/lib/types';
 import { type Product } from '@/lib/types';
 
@@ -58,9 +59,12 @@ export function PoItemsTable({ order, products }: PoItemsTableProps) {
                   </div>
                 </TableCell>
                 <TableCell className="text-center text-zinc-900 font-bold">
-                  <span className={currentStock <= 0 ? 'text-destructive font-black' : ''}>
-                    {formatQuantity(currentStock)}
-                  </span>
+                  <UnitStockView
+                    stock={currentStock}
+                    factor={(item as any).sellingUnitFactor}
+                    unitName={(item as any).sellingUnitName}
+                    className={currentStock <= 0 ? 'text-destructive font-black' : ''}
+                  />
                 </TableCell>
                 <TableCell className="text-right text-zinc-900 font-bold">
                   ₱{item.cost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

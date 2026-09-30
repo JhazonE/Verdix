@@ -1,6 +1,5 @@
 'use client';
 
-import { useMemo } from 'react';
 import { format } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 
@@ -22,7 +21,6 @@ export type SummaryTotals = {
 
 type UtilParams = {
   sales: any[];
-  searchTerm: string;
   dateRange: DateRange | undefined;
   terminalId: string;
   paymentTypeFilter: string;
@@ -31,17 +29,10 @@ type UtilParams = {
 
 const EMPTY_TOTALS: SummaryTotals = { discounts: 0, revenue: 0, amountPaid: 0, customerBalance: 0, cost: 0, grossProfit: 0, vatableSales: 0, vatAmount: 0, nonVatSales: 0, accountPayments: 0 };
 
-export function useDetailsUtils({ sales, searchTerm, dateRange, terminalId, paymentTypeFilter, totals }: UtilParams) {
-  // Payment type is applied server-side by /api/sales/transactions — `sales`
-  // already reflects it. Search remains client-side (free text over the loaded page).
-  const filteredSales = useMemo(() => sales.filter(sale => {
-    if (searchTerm) {
-      const t = searchTerm.toLowerCase();
-      if (!String(sale.id || sale.posTransactionId).toLowerCase().includes(t) &&
-          !sale.customer?.name?.toLowerCase().includes(t)) return false;
-    }
-    return true;
-  }), [sales, searchTerm]);
+export function useDetailsUtils({ sales, dateRange, terminalId, paymentTypeFilter, totals }: UtilParams) {
+  // Search, payment type, and all other filters are applied server-side by
+  // /api/sales/transactions — `sales` already reflects the full filtered result set.
+  const filteredSales = sales;
 
   // Totals come from the server, aggregated across ALL rows matching the active
   // filters/date range — not just the current page — so the summary cards reflect

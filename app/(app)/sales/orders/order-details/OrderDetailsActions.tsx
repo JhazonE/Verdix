@@ -6,10 +6,11 @@ import { Printer } from 'lucide-react';
 type Props = {
   onPrint: () => void;
   onPrintPOSInvoice: () => void;
+  onPrintTemplate: () => void;
   onClose: () => void;
 };
 
-export function OrderDetailsActions({ onPrint, onPrintPOSInvoice, onClose }: Props) {
+export function OrderDetailsActions({ onPrint, onPrintPOSInvoice, onPrintTemplate, onClose }: Props) {
   return (
     // These are controls around the paper, not the paper itself, so they
     // follow the theme. The removed `bg-white` overrides forced a white face
@@ -22,7 +23,7 @@ export function OrderDetailsActions({ onPrint, onPrintPOSInvoice, onClose }: Pro
       <Button variant="outline" onClick={onPrintPOSInvoice} className="h-10 px-6 font-bold text-xs uppercase tracking-tight shadow-sm">
         <Printer className="mr-2 h-4 w-4" /> Print POS Invoice
       </Button>
-      <Button variant="outline" onClick={onPrint} className="h-10 px-6 font-bold text-xs uppercase tracking-tight shadow-sm">
+      <Button variant="outline" onClick={onPrintTemplate} className="h-10 px-6 font-bold text-xs uppercase tracking-tight shadow-sm">
         <Printer className="mr-2 h-4 w-4" /> Print to template
       </Button>
       <Button variant="outline" onClick={onClose} className="h-10 px-6 font-bold text-xs uppercase tracking-tight">

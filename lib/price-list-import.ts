@@ -1,5 +1,6 @@
 import { applyAdjustment, isValidPriceValue, type AdjustmentType } from '@/lib/price-update-math';
 import { query, withTransaction } from '@/lib/mysql';
+import { ensureCategoryExists, ensureBrandExists, ensureUnitOfMeasureExists } from '@/lib/ensure-lookup-values';
 
 export interface PriceUpdateItem {
   productId: string;
@@ -359,6 +360,21 @@ export async function insertNewProducts(
   let created = 0;
   let done = 0;
   const failed: { row: NewProductFromExcel; reason: string }[] = [];
+
+  // Excel-created rows carry category/brand/unit as free text, same as the
+  // JSON/CSV product-import routes. Without this they land on
+  // products.category/.brand/.unit_of_measure but never appear in the
+  // categories/brands/units_of_measure lookup tables the Manage
+  // Categories/Brands/Units dialogs (and category-markup precedence) read
+  // from. Deduped up front so a 15,000-row file does one lookup per distinct
+  // name instead of one per row.
+  const distinctBy = (values: (string | undefined)[]) =>
+    [...new Set(values.filter((v): v is string => Boolean(v && v.trim())))];
+  await Promise.all([
+    ...distinctBy(rows.map(r => r.category)).map(ensureCategoryExists),
+    ...distinctBy(rows.map(r => r.brand)).map(ensureBrandExists),
+    ...distinctBy(rows.map(r => r.unitOfMeasure)).map(ensureUnitOfMeasureExists),
+  ]);
 
   const insertOne = async (connection: any, r: NewProductFromExcel, productId: string) => {
     await connection.query(`INSERT INTO products (${PRODUCTS_COLUMNS}) VALUES ${PRODUCTS_PLACEHOLDERS}`, buildProductValues(r, warehouseId, productId));

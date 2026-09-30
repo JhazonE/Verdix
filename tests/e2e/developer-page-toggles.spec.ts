@@ -75,11 +75,11 @@ test.describe('developer page toggles — sidebar', () => {
     await seedSession(page, ADMIN);
     await page.goto('/developer/options');
 
-    // The Queue block is hidden until Pharmacy is selected.
+    // The Queue block is hidden until Ordering is selected.
     await expect(page.getByText('Queue Number Settings')).toHaveCount(0);
 
-    // Select Pharmacy — saves on click.
-    await page.getByRole('button', { name: 'Pharmacy' }).click();
+    // Select Ordering — saves on click.
+    await page.getByRole('button', { name: 'Ordering' }).click();
 
     // Persisted to pos-settings.
     await expect.poll(async () => {
@@ -90,7 +90,7 @@ test.describe('developer page toggles — sidebar', () => {
     // Queue block now visible.
     await expect(page.getByText('Queue Number Settings')).toBeVisible();
 
-    // Reset to default so we don't leak pharmacy mode into other tests.
+    // Reset to default so we don't leak ordering mode into other tests.
     await request.post('/api/pos-settings', { data: { posMode: 'default' } });
   });
 });

@@ -88,13 +88,18 @@ export async function GET(request: NextRequest) {
       params.push(terminalId);
     }
     
+    // Voided sales are excluded from this endpoint entirely (list, count, and totals) —
+    // the Sales Transactions page is not where voids are reviewed; that's the dedicated
+    // Post Void module (/sales/voids, backed by /api/sales/voids-report). A voided sale
+    // still carries transaction_type = 'sale' on its pos_transactions row (nothing ever
+    // retypes it, see void-transaction/route.ts), so the exclusion has to key off
+    // sales_transactions.status, not transaction_type.
+    whereClause += " AND COALESCE(st.status, '') NOT IN ('Voided', 'Void')";
+
     // Status filter: tricky because pos_transactions has 'transaction_type' (sale, void, return)
     // while sales_transactions has 'status' (Paid, Returned, Void).
-    // If user asks for 'Void', we look for transaction_type = 'void' OR sale_status = 'Void'
     if (status) {
-      if (status === 'Voided') {
-         whereClause += " AND (pt.transaction_type = 'void' OR st.status = 'Voided')";
-      } else if (status === 'Returned') {
+      if (status === 'Returned') {
          whereClause += " AND (pt.transaction_type = 'return' OR st.status = 'Returned')";
       } else if (status === 'Paid') {
          whereClause += " AND (pt.transaction_type = 'sale' AND st.status = 'Paid')";
@@ -121,8 +126,19 @@ export async function GET(request: NextRequest) {
       params.push(`%${reference}%`, `%${reference}%`, `%${reference}%`, `%${reference}%`);
     }
     if (search) {
-      whereClause += ' AND (pt.id LIKE ? OR pt.order_number LIKE ? OR c.name LIKE ?)';
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      whereClause += ' AND (pt.id LIKE ? OR pt.order_number LIKE ? OR pt.si_number LIKE ? OR st.receipt_number LIKE ? OR st.reference LIKE ? OR c.name LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    // Voided rows are already gone from whereClause above. Returned rows still pass
+    // through (Merchandise Credits explicitly requests status=Returned from this same
+    // endpoint), so the totals still need their own carve-out: skip the sale-only
+    // exclusion when the caller explicitly asked to see that status's own totals,
+    // otherwise a return would zero out its own "returned amount" summary.
+    let totalsWhereClause = whereClause;
+    const totalsParams = [...params];
+    if (status !== 'Returned') {
+      totalsWhereClause += " AND pt.transaction_type = 'sale' AND COALESCE(st.status, '') NOT IN ('Returned', 'Cancelled')";
     }
 
     // 1. Get total count
@@ -169,9 +185,9 @@ export async function GET(request: NextRequest) {
         LEFT JOIN products p ON pti.product_id = p.id
         GROUP BY pti.pos_transaction_id
       ) item_costs ON item_costs.pos_transaction_id = pt.id
-      WHERE 1=1 ${whereClause}
+      WHERE 1=1 ${totalsWhereClause}
     `;
-    const totalsResult = await query(totalsSql, params);
+    const totalsResult = await query(totalsSql, totalsParams);
     const totalsRow = totalsResult[0] || {};
     const aggDiscounts = parseFloat(totalsRow.discounts) || 0;
     const aggRevenue = parseFloat(totalsRow.revenue) || 0;

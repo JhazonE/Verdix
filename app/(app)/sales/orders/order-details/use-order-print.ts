@@ -256,6 +256,20 @@ export function useOrderPrint({ order, settings, mode }: Props) {
     setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
   };
 
+  const handlePrintTemplate = () => {
+    if (!order) return;
+    const printWindow = window.open('', '_blank', 'width=500,height=700');
+    if (!printWindow) return;
+
+    const templateStyles = `<style>* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #000; padding: 8mm; } .header { text-align: center; margin-bottom: 8px; } .business-name { font-weight: bold; font-size: 14px; text-transform: uppercase; } .address { font-size: 10px; } .dashed { border-top: 1px dashed #000; margin: 6px 0; } .title { text-align: center; font-weight: bold; font-size: 13px; margin: 8px 0; text-transform: uppercase; } .info-row { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 2px; } table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 10px; } th, td { padding: 3px 4px; } th { border-bottom: 1px solid #000; text-transform: uppercase; text-align: left; } td.num, th.num { text-align: right; } td.center, th.center { text-align: center; } .totals { margin-top: 8px; } .total-row { display: flex; justify-content: space-between; font-size: 11px; padding: 1px 0; } .total-row.grand { font-weight: bold; font-size: 13px; border-top: 1px solid #000; margin-top: 4px; padding-top: 4px; } .signatures { display: flex; justify-content: space-between; margin-top: 24px; } .sig-box { width: 45%; text-align: center; } .sig-line { border-top: 1px solid #000; margin-bottom: 3px; } .sig-label { font-size: 8px; text-transform: uppercase; } @media print { @page { size: 5.5in 8.5in; margin: 8mm; } body { padding: 0; } }</style>`;
+
+    printWindow.document.write(`<!DOCTYPE html><html><head><title>${documentTitle} - ${order.reference || order.id}</title>${templateStyles}</head><body><div class="header"><div class="business-name">${settings.businessName || 'VENDIX'}</div>${settings.address ? `<div class="address">${settings.address}</div>` : ''}${settings.contactNumber ? `<div class="address">${settings.contactNumber}</div>` : ''}</div><div class="dashed"></div><div class="title">${documentTitle}</div><div class="info-row"><span>${mode === 'delivery-note' ? 'Reference' : documentTitle === 'SALES ORDER' ? 'Order' : 'Invoice'} #:</span><span>${order.reference || order.id}</span></div><div class="info-row"><span>Date:</span><span>${displayDate ? format(new Date(displayDate), 'MMM dd, yyyy') : 'N/A'}</span></div><div class="info-row"><span>Bill To:</span><span>${order.customer?.name || 'Walk-in Customer'}</span></div><table><thead><tr><th>Description</th><th class="center">Qty</th><th class="num">Price</th><th class="num">Amount</th><th class="center">VAT</th></tr></thead><tbody>${order.items.map(item => `<tr><td>${item.product?.name || 'Unknown'}${itemUnitLabel(item) ? ` (${itemUnitLabel(item)})` : ''}</td><td class="center">${formatQuantity(item.quantity)}</td><td class="num">${Number(item.price || 0).toFixed(2)}</td><td class="num">${(Number(item.price || 0) * Number(item.quantity || 0)).toFixed(2)}</td><td class="center">${(item as any).vatable ? '✓' : ''}</td></tr>`).join('')}</tbody></table><div class="dashed"></div><div class="totals"><div class="total-row"><span>Subtotal</span><span>${subtotal.toFixed(2)}</span></div>${shipping > 0 ? `<div class="total-row"><span>Shipping</span><span>${shipping.toFixed(2)}</span></div>` : ''}<div class="total-row"><span>VAT (12%)</span><span>${vatAmount.toFixed(2)}</span></div><div class="total-row grand"><span>Total</span><span>${grandTotal.toFixed(2)}</span></div></div><div class="signatures"><div class="sig-box"><div class="sig-line">&nbsp;</div><div class="sig-label">Authorized Signature</div></div><div class="sig-box"><div class="sig-line">&nbsp;</div><div class="sig-label">Customer's Signature</div></div></div></body></html>`);
+
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
+  };
+
   return {
     printContentRef,
     documentTitle,
@@ -266,5 +280,6 @@ export function useOrderPrint({ order, settings, mode }: Props) {
     grandTotal,
     handlePrint,
     handlePrintPOSInvoice,
+    handlePrintTemplate,
   };
 }

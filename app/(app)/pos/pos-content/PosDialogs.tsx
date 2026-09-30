@@ -21,6 +21,7 @@ import { OverallReadingDialog } from '../overall-reading/OverallReadingDialog';
 import { ShutdownConfirmationDialog } from '../shutdown-confirmation/ShutdownConfirmationDialog';
 import { EndShiftReportDialog } from '../end-shift-report/EndShiftReportDialog';
 import { InsufficientStockDialog } from '../insufficient-stock/InsufficientStockDialog';
+import { VoidLineChoiceDialog } from '../void-line-choice/VoidLineChoiceDialog';
 import { usePOS } from './use-pos';
 
 type Props = ReturnType<typeof usePOS>;
@@ -137,13 +138,21 @@ export function PosDialogs(pos: Props) {
         preventCloseAutoFocus
       />
 
+      <VoidLineChoiceDialog
+        open={pos.isVoidLineChoiceOpen}
+        onOpenChange={pos.setIsVoidLineChoiceOpen}
+        onChoose={pos.handleVoidLineChoice}
+        selectedItemName={pos.items.find((i: any) => i.lineId === pos.pendingVoidItemId)?.name}
+        itemCount={pos.items.length}
+      />
+
       <AdminAuthDialog
         isOpen={pos.isLineVoidAuthOpen}
         onOpenChange={pos.setIsLineVoidAuthOpen}
         title="Authorization Required"
         description="Please provide credentials to Void Line Items"
         requiredCredentials={pos.lineVoidAuthCredentials}
-        onSuccess={() => { pos.setIsLineVoidAuthOpen(false); if (pos.pendingVoidItemId) pos.performVoidLine(pos.pendingVoidItemId); }}
+        onSuccess={() => { pos.setIsLineVoidAuthOpen(false); pos.performVoidLine(pos.pendingVoidItemId); }}
       />
 
       <AdminAuthDialog

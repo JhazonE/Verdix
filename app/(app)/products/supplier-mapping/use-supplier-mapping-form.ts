@@ -7,6 +7,13 @@ import type { SupplierProductMapping } from '@/lib/types';
 
 import { addSupplierMapping, updateSupplierMapping } from '../actions';
 
+// Supplier SKU is a freeform, per-supplier code (unlike the retired products.sku),
+// so a collision here is harmless — this only fills the field when left blank.
+function generateSupplierSku(): string {
+  const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
+  return `SUP-${randomPart}`;
+}
+
 export interface UseSupplierMappingFormProps {
   productId: string;
   isOpen: boolean;
@@ -53,7 +60,7 @@ export function useSupplierMappingForm({
         setLeadTime('');
         setRop('');
         setCost('');
-        setSupplierSku('');
+        setSupplierSku(generateSupplierSku());
         setIsPrimary(false);
       }
     }
@@ -69,12 +76,14 @@ export function useSupplierMappingForm({
       return;
     }
 
+    const finalSupplierSku = supplierSku.trim() || generateSupplierSku();
+
     const mappingData = {
       supplierId: selectedSupplier,
       leadTime: parseInt(leadTime),
       rop: parseInt(rop),
       cost: cost ? parseFloat(cost) : undefined,
-      supplierSku,
+      supplierSku: finalSupplierSku,
       isPrimary,
     };
 
@@ -94,7 +103,7 @@ export function useSupplierMappingForm({
           parseInt(leadTime),
           parseInt(rop),
           cost ? parseFloat(cost) : undefined,
-          supplierSku,
+          finalSupplierSku,
           isPrimary
         );
       } else {
@@ -104,7 +113,7 @@ export function useSupplierMappingForm({
           parseInt(leadTime),
           parseInt(rop),
           cost ? parseFloat(cost) : undefined,
-          supplierSku,
+          finalSupplierSku,
           isPrimary
         );
       }

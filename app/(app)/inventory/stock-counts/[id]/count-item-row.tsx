@@ -6,6 +6,9 @@ import { Input } from '@/components/ui/input';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { formatCurrency, toSafeNumber } from '@/lib/utils';
 
+import { fmtQty, fmtVariance, multiUnits } from './count-format';
+import { UnitCountInput } from './unit-count-input';
+
 // Memoized: the parent re-renders on every search keystroke (typed text is its own
 // state, separate from the applied filter), and without memo every row — with its
 // own variance math and an input — re-rendered on every keystroke too, which is what
@@ -21,6 +24,7 @@ export const CountItemRow = memo(function CountItemRow({
   onChange: (id: string, value: string) => void;
   onEnter: () => void;
 }) {
+  const units = multiUnits(item);
   const variance =
     item.counted_quantity !== null ? item.counted_quantity - item.snapshot_quantity : 0;
   // Actual value of what's physically on-hand. Per design, always show the
@@ -39,10 +43,20 @@ export const CountItemRow = memo(function CountItemRow({
       <TableCell className="text-muted-foreground text-sm">
         {item.product_barcode || '-'}
       </TableCell>
-      <TableCell className="text-right">{item.snapshot_quantity}</TableCell>
+      <TableCell className="text-right">{fmtQty(item, item.snapshot_quantity)}</TableCell>
       <TableCell className="text-right">
         {isCompleted ? (
-          <span className="font-semibold">{item.counted_quantity ?? '-'}</span>
+          <span className="font-semibold">
+            {item.counted_quantity === null ? '-' : fmtQty(item, item.counted_quantity)}
+          </span>
+        ) : units ? (
+          <UnitCountInput
+            itemId={item.id}
+            units={units}
+            countedQuantity={item.counted_quantity}
+            onChange={onChange}
+            onEnter={onEnter}
+          />
         ) : (
           <Input
             type="number"
@@ -59,7 +73,7 @@ export const CountItemRow = memo(function CountItemRow({
       <TableCell className="text-right">{formatCurrency(costAmount)}</TableCell>
       <TableCell className="text-right">{formatCurrency(retailAmount)}</TableCell>
       <TableCell className={`text-right font-medium ${varianceClass}`}>
-        {item.counted_quantity === null ? '-' : variance > 0 ? `+${variance}` : variance}
+        {item.counted_quantity === null ? '-' : fmtVariance(item, variance)}
       </TableCell>
       <TableCell className={`text-right font-medium ${varianceClass}`}>
         {item.counted_quantity === null

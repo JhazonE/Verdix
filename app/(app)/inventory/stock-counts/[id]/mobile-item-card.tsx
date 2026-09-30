@@ -6,6 +6,9 @@ import { ChevronDown, ChevronUp, Package, TrendingDown, TrendingUp } from 'lucid
 import { Input } from '@/components/ui/input';
 import { cn, formatCurrency, toSafeNumber } from '@/lib/utils';
 
+import { fmtQty, fmtVariance, multiUnits } from './count-format';
+import { UnitCountInput } from './unit-count-input';
+
 // Memoized: the parent re-renders on every search keystroke (typed text is its own
 // state, separate from the applied filter), and without memo every row — with its
 // own conditional classNames and inputs — re-rendered on every keystroke too, which
@@ -27,6 +30,7 @@ export const MobileItemCard = memo(function MobileItemCard({
       : null;
 
   const [expanded, setExpanded] = useState(false);
+  const units = multiUnits(item);
 
   const isCounted = item.counted_quantity !== null;
   const hasVariance = variance !== null && variance !== 0;
@@ -102,7 +106,7 @@ export const MobileItemCard = memo(function MobileItemCard({
                   : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
               )}
             >
-              {item.counted_quantity}
+              {fmtQty(item, item.counted_quantity)}
             </span>
           ) : (
             <span className="text-xs text-muted-foreground italic">Pending</span>
@@ -124,14 +128,14 @@ export const MobileItemCard = memo(function MobileItemCard({
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">
                 Snapshot
               </p>
-              <p className="text-sm font-semibold">{item.snapshot_quantity}</p>
+              <p className="text-sm font-semibold">{fmtQty(item, item.snapshot_quantity)}</p>
             </div>
             <div className="bg-muted/50 rounded-xl py-2 px-1">
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">
                 Counted
               </p>
               <p className="text-sm font-semibold">
-                {isCounted ? item.counted_quantity : '—'}
+                {isCounted ? fmtQty(item, item.counted_quantity) : '—'}
               </p>
             </div>
             <div
@@ -158,12 +162,12 @@ export const MobileItemCard = memo(function MobileItemCard({
               ) : (variance ?? 0) < 0 ? (
                 <p className="flex items-center justify-center gap-0.5 text-sm font-semibold text-red-600 dark:text-red-400">
                   <TrendingDown className="h-3 w-3" />
-                  {variance}
+                  {fmtVariance(item, variance!)}
                 </p>
               ) : (
                 <p className="flex items-center justify-center gap-0.5 text-sm font-semibold text-emerald-600 dark:text-emerald-400">
                   <TrendingUp className="h-3 w-3" />
-                  +{variance}
+                  {fmtVariance(item, variance!)}
                 </p>
               )}
             </div>
@@ -217,6 +221,21 @@ export const MobileItemCard = memo(function MobileItemCard({
               <label className="text-xs text-muted-foreground min-w-[80px]">
                 Enter count:
               </label>
+              {units ? (
+                <UnitCountInput
+                  itemId={item.id}
+                  units={units}
+                  countedQuantity={item.counted_quantity}
+                  onChange={onChange}
+                  onEnter={() => {
+                    setExpanded(false);
+                    onEnter();
+                  }}
+                  className="flex-1 flex-wrap justify-start"
+                  inputClassName="h-9 text-base font-semibold"
+                  stopClickPropagation
+                />
+              ) : (
               <Input
                 type="number"
                 min="0"
@@ -233,6 +252,7 @@ export const MobileItemCard = memo(function MobileItemCard({
                 inputMode="numeric"
                 placeholder="0"
               />
+              )}
             </div>
           )}
         </div>

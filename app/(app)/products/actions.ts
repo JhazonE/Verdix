@@ -1879,8 +1879,32 @@ export async function addCategory(name: string, markupPercentage?: number) {
 
 export async function updateCategory(id: string, name: string, markupPercentage?: number) {
   try {
-    await query('UPDATE categories SET name = ?, markup_percentage = ? WHERE id = ?', [name, markupPercentage || null, id]);
-    return { success: true, message: 'Category updated successfully.' };
+    // products.category is free text keyed by name, so a rename must re-point
+    // the products (same reason updateUnitOfMeasure does) or they orphan.
+    const productsUpdated = await withTransaction(async (connection) => {
+      const [rows]: any = await connection.query('SELECT name FROM categories WHERE id = ?', [id]);
+      const previous = rows[0];
+
+      await connection.query(
+        'UPDATE categories SET name = ?, markup_percentage = ? WHERE id = ?',
+        [name, markupPercentage || null, id],
+      );
+
+      if (!previous?.name || previous.name === name) return 0;
+
+      const [result]: any = await connection.query(
+        'UPDATE products SET category = ? WHERE category = ?',
+        [name, previous.name],
+      );
+      return result.affectedRows ?? 0;
+    });
+    return {
+      success: true,
+      message:
+        productsUpdated > 0
+          ? `Category updated. ${productsUpdated} product${productsUpdated === 1 ? '' : 's'} re-labelled.`
+          : 'Category updated successfully.',
+    };
   } catch (error) {
     console.error('Error updating category:', error);
     return { success: false, message: 'Error updating category.' };
@@ -1889,6 +1913,16 @@ export async function updateCategory(id: string, name: string, markupPercentage?
 
 export async function deleteCategory(id: string) {
   try {
+    const [category] = await query('SELECT name FROM categories WHERE id = ?', [id]) as any[];
+    if (category?.name) {
+      const [{ n }] = await query('SELECT COUNT(*) AS n FROM products WHERE category = ?', [category.name]) as any[];
+      if (Number(n) > 0) {
+        return {
+          success: false,
+          message: `Cannot delete "${category.name}": ${n} product${Number(n) === 1 ? ' uses' : 's use'} it. Move them to another category first.`,
+        };
+      }
+    }
     await query('DELETE FROM categories WHERE id = ?', [id]);
     return { success: true, message: 'Category deleted successfully.' };
   } catch (error) {
@@ -2679,7 +2713,10 @@ export async function searchProducts(searchQuery: string) {
               FROM conversion_factors cf
               WHERE cf.product_id = p.id) as conversion_factors,
              (SELECT su.barcode FROM product_selling_units su
-              WHERE su.product_id = p.id AND su.is_base = 1 LIMIT 1) as base_unit_barcode
+              WHERE su.product_id = p.id AND su.is_base = 1 LIMIT 1) as base_unit_barcode,
+             (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', su.id, 'name', su.name, 'factor', su.factor, 'isBase', su.is_base = 1))
+              FROM product_selling_units su
+              WHERE su.product_id = p.id) as selling_units
       FROM products p
       WHERE (p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ? OR EXISTS (
         SELECT 1 FROM product_selling_units su WHERE su.product_id = p.id AND su.barcode LIKE ?
@@ -2701,6 +2738,12 @@ export async function searchProducts(searchQuery: string) {
       price: parseFloat(r.price) || 0,
       cost: r.cost ? parseFloat(r.cost) : undefined,
       conversionFactors: typeof r.conversion_factors === 'string' ? JSON.parse(r.conversion_factors) : (r.conversion_factors || []),
+      sellingUnits: (typeof r.selling_units === 'string' ? JSON.parse(r.selling_units) : (r.selling_units || [])).map((u: any) => ({
+        id: u.id as string,
+        name: u.name as string,
+        factor: Number(u.factor),
+        isBase: Boolean(u.isBase),
+      })),
     }));
   } catch (error) {
     console.error('Error searching products:', error);

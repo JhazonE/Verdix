@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import {
   Inbox, User, Clock, ShoppingCart, FileText,
-  RotateCcw, Settings2, ChevronDown, ChevronUp, Loader2,
+  RotateCcw, Settings2, ChevronDown, ChevronUp, Loader2, Pencil,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
@@ -31,9 +31,20 @@ type Props = {
   queuedOrders: QueuedOrder[];
   onClaimOrder: (orderId: string) => void;
   currencySymbol?: string;
+  /** Frontliner viewing their own sent orders: can recall an order back to cart to edit it, but no claim/settings controls. */
+  isFrontliner?: boolean;
+  currentFrontlinerId?: string;
+  onRecallOrder?: (orderId: string) => void;
 };
 
-export function PosQueuePanel({ open, onOpenChange, queuedOrders, onClaimOrder, currencySymbol = '₱' }: Props) {
+export function PosQueuePanel({
+  open, onOpenChange, queuedOrders, onClaimOrder, currencySymbol = '₱',
+  isFrontliner = false, currentFrontlinerId, onRecallOrder,
+}: Props) {
+  const visibleOrders = isFrontliner
+    ? queuedOrders.filter(o => o.fronlinerId === currentFrontlinerId)
+    : queuedOrders;
+
   const { toast } = useToast();
   const [config, setConfig] = useState<QueueConfig | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -119,39 +130,41 @@ export function PosQueuePanel({ open, onOpenChange, queuedOrders, onClaimOrder, 
           <div className="flex items-center justify-between">
             <SheetTitle className="flex items-center gap-2">
               <Inbox className="h-5 w-5 text-violet-600" />
-              Frontliner Queue
-              {queuedOrders.length > 0 && (
-                <Badge className="bg-violet-600 text-white ml-1">{queuedOrders.length}</Badge>
+              {isFrontliner ? 'My Queued Orders' : 'Frontliner Queue'}
+              {visibleOrders.length > 0 && (
+                <Badge className="bg-violet-600 text-white ml-1">{visibleOrders.length}</Badge>
               )}
             </SheetTitle>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={() => setShowSettings(v => !v)}
-                title="Queue Settings"
-              >
-                {showSettings ? <ChevronUp className="h-4 w-4" /> : <Settings2 className="h-4 w-4" />}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 text-xs"
-                onClick={handleReset}
-                disabled={isResetting}
-              >
-                {isResetting
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  : <RotateCcw className="h-3.5 w-3.5" />
-                }
-                Reset
-              </Button>
-            </div>
+            {!isFrontliner && (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowSettings(v => !v)}
+                  title="Queue Settings"
+                >
+                  {showSettings ? <ChevronUp className="h-4 w-4" /> : <Settings2 className="h-4 w-4" />}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs"
+                  onClick={handleReset}
+                  disabled={isResetting}
+                >
+                  {isResetting
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <RotateCcw className="h-3.5 w-3.5" />
+                  }
+                  Reset
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Counter progress bar */}
-          {config && (
+          {!isFrontliner && config && (
             <div className="mt-3 space-y-1.5">
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>Current: <strong className="text-violet-600 font-bold">
@@ -172,7 +185,7 @@ export function PosQueuePanel({ open, onOpenChange, queuedOrders, onClaimOrder, 
           )}
 
           {/* Settings panel */}
-          {showSettings && (
+          {!isFrontliner && showSettings && (
             <div className="mt-3 rounded-xl border bg-muted/30 p-4 space-y-4">
               <div className="space-y-1.5">
                 <Label htmlFor="q-max" className="text-xs font-semibold">Max Queue Number</Label>
@@ -206,16 +219,18 @@ export function PosQueuePanel({ open, onOpenChange, queuedOrders, onClaimOrder, 
         </SheetHeader>
 
         {/* Orders list */}
-        {queuedOrders.length === 0 ? (
+        {visibleOrders.length === 0 ? (
           <div className="flex flex-col items-center justify-center flex-1 text-muted-foreground gap-3 px-5">
             <Inbox className="h-12 w-12 opacity-20" />
             <p className="text-sm font-medium">No pending orders</p>
-            <p className="text-xs text-center">Orders tagged by frontliners will appear here.</p>
+            <p className="text-xs text-center">
+              {isFrontliner ? 'Orders you send to the queue will appear here.' : 'Orders tagged by frontliners will appear here.'}
+            </p>
           </div>
         ) : (
           <ScrollArea className="flex-1 px-4 py-3">
             <div className="space-y-3">
-              {queuedOrders.map(order => (
+              {visibleOrders.map(order => (
                 <div
                   key={order.id}
                   className="rounded-xl border border-border/60 bg-muted/30 p-4 space-y-3 hover:border-violet-400/50 hover:bg-violet-50/30 dark:hover:bg-violet-950/10 transition-colors"
@@ -241,14 +256,26 @@ export function PosQueuePanel({ open, onOpenChange, queuedOrders, onClaimOrder, 
                         </span>
                       </div>
                     </div>
-                    <Button
-                      size="sm"
-                      className="shrink-0 bg-violet-600 hover:bg-violet-700 text-white h-8 px-3"
-                      onClick={() => onClaimOrder(order.id)}
-                    >
-                      <ShoppingCart className="h-3.5 w-3.5 mr-1.5" />
-                      Load
-                    </Button>
+                    {isFrontliner ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0 h-8 px-3 border-violet-400/60 text-violet-700 hover:bg-violet-50 dark:text-violet-400 dark:hover:bg-violet-950/30"
+                        onClick={() => onRecallOrder?.(order.id)}
+                      >
+                        <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                        Edit
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="shrink-0 bg-violet-600 hover:bg-violet-700 text-white h-8 px-3"
+                        onClick={() => onClaimOrder(order.id)}
+                      >
+                        <ShoppingCart className="h-3.5 w-3.5 mr-1.5" />
+                        Load
+                      </Button>
+                    )}
                   </div>
 
                   {order.queueNotes && (

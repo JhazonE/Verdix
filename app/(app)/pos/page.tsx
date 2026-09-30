@@ -82,7 +82,11 @@ function POSContent() {
             handleShutdown={pos.handleShutdown}
             isFrontliner={pos.isFrontliner}
             posMode={pos.businessSettings?.posMode}
-            queuedOrdersCount={pos.queuedOrders.length}
+            queuedOrdersCount={
+              pos.isFrontliner
+                ? pos.queuedOrders.filter((o) => o.fronlinerId === pos.currentUser?.uid).length
+                : pos.queuedOrders.length
+            }
             setIsQueuePanelOpen={pos.setIsQueuePanelOpen}
           />
 
@@ -150,6 +154,7 @@ function POSContent() {
           isFrontliner={pos.isFrontliner}
           handleSendToQueue={pos.handleSendToQueue}
           posMode={pos.businessSettings?.posMode}
+          editingQueueOrder={pos.editingQueueOrder}
         />
       </div>
 
@@ -194,6 +199,9 @@ function POSContent() {
         queuedOrders={pos.queuedOrders}
         onClaimOrder={pos.handleClaimQueuedOrder}
         currencySymbol={pos.businessSettings?.currencySymbol}
+        isFrontliner={pos.isFrontliner}
+        currentFrontlinerId={pos.currentUser?.uid}
+        onRecallOrder={pos.handleRecallQueuedOrder}
       />
 
       <FrontlinerModePrompt

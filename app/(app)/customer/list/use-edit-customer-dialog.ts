@@ -65,8 +65,8 @@ export function useEditCustomerDialog({
   const form = useForm<CustomerFormValues>({
     resolver: zodResolver(customerSchema),
     defaultValues: {
-      name: customer.name,
-      contactNumber: customer.contactNumber,
+      name: customer.name || '',
+      contactNumber: customer.contactNumber || '',
       active: customer.active === undefined ? true : !!customer.active,
       loyaltyPoints: customer.loyaltyPoints || 0,
       paymentTerms: customer.paymentTerms || '',
@@ -81,8 +81,8 @@ export function useEditCustomerDialog({
   useEffect(() => {
     if (isOpen && customer) {
       form.reset({
-        name: customer.name,
-        contactNumber: customer.contactNumber,
+        name: customer.name || '',
+        contactNumber: customer.contactNumber || '',
         active: customer.active === undefined ? true : !!customer.active,
         loyaltyPoints: customer.loyaltyPoints || 0,
         paymentTerms: customer.paymentTerms || '',

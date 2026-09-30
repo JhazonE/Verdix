@@ -112,6 +112,14 @@ export function usePOS() {
   );
 
   const [queuedOrders, setQueuedOrders] = useState<QueuedOrder[]>([]);
+  // Set when a frontliner recalls one of their own queued orders back to the cart to edit it;
+  // resending reuses this same customer-facing number instead of drawing a new one. Cleared
+  // whenever the cart empties out (sent back, or voided out line by line) so the number
+  // never leaks onto an unrelated later order.
+  const [editingQueueOrder, setEditingQueueOrder] = useState<{ dailyQueueNumber: number } | null>(null);
+  useEffect(() => {
+    if (items.length === 0 && editingQueueOrder) setEditingQueueOrder(null);
+  }, [items.length, editingQueueOrder]);
   const [isQueuePanelOpen, setIsQueuePanelOpen] = useState(false);
   const [isSendToQueueOpen, setIsSendToQueueOpen] = useState(false);
   const [isFrontlinerPromptOpen, setIsFrontlinerPromptOpen] = useState(false);
@@ -161,6 +169,8 @@ export function usePOS() {
   const [editingQtyItemId, setEditingQtyItemId] = useState<string | null>(null);
   const [editingPriceItemId, setEditingPriceItemId] = useState<string | null>(null);
   const [pendingVoidItemId, setPendingVoidItemId] = useState<string | null>(null);
+  const [pendingVoidScope, setPendingVoidScope] = useState<'selected' | 'all'>('selected');
+  const [isVoidLineChoiceOpen, setIsVoidLineChoiceOpen] = useState(false);
   const [qtyDraft, setQtyDraft] = useState('');
   const [isProductSearchOpen, setIsProductSearchOpen] = useState(false);
   const [isCollisionOpen, setIsCollisionOpen] = useState(false);
@@ -173,6 +183,7 @@ export function usePOS() {
   useEffect(() => {
     const isAnyDialogOpen =
       isTenderDialogOpen || isDiscountDialogOpen || isHeldTransOpen || isLineVoidAuthOpen ||
+      isVoidLineChoiceOpen ||
       isEndShiftOpen || isCashTransferOpen || isCustomerSelectOpen || isLoyaltyOpen ||
       isRecentSalesOpen || isVoidSalesOpen || isReturnSalesOpen || isPriceInquiryOpen ||
       isZReadingOpen || isShutdownConfirmOpen || isInsufficientStockOpen || isProductSearchOpen ||
@@ -184,6 +195,7 @@ export function usePOS() {
     }
   }, [
     isTenderDialogOpen, isDiscountDialogOpen, isHeldTransOpen, isLineVoidAuthOpen,
+    isVoidLineChoiceOpen,
     isEndShiftOpen, isCashTransferOpen, isCustomerSelectOpen, isLoyaltyOpen,
     isRecentSalesOpen, isVoidSalesOpen, isReturnSalesOpen, isPriceInquiryOpen,
     isZReadingOpen, isShutdownConfirmOpen, isInsufficientStockOpen, isProductSearchOpen,
@@ -340,9 +352,11 @@ export function usePOS() {
     };
   }, [fetchSettings]);
 
-  // Queue polling — only for non-frontliner cashiers when logged in & shift active
+  // Queue polling — cashiers need an active shift; frontliners poll as soon as logged in
+  // (they never run shifts) so they can see their own queued orders.
   useEffect(() => {
-    if (!isPosLoggedIn || !shiftActive || isFrontliner) return;
+    if (!isPosLoggedIn) return;
+    if (!isFrontliner && !shiftActive) return;
     const fetchQueue = () => {
       fetch(getApiUrl('/pos/queue'))
         .then(r => r.json())
@@ -771,12 +785,29 @@ export function usePOS() {
   };
 
   const handleVoidLine = (itemId: string | null) => {
+    if (items.length === 0) { toast({ title: 'Empty Cart', description: 'There are no items to void.', variant: 'destructive' }); return; }
     if (!itemId) { toast({ title: 'No Item Selected', description: 'Please select an item to void.', variant: 'destructive' }); return; }
-    if (enableLineVoidAuth) { setPendingVoidItemId(itemId); setIsLineVoidAuthOpen(true); }
-    else performVoidLine(itemId);
+    setPendingVoidItemId(itemId);
+    setIsVoidLineChoiceOpen(true);
   };
 
-  const performVoidLine = (itemId: string) => {
+  const handleVoidLineChoice = (scope: 'selected' | 'all') => {
+    setIsVoidLineChoiceOpen(false);
+    setPendingVoidScope(scope);
+    if (enableLineVoidAuth) setIsLineVoidAuthOpen(true);
+    else performVoidLine(pendingVoidItemId, scope);
+  };
+
+  const performVoidLine = (itemId: string | null, scope: 'selected' | 'all' = pendingVoidScope) => {
+    if (scope === 'all') {
+      const count = items.length;
+      setItems([]);
+      setSelectedItemId(null);
+      setPendingVoidItemId(null);
+      toast({ title: 'All Items Voided', description: `Removed ${count} ${count === 1 ? 'item' : 'items'} from the cart.` });
+      return;
+    }
+    if (!itemId) return;
     const item = items.find(i => i.lineId === itemId);
     if (!item) return;
     removeItem(itemId);
@@ -852,6 +883,7 @@ export function usePOS() {
           terminalId: selectedTerminalId,
           terminalName: currentTerminalName,
           shiftId: currentShiftId,
+          keepDailyQueueNumber: editingQueueOrder?.dailyQueueNumber,
         }),
       });
       const result = await response.json();
@@ -859,6 +891,7 @@ export function usePOS() {
         setItems([]);
         setSelectedItemId(null);
         setSelectedCustomer(WALK_IN_CUSTOMER);
+        setEditingQueueOrder(null);
         return result.data as { queueNumber: number; dailyQueueNumber: number };
       } else throw new Error(result.error);
     } catch (error: any) {
@@ -883,6 +916,34 @@ export function usePOS() {
       } else throw new Error(result.error);
     } catch (error: any) {
       toast({ title: 'Error', description: error.message || 'Failed to claim order.', variant: 'destructive' });
+    }
+  };
+
+  // Frontliner pulls their own queued order back into the cart to edit and re-send it.
+  const handleRecallQueuedOrder = async (orderId: string) => {
+    if (items.length > 0) {
+      toast({ title: 'Cart Not Empty', description: 'Clear the current cart before loading a queued order.', variant: 'destructive' });
+      return;
+    }
+    const requesterId = currentUser?.uid || currentUser?.id;
+    try {
+      const response = await fetch(
+        getApiUrl(`/pos/queue?id=${orderId}&action=recall&requesterId=${requesterId}`),
+        { method: 'DELETE' }
+      );
+      const result = await response.json();
+      if (result.success) {
+        setItems(withLineIds(result.data.items));
+        setQueuedOrders(prev => prev.filter(o => o.id !== orderId));
+        setEditingQueueOrder({ dailyQueueNumber: result.data.dailyQueueNumber });
+        setIsQueuePanelOpen(false);
+        toast({
+          title: `Order #${String(result.data.dailyQueueNumber).padStart(3, '0')} Loaded to Cart`,
+          description: 'Edit and send back to queue — it will keep the same number.',
+        });
+      } else throw new Error(result.error);
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Failed to recall order.', variant: 'destructive' });
     }
   };
 
@@ -1376,11 +1437,11 @@ export function usePOS() {
     currentUser, businessSettings, isTrainingMode, enableCustomerDisplay,
     openOnSecondScreen, showQuantityInSearch, showOverlay,
     // frontliner / queue
-    isFrontliner, queuedOrders, isQueuePanelOpen, setIsQueuePanelOpen,
+    isFrontliner, queuedOrders, editingQueueOrder, isQueuePanelOpen, setIsQueuePanelOpen,
     isSendToQueueOpen, setIsSendToQueueOpen,
     isFrontlinerPromptOpen, setIsFrontlinerPromptOpen,
     isFrontlinerBlocked,
-    handleSendToQueue, handleConfirmSendToQueue, handleClaimQueuedOrder,
+    handleSendToQueue, handleConfirmSendToQueue, handleClaimQueuedOrder, handleRecallQueuedOrder,
     // shift dialogs
     isCashCountAuthOpen, setIsCashCountAuthOpen,
     cashCountAuthCredentials,
@@ -1430,6 +1491,7 @@ export function usePOS() {
     isShutdownConfirmOpen, setIsShutdownConfirmOpen,
     // auth dialogs
     isLineVoidAuthOpen, setIsLineVoidAuthOpen, lineVoidAuthCredentials, pendingVoidItemId,
+    isVoidLineChoiceOpen, setIsVoidLineChoiceOpen, handleVoidLineChoice,
     isPriceEditAuthOpen, setIsPriceEditAuthOpen, priceEditAuthCredentials,
     isEditItemAuthOpen, setIsEditItemAuthOpen, editItemAuthCredentials, handleEditItemAuthSuccess,
     isEditQtyAuthOpen, setIsEditQtyAuthOpen, editQtyAuthCredentials, handleEditQtyAuthSuccess,

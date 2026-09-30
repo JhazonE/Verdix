@@ -9,7 +9,7 @@ import { useProducts, mapApiProduct } from '@/hooks/use-api';
 import { useDebounce } from '@/hooks/use-debounce';
 import { getApiUrl } from '@/lib/api-config';
 import { Product } from '@/lib/types';
-import { formatQuantity } from '@/lib/utils';
+import { formatUnitStockText } from '@/components/unit-stock-view';
 
 // ---------------------------------------------------------------------------
 // ProductSelector
@@ -172,7 +172,7 @@ export function ProductSelector({
                         </div>
                         <span className="text-sm text-muted-foreground font-medium">
                           Barcode: {unit?.barcode || product.sellingUnits?.find((u) => u.isBase)?.barcode || product.barcode || 'N/A'} | Stock:{' '}
-                          {formatQuantity(product.stock)}
+                          {formatUnitStockText(product.stock, unit?.factor, unit?.name)}
                         </span>
                       </div>
                     </CommandItem>

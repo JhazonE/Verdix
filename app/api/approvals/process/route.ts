@@ -151,7 +151,21 @@ export async function POST(request: NextRequest) {
           result = { success: scResult.success, error: scResult.error || '' };
         } else if (item.transaction_type === 'REPACKAGING') {
           const { breakPack, consolidatePack } = await import('@/app/(app)/products/actions');
-          if (txData.direction === 'consolidate') {
+          if (txData.kind === 'selling_unit_repack') {
+            const { repackSellingUnits } = await import('@/app/(app)/inventory/repackaging/actions');
+            const suResult = await repackSellingUnits(
+              {
+                productId: txData.productId,
+                fromUnitId: txData.fromUnitId,
+                toUnitId: txData.toUnitId,
+                quantity: txData.repackQuantity,
+                actualProduced: txData.actualProduced,
+              },
+              item.created_by,
+              true // isInternalFinalization
+            );
+            result = { success: suResult.success, error: suResult.success ? '' : suResult.message };
+          } else if (txData.direction === 'consolidate') {
             const cpResult = await consolidatePack(
               txData.packId,
               txData.bulkId || null,

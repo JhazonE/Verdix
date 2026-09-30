@@ -51,8 +51,13 @@ export function useDetailsFilters() {
   const applyTerminal = () => { setTerminalId(tempTerminalId); setTerminalDialogOpen(false); };
   const applyDateRange = () => { setDateRange(tempDateRange); setDateRangeDialogOpen(false); };
 
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
+
   return {
-    searchTerm, setSearchTerm,
+    searchTerm, setSearchTerm: handleSearchChange,
     dateRange, setDateRange,
     terminalId, setTerminalId,
     paymentTypeFilter, setPaymentTypeFilter,

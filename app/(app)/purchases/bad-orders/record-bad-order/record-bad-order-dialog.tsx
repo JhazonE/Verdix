@@ -46,6 +46,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Search, Trash2, AlertTriangle } from 'lucide-react';
 import { formatQuantity } from '@/lib/utils';
+import { UnitStockView } from '@/components/unit-stock-view';
 
 import { useRecordBadOrder, type UseRecordBadOrderProps } from './use-record-bad-order';
 import { ProductSelector } from './product-selector';
@@ -249,6 +250,9 @@ export function RecordBadOrderDialog({ onSuccess }: UseRecordBadOrderProps) {
                               <TableCell className="font-medium pl-4 py-2 border-r">
                                 <div className="text-sm font-semibold line-clamp-2" title={field.productName}>
                                   {field.productName}
+                                  {field.sellingUnitName && (field.sellingUnitFactor ?? 1) !== 1 && (
+                                    <span className="ml-1.5 text-xs font-semibold text-blue-600">— {field.sellingUnitName}</span>
+                                  )}
                                 </div>
                                 <div className="text-xs text-muted-foreground flex items-center gap-2">
                                   <span className="font-mono">{field.barcode || '-'}</span>
@@ -256,9 +260,12 @@ export function RecordBadOrderDialog({ onSuccess }: UseRecordBadOrderProps) {
                               </TableCell>
 
                               <TableCell className="py-2 text-center border-r font-mono text-xs">
-                                <span className={(field.currentStock || 0) <= 0 ? 'text-destructive font-bold' : 'text-muted-foreground'}>
-                                  {formatQuantity(field.currentStock || 0)}
-                                </span>
+                                <UnitStockView
+                                  stock={field.currentStock || 0}
+                                  factor={field.sellingUnitFactor}
+                                  unitName={field.sellingUnitName}
+                                  className={Math.floor((field.currentStock || 0) / (field.sellingUnitFactor || 1)) <= 0 ? 'text-destructive font-bold' : 'text-muted-foreground'}
+                                />
                               </TableCell>
 
                               <TableCell className="py-2 border-r px-2 text-center">

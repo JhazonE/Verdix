@@ -25,24 +25,11 @@ export const inventoryNavItems = [
   { href: '/inventory', label: 'Stock Levels' },
   { href: '/inventory/stock-counts', label: 'Stock Counts (Snapshots)' },
   { href: '/inventory/repackaging', label: 'Repackaging' },
-  { href: '/inventory/history', label: 'Adjustment History' },
-  { href: '/inventory/movement', label: 'Stock Movement' },
 ];
 
 export const salesNavItems = [
-  { href: '/sales', label: 'POS Sales Transaction' },
-  { href: '/sales/details', label: 'POS Sales Detail' },
-  { href: '/sales/by-product', label: 'Sales by Product/Service' },
-  { href: '/sales/by-date', label: 'Sales by Date' },
   { href: '/sales/orders', label: 'Sales Order' },
   { href: '/sales/invoices', label: 'Sales Invoice/Delivery' },
-  { href: '/sales/cash-transfer', label: 'POS Cash Transfer' },
-  { href: '/sales/returns', label: 'Merchandise Credits' },
-  { href: '/sales/voids', label: 'Post Void' },
-  { href: '/sales/z-reading', label: 'POS Z-Reading' },
-  { href: '/sales/x-reading', label: 'POS X-Reading' },
-  { href: '/sales/overall-reading', label: 'POS Overall Reading' },
-  { href: '/sales/analysis', label: 'Sales Analysis' },
 ];
 
 export const customerNavItems = [
