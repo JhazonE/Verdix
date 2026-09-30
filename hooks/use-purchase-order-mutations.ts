@@ -42,8 +42,24 @@ export function useUpdatePurchaseOrder() {
 
 type ReceiveMutationArgs = {
   order: PurchaseOrder;
-  receivedItems: { productId: string; quantity: number; expirationDate?: string; sellingPrice?: number }[];
-  badItems?: { productId: string; productName: string; quantity: number; cost: number; reason: string; description: string }[];
+  receivedItems: {
+    productId: string;
+    quantity: number;
+    expirationDate?: string;
+    sellingPrice?: number;
+    sellingUnitId?: string;
+    sellingUnitName?: string;
+    sellingUnitFactor?: number;
+  }[];
+  badItems?: {
+    productId: string;
+    productName: string;
+    quantity: number;
+    cost: number;
+    reason: string;
+    description: string;
+    sellingUnitFactor?: number;
+  }[];
   allocationStrategy?: 'equal' | 'proportional';
 };
 
@@ -57,9 +73,20 @@ export function useReceivePurchaseOrder() {
   return useMutation<ReceiveMutationResult, Error, ReceiveMutationArgs>({
     mutationFn: async ({ order, receivedItems, badItems, allocationStrategy }) => {
       const enrichedReceivedItems = receivedItems.map(item => {
-        const originalItem = order.items.find(i =>
-          String(i.productId).trim().toLowerCase() === String(item.productId).trim().toLowerCase()
-        );
+        // Match by productId AND sellingUnitId when both sides carry one, so two
+        // lines for the same product (e.g. a Piece line and a Case line) each
+        // resolve to their OWN original line instead of both picking up the
+        // first productId match (which could hand a Case line the Piece line's
+        // cost, or vice versa).
+        const originalItem = order.items.find(i => {
+          if (String(i.productId).trim().toLowerCase() !== String(item.productId).trim().toLowerCase()) {
+            return false;
+          }
+          if (i.sellingUnitId && item.sellingUnitId) {
+            return i.sellingUnitId === item.sellingUnitId;
+          }
+          return true;
+        });
         const cost = originalItem ? toSafeNumber(originalItem.cost) : 0;
         return {
           ...item,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { type BadItemInput, type ReceivePurchaseOrderDialogProps } from './receive-purchase-order-types';
+import { type BadItemInput, type ReceivePurchaseOrderDialogProps, lineKey } from './receive-purchase-order-types';
 
 export function useReceivePurchaseOrder({
   order,
@@ -22,51 +22,54 @@ export function useReceivePurchaseOrder({
 
     setQuantities(
       order.items.reduce((acc, item) => {
-        acc[item.productId] = item.quantity;
+        acc[lineKey(item)] = item.quantity;
         return acc;
       }, {} as Record<string, number>),
     );
 
     setBadItems(
       order.items.reduce((acc, item) => {
-        acc[item.productId] = { quantity: 0, reason: 'Damaged', description: '' };
+        acc[lineKey(item)] = { quantity: 0, reason: 'Damaged', description: '' };
         return acc;
       }, {} as Record<string, BadItemInput>),
     );
 
     setExpiryDates(
       order.items.reduce((acc, item) => {
-        acc[item.productId] = '';
+        acc[lineKey(item)] = '';
         return acc;
       }, {} as Record<string, string>),
     );
   }, [open, order]);
 
   // ---- field handlers ------------------------------------------------------
+  // All keyed by lineKey(item) (PO line id, falling back to productId), not
+  // productId alone — two lines for the same product (Piece + Case) must not
+  // collide in this state.
 
-  const handleQuantityChange = (productId: string, value: string) => {
+  const handleQuantityChange = (key: string, value: string) => {
     const num = parseFloat(value);
-    setQuantities((prev) => ({ ...prev, [productId]: isNaN(num) ? 0 : num }));
+    setQuantities((prev) => ({ ...prev, [key]: isNaN(num) ? 0 : num }));
   };
 
-  const handleExpiryDateChange = (productId: string, value: string) => {
-    setExpiryDates((prev) => ({ ...prev, [productId]: value }));
+  const handleExpiryDateChange = (key: string, value: string) => {
+    setExpiryDates((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleBadQtyChange = (productId: string, value: string) => {
+  const handleBadQtyChange = (key: string, value: string) => {
     const num = parseFloat(value);
     setBadItems((prev) => ({
       ...prev,
-      [productId]: { ...prev[productId], quantity: isNaN(num) ? 0 : num },
+      [key]: { ...prev[key], quantity: isNaN(num) ? 0 : num },
     }));
   };
 
-  const handleBadReasonChange = (productId: string, value: string) => {
-    setBadItems((prev) => ({ ...prev, [productId]: { ...prev[productId], reason: value } }));
+  const handleBadReasonChange = (key: string, value: string) => {
+    setBadItems((prev) => ({ ...prev, [key]: { ...prev[key], reason: value } }));
   };
 
-  const handleBadDescriptionChange = (productId: string, value: string) => {
-    setBadItems((prev) => ({ ...prev, [productId]: { ...prev[productId], description: value } }));
+  const handleBadDescriptionChange = (key: string, value: string) => {
+    setBadItems((prev) => ({ ...prev, [key]: { ...prev[key], description: value } }));
   };
 
   // ---- submit --------------------------------------------------------------
@@ -79,23 +82,35 @@ export function useReceivePurchaseOrder({
 
     setIsSubmitting(true);
     try {
-      const receivedItems = Object.entries(quantities).map(([productId, quantity]) => ({
-        productId,
-        quantity,
-        expirationDate: expiryDates[productId] || undefined,
-      }));
+      // Keyed by lineKey(item), then resolved back to the line's own productId
+      // and unit fields — this is what lets two lines for the same product
+      // (Piece + Case) be received as two independent quantities instead of
+      // one overwriting the other in `quantities`.
+      const receivedItems = order.items.map((item) => {
+        const key = lineKey(item);
+        return {
+          productId: item.productId,
+          quantity: quantities[key],
+          expirationDate: expiryDates[key] || undefined,
+          sellingUnitId: item.sellingUnitId,
+          sellingUnitName: item.sellingUnitName,
+          sellingUnitFactor: item.sellingUnitFactor,
+        };
+      });
 
-      const reportedBadItems = Object.entries(badItems)
-        .filter(([, data]) => data.quantity > 0)
-        .map(([productId, data]) => {
-          const originalItem = order.items.find((i) => i.productId === productId);
+      const reportedBadItems = order.items
+        .filter((item) => (badItems[lineKey(item)]?.quantity || 0) > 0)
+        .map((item) => {
+          const key = lineKey(item);
+          const data = badItems[key];
           return {
-            productId,
-            productName: originalItem?.productName || 'Unknown Product',
+            productId: item.productId,
+            productName: item.productName || 'Unknown Product',
             quantity: data.quantity,
-            cost: originalItem?.cost || 0,
+            cost: item.cost || 0,
             reason: data.reason,
             description: data.description,
+            sellingUnitFactor: item.sellingUnitFactor,
           };
         });
 

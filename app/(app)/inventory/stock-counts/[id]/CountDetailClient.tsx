@@ -221,7 +221,7 @@ export function CountDetailClient({ countId }: { countId: string }) {
             <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
             <Input
               ref={searchInputRef}
-              placeholder="Scan barcode or search name / SKU, then press Enter…"
+              placeholder="Scan barcode or search name / barcode, then press Enter…"
               className="pl-9 w-full"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}

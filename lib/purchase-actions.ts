@@ -4,6 +4,28 @@ import { calculatePurchaseCosts } from './purchase-utils';
 import { toSafeNumber } from './utils';
 import { updateStockAndRecordMovement } from './stock-movements';
 
+// Two lines on the same PO can share a productId (e.g. a Piece line and a
+// Case line for the same product) — matching on productId alone would let one
+// line's receipt pick up the other's landed cost/factor, and row order from the
+// DB is not guaranteed. Resolution order:
+//   1. exactly one line for the product -> that line (pre-feature PO / legacy payload)
+//   2. both sides carry a sellingUnitId -> ids must match
+//   3. otherwise compare factors, where a missing id/factor means the base unit (1)
+type LineRef = { productId: string; sellingUnitId?: string | null; sellingUnitFactor?: number | string | null };
+
+function findLine<T extends LineRef>(lines: T[], target: LineRef): T | undefined {
+  const sameProduct = lines.filter((l) => l.productId === target.productId);
+  if (sameProduct.length <= 1) return sameProduct[0];
+  const byId = sameProduct.find(
+    (l) => l.sellingUnitId && target.sellingUnitId && l.sellingUnitId === target.sellingUnitId,
+  );
+  if (byId) return byId;
+  const factorOf = (x: LineRef) => toSafeNumber(x.sellingUnitFactor) || 1;
+  return sameProduct.find(
+    (l) => !(l.sellingUnitId && target.sellingUnitId) && factorOf(l) === factorOf(target),
+  );
+}
+
 function parseDueDays(paymentTerms: string | undefined | null): number {
   if (!paymentTerms) return 0;
   const lower = paymentTerms.toLowerCase();
@@ -91,8 +113,9 @@ export async function processPurchaseOrderCreation(body: any, userId: string = '
     const insertItemQuery = `
       INSERT INTO purchase_order_items (
         id, purchase_order_id, product_id, product_name, quantity, cost,
-        selling_price, discount, discount_type, vat_subject, subtotal
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        selling_price, discount, discount_type, vat_subject, subtotal,
+        selling_unit_id, selling_unit_name, selling_unit_factor
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     for (const item of items) {
@@ -101,7 +124,7 @@ export async function processPurchaseOrderCreation(body: any, userId: string = '
       const cost = toSafeNumber(item.cost);
       const discount = toSafeNumber(item.discount);
       const discountType = item.discountType || 'amount';
-      
+
       let itemSubtotal = quantity * cost;
       if (discountType === 'percentage') {
         itemSubtotal = itemSubtotal - (itemSubtotal * (discount / 100));
@@ -120,7 +143,10 @@ export async function processPurchaseOrderCreation(body: any, userId: string = '
         discount,
         discountType,
         item.vatSubject ? 1 : 0,
-        itemSubtotal
+        itemSubtotal,
+        item.sellingUnitId || null,
+        item.sellingUnitName || null,
+        item.sellingUnitFactor ? toSafeNumber(item.sellingUnitFactor) : null,
       ]);
     }
 
@@ -158,7 +184,7 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
 
     // 2. We need items to calculate correct landed cost distribution
     const [itemRows]: any = await connection.query(
-      'SELECT product_id as productId, product_name as productName, quantity, cost, selling_price as sellingPrice, discount, discount_type as discountType, vat_subject as vatSubject FROM purchase_order_items WHERE purchase_order_id = ?',
+      'SELECT product_id as productId, product_name as productName, quantity, cost, selling_price as sellingPrice, discount, discount_type as discountType, vat_subject as vatSubject, selling_unit_id as sellingUnitId, selling_unit_factor as sellingUnitFactor FROM purchase_order_items WHERE purchase_order_id = ?',
       [orderId]
     );
 
@@ -175,14 +201,21 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
 
     // 4. Process each received item
     for (const receivedItem of receivedItems) {
-      const calculatedItem = calculations.items.find(ci => ci.productId === receivedItem.productId);
+      const calculatedItem = findLine(calculations.items, receivedItem);
       if (!calculatedItem) continue;
 
-      const quantityAdded = toSafeNumber(receivedItem.quantity);
+      const matchedRow = findLine<any>(itemRows, receivedItem);
+      const factor = toSafeNumber(receivedItem.sellingUnitFactor ?? matchedRow?.sellingUnitFactor) || 1;
+
+      // Convert once, at the boundary into base-unit-contracted tables
+      // (inventory_batches, products.stock/cost/price, price levels).
+      // Everything past this point is unchanged from before this feature.
+      const quantityAdded = toSafeNumber(receivedItem.quantity) * factor;
       if (quantityAdded <= 0) continue;
 
-      const landedCost = toSafeNumber(calculatedItem.landedCostPerUnit);
-      const sellingPrice = toSafeNumber(receivedItem.sellingPrice || itemRows.find((i: any) => i.productId === receivedItem.productId)?.sellingPrice);
+      const landedCost = toSafeNumber(calculatedItem.landedCostPerUnit); // already per-piece (Task 3)
+      const rawSellingPrice = toSafeNumber(receivedItem.sellingPrice || matchedRow?.sellingPrice);
+      const sellingPrice = rawSellingPrice / factor;
 
       // "Highest wins" rule (applies to both cost AND retail price):
       // Fetch the product's current cost and price from the DB. If the new landed cost

@@ -129,7 +129,7 @@ export function useUploadPriceList(warehouseId: string, onUpdated?: () => void) 
   const downloadSkippedCsv = () => {
     if (!preview?.skippedRows?.length) return;
     const data = preview.skippedRows.map(s => ({
-      sku: s.row?.sku ?? '', barcode: s.row?.barcode ?? '', name: s.row?.name ?? '',
+      barcode: s.row?.barcode ?? '', name: s.row?.name ?? '',
       new_price: s.row?.newPrice ?? '', new_cost: s.row?.newCost ?? '',
       new_markup_pct: s.row?.newMarkupPct ?? '', reason: s.reason,
     }));

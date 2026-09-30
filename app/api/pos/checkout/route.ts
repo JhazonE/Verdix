@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withTransaction, getNextReference, getNextReceiptNumber, getNextSINumber, getNextBirOrNumber, formatSINumber } from '@/lib/mysql';
-import { baseQuantity, getBaseUnit } from '@/lib/selling-units';
-import { updateStockAndRecordMovement } from '@/lib/stock-movements';
-import { deductFromBatches, getBatchCostingSettings } from '@/lib/batch-deduction';
+import { getBatchCostingSettings } from '@/lib/batch-deduction';
 import { ensureCustomerCreditColumn } from '@/lib/ensure-customer-credit';
 import { query } from '@/lib/mysql';
-import { isService } from '@/lib/product-type';
 import { resolveEffectiveTaxType } from '@/lib/tax-utils';
+import { processSaleLeg } from '@/lib/pos/process-sale-leg';
 import { validateSingleDocumentType } from './mixed-cart-validation';
 import { isTerminalLocked, TERMINAL_LOCKED_MESSAGE } from './terminal-lock-check';
 
@@ -100,8 +98,8 @@ export async function POST(request: NextRequest) {
 
     // Determine this cart's single BIR document type (goods vs services) by
     // re-querying products.type fresh — never trust client-supplied type,
-    // matching the existing isService(soldProd) pattern used later in this
-    // route for stock/batch-costing.
+    // matching the isService(soldProd) pattern processSaleLeg uses internally
+    // for stock/batch-costing.
     const productIds = items.map((it: any) => it.id);
     const productTypeRows: any = await query(
       `SELECT id, type FROM products WHERE id IN (${productIds.map(() => '?').join(',')})`,
@@ -202,163 +200,43 @@ export async function POST(request: NextRequest) {
       //    insert — no separate UPDATE per item).
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
-        const itemId = `${saleId}-ITEM-${i + 1}`;
 
-        // Loaded before batch costing because `type` decides whether we deduct
-        // at all. Same single query that already served loyalty + family sync.
-        const [soldProdResult]: any = await connection.query(`
-          SELECT
-            p.id, p.parent_id, p.unit_of_measure, p.name, p.stock, p.type, p.cost,
-            c.markup_percentage, p.category, p.earns_points
-          FROM products p
-          LEFT JOIN categories c ON p.category = c.name
-          WHERE p.id = ?
-        `, [item.id]);
-
-        const soldProd = soldProdResult?.[0];
-        const itemIsService = soldProd ? isService(soldProd) : false;
-
-        // --- SELLING UNIT RESOLUTION ---
-        // One product, one stock figure, held in base units. A selling unit only
-        // says how many base units one of it is worth. Resolve it here, once, so
-        // the stock deduction and both line-item inserts all agree.
-        //
-        // The POS UI does not send a selling unit yet, so an absent (or
-        // unusable) unit falls back to the product's base unit — factor 1,
-        // identical arithmetic to the pre-selling-unit behaviour.
-        let unitId: string | null = item.sellingUnitId ?? null;
-        let unitName: string | null = item.sellingUnitName ?? null;
-        let factor = Number(item.sellingUnitFactor ?? 0);
-
-        if (soldProd && !itemIsService) {
-          if (!unitId || !Number.isFinite(factor) || factor <= 0) {
-            const base = await getBaseUnit(soldProd.id, connection);
-            if (!base) {
-              // Silently deducting nothing would leave stock quietly wrong, so
-              // fail the whole sale and name the product instead.
-              throw new Error(
-                `Product ${soldProd.id} has no base selling unit — cannot record this sale.`
-              );
-            }
-            unitId = base.id;
-            unitName = base.name;
-            factor = base.factor;
-          }
-        } else if (!Number.isFinite(factor) || factor <= 0) {
-          // Services (and unknown products) carry no stock; record factor 1.
-          unitId = unitId ?? null;
-          unitName = unitName ?? null;
-          factor = 1;
-        }
-        resolvedUnits[i] = { id: unitId, name: unitName, factor };
-
-        // Everything downstream that touches inventory — the FIFO batch
-        // deduction and the stock movement — works in BASE units. Compute it
-        // once, here, so the two can never disagree.
-        //
-        // baseQuantity() does not validate quantity, so guard it first: a
-        // NaN/undefined quantity would otherwise write NaN into stock.
-        const soldQty = Number(item.quantity);
-        if (!Number.isFinite(soldQty)) {
-          throw new Error(
-            `Invalid quantity for product ${item.id}: ${item.quantity}`
-          );
-        }
-        const qtyInBase = baseQuantity(soldQty, factor);
-        // --- END SELLING UNIT RESOLUTION ---
-
-        // --- BATCH COSTING: FIFO deduction & cost recording ---
-        let costAtSale: number | null = null;
-        let batchSource: string | null = null;
-
-        if (itemIsService) {
-          // Services have no batches. Cost is the fixed value on the product,
-          // so sale_items.cost_at_sale stays populated and profit reports work
-          // identically for services and standard goods.
-          costAtSale = soldProd?.cost != null ? parseFloat(soldProd.cost) : 0;
-          batchSource = null;
-        } else {
-          try {
-            const bcs = await getBCS();
-            // Batches hold BASE units (purchase receipts stock them that way),
-            // so a sale must consume qtyInBase — not the line quantity, which
-            // is expressed in whatever selling unit was sold. Passing the line
-            // quantity would let inventory_batches and products.stock drift
-            // apart on every non-base sale.
-            const deduction = await deductFromBatches(
-              item.id,
-              qtyInBase,
-              bcs.oversellBlock,
-              connection as any
-            );
-            // deduction.weightedAvgCost is per BASE unit (batches are held in
-            // base units). sale_items.quantity is recorded in the SELLING
-            // unit sold, and every reader (fiscal-year cost, batch-analysis,
-            // margin reports) computes cost as quantity * cost_at_sale — so
-            // cost_at_sale must be per selling unit, not per base unit, or
-            // margin understates by the factor on every non-base sale.
-            costAtSale = deduction.weightedAvgCost * factor;
-            batchSource = JSON.stringify(deduction.splits);
-          } catch (batchErr: any) {
-            // If oversell_block is ON, rethrow to abort the transaction
-            if (batchErr.message && batchErr.message.startsWith('Batch stock exhausted')) {
-              throw batchErr;
-            }
-            // Otherwise non-fatal (e.g. migration not yet run) — log and continue
-            console.warn('[BatchCosting] Could not deduct batch (migration pending?):', batchErr.message);
-          }
-        }
-        // --- END BATCH COSTING ---
-
-        await connection.query(`
-          INSERT INTO sale_items (
-            id, sale_id, product_id, product_name, quantity, price, cost_at_sale, batch_source,
-            selling_unit_id, selling_unit_name, selling_unit_factor, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-        `, [
-          itemId,
+        // Selling-unit resolution, FIFO batch costing, the sale_items insert,
+        // and the stock deduction all now live in processSaleLeg — shared
+        // with /api/sales/exchanges's replacement-item sale leg. Loyalty
+        // points are deliberately NOT part of that shared function (an
+        // exchange's sale leg must not earn points), so they stay here.
+        const legResult = await processSaleLeg(connection, {
+          item,
           saleId,
-          item.id,
-          item.name,
-          item.quantity,
-          item.price * (1 - (item.discount || 0) / 100),
-          costAtSale,
-          batchSource,
-          unitId,
-          unitName,
-          factor
-        ]);
+          itemIndex: i,
+          oversellBlock: (await getBCS()).oversellBlock,
+        });
+        resolvedUnits[i] = { id: legResult.unitId, name: legResult.unitName, factor: legResult.factor };
 
-        // --- Stock Deduction with Full Hierarchy Sync & Loyalty Calculation ---
-        if (soldProd) {
-          // Loyalty Points Calculation — applies to services too.
-          const hasFivePercentMarkup = Math.abs((soldProd.markup_percentage || 0) - 5) < 0.01;
-          const earnsPointsEnabled = soldProd.earns_points !== 0 && soldProd.earns_points !== false;
+        // Loyalty Points Calculation — unaffected by the refactor, stays here.
+        // soldProd was fetched inside processSaleLeg and not returned (that
+        // would leak a loyalty-specific concern into the shared function), so
+        // re-fetch the small set of columns loyalty actually needs.
+        const [loyaltyProdResult]: any = await connection.query(
+          // c.markup_percentage, qualified: products ALSO has a markup_percentage
+          // column (per-product pricing override, migration 117), so the bare
+          // name is ambiguous (ER_NON_UNIQ_ERROR). The loyalty 5% rule has always
+          // been keyed on the CATEGORY's markup, matching the pre-refactor query.
+          'SELECT c.markup_percentage, p.earns_points FROM products p LEFT JOIN categories c ON p.category = c.name WHERE p.id = ?',
+          [item.id]
+        );
+        const loyaltyProd = loyaltyProdResult?.[0];
+        if (loyaltyProd) {
+          const hasFivePercentMarkup = Math.abs((loyaltyProd.markup_percentage || 0) - 5) < 0.01;
+          const earnsPointsEnabled = loyaltyProd.earns_points !== 0 && loyaltyProd.earns_points !== false;
           const isExcluded = hasFivePercentMarkup || !earnsPointsEnabled;
           if (!isExcluded) {
-             eligiblePointsAmount += item.price * item.quantity;
+            eligiblePointsAmount += item.price * item.quantity;
           } else {
-             console.log(`Item ${item.name} excluded from points. Markup: ${soldProd.markup_percentage}, Earns: ${soldProd.earns_points}`);
-          }
-
-          // Services carry no stock — nothing to deduct.
-          if (!itemIsService) {
-            // One product, one stock figure, in base units. A selling unit only
-            // says how many base units one of it is worth, so a sale is a single
-            // deduction — there is no family to cascade through any more.
-            // qtyInBase is the same figure the batch deduction above consumed.
-            await updateStockAndRecordMovement(
-              soldProd.id,
-              -qtyInBase,
-              'sale',
-              saleId,
-              'sale',
-              `POS Sale: ${saleId}${factor !== 1 ? ` (${soldQty} × ${unitName})` : ''}`,
-              connection
-            );
+            console.log(`Item ${item.name} excluded from points. Markup: ${loyaltyProd.markup_percentage}, Earns: ${loyaltyProd.earns_points}`);
           }
         }
-
       }
 
       // 3. Insert into sales_invoices (to show up in /sales reports)

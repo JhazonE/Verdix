@@ -22,15 +22,16 @@ export async function getPurchaseCostDetails(orderId: string) {
 
     // 2. Fetch Items
     const itemsResult = await query(
-      `SELECT 
-        product_id as productId, 
-        product_name as productName, 
-        quantity, 
-        cost, 
-        discount, 
-        discount_type as discountType, 
-        vat_subject as vatSubject 
-      FROM purchase_order_items 
+      `SELECT
+        product_id as productId,
+        product_name as productName,
+        quantity,
+        cost,
+        discount,
+        discount_type as discountType,
+        vat_subject as vatSubject,
+        selling_unit_factor as sellingUnitFactor
+      FROM purchase_order_items
       WHERE purchase_order_id = ?`,
       [orderId]
     );

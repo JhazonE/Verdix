@@ -56,7 +56,6 @@ export function AddInvoiceProductSelector({ onSelectProduct, warehouseId }: Prop
       }
       const product = matches.find(p =>
         p.barcode?.toLowerCase() === needle ||
-        p.sku?.toLowerCase() === needle ||
         p.name.toLowerCase() === needle
       );
       if (product) {
@@ -80,7 +79,7 @@ export function AddInvoiceProductSelector({ onSelectProduct, warehouseId }: Prop
       <PopoverAnchor asChild>
         <div className="relative pb-2">
           <Input
-            placeholder="Scan barcode, enter SKU, or type product name"
+            placeholder="Scan barcode or type product name"
             value={inputValue}
             onChange={e => { setInputValue(e.target.value); setSuggestionsOpen(true); }}
             onFocus={() => setSuggestionsOpen(true)}
@@ -127,7 +126,7 @@ export function AddInvoiceProductSelector({ onSelectProduct, warehouseId }: Prop
                           )}
                         </span>
                         <span className="text-sm text-muted-foreground">
-                          SKU: {product.sku || 'N/A'} | Barcode: {unit?.barcode || product.barcode || 'N/A'} | Stock: {formatQuantity(product.stock)}
+                          Barcode: {unit?.barcode || product.barcode || 'N/A'} | Stock: {formatQuantity(product.stock)}
                         </span>
                       </div>
                     </CommandItem>

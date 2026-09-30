@@ -189,6 +189,11 @@ export interface PurchaseOrder {
   supplierName: string;
   date: string;
   items: {
+    /** The PO line's own database row id (purchase_order_items.id). Present for orders
+     * fetched from the API; absent only for transient/newly-built objects that haven't
+     * round-tripped through the API yet. This is the line's true identity — two lines for
+     * the same product (e.g. a Piece line and a Case line) share a productId but never an id. */
+    id?: string;
     productId: string;
     productName: string;
     quantity: number;
@@ -208,6 +213,10 @@ export interface PurchaseOrder {
     landedCostPerUnit?: number;
     shippingAllocation?: number;
     landedCostTotal?: number;
+    /** Selling unit this line was ordered/received in, snapshotted at order time. Absent/1 means base unit. */
+    sellingUnitId?: string;
+    sellingUnitName?: string;
+    sellingUnitFactor?: number;
   }[];
   total: number;
   paymentMethod: string;
@@ -436,6 +445,7 @@ export interface SystemSettings {
   cashTransferAuthUsername?: string | null;
   cashTransferAuthPassword?: string | null;
   posMode?: 'default' | 'pharmacy';
+  enableQuickAddCustomer?: boolean;
 }
 
 export interface User {

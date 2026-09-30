@@ -41,7 +41,6 @@ interface StockMovement {
   reference_type: string | null;
   notes: string | null;
   created_at: string;
-  sku: string;
   barcode: string;
   unit_of_measure: string;
 }

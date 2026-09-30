@@ -87,6 +87,9 @@ export async function GET(request: NextRequest) {
             poi.discount,
             poi.discount_type,
             poi.vat_subject,
+            poi.selling_unit_id,
+            poi.selling_unit_name,
+            poi.selling_unit_factor,
             p.barcode,
             p.stock as current_stock,
             poi.subtotal
@@ -116,6 +119,7 @@ export async function GET(request: NextRequest) {
           warehouseId: row.warehouse_id || undefined,
           warehouseName: row.warehouse_name || undefined,
           items: items.map((item: any) => ({
+            id: item.id,
             productId: item.product_id,
             productName: item.product_name,
             quantity: toSafeNumber(item.quantity),
@@ -126,6 +130,9 @@ export async function GET(request: NextRequest) {
             vatSubject: item.vat_subject === 1,
             barcode: item.barcode || undefined,
             currentStock: toSafeNumber(item.current_stock),
+            sellingUnitId: item.selling_unit_id || undefined,
+            sellingUnitName: item.selling_unit_name || undefined,
+            sellingUnitFactor: item.selling_unit_factor ? toSafeNumber(item.selling_unit_factor) : undefined,
           })),
         };
       })

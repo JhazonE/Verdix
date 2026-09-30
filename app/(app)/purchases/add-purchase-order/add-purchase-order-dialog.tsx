@@ -394,7 +394,12 @@ export function AddPurchaseOrderDialog(props: UseAddPurchaseOrderProps & { trigg
                             return (
                               <TableRow key={field.id} className="group bg-background hover:bg-muted/5">
                                 <TableCell className="font-medium pl-4 py-2 border-r">
-                                  <span className="font-bold text-sm text-foreground">{field.productName}</span>
+                                  <span className="font-bold text-sm text-foreground">
+                                    {field.productName}
+                                    {field.sellingUnitName && field.sellingUnitFactor !== 1 && (
+                                      <span className="ml-1.5 text-xs font-semibold text-blue-600">— {field.sellingUnitName}</span>
+                                    )}
+                                  </span>
                                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                     <span className="font-mono font-bold">{field.barcode || '-'}</span>
                                   </div>

@@ -40,13 +40,14 @@ import {
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Card, CardContent } from '@/components/ui/card';
-import { User, Loader2, Search, CreditCard, Printer, Hash, StickyNote, Phone, MapPin, Tag, Wallet, TrendingUp, Landmark, Coins } from 'lucide-react';
+import { User, Loader2, Search, CreditCard, Printer, Hash, StickyNote, Phone, MapPin, Tag, Wallet, TrendingUp, Landmark, Coins, UserPlus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { format, differenceInDays } from 'date-fns';
 import { useCustomerAccount } from './use-customer-account';
 import type { CustomerAccountDialogProps } from './customer-account-types';
 import { MembershipPaymentDialog } from '../membership/MembershipPaymentDialog';
+import { AddCustomerDialog } from '../add-customer/AddCustomerDialog';
 
 export { WALK_IN_CUSTOMER } from './customer-account-types';
 
@@ -79,7 +80,10 @@ export function CustomerAccountDialog({ isOpen, onOpenChange, onSelectCustomer, 
     getInitials,
     allItems, pendingCharges, overdueCharges,
     membershipCard, isMembershipCardLoading, isMembershipDialogOpen, setIsMembershipDialogOpen, fetchMembershipCard,
+    isAddCustomerOpen, setIsAddCustomerOpen, handleCustomerAdded,
   } = useCustomerAccount({ isOpen, onOpenChange, onSelectCustomer, initialCustomer, printMode, settings });
+
+  const enableQuickAddCustomer = settings?.enableQuickAddCustomer !== false;
 
   return (
     <>
@@ -122,15 +126,29 @@ export function CustomerAccountDialog({ isOpen, onOpenChange, onSelectCustomer, 
                   {/* Customer Selection */}
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium mb-1">Customer</p>
-                    <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
-                      <SelectTrigger className="w-full"><SelectValue placeholder="Select Customer" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="walk-in">Walk-in Customer</SelectItem>
-                        {customers.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-2">
+                      <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
+                        <SelectTrigger className="w-full"><SelectValue placeholder="Select Customer" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="walk-in">Walk-in Customer</SelectItem>
+                          {customers.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {enableQuickAddCustomer && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-10 w-10 shrink-0"
+                          onClick={() => setIsAddCustomerOpen(true)}
+                          title="Add Customer"
+                        >
+                          <UserPlus className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
                   {selectedCustomerId !== 'walk-in' && (
@@ -564,6 +582,14 @@ export function CustomerAccountDialog({ isOpen, onOpenChange, onSelectCustomer, 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {enableQuickAddCustomer && (
+        <AddCustomerDialog
+          isOpen={isAddCustomerOpen}
+          onOpenChange={setIsAddCustomerOpen}
+          onCustomerAdded={handleCustomerAdded}
+        />
+      )}
 
       <MembershipPaymentDialog
         isOpen={isMembershipDialogOpen}

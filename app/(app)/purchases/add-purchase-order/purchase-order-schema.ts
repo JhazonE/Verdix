@@ -14,6 +14,9 @@ export const purchaseOrderItemSchema = z.object({
   avgDailySales: z.coerce.number().optional(),
   reorderPoint: z.coerce.number().optional(),
   expirationDate: z.string().optional(),
+  sellingUnitId: z.string().optional(),
+  sellingUnitName: z.string().optional(),
+  sellingUnitFactor: z.coerce.number().positive().optional(),
 });
 
 export const purchaseOrderSchema = z.object({

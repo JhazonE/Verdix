@@ -13,6 +13,8 @@ export interface PurchaseItem {
   discount?: number;
   discountType?: 'amount' | 'percentage';
   vatSubject?: boolean;
+  /** Base units per selling unit this line was entered in. Defaults to 1 (base unit) when absent. */
+  sellingUnitFactor?: number;
 }
 
 export interface CalculatedPurchaseDetails {
@@ -99,7 +101,14 @@ export function calculatePurchaseCosts(
     }
 
     const landedCostTotal = item.lineTotal + shippingAllocation;
-    const landedCostPerUnit = item.quantity > 0 ? landedCostTotal / item.quantity : 0;
+    // landedCostPerUnit must land in BASE-UNIT terms: inventory_batches.unit_cost
+    // and products.cost are both contractually per-piece, so a Case-priced line's
+    // per-Case landed cost is divided by its factor before this field is used
+    // anywhere downstream (see processPurchaseOrderReceipt). lineTotal and
+    // landedCostTotal are deliberately left in as-entered (per-Case) terms since
+    // they reconcile against subtotal/grandTotal, which are also as-entered.
+    const factor = toSafeNumber((item as any).sellingUnitFactor) || 1;
+    const landedCostPerUnit = item.quantity > 0 ? (landedCostTotal / item.quantity) / factor : 0;
 
     return {
       ...item,

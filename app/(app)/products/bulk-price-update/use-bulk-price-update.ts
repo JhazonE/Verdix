@@ -65,7 +65,7 @@ export function useBulkPriceUpdate(onUpdated?: () => void) {
           : Number((p.priceLevels || []).find((pl: any) => pl.levelId === priceLevelId)?.price ?? 0);
         const newValue = applyAdjustment(effectiveAdjustmentType, currentValue, adjustmentValue, Number(p.cost || 0));
         return {
-          productId: p.id, sku: p.sku, barcode: p.barcode || '', productName: p.name,
+          productId: p.id, baseUnitBarcode: p.baseUnitBarcode || '', barcode: p.barcode || '', productName: p.name,
           field: effectiveField, priceLevelId: effectiveField === 'priceLevel' ? priceLevelId : undefined,
           priceLevelName: effectiveField === 'priceLevel' ? priceLevelName : undefined,
           oldValue: currentValue, newValue,

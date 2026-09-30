@@ -99,8 +99,8 @@ export async function createProductsFromExcel(
       const result = await addProduct({
         name: row.name,
         brand: row.brand,
-        sku: row.sku,
-        barcode: row.barcode || row.sku,
+        sku: row.barcode,
+        barcode: row.barcode,
         description: row.name,
         category: row.category,
         warehouse: warehouseId,

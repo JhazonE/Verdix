@@ -47,6 +47,8 @@ import {
   TEST_WAREHOUSE,
   BULK_PRICE_PRODUCT,
   PO_PRODUCT,
+  PO_CASE_PRODUCT,
+  PO_CASE_UNIT,
   SO_CUSTOMER,
   SO_PRODUCT,
   SO_SERVICE,
@@ -316,6 +318,13 @@ async function seedFixtures(): Promise<void> {
     [PO_PRODUCT.id, PO_PRODUCT.name, PO_PRODUCT.price, PO_PRODUCT.cost, PO_PRODUCT.stock, PO_PRODUCT.sku, PO_PRODUCT.supplierId],
   );
 
+  // Product para sa selling-unit PO test (naay Case unit ibabaw sa base Piece).
+  await conn.query(
+    `INSERT INTO products (id, name, price, cost, stock, sku, supplier_id, availability)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'Available')`,
+    [PO_CASE_PRODUCT.id, PO_CASE_PRODUCT.name, PO_CASE_PRODUCT.price, PO_CASE_PRODUCT.cost, PO_CASE_PRODUCT.stock, PO_CASE_PRODUCT.sku, PO_CASE_PRODUCT.supplierId],
+  );
+
   // --- sales-order fixtures: customer + usa ka stocked nga produkto + usa ka serbisyo ---
   await conn.query('INSERT INTO customers (id, name) VALUES (?, ?)', [SO_CUSTOMER.id, SO_CUSTOMER.name]);
 
@@ -393,6 +402,13 @@ async function seedFixtures(): Promise<void> {
       WHERE u.product_id = p.id AND u.is_base = 1
     )
   `);
+
+  // Case unit for PO_CASE_PRODUCT, on top of the base Piece unit it just got above.
+  await conn.query(
+    `INSERT INTO product_selling_units (id, product_id, name, barcode, factor, cost, price, is_base)
+     VALUES (?, ?, ?, NULL, ?, ?, ?, 0)`,
+    [PO_CASE_UNIT.id, PO_CASE_PRODUCT.id, PO_CASE_UNIT.name, PO_CASE_UNIT.factor, PO_CASE_UNIT.cost, PO_CASE_UNIT.price],
+  );
 
   await conn.end();
   console.log(

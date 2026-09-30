@@ -4,7 +4,7 @@ import { ENTITY_SCHEMAS } from '@/lib/import/entity-schemas';
 import { buildEntityExportCsv } from '@/lib/import/csv-out';
 
 // Columns are aliased to the import field keys so the export matches the import
-// template exactly (plus a trailing `sku` for reference). See lib/import/entity-schemas.ts.
+// template exactly. See lib/import/entity-schemas.ts.
 export async function GET() {
   try {
     const products = await query(`
@@ -22,13 +22,12 @@ export async function GET() {
         stock AS stock_quantity,
         reorder_point,
         image_url,
-        conversion_factor,
-        sku
+        conversion_factor
       FROM products
     `);
 
     const plain = JSON.parse(JSON.stringify(products));
-    const csv = buildEntityExportCsv(ENTITY_SCHEMAS.products, plain, ['sku']);
+    const csv = buildEntityExportCsv(ENTITY_SCHEMAS.products, plain);
     const csvWithBOM = '﻿' + csv;
 
     return new NextResponse(csvWithBOM, {

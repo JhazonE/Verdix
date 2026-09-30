@@ -25,7 +25,6 @@ import { useToast } from '@/hooks/use-toast';
 interface Adjustment {
   id: string;
   product_name: string;
-  sku: string;
   quantity: number;
   reason: string;
   new_stock: number;

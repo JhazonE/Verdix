@@ -40,9 +40,15 @@ export async function POST(request: NextRequest) {
 
         if (quantity === 0) continue;
 
-        // Fetch product info
+        // Fetch product info. sku is still needed below (line ~134) to find the
+        // matching product in the target warehouse on a transfer — do not drop
+        // it from this SELECT the way the approvalData.productSku display field
+        // below it was dropped; base_unit_barcode is for display only.
         const [productResult]: any = await connection.query(
-          'SELECT stock, name, sku, barcode, unit_of_measure FROM products WHERE id = ?',
+          `SELECT p.stock, p.name, p.sku, p.barcode, p.unit_of_measure, su.barcode as base_unit_barcode
+           FROM products p
+           LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
+           WHERE p.id = ?`,
           [productId]
         );
 
@@ -73,8 +79,7 @@ export async function POST(request: NextRequest) {
             quantity: finalQuantity, // Correctly signed quantity
             reason: finalReason,
             productName: product.name,
-            productSku: product.sku,
-            productBarcode: product.barcode,
+            productBarcode: product.base_unit_barcode || product.barcode,
             currentStock: currentStock,
             warehouseId,
             warehouseName: resolvedWarehouseName,

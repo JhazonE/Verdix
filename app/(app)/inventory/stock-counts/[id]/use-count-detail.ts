@@ -212,7 +212,7 @@ export function useCountDetail({ countId }: { countId: string }) {
     return items.filter(
       (item) =>
         item.product_name?.toLowerCase().includes(lowerSearch) ||
-        item.product_sku?.toLowerCase().includes(lowerSearch) ||
+        item.base_unit_barcode?.toLowerCase().includes(lowerSearch) ||
         item.product_barcode?.toLowerCase().includes(lowerSearch)
     );
   }, [items, search]);
