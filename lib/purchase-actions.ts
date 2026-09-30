@@ -6,26 +6,24 @@ import { updateStockAndRecordMovement } from './stock-movements';
 
 // Two lines on the same PO can share a productId (e.g. a Piece line and a
 // Case line for the same product) — matching on productId alone would let one
-// line's receipt pick up the other's landed cost/factor. When both sides carry
-// a sellingUnitId, require it to match exactly; otherwise fall back to
-// productId alone (a pre-feature PO, or a payload that genuinely has only one
-// line for this product).
-function matchesLine(
-  candidate: { productId: string; sellingUnitId?: string | null; sellingUnitFactor?: number | string | null },
-  target: { productId: string; sellingUnitId?: string | null; sellingUnitFactor?: number | string | null },
-): boolean {
-  if (candidate.productId !== target.productId) return false;
-  if (candidate.sellingUnitId && target.sellingUnitId) {
-    return candidate.sellingUnitId === target.sellingUnitId;
-  }
-  // One side has no unit id: a base-unit line is stored/sent without one (factor 1).
-  // Falling back to productId alone here would let a Case receipt match the Piece
-  // line of the same product, so compare factors instead. A target that carries
-  // neither an id nor a factor is a legacy payload — productId alone is all we have.
-  const targetHasUnitInfo = !!target.sellingUnitId || target.sellingUnitFactor != null;
-  if (!targetHasUnitInfo) return true;
-  const factorOf = (x: { sellingUnitFactor?: number | string | null }) => toSafeNumber(x.sellingUnitFactor) || 1;
-  return factorOf(candidate) === factorOf(target);
+// line's receipt pick up the other's landed cost/factor, and row order from the
+// DB is not guaranteed. Resolution order:
+//   1. exactly one line for the product -> that line (pre-feature PO / legacy payload)
+//   2. both sides carry a sellingUnitId -> ids must match
+//   3. otherwise compare factors, where a missing id/factor means the base unit (1)
+type LineRef = { productId: string; sellingUnitId?: string | null; sellingUnitFactor?: number | string | null };
+
+function findLine<T extends LineRef>(lines: T[], target: LineRef): T | undefined {
+  const sameProduct = lines.filter((l) => l.productId === target.productId);
+  if (sameProduct.length <= 1) return sameProduct[0];
+  const byId = sameProduct.find(
+    (l) => l.sellingUnitId && target.sellingUnitId && l.sellingUnitId === target.sellingUnitId,
+  );
+  if (byId) return byId;
+  const factorOf = (x: LineRef) => toSafeNumber(x.sellingUnitFactor) || 1;
+  return sameProduct.find(
+    (l) => !(l.sellingUnitId && target.sellingUnitId) && factorOf(l) === factorOf(target),
+  );
 }
 
 function parseDueDays(paymentTerms: string | undefined | null): number {
@@ -203,10 +201,10 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
 
     // 4. Process each received item
     for (const receivedItem of receivedItems) {
-      const calculatedItem = calculations.items.find(ci => matchesLine(ci, receivedItem));
+      const calculatedItem = findLine(calculations.items, receivedItem);
       if (!calculatedItem) continue;
 
-      const matchedRow = itemRows.find((i: any) => matchesLine(i, receivedItem));
+      const matchedRow = findLine<any>(itemRows, receivedItem);
       const factor = toSafeNumber(receivedItem.sellingUnitFactor ?? matchedRow?.sellingUnitFactor) || 1;
 
       // Convert once, at the boundary into base-unit-contracted tables
