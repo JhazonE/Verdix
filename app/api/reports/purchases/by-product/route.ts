@@ -8,8 +8,14 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate');
     const search = searchParams.get('search');
 
+    // NOTE: the inventory_batches join below is by (purchase_order_id, product_id) only —
+    // inventory_batches has no selling_unit_id column, so a PO with TWO lines for the same
+    // product (a Piece line and a Case line) will fan this join out to both batch rows for
+    // every poi row, inflating totalCost/avgCost. This is a pre-existing limitation of this
+    // report unrelated to the unit-mixing fix below (fixing it needs a schema change to add
+    // selling_unit_id to inventory_batches) and is out of scope for this fix wave.
     let sql = `
-      SELECT 
+      SELECT
         poi.product_id as productId,
         poi.product_name as productName,
         su.barcode as baseUnitBarcode,
@@ -17,9 +23,20 @@ export async function GET(request: NextRequest) {
         p.category,
         p.brand,
         p.unit_of_measure as uom,
-        SUM(poi.quantity) as totalQuantity,
-        SUM(poi.quantity * COALESCE(ib.unit_cost, poi.cost)) as totalCost,
-        AVG(COALESCE(ib.unit_cost, poi.cost)) as avgCost
+        -- poi.quantity is in the LINE's own unit (e.g. Cases); convert to base-unit
+        -- pieces before summing so a Case line and a Piece line for the same product
+        -- don't get added together as if they were the same unit.
+        SUM(poi.quantity * COALESCE(poi.selling_unit_factor, 1)) as totalQuantity,
+        -- ib.unit_cost is already per-piece (its contract, per Task 3/processPurchaseOrderReceipt),
+        -- so it needs no factor adjustment. poi.cost, used only as a fallback when no batch
+        -- row exists yet (e.g. a Pending PO never received), is per-LINE-unit (e.g. per-Case)
+        -- and must be divided by the factor to become per-piece before multiplying by the
+        -- now-per-piece totalQuantity — otherwise a Case line's total is inflated by the factor.
+        SUM(
+          poi.quantity * COALESCE(poi.selling_unit_factor, 1)
+          * COALESCE(ib.unit_cost, poi.cost / COALESCE(poi.selling_unit_factor, 1))
+        ) as totalCost,
+        AVG(COALESCE(ib.unit_cost, poi.cost / COALESCE(poi.selling_unit_factor, 1))) as avgCost
       FROM purchase_order_items poi
       JOIN purchase_orders po ON poi.purchase_order_id = po.id
       LEFT JOIN inventory_batches ib ON poi.purchase_order_id = ib.purchase_order_id AND poi.product_id = ib.product_id

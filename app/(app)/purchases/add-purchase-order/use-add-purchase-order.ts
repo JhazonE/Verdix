@@ -286,7 +286,10 @@ export function useAddPurchaseOrder({
           productName: item.productName,
           quantity: item.quantity,
           cost: item.cost,
-          sellingPrice: currentProduct ? currentProduct.price : 0,
+          // The line's own historical sellingPrice first — it's already in this line's
+          // own unit (e.g. per-Case). Falling back to the CURRENT product's per-piece
+          // price here would show a Case line's price as if it were per-piece.
+          sellingPrice: (item as any).sellingPrice ?? currentProduct?.price ?? 0,
           discount: item.discount || 0,
           discountType: (item.discountType as 'amount' | 'percentage') || 'amount' as const,
           vatSubject: false,
@@ -353,8 +356,14 @@ export function useAddPurchaseOrder({
         quantity: 1,
         // "No computed multiples": a unit's own cost/price is used as-is,
         // never derived from the base unit's cost/price times its factor.
-        cost: resolvedUnit?.cost ?? product.cost ?? 0,
-        sellingPrice: resolvedUnit?.price ?? product.price ?? 0,
+        // The product's own cost/price is only a valid fallback for the BASE
+        // unit — falling back to it for a non-base unit (a Case with a NULL
+        // cost, say) would seed the PER-PIECE cost onto a Case line, silently
+        // understating the batch cost by the factor once received. A non-base
+        // unit with nothing set instead seeds a visible 0, prompting the user
+        // to fill it in rather than looking plausible while being wrong.
+        cost: resolvedUnit?.cost ?? (resolvedUnit?.isBase ? product.cost : 0) ?? 0,
+        sellingPrice: resolvedUnit?.price ?? (resolvedUnit?.isBase ? product.price : 0) ?? 0,
         discount: 0,
         discountType: 'amount',
         vatSubject: product.vatStatus === 'Vatable' || product.vatStatus === 'Yes' || false,

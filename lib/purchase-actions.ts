@@ -4,6 +4,30 @@ import { calculatePurchaseCosts } from './purchase-utils';
 import { toSafeNumber } from './utils';
 import { updateStockAndRecordMovement } from './stock-movements';
 
+// Two lines on the same PO can share a productId (e.g. a Piece line and a
+// Case line for the same product) — matching on productId alone would let one
+// line's receipt pick up the other's landed cost/factor. When both sides carry
+// a sellingUnitId, require it to match exactly; otherwise fall back to
+// productId alone (a pre-feature PO, or a payload that genuinely has only one
+// line for this product).
+function matchesLine(
+  candidate: { productId: string; sellingUnitId?: string | null; sellingUnitFactor?: number | string | null },
+  target: { productId: string; sellingUnitId?: string | null; sellingUnitFactor?: number | string | null },
+): boolean {
+  if (candidate.productId !== target.productId) return false;
+  if (candidate.sellingUnitId && target.sellingUnitId) {
+    return candidate.sellingUnitId === target.sellingUnitId;
+  }
+  // One side has no unit id: a base-unit line is stored/sent without one (factor 1).
+  // Falling back to productId alone here would let a Case receipt match the Piece
+  // line of the same product, so compare factors instead. A target that carries
+  // neither an id nor a factor is a legacy payload — productId alone is all we have.
+  const targetHasUnitInfo = !!target.sellingUnitId || target.sellingUnitFactor != null;
+  if (!targetHasUnitInfo) return true;
+  const factorOf = (x: { sellingUnitFactor?: number | string | null }) => toSafeNumber(x.sellingUnitFactor) || 1;
+  return factorOf(candidate) === factorOf(target);
+}
+
 function parseDueDays(paymentTerms: string | undefined | null): number {
   if (!paymentTerms) return 0;
   const lower = paymentTerms.toLowerCase();
@@ -162,7 +186,7 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
 
     // 2. We need items to calculate correct landed cost distribution
     const [itemRows]: any = await connection.query(
-      'SELECT product_id as productId, product_name as productName, quantity, cost, selling_price as sellingPrice, discount, discount_type as discountType, vat_subject as vatSubject, selling_unit_factor as sellingUnitFactor FROM purchase_order_items WHERE purchase_order_id = ?',
+      'SELECT product_id as productId, product_name as productName, quantity, cost, selling_price as sellingPrice, discount, discount_type as discountType, vat_subject as vatSubject, selling_unit_id as sellingUnitId, selling_unit_factor as sellingUnitFactor FROM purchase_order_items WHERE purchase_order_id = ?',
       [orderId]
     );
 
@@ -179,10 +203,11 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
 
     // 4. Process each received item
     for (const receivedItem of receivedItems) {
-      const calculatedItem = calculations.items.find(ci => ci.productId === receivedItem.productId);
+      const calculatedItem = calculations.items.find(ci => matchesLine(ci, receivedItem));
       if (!calculatedItem) continue;
 
-      const factor = toSafeNumber(receivedItem.sellingUnitFactor ?? itemRows.find((i: any) => i.productId === receivedItem.productId)?.sellingUnitFactor) || 1;
+      const matchedRow = itemRows.find((i: any) => matchesLine(i, receivedItem));
+      const factor = toSafeNumber(receivedItem.sellingUnitFactor ?? matchedRow?.sellingUnitFactor) || 1;
 
       // Convert once, at the boundary into base-unit-contracted tables
       // (inventory_batches, products.stock/cost/price, price levels).
@@ -191,7 +216,7 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
       if (quantityAdded <= 0) continue;
 
       const landedCost = toSafeNumber(calculatedItem.landedCostPerUnit); // already per-piece (Task 3)
-      const rawSellingPrice = toSafeNumber(receivedItem.sellingPrice || itemRows.find((i: any) => i.productId === receivedItem.productId)?.sellingPrice);
+      const rawSellingPrice = toSafeNumber(receivedItem.sellingPrice || matchedRow?.sellingPrice);
       const sellingPrice = rawSellingPrice / factor;
 
       // "Highest wins" rule (applies to both cost AND retail price):

@@ -189,6 +189,11 @@ export interface PurchaseOrder {
   supplierName: string;
   date: string;
   items: {
+    /** The PO line's own database row id (purchase_order_items.id). Present for orders
+     * fetched from the API; absent only for transient/newly-built objects that haven't
+     * round-tripped through the API yet. This is the line's true identity — two lines for
+     * the same product (e.g. a Piece line and a Case line) share a productId but never an id. */
+    id?: string;
     productId: string;
     productName: string;
     quantity: number;

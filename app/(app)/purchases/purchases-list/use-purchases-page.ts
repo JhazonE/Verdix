@@ -99,8 +99,24 @@ export function usePurchasesPage() {
   };
 
   const handleReceiveConfirm = (
-    receivedItems: { productId: string; quantity: number; expirationDate?: string; sellingPrice?: number }[],
-    badItems?: { productId: string; productName: string; quantity: number; cost: number; reason: string; description: string }[],
+    receivedItems: {
+      productId: string;
+      quantity: number;
+      expirationDate?: string;
+      sellingPrice?: number;
+      sellingUnitId?: string;
+      sellingUnitName?: string;
+      sellingUnitFactor?: number;
+    }[],
+    badItems?: {
+      productId: string;
+      productName: string;
+      quantity: number;
+      cost: number;
+      reason: string;
+      description: string;
+      sellingUnitFactor?: number;
+    }[],
     allocationStrategy?: 'equal' | 'proportional',
   ): Promise<void> => {
     if (!orderToReceive) return Promise.resolve();

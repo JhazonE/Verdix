@@ -119,6 +119,7 @@ export async function GET(request: NextRequest) {
           warehouseId: row.warehouse_id || undefined,
           warehouseName: row.warehouse_name || undefined,
           items: items.map((item: any) => ({
+            id: item.id,
             productId: item.product_id,
             productName: item.product_name,
             quantity: toSafeNumber(item.quantity),

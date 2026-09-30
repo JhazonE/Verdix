@@ -261,6 +261,111 @@ test.describe('Purchase order', () => {
     expect(Number(caseProd.cost)).toBe(PO_CASE_PRODUCT.cost);
   });
 
+  test('Receive PO with TWO lines for the SAME product (Piece + Case): both received independently', async ({ request }) => {
+    // Regression test for the Critical final-review finding: mixed Piece+Case lines for the
+    // SAME product used to corrupt receiving. `processPurchaseOrderReceipt` matched
+    // `calculations.items.find(ci => ci.productId === receivedItem.productId)` — with two
+    // lines sharing a productId this ALWAYS resolved to the first line, so the second
+    // line's receipt silently recorded the FIRST line's landed cost into its own
+    // inventory_batches row (and, separately, the Receive-an-existing-PO dialog's React
+    // state — keyed by productId alone — collapsed the two lines' quantities into one,
+    // which this API-level test cannot exercise directly but the matching fix below does
+    // share the same root cause and fix commit).
+    //
+    // One PO, one product (PO_CASE_PRODUCT), two lines:
+    //   - Line 1: base unit (Piece), quantity 3, cost ₱3/pc (factor 1)
+    //   - Line 2: Case unit (PO_CASE_UNIT), quantity 1, cost ₱60/Case = ₱2.50/pc (factor 24)
+    // Expected stock increase: 3*1 + 1*24 = 27 pieces — never 3, never 24, never 1, and
+    // never some collapsed/overwritten value.
+    // Expected: TWO inventory_batches rows for this PO, one per line, each carrying its
+    // OWN per-piece landed cost (₱3/pc for the Piece line, ₱2.50/pc for the Case line) —
+    // not both rows carrying the first line's ₱3/pc (the old bug).
+    const reference = `PO-DUAL-LINE-E2E-${Date.now()}`;
+
+    // Read starting stock first — this product's stock is also mutated by the
+    // Case-only and mixed-line tests above in this same file, so assert a
+    // relative delta rather than an absolute value.
+    const beforeRes = await request.get(`/api/products?search=${PO_CASE_PRODUCT.sku}&limit=5`);
+    const beforeBody = await beforeRes.json();
+    const beforeProd = (beforeBody.data ?? []).find((p: any) => p.id === PO_CASE_PRODUCT.id);
+    expect(beforeProd, 'product makita sa list (before)').toBeTruthy();
+    const stockBefore = Number(beforeProd.stock);
+
+    const res = await request.post('/api/purchase-orders', {
+      data: {
+        supplierId: TEST_SUPPLIER.id,
+        supplierName: TEST_SUPPLIER.name,
+        date: new Date().toISOString(),
+        paymentMethod: TEST_PAYMENT_METHOD.name,
+        purchaseType: 'Receive',
+        status: 'Received',
+        reference,
+        receiveToWarehouse: TEST_WAREHOUSE.id,
+        receiveToWarehouseName: TEST_WAREHOUSE.name,
+        shipping: 0,
+        orderedBy: DEFAULT_ADMIN.displayName,
+        items: [
+          {
+            productId: PO_CASE_PRODUCT.id,
+            productName: PO_CASE_PRODUCT.name,
+            quantity: 3, // 3 Pieces (base unit)
+            cost: PO_CASE_PRODUCT.cost, // ₱3/pc
+            sellingPrice: PO_CASE_PRODUCT.price,
+            discount: 0,
+            discountType: 'amount',
+            vatSubject: false,
+            // No sellingUnitId/sellingUnitFactor: this line is the base unit.
+          },
+          {
+            productId: PO_CASE_PRODUCT.id,
+            productName: PO_CASE_PRODUCT.name,
+            quantity: 1, // 1 Case
+            cost: PO_CASE_UNIT.cost, // ₱60/Case = ₱2.50/pc
+            sellingPrice: PO_CASE_UNIT.price,
+            discount: 0,
+            discountType: 'amount',
+            vatSubject: false,
+            sellingUnitId: PO_CASE_UNIT.id,
+            sellingUnitName: PO_CASE_UNIT.name,
+            sellingUnitFactor: PO_CASE_UNIT.factor,
+          },
+        ],
+      },
+    });
+    expect(res.ok(), 'PO received').toBeTruthy();
+    const resBody = await res.json();
+    expect(resBody.success).toBeTruthy();
+    const orderId = resBody.data?.id;
+    expect(orderId, 'PO id gibalik sa response').toBeTruthy();
+
+    const afterRes = await request.get(`/api/products?search=${PO_CASE_PRODUCT.sku}&limit=5`);
+    const afterBody = await afterRes.json();
+    const afterProd = (afterBody.data ?? []).find((p: any) => p.id === PO_CASE_PRODUCT.id);
+    expect(afterProd, 'product makita sa list (after)').toBeTruthy();
+    const stockAfter = Number(afterProd.stock);
+
+    // 3 pieces + 1 Case * factor 24 = 27 pieces total. Not 3, not 24, not 1,
+    // not a collapsed/overwritten single-line value.
+    expect(stockAfter - stockBefore).toBe(27);
+
+    // The discriminating assertion: each line must land its OWN per-piece cost into its
+    // own inventory_batches row. Under the old productId-only matching, BOTH rows would
+    // have recorded the first (Piece) line's landed cost of ₱3/pc — the Case row would
+    // wrongly show ₱3/pc instead of ₱2.50/pc.
+    const batchesRes = await request.get(`/api/inventory-batches?search=${orderId}&pageSize=10`);
+    const batchesBody = await batchesRes.json();
+    const batches = (batchesBody.data ?? []).filter((b: any) => b.purchase_order_id === orderId);
+    expect(batches.length, 'duha ka inventory_batches rows, usa kada line').toBe(2);
+
+    const pieceBatch = batches.find((b: any) => Number(b.quantity_in) === 3);
+    const caseBatch = batches.find((b: any) => Number(b.quantity_in) === 24);
+    expect(pieceBatch, 'batch sa Piece line (quantity_in=3)').toBeTruthy();
+    expect(caseBatch, 'batch sa Case line (quantity_in=24)').toBeTruthy();
+
+    expect(Number(pieceBatch.unit_cost)).toBeCloseTo(3, 2);
+    expect(Number(caseBatch.unit_cost)).toBeCloseTo(2.5, 2);
+  });
+
   test('UI smoke: Add Purchase Order dialog mo-abli ug ma-fill ang header', async ({ page }) => {
     await seedSession(page, DEFAULT_ADMIN);
     await page.goto('/purchases');

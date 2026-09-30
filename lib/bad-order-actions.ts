@@ -1,6 +1,7 @@
 import { query, withTransaction } from './mysql';
 import { v4 as uuidv4 } from 'uuid';
 import { updateStockAndRecordMovement } from './stock-movements';
+import { toSafeNumber } from './utils';
 
 export async function processBadOrderCreation(body: any, userId: string) {
   try {
@@ -73,22 +74,31 @@ export async function processBadOrderCreation(body: any, userId: string) {
 
         for (const item of items) {
             const itemId = `boi_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            
+
+            // Bad-item quantity/cost arrive in the RECEIVE LINE's own unit (e.g. "1 bad
+            // Case" at ₱60/Case), not necessarily base-unit pieces. Convert once, here at
+            // the boundary, to the same base-unit-piece contract every other stock/cost
+            // table in this codebase uses (inventory_batches.unit_cost, products.cost,
+            // stock movements): quantity * factor pieces removed, cost / factor per piece.
+            // The factor cancels back out in quantity*cost, so bad_order_items still
+            // reflects the same peso value the receiver actually entered.
+            const factor = toSafeNumber(item.sellingUnitFactor) || 1;
+            const quantityRemoved = (parseFloat(item.quantity) || 0) * factor;
+            const perPieceCost = toSafeNumber(item.cost) / factor;
+
             await connection.query(insertItemQuery, [
                 itemId,
                 badOrderId,
                 item.productId,
                 item.productName,
-                item.quantity,
-                item.cost,
+                quantityRemoved,
+                perPieceCost,
                 item.reason,
                 item.description || null,
             ]);
 
             // Write off this product's own stock, which is already in base units.
             // One product, one stock figure — nothing cascades to another product.
-            const quantityRemoved = parseFloat(item.quantity) || 0;
-
             if (quantityRemoved > 0) {
                 await updateStockAndRecordMovement(
                     item.productId,

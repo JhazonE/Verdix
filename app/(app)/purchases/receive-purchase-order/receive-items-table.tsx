@@ -22,6 +22,7 @@ import { calculatePurchaseCosts } from '@/lib/purchase-utils';
 import { toSafeNumber } from '@/lib/utils';
 import { type PurchaseOrder } from '@/lib/types';
 import { type ReceivePurchaseOrderController } from './use-receive-purchase-order';
+import { lineKey } from './receive-purchase-order-types';
 
 interface ReceiveItemsTableProps {
   order: PurchaseOrder;
@@ -50,6 +51,7 @@ export function ReceiveItemsTable({ order, controller }: ReceiveItemsTableProps)
       discount: i.discount || 0,
       discountType: (i.discountType as any) || 'amount',
       vatSubject: i.vatSubject,
+      sellingUnitFactor: i.sellingUnitFactor,
     })),
     order.shippingFee || 0,
     12,
@@ -66,13 +68,13 @@ export function ReceiveItemsTable({ order, controller }: ReceiveItemsTableProps)
             <TableHead className="text-right w-[100px]">Cost</TableHead>
             <TableHead className="text-right w-[100px]">
               <div className="flex items-center justify-end gap-1">
-                Landed Cost
+                Landed Cost (per pc)
                 <Tooltip>
                   <TooltipTrigger>
                     <Info className="h-3 w-3 text-muted-foreground" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
-                    Landed Cost includes the shipping fee allocation. This will be the new inventory cost for this item.
+                    This is the per-piece inventory cost this receipt will record — it may differ from the per-unit cost shown above when this line is a non-base selling unit.
                   </TooltipContent>
                 </Tooltip>
               </div>
@@ -85,18 +87,29 @@ export function ReceiveItemsTable({ order, controller }: ReceiveItemsTableProps)
           </TableRow>
         </TableHeader>
         <TableBody>
-          {order.items.map((item) => {
-            const calculated = calculations.items.find((ci) => ci.productId === item.productId);
+          {order.items.map((item, index) => {
+            // Index-aligned, not productId-matched: `calculations.items` was built from
+            // this same `order.items` array in the same order, so position is a safe,
+            // unambiguous correspondence even when two lines share a productId (Piece +
+            // Case). landedCostPerUnit here is already per-piece (divided by factor).
+            const calculated = calculations.items[index];
             const landedCost = calculated?.landedCostPerUnit || item.cost;
+            const key = lineKey(item);
+            const hasUnit = item.sellingUnitName && item.sellingUnitFactor !== 1;
 
             return (
-              <TableRow key={item.productId}>
+              <TableRow key={key}>
                 <TableCell>
                   <div className="font-medium text-xs truncate max-w-[170px]" title={item.productName}>
                     {item.productName}
+                    {hasUnit && (
+                      <span className="ml-1 text-[10px] font-semibold text-blue-600">— {item.sellingUnitName}</span>
+                    )}
                   </div>
                 </TableCell>
-                <TableCell className="text-right text-xs">{item.quantity}</TableCell>
+                <TableCell className="text-right text-xs">
+                  {item.quantity} {hasUnit ? item.sellingUnitName : ''}
+                </TableCell>
                 <TableCell className="text-right text-xs text-muted-foreground">
                   ₱{toSafeNumber(item.cost).toFixed(2)}
                 </TableCell>
@@ -109,16 +122,19 @@ export function ReceiveItemsTable({ order, controller }: ReceiveItemsTableProps)
                     min="0"
                     step="any"
                     className="text-right h-8 text-xs"
-                    value={quantities[item.productId] ?? ''}
-                    onChange={(e) => handleQuantityChange(item.productId, e.target.value)}
+                    value={quantities[key] ?? ''}
+                    onChange={(e) => handleQuantityChange(key, e.target.value)}
                   />
+                  {hasUnit && (
+                    <span className="text-[10px] text-muted-foreground block text-right">{item.sellingUnitName}</span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <Input
                     type="date"
                     className="h-8 text-xs"
-                    value={expiryDates[item.productId] || ''}
-                    onChange={(e) => handleExpiryDateChange(item.productId, e.target.value)}
+                    value={expiryDates[key] || ''}
+                    onChange={(e) => handleExpiryDateChange(key, e.target.value)}
                   />
                 </TableCell>
                 <TableCell>
@@ -127,15 +143,18 @@ export function ReceiveItemsTable({ order, controller }: ReceiveItemsTableProps)
                     min="0"
                     step="any"
                     className="text-right h-8 text-xs border-destructive/50 focus-visible:ring-destructive"
-                    value={badItems[item.productId]?.quantity || ''}
-                    onChange={(e) => handleBadQtyChange(item.productId, e.target.value)}
+                    value={badItems[key]?.quantity || ''}
+                    onChange={(e) => handleBadQtyChange(key, e.target.value)}
                   />
+                  {hasUnit && (
+                    <span className="text-[10px] text-muted-foreground block text-right">{item.sellingUnitName}</span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <Select
-                    value={badItems[item.productId]?.reason || 'Damaged'}
-                    onValueChange={(val) => handleBadReasonChange(item.productId, val)}
-                    disabled={!(badItems[item.productId]?.quantity > 0)}
+                    value={badItems[key]?.reason || 'Damaged'}
+                    onValueChange={(val) => handleBadReasonChange(key, val)}
+                    disabled={!(badItems[key]?.quantity > 0)}
                   >
                     <SelectTrigger className="h-8 text-xs">
                       <SelectValue placeholder="Reason" />
@@ -153,9 +172,9 @@ export function ReceiveItemsTable({ order, controller }: ReceiveItemsTableProps)
                   <Input
                     placeholder="Optional notes..."
                     className="h-8 text-xs"
-                    value={badItems[item.productId]?.description || ''}
-                    onChange={(e) => handleBadDescriptionChange(item.productId, e.target.value)}
-                    disabled={!(badItems[item.productId]?.quantity > 0)}
+                    value={badItems[key]?.description || ''}
+                    onChange={(e) => handleBadDescriptionChange(key, e.target.value)}
+                    disabled={!(badItems[key]?.quantity > 0)}
                   />
                 </TableCell>
               </TableRow>
