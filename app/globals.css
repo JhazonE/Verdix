@@ -229,6 +229,14 @@
     size: auto;
   }
 
+  /* The page background is painted on the canvas regardless of visibility, so
+     without this a themed (dark or tinted) app background shows as a coloured
+     band around and below the printed report. */
+  html,
+  body {
+    background: #fff !important;
+  }
+
   /* Hide everything using visibility so nested .printable-area can override */
   body,
   body * {
