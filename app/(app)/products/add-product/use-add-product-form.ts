@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 
 import { calculateMarkupPercentage, calculateSuggestedPrice } from '@/lib/purchase-utils';
 import { applyPriceLevelAdjustment } from '@/lib/price-level-calc';
+import { useSellingUnitAutoPricing } from '../use-selling-unit-autopricing';
 import { dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { logActivity } from '@/lib/client-activity-logger';
 import { useToast } from '@/hooks/use-toast';
@@ -342,6 +343,21 @@ export function useAddProductForm({
     }
   }, [isOpen, priceLevels, form, appendPriceLevel]);
 
+  // Warehouse is required, so preselect the store warehouse (is_main, else the
+  // seeded 'wh_main', else the first active one — same order the product
+  // importer uses). Declared after the reset effect so it re-applies on every
+  // open, and only fills an empty field so a user's own pick is never replaced.
+  useEffect(() => {
+    if (!isOpen || itemType !== 'standard' || warehouses.length === 0) return;
+    if (form.getValues('warehouse')) return;
+    const active = warehouses.filter((w: any) => w.isActive !== false);
+    const store =
+      active.find((w: any) => w.isMain) ||
+      active.find((w: any) => w.id === 'wh_main') ||
+      active[0];
+    if (store) form.setValue('warehouse', store.id);
+  }, [isOpen, itemType, warehouses, form]);
+
   // "There is no standalone price field — the default (Retail) price-level
   // row IS the product's price" only held at submit time (onSubmit copied
   // priceLevels' Retail entry into `price` right before the DB write). But
@@ -411,7 +427,12 @@ export function useAddProductForm({
   const watchedBrandName = form.watch('brand');
   const watchedSupplierMappings = form.watch('supplierMappings');
   const markupSupplierId = (watchedSupplierMappings || []).find(m => m.isPrimary)?.supplierId;
-  const [markupSource, setMarkupSource] = useState<string | null>(null);
+  const [markupSource, setMarkupSourceRaw] = useState<string | null>(null);
+  const [autoMarkup, setAutoMarkup] = useState<number | null>(null);
+  const setMarkupSource = (v: string | null) => {
+    setMarkupSourceRaw(v);
+    if (v === null) setAutoMarkup(null);
+  };
 
   useEffect(() => {
     if (!systemSettings?.enableAutomaticMarkup) {
@@ -436,6 +457,7 @@ export function useAddProductForm({
 
     if (source) {
       setMarkupSource(`Calculated from ${source} Markup (${markup}%)`);
+      setAutoMarkup(markup);
       if (watchedCost && watchedCost > 0 && !retailPriceEditedByUser.current) {
           // Calculate base price and default level price
           const defaultLevel = priceLevels.find((l: any) => l.isDefault) || priceLevels[0];
@@ -465,6 +487,14 @@ export function useAddProductForm({
     }
 
   }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, markupSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, priceLevelFields]);
+
+  useSellingUnitAutoPricing({
+    form,
+    priceLevels,
+    baseLevelRows: priceLevelFields as any,
+    unitKeys: sellingUnitFields.map(f => f.id),
+    markup: autoMarkup,
+  });
 
   const [costSuggestionSource, setCostSuggestionSource] = useState<string | null>(null);
 

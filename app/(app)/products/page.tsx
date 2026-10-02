@@ -257,44 +257,60 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
         </TableCell>
       </TableRow>
 
-      {unitsExpanded && extraSellingUnits.length > 0 && (
-        <TableRow className="bg-muted/30 hover:bg-muted/30">
-          <TableCell colSpan={10} className="p-0">
-            <div className="divide-y divide-border/50">
-              {extraSellingUnits.map((unit, idx) => (
-                <div
-                  key={unit.id || idx}
-                  className="flex flex-wrap items-center gap-x-6 gap-y-1 py-2 pl-10 pr-4 text-sm"
-                >
-                  <span className="font-medium">
-                    {unit.name}
-                    {typeof unit.factor === 'number' && (
-                      <span className="ml-1 text-xs font-normal text-muted-foreground">(×{unit.factor})</span>
-                    )}
-                  </span>
-                  <span className="text-muted-foreground">
-                    Barcode: <span className="text-foreground">{unit.barcode || '—'}</span>
-                  </span>
-                  <span className="text-muted-foreground">
-                    Stock: <span className="font-bold text-foreground">{formatUnitStockText(product.stock, unit.factor, unit.name)}</span>
-                  </span>
-                  <span className="text-muted-foreground">
-                    Cost: <span className="text-foreground">{typeof unit.cost === 'number' ? `₱${unit.cost.toFixed(2)}` : '—'}</span>
-                  </span>
-                  {unit.priceLevels && unit.priceLevels.length > 0 && unit.priceLevels.map((pl) => {
-                    const levelName = productOptions?.priceLevels?.find((l: any) => l.id === pl.levelId)?.name || pl.levelId;
-                    return (
-                      <span key={pl.levelId} className="text-muted-foreground">
-                        {levelName}: <span className="text-foreground">₱{pl.price.toFixed(2)}</span>
-                      </span>
-                    );
-                  })}
-                </div>
-              ))}
+      {unitsExpanded && extraSellingUnits.map((unit, idx) => (
+        <TableRow
+          key={unit.id || idx}
+          className="bg-muted/30 hover:bg-muted/50 text-[13px] [&>td]:py-2"
+        >
+          <TableCell className="hidden sm:table-cell p-0">
+            <div className="ml-4 h-full min-h-8 w-0.5 rounded bg-primary/40" />
+          </TableCell>
+          <TableCell>
+            <div className="flex items-center gap-2 pl-2">
+              <span className="text-muted-foreground">↳</span>
+              <span className="font-medium">{unit.name}</span>
+              {typeof unit.factor === 'number' && (
+                <Badge variant="secondary" className="px-1.5 py-0 text-[10px] font-normal">
+                  1 = {unit.factor} {product.unitOfMeasure || 'pcs'}
+                </Badge>
+              )}
             </div>
           </TableCell>
+          <TableCell className="hidden md:table-cell">
+            {unit.barcode || <span className="text-muted-foreground">—</span>}
+          </TableCell>
+          <TableCell className="hidden sm:table-cell text-center text-muted-foreground">
+            {unit.name}
+          </TableCell>
+          <TableCell className="text-center">
+            <span className="font-semibold">{formatUnitStockText(product.stock, unit.factor, unit.name)}</span>
+          </TableCell>
+          <TableCell className="hidden md:table-cell text-right">
+            {typeof unit.cost === 'number' ? `₱${unit.cost.toFixed(2)}` : '—'}
+          </TableCell>
+          <TableCell className="hidden md:table-cell text-right">
+            {unit.priceLevels && unit.priceLevels.length > 0 ? (
+              <div className="flex flex-wrap justify-end gap-x-2 gap-y-0.5">
+                {unit.priceLevels.map((pl) => {
+                  const levelName = productOptions?.priceLevels?.find((l: any) => l.id === pl.levelId)?.name || pl.levelId;
+                  return (
+                    <span key={pl.levelId} className="text-xs whitespace-nowrap">
+                      <span className="text-muted-foreground">{levelName}:</span> ₱{pl.price.toFixed(2)}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : typeof unit.price === 'number' ? (
+              `₱${unit.price.toFixed(2)}`
+            ) : (
+              <span className="text-muted-foreground">—</span>
+            )}
+          </TableCell>
+          <TableCell className="hidden md:table-cell" />
+          <TableCell className="hidden md:table-cell" />
+          <TableCell />
         </TableRow>
-      )}
+      ))}
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>

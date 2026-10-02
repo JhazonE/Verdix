@@ -42,6 +42,9 @@ import { ProductTableRowGroup } from './ProductTableRowGroup';
 
 export default function InventoryPage() {
   const {
+    warehouses,
+    warehouseFilter,
+    handleWarehouseFilterChange,
     searchTerm,
     handleSearch,
     handleClearSearch,
@@ -166,6 +169,17 @@ export default function InventoryPage() {
             <SelectItem value="all">All Types</SelectItem>
             <SelectItem value="standard">Standard</SelectItem>
             <SelectItem value="service">Service</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={warehouseFilter} onValueChange={handleWarehouseFilterChange}>
+          <SelectTrigger className="w-full md:w-[200px]">
+            <SelectValue placeholder="Warehouse" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Warehouses</SelectItem>
+            {warehouses.map((w) => (
+              <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

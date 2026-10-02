@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { calculateMarkupPercentage, calculateSuggestedPrice } from '@/lib/purchase-utils';
 import { seedDefaultPriceLevel } from '@/lib/price-level-seed';
 import { applyPriceLevelAdjustment } from '@/lib/price-level-calc';
+import { useSellingUnitAutoPricing } from '../use-selling-unit-autopricing';
 import { dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { logActivity } from '@/lib/client-activity-logger';
 import { useToast } from '@/hooks/use-toast';
@@ -279,6 +280,21 @@ export function useEditProductForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product, isOpen, form]);
 
+  // Warehouse is required. A stocked product saved before that was enforced may
+  // have none, so preselect the store warehouse (is_main, else 'wh_main', else
+  // first active) rather than leave the form unsubmittable. Only fills an empty
+  // field; declared after the reset effect so it runs after the reset.
+  useEffect(() => {
+    if (!isOpen || product.type === 'service' || warehouses.length === 0) return;
+    if (form.getValues('warehouse')) return;
+    const active = warehouses.filter((w: any) => w.isActive !== false);
+    const store =
+      active.find((w: any) => w.isMain) ||
+      active.find((w: any) => w.id === 'wh_main') ||
+      active[0];
+    if (store) form.setValue('warehouse', store.id);
+  }, [isOpen, product, warehouses, form]);
+
   const refreshSupplierMappings = async () => {
     setIsLoadingSupplierMappings(true);
     try {
@@ -297,7 +313,12 @@ export function useEditProductForm({
 
   const primarySupplierMapping = supplierMappings.find(m => m.isPrimary);
 
-  const [markupSource, setMarkupSource] = useState<string | null>(null);
+  const [markupSource, setMarkupSourceRaw] = useState<string | null>(null);
+  const [autoMarkup, setAutoMarkup] = useState<number | null>(null);
+  const setMarkupSource = (v: string | null) => {
+    setMarkupSourceRaw(v);
+    if (v === null) setAutoMarkup(null);
+  };
 
   // Track initial load to prevent overwriting existing prices
   const [isInitialized, setIsInitialized] = useState(false);
@@ -371,6 +392,7 @@ export function useEditProductForm({
 
     if (source) {
       setMarkupSource(`Calculated from ${source} Markup (${markup}%)`);
+      setAutoMarkup(markup);
       if (watchedCost && watchedCost > 0 && !retailPriceEditedByUser.current) {
           // Calculate base price and default level price
           const defaultLevel = priceLevels.find((l: any) => l.isDefault) || priceLevels[0];
@@ -399,6 +421,15 @@ export function useEditProductForm({
       setMarkupSource(null);
     }
   }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, markupSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, isInitialized, priceLevelFields]);
+
+  useSellingUnitAutoPricing({
+    form,
+    enabled: isInitialized,
+    priceLevels,
+    baseLevelRows: priceLevelFields as any,
+    unitKeys: sellingUnitFields.map(f => f.id),
+    markup: autoMarkup,
+  });
 
   const [costSuggestionSource, setCostSuggestionSource] = useState<string | null>(null);
 

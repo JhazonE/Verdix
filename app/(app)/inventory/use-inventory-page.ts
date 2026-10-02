@@ -7,7 +7,7 @@ import { useLiveRefresh } from '@/hooks/use-live-refresh';
 import { matchesNormalizedSearch, normalizeSearchTerm } from '@/lib/product-search';
 import type { Product } from '@/lib/types';
 
-import { getProducts } from '../products/actions';
+import { getProducts, getWarehouses } from '../products/actions';
 import type { ProductWithChildren } from './product-list-types';
 
 export function useInventoryPage() {
@@ -15,6 +15,7 @@ export function useInventoryPage() {
   const [sortBy, setSortBy] = useState<'name' | 'stock' | 'barcode'>('name');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [typeFilter, setTypeFilter] = useState<'all' | 'standard' | 'service'>('all');
+  const [warehouseFilter, setWarehouseFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
   const [isBatchDrawerOpen, setIsBatchDrawerOpen] = useState(false);
@@ -22,6 +23,11 @@ export function useInventoryPage() {
   const { data: allLoadedProducts = [], isLoading, refetch } = useQuery({
     queryKey: ['inventoryProducts'],
     queryFn: () => getProducts(),
+  });
+
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['inventoryWarehouses'],
+    queryFn: () => getWarehouses(),
   });
 
   const { data: posSettings } = useQuery({
@@ -48,11 +54,14 @@ export function useInventoryPage() {
     const matchesType = (p: Product) =>
       typeFilter === 'all' || (p.type ?? 'standard') === typeFilter;
 
+    const matchesWarehouse = (p: Product) =>
+      warehouseFilter === 'all' || (p.warehouseId ?? p.warehouse) === warehouseFilter;
+
     // One product, one row. The parent/child family model is gone — a product's
     // packaging now lives in its selling units, not in separate child products,
     // so there is no tree to build and nothing to keep grouped.
     const visible: ProductWithChildren[] = allLoadedProducts
-      .filter((p: Product) => matchesNormalizedSearch(p, term) && matchesType(p))
+      .filter((p: Product) => matchesNormalizedSearch(p, term) && matchesType(p) && matchesWarehouse(p))
       .map((p: Product) => ({ ...p, children: [] }));
 
     visible.sort((a, b) => {
@@ -67,7 +76,7 @@ export function useInventoryPage() {
     });
 
     return visible;
-  }, [allLoadedProducts, searchTerm, sortBy, typeFilter]);
+  }, [allLoadedProducts, searchTerm, sortBy, typeFilter, warehouseFilter]);
 
   const totalProducts = products.length;
   const pagedProducts = useMemo(() =>
@@ -90,7 +99,15 @@ export function useInventoryPage() {
     setCurrentPage(1);
   };
 
+  const handleWarehouseFilterChange = (value: string) => {
+    setWarehouseFilter(value);
+    setCurrentPage(1);
+  };
+
   return {
+    warehouses,
+    warehouseFilter,
+    handleWarehouseFilterChange,
     searchTerm,
     handleSearch,
     handleClearSearch,

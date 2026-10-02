@@ -2258,6 +2258,7 @@ export async function getWarehouses(): Promise<Warehouse[]> {
       name: w.name,
       location: w.location,
       isActive: w.is_active === 1,
+      isMain: !!w.is_main,
       createdAt: w.created_at
     }));
   } catch (error) {

@@ -19,7 +19,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Search, Tag } from 'lucide-react';
 import { calculateEffectivePrice } from '@/lib/pricing';
-import { formatStockQuantity } from '@/lib/utils';
 import { usePriceInquiry } from './use-price-inquiry';
 import type { PriceInquiryDialogProps } from './price-inquiry-types';
 
@@ -144,14 +143,6 @@ export function PriceInquiryDialog({
                   </div>
                 </div>
 
-                {selectedProduct.stock !== undefined && (
-                  <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-full border">
-                    <span>Available Stock:</span>
-                    <span className={`font-bold ${selectedProduct.stock > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
-                      {formatStockQuantity(selectedProduct.stock)} {selectedProduct.unitOfMeasure}
-                    </span>
-                  </div>
-                )}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center flex-1 p-6 text-center text-muted-foreground">

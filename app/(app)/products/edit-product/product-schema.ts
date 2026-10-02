@@ -23,7 +23,7 @@ export function buildProductSchema(isService: boolean) {
     additionalDescription: z.string().optional(),
     category: z.string().min(1, 'Category is required'),
     subcategory: z.string().optional(),
-    warehouse: z.string().optional(),
+    warehouse: isService ? z.string().optional() : z.string().min(1, 'Warehouse is required'),
     shelfLocationIds: z.array(z.string()).optional(),
     isSerialized: z.boolean().default(false),
     unitOfMeasure: z.string().min(1, 'Unit of measure is required'),

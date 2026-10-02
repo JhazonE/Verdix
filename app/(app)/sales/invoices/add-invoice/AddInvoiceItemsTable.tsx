@@ -37,18 +37,19 @@ export function AddInvoiceItemsTable({ form, fields, remove, total, vatAmount, h
           <table className="w-full caption-bottom text-sm text-left border-collapse">
             <TableHeader className="sticky top-0 bg-background z-50 shadow-sm">
               <TableRow className="hover:bg-transparent border-b">
-                <TableHead className="w-[36%] pl-4 h-10">Product</TableHead>
-                <TableHead className="w-[13%] text-center h-10">Qty</TableHead>
-                <TableHead className="w-[17%] text-right h-10">Price</TableHead>
-                <TableHead className="w-[17%] text-right pr-4 h-10">Total</TableHead>
-                <TableHead className="w-[12%] text-center h-10">VAT</TableHead>
-                <TableHead className="w-[5%] h-10" />
+                <TableHead className="w-[4%] pl-3 h-9 text-muted-foreground">#</TableHead>
+                <TableHead className="w-[32%] pl-2 h-9">Product</TableHead>
+                <TableHead className="w-[13%] text-center h-9">Qty</TableHead>
+                <TableHead className="w-[17%] text-right h-9">Price</TableHead>
+                <TableHead className="w-[17%] text-right pr-4 h-9">Total</TableHead>
+                <TableHead className="w-[12%] text-center h-9">VAT</TableHead>
+                <TableHead className="w-[5%] h-9" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {fields.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-[calc(100vh-420px)] min-h-[300px] text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-[calc(100vh-420px)] min-h-[300px] text-center text-muted-foreground">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <div className="bg-muted p-4 rounded-full"><Search className="h-8 w-8 opacity-20" /></div>
                       <p className="font-medium">No items added</p>
@@ -59,7 +60,8 @@ export function AddInvoiceItemsTable({ form, fields, remove, total, vatAmount, h
               ) : (
                 fields.map((field, index) => (
                   <TableRow key={field.id} className="group hover:bg-muted/50 border-b">
-                    <TableCell className="font-medium pl-4 py-2">
+                    <TableCell className="pl-3 py-1 text-xs text-muted-foreground tabular-nums">{index + 1}</TableCell>
+                    <TableCell className="font-medium pl-2 py-1">
                       <div className="font-medium">
                         {field.product.name}
                         {field.sellingUnitName && (
@@ -75,7 +77,7 @@ export function AddInvoiceItemsTable({ form, fields, remove, total, vatAmount, h
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="py-2">
+                    <TableCell className="py-1">
                       <div className="flex justify-center">
                         <FormField
                           control={form.control}
@@ -86,7 +88,7 @@ export function AddInvoiceItemsTable({ form, fields, remove, total, vatAmount, h
                         />
                       </div>
                     </TableCell>
-                    <TableCell className="py-2 text-right">
+                    <TableCell className="py-1 text-right">
                       <FormField
                         control={form.control}
                         name={`items.${index}.price`}
@@ -95,10 +97,10 @@ export function AddInvoiceItemsTable({ form, fields, remove, total, vatAmount, h
                         )}
                       />
                     </TableCell>
-                    <TableCell className="text-right py-2 pr-4 font-mono">
+                    <TableCell className="text-right py-1 pr-4 font-mono">
                       ₱{(Number(form.watch(`items.${index}.price`) || 0) * Number(form.watch(`items.${index}.quantity`) || 0)).toFixed(2)}
                     </TableCell>
-                    <TableCell className="py-2">
+                    <TableCell className="py-1">
                       <div className="flex justify-center">
                         <FormField
                           control={form.control}
@@ -113,9 +115,9 @@ export function AddInvoiceItemsTable({ form, fields, remove, total, vatAmount, h
                         />
                       </div>
                     </TableCell>
-                    <TableCell className="py-2">
+                    <TableCell className="py-1">
                       <Button
-                        variant="ghost" size="icon"
+                        type="button" variant="ghost" size="icon"
                         className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
                         onClick={() => remove(index)}
                       >
@@ -129,24 +131,6 @@ export function AddInvoiceItemsTable({ form, fields, remove, total, vatAmount, h
           </table>
         </div>
 
-        <div className="shrink-0 bg-muted/30 px-4 py-2 border-t flex items-center justify-end gap-6">
-          <div className="flex items-center gap-1.5 text-sm">
-            <span className="text-muted-foreground">Subtotal</span>
-            <span>₱{(Number(total) - shipping - vatAmount).toFixed(2)}</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-sm">
-            <span className="text-muted-foreground">VAT (12%)</span>
-            <span>₱{vatAmount.toFixed(2)}</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-sm">
-            <span className="text-muted-foreground">Shipping</span>
-            <span>₱{shipping.toFixed(2)}</span>
-          </div>
-          <div className="flex items-center gap-1.5 pl-4 border-l">
-            <span className="font-semibold">Total</span>
-            <span className="font-bold text-lg text-primary">₱{Number(total).toFixed(2)}</span>
-          </div>
-        </div>
       </div>
     </div>
   );

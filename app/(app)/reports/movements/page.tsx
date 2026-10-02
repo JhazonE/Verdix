@@ -216,6 +216,7 @@ export default function StockMovementPage() {
                         <SelectItem value="purchase">Purchase</SelectItem>
                         <SelectItem value="adjustment">Adjustment</SelectItem>
                         <SelectItem value="return">Return</SelectItem>
+                        <SelectItem value="transfer">Transfer</SelectItem>
                     </SelectContent>
                 </Select>
              </div>

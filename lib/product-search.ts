@@ -47,16 +47,16 @@ export const BOARD_PRODUCT_LIMIT = 200;
  * matter where it sits in 15,000+ rows, which a client-side filter over a
  * preloaded slice cannot do.
  *
- * Deliberately does NOT pass inStock. An earlier version did, reasoning that
- * the boards only render `quantity > 0`. On live data that hid 15,629 of
- * 15,633 products (15,584 rows sit at exactly stock 0) and left the boards
- * looking empty. Which rows are displayable is the board's decision — each
- * already applies its own `quantity > 0` gate — and pre-empting it here only
- * removes the operator's ability to see what exists.
+ * Passes inStock=true. Both boards only render `quantity > 0`, and the
+ * catalogue is almost entirely stock 0 (7 of 15,990 rows in stock when
+ * written). Without the SQL filter the LIMIT is spent on the newest 200
+ * products, nearly all out of stock, and in-stock items older than that
+ * window never reach the browser — the board shows 2 of 7 and looks broken.
+ * The filter must be in SQL: applying it after the LIMIT cannot recover them.
  */
 export function buildProductQuery(search: string, limit = BOARD_PRODUCT_LIMIT): string {
     const term = normalizeSearchTerm(search);
-    const params = new URLSearchParams({ limit: String(limit) });
+    const params = new URLSearchParams({ limit: String(limit), inStock: 'true' });
     if (term) params.set('search', term);
     return `/products?${params.toString()}`;
 }
