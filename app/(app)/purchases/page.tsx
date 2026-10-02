@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   Card,
   CardContent,
@@ -47,6 +49,7 @@ import { PurchaseOrderRow } from './purchases-list/purchase-order-row';
 import { usePurchasesPage } from './purchases-list/use-purchases-page';
 
 export default function PurchasesPage() {
+  const router = useRouter();
   const controller = usePurchasesPage();
   const {
     purchaseOrders,
@@ -69,8 +72,6 @@ export default function PurchasesPage() {
     isReceiveDialogOpen, setIsReceiveDialogOpen,
     orderToReceive,
     viewingOrder, setViewingOrder,
-    isScheduledOrderOpen, setIsScheduledOrderOpen,
-    scheduledSupplierId, setScheduledSupplierId,
 
     updatePurchaseOrder,
     handleReceiveConfirm,
@@ -99,8 +100,7 @@ export default function PurchasesPage() {
           <div className="flex items-center gap-2">
             <ScheduledOrdersDialog
               onCreateOrder={(supplierId) => {
-                setScheduledSupplierId(supplierId);
-                setIsScheduledOrderOpen(true);
+                router.push(`/purchases/new?supplierId=${encodeURIComponent(supplierId)}`);
               }}
             />
 
@@ -118,27 +118,12 @@ export default function PurchasesPage() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <AddPurchaseOrderDialog
-              onAddOrder={addPurchaseOrder}
-              trigger={
-                <Button size="sm">
-                  <PlusCircle className="mr-2 h-4 w-4" />
-                  Add New Purchase Order
-                </Button>
-              }
-            />
-
-            {isScheduledOrderOpen && (
-              <AddPurchaseOrderDialog
-                open={isScheduledOrderOpen}
-                onOpenChange={setIsScheduledOrderOpen}
-                prefillSupplierId={scheduledSupplierId}
-                onAddOrder={(order) => {
-                  addPurchaseOrder(order);
-                  setIsScheduledOrderOpen(false);
-                }}
-              />
-            )}
+            <Button size="sm" asChild>
+              <Link href="/purchases/new">
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Add New Purchase Order
+              </Link>
+            </Button>
 
             {isEditOpen && editingOrder && (
               <AddPurchaseOrderDialog

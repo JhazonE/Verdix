@@ -69,26 +69,16 @@ assert.ok(
   'buildProductQuery puts the search term on the query string',
 );
 
-// ─── 3. the boards must NOT be restricted to in-stock rows ───────────────
-// An earlier pass added inStock=true here on the reasoning that the boards
-// only render quantity > 0. On live data that hid 15,629 of 15,633 products:
-// only 4 rows in this catalogue have stock > 0 (15,584 sit at exactly 0), so
-// the boards looked all but empty and a search for a real product returned
-// nothing. Whether a row is displayable is the board's own decision — it
-// already applies its own `quantity > 0` gate — and it is not the fetch
-// layer's job to pre-empt it.
+// ─── 3. the boards must request in-stock rows only ───────────────────────
+// Both boards render only quantity > 0, and almost every product is stock 0.
+// Without inStock in the query, the LIMIT is consumed by the newest 200
+// products (nearly all stock 0) and older in-stock items never load — the
+// transfer board showed 2 of 7 in-stock products. The earlier "emptied the
+// boards" reading was just the board correctly showing the few in-stock rows.
 assert.ok(
-  !/inStock/.test(helper),
-  'buildProductQuery does NOT restrict to in-stock rows — on live data that ' +
-    'hid 15,629 of 15,633 products and emptied both boards',
+  /inStock/.test(helper),
+  'buildProductQuery restricts to in-stock rows in SQL, before the LIMIT',
 );
-for (const rel of boards) {
-  const src = stripComments(read(rel));
-  assert.ok(
-    !/inStock/.test(src),
-    `${rel} does not request an in-stock-only product list`,
-  );
-}
 
 // ─── 4. server-side search must reach the whole catalogue ────────────────
 const repo = stripComments(

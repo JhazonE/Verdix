@@ -1,7 +1,7 @@
 'use client';
 
 import { Table as ReactTable } from '@tanstack/react-table';
-import { Search, Filter, X, Columns } from 'lucide-react';
+import { Search, Filter, X, Columns, PlusCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +9,7 @@ import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { AddSalesOrderDialog } from './add-order/add-sales-order-dialog';
+import Link from 'next/link';
 import type { Sale, SalesPerson, Customer } from '@/lib/types';
 import type { OrderFilters, OrderFilterDialogOpen } from './use-orders-filters';
 
@@ -99,7 +99,12 @@ export function OrdersFilterBar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <AddSalesOrderDialog />
+        <Button size="sm" asChild>
+          <Link href="/sales/orders/new">
+            <PlusCircle className="mr-2 h-4 w-4" />
+            New Sales Order
+          </Link>
+        </Button>
       </div>
 
       {/* Active Filter Chips */}

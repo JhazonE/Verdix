@@ -74,7 +74,6 @@ export default function SalesInvoicesPage() {
             onOpenReferenceType={() => { setTempReferenceType(referenceTypeFilter); setReferenceTypeDialogOpen(true); }}
             onOpenReferenceNumber={() => { setTempReferenceNumber(referenceNumberFilter); setReferenceNumberDialogOpen(true); }}
             onOpenReceiptNumber={() => { setTempReceiptNumber(receiptNumberFilter); setReceiptNumberDialogOpen(true); }}
-            onAddSuccess={invalidateInvoices}
             table={table}
           />
         </div>

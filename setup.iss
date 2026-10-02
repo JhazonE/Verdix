@@ -1,4 +1,13 @@
 ; Vendix Inno Setup Script
+;
+; ONE installer for both cases - it detects which one applies (see IsUpgrade in
+; [Code]):
+;   - No existing Vendix  -> full install: bundled MySQL service, database
+;     schema + seed, shortcuts.
+;   - Existing Vendix     -> in-place update: stops the running app, overwrites
+;     the app files, applies pending DB migrations. The existing .env, MySQL
+;     service, and database (C:\ProgramData\Verdix) are never touched.
+; updater.iss remains as a smaller patch-only alternative.
 #define AppName "Vendix"
 ; Version comes from package.json via `npm run build:installer`
 ; (iscc /DAppVersion=x.y.z). The fallback below is only for direct iscc runs.
@@ -43,12 +52,14 @@ Name: "{commonappdata}\Verdix"; Permissions: users-modify
 Source: "dist\win-unpacked\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; Runtime config
-Source: ".env"; DestDir: "{app}"; Flags: ignoreversion
+; .env is the site's real DB credentials/config: copied only when missing, so
+; an update never overwrites it (a fresh install has none, so it gets copied).
+Source: ".env"; DestDir: "{app}"; Flags: onlyifdoesntexist
 Source: "C:\Program Files\nodejs\node.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Microsoft VC++ 2015-2022 Redistributable — required by bundled mysqld.exe.
 ; Fresh Windows PCs often lack it; installed silently before MySQL setup.
-Source: "redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
+Source: "redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsUpgrade
 
 ; Database setup — verdix_install.sql holds the full table structure, reference
 ; data, and the default admin. Applied via bundled mysql.exe (no Node).
@@ -68,7 +79,7 @@ Source: "start_server_hidden.vbs"; DestDir: "{app}"; Flags: ignoreversion
 ; Excludes drop ~600MB of files the server never needs at runtime: debug symbols
 ; (*.pdb incl. the 352MB mysqld.pdb), debug plugins, dev headers/libs, Perl tools,
 ; docs, and the MeCab CJK full-text dictionaries (unused by this POS).
-Source: "mysql-bundle\*"; DestDir: "{app}\mysql"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.lib,*.pl,lib\plugin\debug\*,lib\mecab\*,docs\*,include\*"
+Source: "mysql-bundle\*"; DestDir: "{app}\mysql"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "*.pdb,*.lib,*.pl,lib\plugin\debug\*,lib\mecab\*,docs\*,include\*"; Check: NeedMySqlFiles
 
 ; Next.js Standalone Files
 ; IMPORTANT: exclude stale operational scripts that Next traced into the standalone
@@ -104,6 +115,38 @@ Source: "node_modules\react\*"; DestDir: "{app}\node_modules\react"; Flags: igno
 Source: ".next\static\*"; DestDir: "{app}\.next\static"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "public\*"; DestDir: "{app}\public"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+; -- Migration toolkit: lives in the updater subfolder of {app}, kept apart from the app's node_modules --
+; Runs scripts/migrations/*.ts via the bundled node.exe after the schema is in
+; place: on an update it applies whatever is new; on a fresh install it brings
+; the verdix_install.sql snapshot (which goes stale) up to date. Same file set
+; as updater.iss - keep the two in sync. See run_update.bat.
+Source: "lib\*"; DestDir: "{app}\updater\lib"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "scripts\migrations\*"; DestDir: "{app}\updater\scripts\migrations"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "scripts\updater\*"; DestDir: "{app}\updater\scripts\updater"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "tsconfig.json"; DestDir: "{app}\updater"; Flags: ignoreversion
+Source: "node_modules\mysql2\*"; DestDir: "{app}\updater\node_modules\mysql2"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\dotenv\*"; DestDir: "{app}\updater\node_modules\dotenv"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\node-cron\*"; DestDir: "{app}\updater\node_modules\node-cron"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\date-fns\*"; DestDir: "{app}\updater\node_modules\date-fns"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\uuid\*"; DestDir: "{app}\updater\node_modules\uuid"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\tsx\*"; DestDir: "{app}\updater\node_modules\tsx"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\esbuild\*"; DestDir: "{app}\updater\node_modules\esbuild"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\@esbuild\win32-x64\*"; DestDir: "{app}\updater\node_modules\@esbuild\win32-x64"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\get-tsconfig\*"; DestDir: "{app}\updater\node_modules\get-tsconfig"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\resolve-pkg-maps\*"; DestDir: "{app}\updater\node_modules\resolve-pkg-maps"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\denque\*"; DestDir: "{app}\updater\node_modules\denque"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\iconv-lite\*"; DestDir: "{app}\updater\node_modules\iconv-lite"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\generate-function\*"; DestDir: "{app}\updater\node_modules\generate-function"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\is-property\*"; DestDir: "{app}\updater\node_modules\is-property"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\long\*"; DestDir: "{app}\updater\node_modules\long"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\lru.min\*"; DestDir: "{app}\updater\node_modules\lru.min"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\safer-buffer\*"; DestDir: "{app}\updater\node_modules\safer-buffer"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\sqlstring\*"; DestDir: "{app}\updater\node_modules\sqlstring"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\named-placeholders\*"; DestDir: "{app}\updater\node_modules\named-placeholders"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\aws-ssl-profiles\*"; DestDir: "{app}\updater\node_modules\aws-ssl-profiles"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "node_modules\seq-queue\*"; DestDir: "{app}\updater\node_modules\seq-queue"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "run_update.bat"; DestDir: "{app}"; Flags: ignoreversion
+
 
 [Icons]
 Name: "{autoprograms}\Vendix POS"; Filename: "{app}\{#AppExeName}"; Parameters: "--route=/pos --role=""POS Terminal"""; IconFilename: "{app}\public\verdix_logo.ico"
@@ -117,9 +160,12 @@ Name: "{commonstartup}\Vendix Server"; Filename: "wscript.exe"; Parameters: """{
 
 [Run]
 ; Install VC++ runtime first — bundled mysqld.exe depends on it.
-Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing runtime components..."; Flags: waituntilterminated
-; Sets up bundled MySQL as a Windows service, creates the DB, applies schema + admin
+Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing runtime components..."; Flags: waituntilterminated; Check: not IsUpgrade
+; Sets up bundled MySQL as a Windows service, creates the DB, applies schema + admin.
+; On an update the service/DB already exist, so it only makes sure MySQL is running.
 Filename: "{app}\setup_mysql_service.bat"; Flags: runhidden waituntilterminated; StatusMsg: "Setting up database..."
+; Applies pending migrations (update) / brings the bundled schema current (fresh).
+Filename: "{app}\run_update.bat"; Flags: runhidden waituntilterminated; StatusMsg: "Applying database updates..."
 Filename: "{app}\{#AppExeName}"; Flags: nowait skipifsilent
 
 [UninstallRun]
@@ -128,3 +174,49 @@ Filename: "{app}\uninstall_mysql_service.bat"; Flags: runhidden waituntiltermina
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}"
 Type: filesandordirs; Name: "{commonappdata}\Verdix\mysql-data"
+
+[Code]
+// True only for a real update: Vendix is already installed in the chosen
+// directory AND its MySQL service is registered. Leftover app files from a
+// failed or cancelled earlier install (no service) must NOT count, or the
+// installer would skip MySQL setup and leave the PC without a database.
+function IsUpgrade: Boolean;
+begin
+  Result := FileExists(ExpandConstant('{app}\{#AppExeName}')) and
+            FileExists(ExpandConstant('{app}\.env')) and
+            RegKeyExists(HKLM, 'SYSTEM\CurrentControlSet\Services\VerdixMySQL');
+end;
+
+// The bundled MySQL files are copied on a fresh install, and also on an update
+// if they are somehow missing. On a normal update they are skipped: the
+// running service holds them locked (jemalloc.dll etc.) and they never change.
+function NeedMySqlFiles: Boolean;
+begin
+  Result := (not IsUpgrade) or
+            (not FileExists(ExpandConstant('{app}\mysql\bin\mysqld.exe')));
+end;
+
+// Runs BEFORE [Files] copies anything. On an update, release locks on
+// verdix.exe / server.js / DLLs so the overwrite neither fails nor leaves a
+// half-updated install. Neither the MySQL service nor mysqld.exe is touched.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+  NodeExePath: String;
+  PsCommand: String;
+begin
+  if IsUpgrade then
+  begin
+    Exec('taskkill.exe', '/F /IM verdix.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    // node.exe is a generic name - kill only the copy bundled at {app}\node.exe,
+    // matched by its exact executable path.
+    NodeExePath := ExpandConstant('{app}\node.exe');
+    PsCommand := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process -Filter ''Name=\"node.exe\"'' | ' +
+      'Where-Object { $_.ExecutablePath -eq ''' + NodeExePath + ''' } | ' +
+      'ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"';
+    Exec('powershell.exe', PsCommand, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    // A killed process can hold file handles briefly (AV scan, deferred cleanup).
+    Sleep(2000);
+  end;
+  Result := '';
+end;

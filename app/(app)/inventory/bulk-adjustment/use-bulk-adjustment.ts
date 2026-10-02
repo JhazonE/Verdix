@@ -146,6 +146,14 @@ export function useBulkAdjustment() {
       toast({ variant: 'destructive', title: 'Target Warehouse Required', description: 'Please select a destination warehouse.' });
       return;
     }
+    if (adjustmentType === 'transfer' && (!warehouseId || warehouseId === 'none')) {
+      toast({ variant: 'destructive', title: 'Source Warehouse Required', description: 'Please select the source warehouse to transfer from.' });
+      return;
+    }
+    if (adjustmentType === 'transfer' && warehouseId === targetWarehouseId) {
+      toast({ variant: 'destructive', title: 'Invalid Transfer', description: 'Source and destination warehouses must be different.' });
+      return;
+    }
     setIsProcessing(true);
     try {
       const userSession = localStorage.getItem('mock-user-session');

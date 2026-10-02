@@ -31,7 +31,7 @@ const baseProductSchema = z.object({
 /** Stocked goods — the existing behaviour, unchanged. */
 const standardProductSchema = baseProductSchema.extend({
   itemType: z.literal('standard'),
-  warehouse: z.string().optional(),
+  warehouse: z.string().min(1, 'Warehouse is required'),
   shelfLocationIds: z.array(z.string()).optional(),
   stock: z.coerce.number().int().nonnegative('Initial stock must be a non-negative integer'),
   reorderPoint: z.coerce.number().int().nonnegative().optional().default(0),

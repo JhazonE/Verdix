@@ -119,7 +119,6 @@ export default function SalesOrdersPage() {
       {/* Edit Dialog */}
       <AddSalesOrderDialog
         isOpen={isEditOpen}
-        hideTrigger
         onOpenChange={(open) => { setIsEditOpen(open); if (!open) setOrderToEdit(null); }}
         initialData={orderToEdit || undefined}
         onSuccess={() => { refetch(); setIsEditOpen(false); setOrderToEdit(null); }}

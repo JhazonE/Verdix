@@ -259,11 +259,11 @@ export function InventoryTab() {
           name="warehouse"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Warehouse (Optional)</FormLabel>
+              <FormLabel>Warehouse</FormLabel>
               <InlineEditableSelect
                 items={warehouses}
                 isLoading={false}
-                value={field.value}
+                value={field.value ?? ""}
                 onChange={field.onChange}
                 open={selects.warehouses}
                 onOpenChange={(o) => setSelects((p) => ({ ...p, warehouses: o }))}

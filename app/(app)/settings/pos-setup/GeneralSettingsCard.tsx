@@ -20,7 +20,7 @@ export function GeneralSettingsCard({ settings, set }: Props) {
       <CardContent className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <Label htmlFor="showQuantityInSearch">Show Quantity in Search Product</Label>
+            <Label htmlFor="showQuantityInSearch">Show Quantity in Product Search &amp; Autocomplete</Label>
             <p className="text-sm text-muted-foreground">Display product quantity in the POS product search dialog</p>
           </div>
           <Switch id="showQuantityInSearch" checked={!!settings.showQuantityInSearch} onCheckedChange={v => set('showQuantityInSearch', v)} />

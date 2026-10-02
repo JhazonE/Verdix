@@ -15,7 +15,7 @@ echo [%date% %time%] Starting MySQL setup... >> "%LOG_FILE%"
 sc query VerdixMySQL >nul 2>&1
 if %errorlevel% equ 0 (
     echo [%date% %time%] VerdixMySQL service already exists, ensuring it is running. >> "%LOG_FILE%"
-    net start VerdixMySQL >nul 2>&1
+    net start VerdixMySQL >> "%LOG_FILE%" 2>&1
     echo [ok] MySQL service already installed.
     goto :run_migrations
 )
@@ -90,6 +90,25 @@ if %errorlevel% neq 0 (
 echo [%date% %time%] Root password set. >> "%LOG_FILE%"
 
 :run_migrations
+:: ── Wait until MySQL actually answers (up to ~60s) ────────────────────────────
+:: "net start" can return before the server accepts connections, and on an
+:: update the service may have been stopped. Without this wait the steps below
+:: (and run_update.bat's migrations) hit ECONNREFUSED on 3306.
+set "TRIES=0"
+:wait_mysql
+"%MYSQL_BIN%\mysqladmin.exe" -u root -prootpassword ping >nul 2>&1
+if %errorlevel% equ 0 goto :mysql_ready
+set /a TRIES+=1
+if %TRIES% geq 30 (
+    echo [FAIL] MySQL is not responding on port 3306. Check %LOG_FILE%
+    echo [%date% %time%] FAIL: MySQL did not respond after 60s >> "%LOG_FILE%"
+    exit /b 1
+)
+timeout /t 2 /nobreak >nul
+goto :wait_mysql
+:mysql_ready
+echo [%date% %time%] MySQL is accepting connections. >> "%LOG_FILE%"
+
 :: ── Create database + apply schema/seed via bundled mysql client ──────────────
 :: Uses the bundled mysql.exe (no Node/mysql2 needed). verdix_install.sql holds
 :: the full 75-table structure (CREATE TABLE IF NOT EXISTS), reference data, and
@@ -102,6 +121,17 @@ if %errorlevel% neq 0 (
     echo [FAIL] Could not create database. Check %LOG_FILE%
     echo [%date% %time%] FAIL: create database returned %errorlevel% >> "%LOG_FILE%"
     exit /b 1
+)
+
+:: Schema already applied (an update, or a re-run over an existing install)?
+:: Then leave the data alone: re-importing the seed would resurrect rows the
+:: store deleted and is pointless, since setup's run_update.bat applies any
+:: pending migrations afterwards. The users table is the "schema applied" marker.
+"%MYSQL_CLIENT%" -u root -prootpassword -N -e "SHOW TABLES FROM verdix LIKE 'users';" 2>nul | findstr /i "users" >nul
+if %errorlevel% equ 0 (
+    echo [%date% %time%] Database already populated, skipping verdix_install.sql. >> "%LOG_FILE%"
+    echo [ok] Existing database kept.
+    exit /b 0
 )
 
 echo Applying schema, reference data, and default admin...

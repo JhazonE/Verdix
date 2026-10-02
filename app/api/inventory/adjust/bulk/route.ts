@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withTransaction, query } from '@/lib/mysql';
 import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
 import { updateStockAndRecordMovement } from '@/lib/stock-movements';
+import { MySqlInventoryTransferRepository } from '@/src/infrastructure/repositories/MySqlInventoryTransferRepository';
+import { TransferStockService } from '@/src/infrastructure/services/TransferStockService';
+import { TransferStockUseCase } from '@/src/core/inventory/application/TransferStockUseCase';
 
 /**
  * Bulk Stock Adjustment API
@@ -28,6 +31,114 @@ export async function POST(request: NextRequest) {
 
     const results: any[] = [];
     const queuedItems: any[] = [];
+
+    // Transfers use exactly the same path as the Transfer board (TransferStockUseCase):
+    // it creates the product in the target warehouse when missing, records the
+    // transfer, and writes stock movements for both sides.
+    if (adjustmentType === 'transfer') {
+      if (!warehouseId || !targetWarehouseId) {
+        return NextResponse.json(
+          { success: false, error: 'Source and destination warehouses are required for a transfer' },
+          { status: 400 }
+        );
+      }
+      if (warehouseId === targetWarehouseId) {
+        return NextResponse.json(
+          { success: false, error: 'Source and destination warehouses must be different' },
+          { status: 400 }
+        );
+      }
+
+      const isApprovalRequired = await checkApprovalRequired('STOCK_TRANSFER');
+      const [srcRows, dstRows]: any = await Promise.all([
+        query('SELECT name FROM warehouses WHERE id = ?', [warehouseId]),
+        query('SELECT name FROM warehouses WHERE id = ?', [targetWarehouseId]),
+      ]);
+      const transferNotes = batchNotes || 'Bulk Transfer';
+      const transferDate = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      const immediateItems: any[] = [];
+
+      for (const adj of adjustments) {
+        const qty = Math.abs(Number(adj.quantity));
+        if (!adj.productId || !Number.isFinite(qty)) {
+          throw new Error(`Invalid adjustment details for product ${adj.productId}`);
+        }
+        if (qty === 0) continue;
+
+        const prodRows: any = await query(
+          `SELECT p.stock, p.name, p.barcode, p.unit_of_measure, su.barcode AS base_unit_barcode
+           FROM products p
+           LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
+           WHERE p.id = ?`,
+          [adj.productId]
+        );
+        const product = prodRows[0];
+        if (!product) throw new Error(`Product not found: ${adj.productId}`);
+        if (Number(product.stock) - qty < 0) {
+          throw new Error(`Transfer would result in negative stock for ${product.name} at source`);
+        }
+
+        const item = {
+          productId: adj.productId,
+          productName: product.name,
+          quantity: qty,
+          unitOfMeasure: product.unit_of_measure,
+        };
+
+        if (isApprovalRequired) {
+          const { queueId, pendingApproval } = await submitToApprovalQueue(
+            'STOCK_TRANSFER',
+            {
+              productId: adj.productId,
+              productName: product.name,
+              productBarcode: product.base_unit_barcode || product.barcode || '',
+              quantity: qty,
+              unitOfMeasure: product.unit_of_measure,
+              sourceWarehouseId: warehouseId,
+              targetWarehouseId,
+              fromWarehouseName: srcRows[0]?.name || 'Unknown Warehouse',
+              toWarehouseName: dstRows[0]?.name || 'Unknown Warehouse',
+              transferDate,
+              reference: referenceNo,
+              notes: adj.reason || transferNotes,
+              adjustmentType,
+            },
+            userId
+          );
+          if (pendingApproval) {
+            queuedItems.push({ productId: adj.productId, productName: product.name, queueId, type: 'STOCK_TRANSFER' });
+            continue;
+          }
+        }
+        immediateItems.push(item);
+      }
+
+      if (immediateItems.length > 0) {
+        const transferId = await new TransferStockUseCase(
+          new MySqlInventoryTransferRepository(),
+          new TransferStockService()
+        ).execute({
+          sourceWarehouseId: warehouseId,
+          targetWarehouseId,
+          transferDate,
+          reference: referenceNo,
+          notes: transferNotes,
+          items: immediateItems,
+        });
+        for (const it of immediateItems) {
+          results.push({ productId: it.productId, productName: it.productName, transferId });
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        processed: results.length,
+        queued: queuedItems.length,
+        results,
+        queuedItems,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     // 2. Process each adjustment
     await withTransaction(async (connection) => {

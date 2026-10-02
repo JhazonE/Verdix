@@ -39,6 +39,23 @@ export class TransferStockUseCase {
       transferDate = transferDate.slice(0, 19).replace('T', ' ');
     }
 
+    // The single-product transfer dialog (and approval-queue rows created from it)
+    // send a flat { productId, quantity } payload; bulk transfers send items[].
+    const items: TransferStockRequest['items'] = Array.isArray(request.items)
+      ? request.items
+      : request.productId
+        ? [{
+            productId: request.productId,
+            productName: request.productName || 'Unknown',
+            quantity: request.quantity,
+            unitOfMeasure: request.unitOfMeasure,
+          }]
+        : [];
+
+    if (items.length === 0) {
+      throw new Error('Transfer requires at least one item');
+    }
+
     const transferEntity: InventoryTransferEntity = {
       id: transferId,
       sourceWarehouseId,
@@ -47,7 +64,7 @@ export class TransferStockUseCase {
       reference: request.reference,
       status: 'Completed', // For now, auto-completing
       notes: request.notes,
-      items: request.items.map((item: any, index: number) => ({
+      items: items.map((item, index) => ({
         id: `${transferId}_item_${index + 1}`,
         transferId: transferId,
         productId: item.productId,
@@ -58,11 +75,11 @@ export class TransferStockUseCase {
     };
 
     await this.transferRepository.saveWithTransaction(transferEntity, async (connection) => {
-      for (const item of request.items) {
+      for (const item of items) {
         await this.transferService.syncFamilyStockDuringTransfer(
           transferId,
           item.productId,
-          request.targetWarehouseId,
+          targetWarehouseId,
           item.quantity,
           request.notes,
           connection
