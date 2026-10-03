@@ -559,6 +559,14 @@ export function useEditProductForm({
     if (retailEntry?.price !== undefined) {
       values.price = retailEntry.price;
     }
+    // Drop any base-unit row that carries a tier but no price. A quantity
+    // threshold on its own is not an override — it only qualifies one — and
+    // letting it through would write a ₱0 price for that level, which the
+    // resolver would then pick as the cheapest candidate and sell at zero.
+    // The extra-unit path below filters the same way, for the same reason.
+    values.priceLevels = (values.priceLevels || []).filter(
+      (pl) => pl.price !== undefined && pl.price !== null,
+    );
     // The per-unit price-level sub-table (conversion-tab.tsx) never stores an
     // entry with a blank price — a blank input splices the row out entirely,
     // so `price` is always a concrete number by the time it lands here. This

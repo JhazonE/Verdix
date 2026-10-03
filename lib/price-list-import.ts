@@ -276,6 +276,12 @@ export async function applyMatchedItems(
               [item.productId],
             );
             if (baseUnitRows.length > 0) {
+              // min_quantity is deliberately absent from both branches: a new
+              // row takes the column's DEFAULT 0 (no tier), and an existing
+              // row KEEPS whatever tier it already carries. A price list
+              // carries prices, not thresholds, so applying one must not
+              // silently clear a tier someone set on the product form — nor
+              // invent one. Tiers are edited on the Selling Units tab.
               await connection.query(
                 `INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price)
                  VALUES (?, ?, ?)

@@ -619,13 +619,21 @@ export function useAddProductForm({
       const retailEntry = (values.priceLevels || []).find((pl) => pl.levelId === defaultLevelDef?.id);
       const retailPrice = retailEntry?.price ?? 0;
 
-      values.priceLevels = (values.priceLevels || []).map((pl) => {
-        if (pl.price !== 0) return pl;
-        const level = priceLevels.find((l: any) => l.id === pl.levelId);
-        if (!level) return pl;
-        const basePrice = (level.calculationBase || 'retail') === 'cost' ? (values.cost || 0) : retailPrice;
-        return { ...pl, price: applyPriceLevelAdjustment(level.adjustmentType, level.percentageAdjustment, basePrice) };
-      });
+      values.priceLevels = (values.priceLevels || [])
+        // Drop any row that carries a tier but no price. A quantity threshold
+        // on its own is not an override — it only qualifies one — and letting
+        // it through would write a ₱0 price for that level, which the resolver
+        // would then pick as the cheapest candidate and sell at zero. This runs
+        // BEFORE the auto-fill below so a price-less row is never mistaken for
+        // the "untouched ₱0" case that auto-fill exists to correct.
+        .filter((pl) => pl.price !== undefined && pl.price !== null)
+        .map((pl) => {
+          if (pl.price !== 0) return pl;
+          const level = priceLevels.find((l: any) => l.id === pl.levelId);
+          if (!level) return pl;
+          const basePrice = (level.calculationBase || 'retail') === 'cost' ? (values.cost || 0) : retailPrice;
+          return { ...pl, price: applyPriceLevelAdjustment(level.adjustmentType, level.percentageAdjustment, basePrice) };
+        });
 
       // products.price stays in the schema/backend (it's the fallback price
       // when a selling unit has no override for the active level) — it is
@@ -638,8 +646,12 @@ export function useAddProductForm({
       // stays the schema/backend fallback for when this unit has no override
       // for the active level.
       values.sellingUnits = (values.sellingUnits || []).map((unit) => {
-        const unitRetailEntry = (unit.priceLevels || []).find((pl) => pl.levelId === defaultLevelDef?.id);
-        return { ...unit, price: unitRetailEntry?.price ?? 0 };
+        // Same tier-without-price filter as the base unit above.
+        const unitPriceLevels = (unit.priceLevels || []).filter(
+          (pl) => pl.price !== undefined && pl.price !== null,
+        );
+        const unitRetailEntry = unitPriceLevels.find((pl) => pl.levelId === defaultLevelDef?.id);
+        return { ...unit, priceLevels: unitPriceLevels, price: unitRetailEntry?.price ?? 0 };
       });
 
       // No child product is built any more. Extra ways to sell this product are

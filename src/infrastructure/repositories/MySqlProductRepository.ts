@@ -137,6 +137,11 @@ export class MySqlProductRepository implements ProductRepository {
           sulpByUnit.get(row.selling_unit_id)!.push({
             levelId: row.price_level_id,
             price: Number(row.price),
+            // Quantity tier, counted in this unit's own terms. POS needs it
+            // on the wire: calculateEffectivePriceForUnit decides tiers
+            // client-side as the cart quantity changes, so a row that
+            // arrives without it would silently price as untiered.
+            minQuantity: Number(row.min_quantity ?? 0),
           });
         }
       }
@@ -176,8 +181,15 @@ export class MySqlProductRepository implements ProductRepository {
 
         if (defaultLevelId) {
             const baseUnit = product.sellingUnits.find((u: any) => u.isBase);
+            // products.price is the single-unit shelf price: it is what a
+            // list, a search result and a quantity-1 cart line show. Only an
+            // UNTIERED default-level override can stand in for it — a row
+            // tiered at "12+" is not this product's price at quantity 1, and
+            // promoting it here would advertise the bulk price to everyone.
+            // Tiered rows still reach the cart on the selling unit itself,
+            // where calculateEffectivePriceForUnit applies them by quantity.
             const baseOverrides = (baseUnit?.priceLevels ?? [])
-                .filter((pl: any) => pl.levelId === defaultLevelId);
+                .filter((pl: any) => pl.levelId === defaultLevelId && Number(pl.minQuantity ?? 0) <= 0);
 
             if (baseOverrides.length > 0) {
                 product.price = baseOverrides[0].price;
@@ -306,9 +318,10 @@ export class MySqlProductRepository implements ProductRepository {
 
     if (product.priceLevels && product.priceLevels.length > 0) {
       for (const pl of product.priceLevels) {
+        const tier = Number((pl as any).minQuantity ?? 0);
         await query(
-          'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price) VALUES (?, ?, ?)',
-          [baseUnitId, pl.levelId, pl.price],
+          'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)',
+          [baseUnitId, pl.levelId, pl.price, Number.isFinite(tier) && tier > 0 ? Math.floor(tier) : 0],
         );
       }
     }

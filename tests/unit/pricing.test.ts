@@ -40,36 +40,173 @@ const retailLevel = 'retail-level';
   assert.equal(price, 1591.5, 'falls back to its own price exactly');
 }
 
-// --- tiered/quantity-break pricing has been removed: a price-level row for
-// a level that is neither the active nor the default level must never apply,
-// no matter how high the quantity is. Under the old tiered logic, a row
-// carrying a minQuantity > 1 would win once quantity crossed that threshold
-// even for an unrelated level — that behavior must be gone. ---
+// --- QUANTITY TIERS (restored by migration 134) ---
+// A price-level row may carry a minQuantity threshold. There are two ways a
+// row becomes a price candidate:
+//
+//   1. its level is the ACTIVE or DEFAULT level (the long-standing rule), or
+//   2. it carries a tier and the quantity has reached it — WHATEVER level it
+//      sits on. This is what makes a bulk break automatic: a walk-in customer
+//      on Retail who buys 12 gets the Wholesale 12+ price without the cashier
+//      switching price level.
+//
+// Among the rows that qualify, the cheapest wins. A row on an unrelated level
+// with NO tier still never applies — untiered overrides stay scoped to the
+// active and default levels, so this does not leak every level's price to
+// everyone.
+
+// An UNTIERED row on an unrelated level never applies, however high the qty.
 {
   const bulkUnit = {
     price: 100,
-    priceLevels: [{ levelId: 'some-other-level', price: 90, minQuantity: 10 } as any],
+    priceLevels: [{ levelId: 'some-other-level', price: 90 }],
   };
   assert.equal(
     calculateEffectivePriceForUnit(bulkUnit, 50, retailLevel, retailLevel),
     100,
-    'a row for an unmatched level never applies, no matter the quantity or any leftover minQuantity data',
+    'an untiered row on an unmatched level never applies, no matter the quantity',
   );
 }
 
-// --- the other side of the same removal: a row for the ACTIVE level with
-// leftover minQuantity data now applies unconditionally, even at quantity 1
-// (below its old tier threshold). This is the exact behavior change the
-// migration's data audit warns about for real min_quantity > 1 rows. ---
+// THE HEADLINE CASE: a tier on a NON-active level fires once the quantity
+// reaches it, even though the cart is on Retail.
 {
-  const bulkUnitActiveLevel = {
-    price: 100,
-    priceLevels: [{ levelId: wholesaleLevel, price: 90, minQuantity: 12 } as any],
+  const unit = {
+    price: 105,
+    priceLevels: [
+      { levelId: wholesaleLevel, price: 102, minQuantity: 12 },
+      { levelId: retailLevel, price: 105, minQuantity: 0 },
+    ],
   };
   assert.equal(
-    calculateEffectivePriceForUnit(bulkUnitActiveLevel, 1, wholesaleLevel, retailLevel),
-    90,
-    'an active-level row now applies from quantity 1, even with leftover minQuantity > 1',
+    calculateEffectivePriceForUnit(unit, 11, retailLevel, retailLevel),
+    105,
+    'below the tier, a Retail cart pays the Retail price',
+  );
+  assert.equal(
+    calculateEffectivePriceForUnit(unit, 12, retailLevel, retailLevel),
+    102,
+    'at the tier, a Retail cart automatically gets the tiered Wholesale price',
+  );
+  assert.equal(
+    calculateEffectivePriceForUnit(unit, 50, retailLevel, retailLevel),
+    102,
+    'above the tier it still applies',
+  );
+}
+
+// BELOW the threshold the tiered row is skipped -> the unit's own price.
+{
+  const unit = {
+    price: 250,
+    priceLevels: [{ levelId: wholesaleLevel, price: 200, minQuantity: 12 }],
+  };
+  assert.equal(
+    calculateEffectivePriceForUnit(unit, 11, wholesaleLevel, retailLevel),
+    250,
+    'below the tier threshold the row is skipped and the unit price stands',
+  );
+}
+
+// AT the threshold the tier applies (>=, not >).
+{
+  const unit = {
+    price: 250,
+    priceLevels: [{ levelId: wholesaleLevel, price: 200, minQuantity: 12 }],
+  };
+  assert.equal(
+    calculateEffectivePriceForUnit(unit, 12, wholesaleLevel, retailLevel),
+    200,
+    'at exactly the tier threshold the tiered price applies',
+  );
+}
+
+// minQuantity 0 (or absent) means NO threshold: it is an ordinary override,
+// so it stays scoped to the active/default level.
+{
+  const zeroTier = {
+    price: 250,
+    priceLevels: [{ levelId: wholesaleLevel, price: 200, minQuantity: 0 }],
+  };
+  assert.equal(
+    calculateEffectivePriceForUnit(zeroTier, 1, wholesaleLevel, retailLevel),
+    200,
+    'minQuantity 0 on the ACTIVE level applies from quantity 1',
+  );
+  assert.equal(
+    calculateEffectivePriceForUnit(zeroTier, 99, retailLevel, retailLevel),
+    250,
+    'minQuantity 0 on an INACTIVE level never applies, however high the qty',
+  );
+
+  const noTier = {
+    price: 250,
+    priceLevels: [{ levelId: wholesaleLevel, price: 200 }],
+  };
+  assert.equal(
+    calculateEffectivePriceForUnit(noTier, 1, wholesaleLevel, retailLevel),
+    200,
+    'an absent minQuantity behaves as no threshold',
+  );
+}
+
+// A tier on the DEFAULT level is honoured too, and below it the unit price wins.
+{
+  const unit = {
+    price: 250,
+    priceLevels: [{ levelId: retailLevel, price: 230, minQuantity: 6 }],
+  };
+  assert.equal(
+    calculateEffectivePriceForUnit(unit, 5, retailLevel, retailLevel),
+    250,
+    'a default-level tier below its threshold falls back to the unit price',
+  );
+  assert.equal(
+    calculateEffectivePriceForUnit(unit, 6, retailLevel, retailLevel),
+    230,
+    'a default-level tier applies once reached',
+  );
+}
+
+// Several tiers across different levels: every tier the quantity has reached
+// competes, and the cheapest wins.
+{
+  const unit = {
+    price: 250,
+    priceLevels: [
+      { levelId: retailLevel, price: 240, minQuantity: 0 },
+      { levelId: wholesaleLevel, price: 200, minQuantity: 12 },
+      { levelId: 'bulk-level', price: 180, minQuantity: 60 },
+    ],
+  };
+  assert.equal(
+    calculateEffectivePriceForUnit(unit, 1, retailLevel, retailLevel),
+    240,
+    'below every tier, the untiered default-level row wins',
+  );
+  assert.equal(
+    calculateEffectivePriceForUnit(unit, 12, retailLevel, retailLevel),
+    200,
+    'the 12+ tier wins once reached',
+  );
+  assert.equal(
+    calculateEffectivePriceForUnit(unit, 60, retailLevel, retailLevel),
+    180,
+    'the deeper 60+ tier wins once reached',
+  );
+}
+
+// A tier that is MORE expensive than the current price never raises it:
+// Math.min means a qualifying tier can only ever lower what the customer pays.
+{
+  const unit = {
+    price: 100,
+    priceLevels: [{ levelId: 'some-other-level', price: 150, minQuantity: 10 }],
+  };
+  assert.equal(
+    calculateEffectivePriceForUnit(unit, 20, retailLevel, retailLevel),
+    100,
+    'a qualifying tier priced above the unit price never raises the price',
   );
 }
 

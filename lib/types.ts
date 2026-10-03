@@ -1,3 +1,17 @@
+/**
+ * One price-level override attached to a selling unit.
+ *
+ * `minQuantity` is the quantity tier this price applies from (>=), counted in
+ * the OWNING unit's terms — a tier of 3 on a Case means three cases, not 180
+ * pieces. Absent or 0 means no tier, so the override applies from quantity 1.
+ * `lib/pricing.ts` is the only place that interprets it.
+ */
+export interface ProductPriceLevelOverride {
+  levelId: string;
+  price: number;
+  minQuantity?: number;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -58,16 +72,20 @@ export interface Product {
     cost?: number;
     price: number;
     isBase?: boolean;
-    /** This unit's own price-level overrides — never another unit's. */
-    priceLevels?: { levelId: string; price: number }[];
+    /**
+     * This unit's own price-level overrides — never another unit's. A row may
+     * carry a `minQuantity` tier, counted in THIS unit's terms.
+     */
+    priceLevels?: ProductPriceLevelOverride[];
   }[];
 
   // Timestamps
   createdAt?: string;
   updatedAt?: string;
 
-  // Price Levels
-  priceLevels?: { levelId: string; price: number }[];
+  // Price Levels — the BASE unit's overrides, for callers that still read
+  // them off the product rather than off its selling units.
+  priceLevels?: ProductPriceLevelOverride[];
 
   // Supplier Mapping
   primarySupplierRop?: number;

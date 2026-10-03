@@ -278,10 +278,15 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
           [receivedItem.productId],
         );
         if (baseUnitRows.length > 0) {
+          // min_quantity 0 on both branches: this is the base unit's
+          // DEFAULT-level row, which is the product's everyday shelf price
+          // and must apply at every quantity. A tier here would leave the
+          // product with no price below the threshold, and both product read
+          // paths would stop promoting it into products.price.
           await connection.query(`
-            INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price)
-            VALUES (?, ?, ?)
-            ON DUPLICATE KEY UPDATE price = VALUES(price)
+            INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity)
+            VALUES (?, ?, ?, 0)
+            ON DUPLICATE KEY UPDATE price = VALUES(price), min_quantity = 0
           `, [baseUnitRows[0].id, defaultLevelId, finalPrice]);
         }
       }
