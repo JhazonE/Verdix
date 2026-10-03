@@ -3,7 +3,7 @@
 import { query, withTransaction } from '@/lib/mysql';
 import { generateBatchId } from '@/lib/batch-utils';
 import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
-import { PriceLevel, Category, Brand, Supplier, Warehouse, Department, UnitOfMeasure, ShelfLocation, Account, TaxRate, SupplierProductMapping } from '@/lib/types';
+import { PriceLevel, Category, Brand, Supplier, Warehouse, Department, UnitOfMeasure, ShelfLocation, Account, TaxRate, SupplierProductMapping, ProductPriceLevelOverride } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { isValidMarkupValue, MARKUP_MAX } from '@/lib/markup-validation';
 import { updateStockAndRecordMovement } from '@/lib/stock-movements';
@@ -69,7 +69,7 @@ export type SellingUnitInput = {
   barcode?: string;
   cost?: number;
   price: number;
-  priceLevels?: { levelId: string; price: number }[];
+  priceLevels?: ProductPriceLevelOverride[];
 };
 
 /** Thrown for a selling-unit problem we can describe to the user by name. */
@@ -174,6 +174,20 @@ function rethrowSellingUnitDupe(error: any): never {
 }
 
 /**
+ * Coerce a submitted tier into what the column stores. min_quantity is
+ * NOT NULL DEFAULT 0, and 0 is the only encoding of "no threshold", so a
+ * blank input, a negative, or a non-numeric all collapse to 0 rather than
+ * reaching the database as NULL and giving the resolver a second value to
+ * interpret. Fractional thresholds are floored — a tier is a count of whole
+ * units to buy.
+ */
+function normalizeMinQuantity(minQuantity: unknown): number {
+  const parsed = Number(minQuantity ?? 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.floor(parsed);
+}
+
+/**
  * Replace a single selling unit's price-level rows: delete whatever is there,
  * then reinsert what was submitted. Used by updateProduct for every unit
  * present in the submitted form data — a unit the user deleted is handled by
@@ -183,7 +197,7 @@ function rethrowSellingUnitDupe(error: any): never {
 async function replaceSellingUnitPriceLevels(
   connection: any,
   sellingUnitId: string,
-  priceLevels: { levelId: string; price: number }[] | undefined,
+  priceLevels: ProductPriceLevelOverride[] | undefined,
 ) {
   await connection.query(
     'DELETE FROM product_selling_unit_price_levels WHERE selling_unit_id = ?',
@@ -192,8 +206,8 @@ async function replaceSellingUnitPriceLevels(
   if (priceLevels && priceLevels.length > 0) {
     for (const pl of priceLevels) {
       await connection.query(
-        'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price) VALUES (?, ?, ?)',
-        [sellingUnitId, pl.levelId, pl.price],
+        'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)',
+        [sellingUnitId, pl.levelId, pl.price, normalizeMinQuantity(pl.minQuantity)],
       );
     }
   }
@@ -213,7 +227,7 @@ async function writeSellingUnits(
   baseCost: number | null,
   baseBarcode: string | null,
   extras: SellingUnitInput[],
-  basePriceLevels?: { levelId: string; price: number }[],
+  basePriceLevels?: ProductPriceLevelOverride[],
 ) {
   const baseName = String(baseUnitName ?? '').trim() || 'Piece';
   try {
@@ -227,8 +241,8 @@ async function writeSellingUnits(
     if (basePriceLevels && basePriceLevels.length > 0) {
       for (const pl of basePriceLevels) {
         await connection.query(
-          'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price) VALUES (?, ?, ?)',
-          [baseUnitId, pl.levelId, pl.price],
+          'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)',
+          [baseUnitId, pl.levelId, pl.price, normalizeMinQuantity(pl.minQuantity)],
         );
       }
     }
@@ -252,8 +266,8 @@ async function writeSellingUnits(
       if (unit.priceLevels && unit.priceLevels.length > 0) {
         for (const pl of unit.priceLevels) {
           await connection.query(
-            'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price) VALUES (?, ?, ?)',
-            [sellingUnitId, pl.levelId, pl.price],
+            'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, ?)',
+            [sellingUnitId, pl.levelId, pl.price, normalizeMinQuantity(pl.minQuantity)],
           );
         }
       }
@@ -404,6 +418,7 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
       sulpByUnit.get(row.selling_unit_id)!.push({
         levelId: row.price_level_id,
         price: Number(row.price),
+        minQuantity: Number(row.min_quantity ?? 0),
       });
     }
 
@@ -415,8 +430,11 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
       const productSellingUnits: any[] = suMap.get(product.id) || [];
       const baseUnit = productSellingUnits.find((su: any) => su.isBase);
       const basePriceLevels = (baseUnit ? sulpByUnit.get(baseUnit.id) : undefined) || [];
+      // Only an UNTIERED default-level override is this product's shelf
+      // price. A row tiered at "12+" is a bulk price, not the price of one,
+      // so it must not become the figure shown in product lists.
       const retailPriceOverrides = basePriceLevels
-        .filter((pl: any) => pl.levelId === defaultLevelId);
+        .filter((pl: any) => pl.levelId === defaultLevelId && Number(pl.minQuantity ?? 0) <= 0);
 
       const effectivePrice = retailPriceOverrides.length > 0
         ? retailPriceOverrides[0].price
@@ -1116,8 +1134,14 @@ export async function updateProductPrice(id: string, newPrice: number) {
             [newPrice, baseUnitId, defaultLevelId]
           );
         } else {
+          // min_quantity 0 deliberately: this row IS the product's price for
+          // the default level, so it must apply at every quantity. A tier
+          // here would leave the product with no price below the threshold.
+          // The UPDATE branch above leaves any existing min_quantity alone
+          // for the same reason it only touches `price` — this function was
+          // asked to change a price, not a tier.
           await connection.query(
-            'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price) VALUES (?, ?, ?)',
+            'INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity) VALUES (?, ?, ?, 0)',
             [baseUnitId, defaultLevelId, newPrice]
           );
         }
@@ -2195,7 +2219,7 @@ export async function addSupplier(data: any) {
       data.paymentTerms || null, 
       data.orderSchedule || null
     ]);
-    return { success: true, message: 'Supplier added successfully.' };
+    return { success: true, message: 'Supplier added successfully.', id };
   } catch (error) {
     console.error('Error adding supplier:', error);
     return { success: false, message: describeAddError(error, 'supplier') };

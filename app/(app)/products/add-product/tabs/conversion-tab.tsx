@@ -44,8 +44,8 @@ function PriceLevelOverrides({
   requireDefaultLevel = false,
 }: {
   basePath: string;
-  values: { levelId: string; price?: number }[];
-  onChange: (next: { levelId: string; price?: number }[]) => void;
+  values: { levelId: string; price?: number; minQuantity?: number }[];
+  onChange: (next: { levelId: string; price?: number; minQuantity?: number }[]) => void;
   /**
    * The base unit has no standalone price any more — its default (Retail)
    * price-level row IS the product's price, so that one row can never be
@@ -93,8 +93,44 @@ function PriceLevelOverrides({
     onChange(next);
   };
 
+  /**
+   * Set this level's quantity tier. Blank or 0 means no tier, which is the
+   * only encoding of "applies at every quantity" — so a blank clears the
+   * field rather than removing the row, because the row's PRICE is what
+   * decides whether an override exists at all.
+   */
+  const setMinQuantity = (levelId: string, raw: string) => {
+    const next = [...values];
+    const idx = next.findIndex(v => v.levelId === levelId);
+    if (raw === '') {
+      // Blank clears the tier but keeps the row — unlike a blank PRICE, which
+      // means "no override" and removes it. The price is what decides whether
+      // an override exists; the tier only qualifies one.
+      if (idx !== -1) {
+        next[idx] = { ...next[idx], minQuantity: undefined };
+        onChange(next);
+      }
+      return;
+    }
+    const parsed = parseInt(raw, 10);
+    if (Number.isNaN(parsed) || parsed < 0) return;
+    if (idx === -1) {
+      // Typing a tier before a price starts the row. It carries no price yet,
+      // so it is not yet an override — the write side skips a row with no
+      // price — but the number the user typed is kept rather than swallowed.
+      next.push({ levelId, minQuantity: parsed });
+    } else {
+      next[idx] = { ...next[idx], minQuantity: parsed };
+    }
+    onChange(next);
+  };
+
   return (
     <div className="space-y-2 pt-2">
+      <div className="grid grid-cols-[1fr_7rem] gap-2">
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Price</span>
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Min qty</span>
+      </div>
       {priceLevels.map((level: any) => {
         const entry = values.find(v => v.levelId === level.id);
         const isRequired = level.id === defaultLevelId;
@@ -104,14 +140,33 @@ function PriceLevelOverrides({
               {level.name}
               {isRequired && <span className="text-destructive"> *</span>}
             </Label>
-            <Input
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder={isRequired ? 'Required' : 'No override'}
-              value={entry?.price ?? ''}
-              onChange={(e) => setPrice(level.id, e.target.value)}
-            />
+            <div className="grid grid-cols-[1fr_7rem] gap-2">
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder={isRequired ? 'Required' : 'No override'}
+                value={entry?.price ?? ''}
+                onChange={(e) => setPrice(level.id, e.target.value)}
+              />
+              {/*
+                The required default level IS this unit's everyday price, so
+                it can never carry a tier — a threshold there would leave the
+                product with no price below it. Every other level may.
+              */}
+              <Input
+                type="number"
+                step="1"
+                min="0"
+                placeholder={isRequired ? 'Any qty' : 'Min qty'}
+                title={isRequired
+                  ? 'The default level is the everyday price and always applies from quantity 1.'
+                  : 'Quantity this price applies from. Blank means it applies at any quantity.'}
+                disabled={isRequired}
+                value={entry?.minQuantity ?? ''}
+                onChange={(e) => setMinQuantity(level.id, e.target.value)}
+              />
+            </div>
           </div>
         );
       })}
@@ -166,16 +221,24 @@ export function SellingUnitsTab() {
   // (same one the old standalone Price Levels tab bound to), keyed by levelId
   // rather than by array index so "blank = no row" holds here too.
   const allPriceLevelValues = form.watch('priceLevels') || [];
-  const basePriceLevelValues: { levelId: string; price?: number }[] =
-    allPriceLevelValues.filter((v) => !!v?.levelId) as { levelId: string; price?: number }[];
+  const basePriceLevelValues: { levelId: string; price?: number; minQuantity?: number }[] =
+    allPriceLevelValues.filter((v) => !!v?.levelId) as { levelId: string; price?: number; minQuantity?: number }[];
 
-  const setBasePriceLevels = (next: { levelId: string; price?: number }[]) => {
+  const setBasePriceLevels = (next: { levelId: string; price?: number; minQuantity?: number }[]) => {
     // One atomic swap via useFieldArray's own replace(), not a remove-loop
     // followed by an append-loop — that used to fire on every keystroke (a
     // new onChange each time the user typed a digit) and momentarily left
     // the field array empty between the removes and the appends, which
     // dropped focus from the input the user was actively typing into.
-    replacePriceLevels(next.map(entry => ({ levelId: entry.levelId, price: entry.price ?? 0 })));
+    //
+    // minQuantity must be carried through here: rebuilding each entry from
+    // scratch is what makes this swap atomic, so any field omitted from the
+    // mapping is silently dropped on the next keystroke.
+    replacePriceLevels(next.map(entry => ({
+      levelId: entry.levelId,
+      price: entry.price ?? 0,
+      minQuantity: entry.minQuantity ?? 0,
+    })));
   };
 
   return (

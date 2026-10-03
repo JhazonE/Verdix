@@ -54,15 +54,21 @@ export function buildProductSchema(isService: boolean) {
        * This unit's own price-level overrides. A blank price on the form means
        * no override at all — never a coerced 0 — so this array simply omits
        * that level's entry rather than carrying a 0-valued row.
+       *
+       * `minQuantity` is the quantity tier the override applies from, counted
+       * in THIS unit's terms (3 Cases, not 180 pieces). Blank or 0 means no
+       * tier, so the override applies from quantity 1.
        */
       priceLevels: z.array(z.object({
         levelId: z.string(),
         price: z.number().min(0).optional(),
+        minQuantity: z.coerce.number().int('Minimum quantity must be a whole number').nonnegative('Minimum quantity cannot be negative').optional(),
       })).optional(),
     })).optional(),
     priceLevels: z.array(z.object({
       levelId: z.string().min(1, 'Level is required'),
       price: z.coerce.number().nonnegative('Price must be non-negative'),
+      minQuantity: z.coerce.number().int('Minimum quantity must be a whole number').nonnegative('Minimum quantity cannot be negative').optional(),
     })).optional(),
     vatStatus: z.string().default('YES (Subject to 12% VAT)'),
     availability: z.string().default('Available'),
