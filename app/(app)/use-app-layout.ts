@@ -9,6 +9,7 @@ import {
   suppliersNavItems, purchasesNavItems,
 } from './layout-nav-config';
 import { pageKeyForHref } from '@/lib/page-registry';
+import { isDesktopApp } from '@/lib/is-desktop-app';
 
 type AppUser = { email: string; permissions?: string[]; userType?: string };
 
@@ -21,6 +22,7 @@ export function useAppLayout() {
   const [businessName, setBusinessName] = useState('VENDIX');
   const [disabledKeys, setDisabledKeys] = useState<Set<string>>(new Set());
   const [disabledLoaded, setDisabledLoaded] = useState(false);
+  const [browserPosBlocked, setBrowserPosBlocked] = useState(false);
 
   const isPOSPage = pathname === '/pos' || pathname === '/pos/customer-display';
 
@@ -33,15 +35,24 @@ export function useAppLayout() {
     setIsUserLoading(false);
   }, [router, pathname]);
 
-  // Business name
+  // Business name, plus the browser-POS switch (Developer Options).
+  //
+  // The gate deliberately applies ONLY to real browsers: the Electron desktop
+  // window is the intended POS terminal and must never be locked out by it.
+  // A failed fetch leaves the block off — an unreachable settings API is not a
+  // reason to strand a cashier mid-shift.
   useEffect(() => {
     fetch(getApiUrl('/pos-settings'))
       .then(res => { if (!res.ok) throw new Error(); return res.json(); })
       .then(result => {
-        if (result.success && result.data?.businessName) setBusinessName(result.data.businessName);
+        if (!result.success) return;
+        if (result.data?.businessName) setBusinessName(result.data.businessName);
+        // Absent/NULL means "allowed" so an install predating the column keeps working.
+        const allowed = result.data?.enableBrowserPos ?? 1;
+        setBrowserPosBlocked(isPOSPage && !isDesktopApp() && !Number(allowed));
       })
       .catch(() => {});
-  }, []);
+  }, [isPOSPage]);
 
   // Disabled pages (store-wide developer toggles). Skipped on POS/customer-display,
   // which render before the sidebar and never consume the disabled set.
@@ -98,6 +109,7 @@ export function useAppLayout() {
   return {
     user, isUserLoading, isPOSPage,
     businessName,
+    browserPosBlocked,
     hasPermission, getInitials,
     filteredNavItems, filteredOtherNavItems,
     filteredInventoryNavItems, filteredSalesNavItems,

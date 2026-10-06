@@ -6,34 +6,44 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { FlaskConical, Store, Hash, RotateCcw, Loader2 } from 'lucide-react';
+import { FlaskConical, Store, Hash, RotateCcw, Loader2, Globe } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
 
 type PosMode = 'default' | 'pharmacy';
 
 /**
- * POS Mode (Default / Ordering) plus the Ordering-only Queue Number settings.
- * Self-contained: posMode persists through /api/pos-settings, the queue config
- * through /api/pos/queue/config — the same two APIs the old Settings card used.
- * Rendered on the Developer Options page.
+ * POS Mode (Default / Ordering), the browser-access switch, plus the
+ * Ordering-only Queue Number settings.
+ * Self-contained: posMode and enableBrowserPos persist through
+ * /api/pos-settings, the queue config through /api/pos/queue/config — the same
+ * two APIs the old Settings card used. Rendered on the Developer Options page.
+ *
+ * enableBrowserPos is enforced in `app/(app)/use-app-layout.ts`, which blocks
+ * /pos and /pos/customer-display for browser clients only — the Electron
+ * desktop window always passes.
  */
 export function PosModeCard() {
   const { toast } = useToast();
   const [posMode, setPosMode] = useState<PosMode>('default');
   const [savingMode, setSavingMode] = useState(false);
+  const [browserPosEnabled, setBrowserPosEnabled] = useState(true);
+  const [savingBrowserPos, setSavingBrowserPos] = useState(false);
 
   const [queueConfig, setQueueConfig] = useState({ currentNumber: 0, maxNumber: 999, autoResetDaily: true });
   const [maxInput, setMaxInput] = useState('999');
   const [isSavingQueue, setIsSavingQueue] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
 
-  // Load the current POS mode.
+  // Load the current POS mode and the browser-access switch.
   useEffect(() => {
     fetch(getApiUrl('/pos-settings'))
       .then(r => r.json())
       .then(result => {
-        if (result.success && result.data?.posMode) setPosMode(result.data.posMode);
+        if (!result.success) return;
+        if (result.data?.posMode) setPosMode(result.data.posMode);
+        // Absent/NULL means allowed — matches the gate's own default.
+        setBrowserPosEnabled(Boolean(Number(result.data?.enableBrowserPos ?? 1)));
       })
       .catch(() => {});
   }, []);
@@ -73,6 +83,32 @@ export function PosModeCard() {
     }
   };
 
+  const handleToggleBrowserPos = async (enabled: boolean) => {
+    const previous = browserPosEnabled;
+    setBrowserPosEnabled(enabled); // optimistic
+    setSavingBrowserPos(true);
+    try {
+      const res = await fetch(getApiUrl('/pos-settings'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enableBrowserPos: enabled ? 1 : 0 }),
+      });
+      const result = await res.json();
+      if (!result.success) throw new Error();
+      toast({
+        title: enabled ? 'Browser POS enabled' : 'Browser POS disabled',
+        description: enabled
+          ? 'The /pos URL can now be opened from a web browser.'
+          : 'Opening /pos in a browser is now blocked. The desktop app is unaffected.',
+      });
+    } catch {
+      setBrowserPosEnabled(previous); // revert on failure
+      toast({ title: 'Update failed', description: 'Could not change browser POS access.', variant: 'destructive' });
+    } finally {
+      setSavingBrowserPos(false);
+    }
+  };
+
   const handleSaveQueue = async () => {
     setIsSavingQueue(true);
     try {
@@ -108,9 +144,10 @@ export function PosModeCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Store className="h-5 w-5" />POS Mode</CardTitle>
+        <CardTitle className="flex items-center gap-2"><Store className="h-5 w-5" />POS Mode &amp; Access</CardTitle>
         <CardDescription>
-          Choose the operating mode for the Point of Sale terminal. Ordering mode enables frontliner queue workflow.
+          Choose the operating mode for the Point of Sale terminal and control where it can be opened.
+          Ordering mode enables frontliner queue workflow.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -143,6 +180,26 @@ export function PosModeCard() {
             <span className="text-sm font-semibold">Ordering</span>
             <span className="text-xs text-muted-foreground">Frontliner queue enabled</span>
           </button>
+        </div>
+
+        {/* Browser access to /pos — independent of the mode above. */}
+        <div className="flex items-start justify-between gap-4 rounded-xl border bg-muted/30 p-4">
+          <div className="space-y-1">
+            <Label className="flex items-center gap-2 text-sm font-semibold">
+              <Globe className="h-4 w-4 text-amber-600" />
+              Allow POS in Web Browser
+            </Label>
+            <p className="text-xs text-muted-foreground max-w-md">
+              When off, typing <span className="font-mono">/pos</span> in a web browser is blocked
+              store-wide. The desktop application is never affected, so terminals keep working.
+            </p>
+          </div>
+          <Switch
+            checked={browserPosEnabled}
+            disabled={savingBrowserPos}
+            onCheckedChange={handleToggleBrowserPos}
+            aria-label="Allow POS in web browser"
+          />
         </div>
 
         {/* Queue Number Settings — shown only when Ordering mode */}
