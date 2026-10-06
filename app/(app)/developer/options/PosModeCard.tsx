@@ -27,7 +27,9 @@ export function PosModeCard() {
   const { toast } = useToast();
   const [posMode, setPosMode] = useState<PosMode>('default');
   const [savingMode, setSavingMode] = useState(false);
-  const [browserPosEnabled, setBrowserPosEnabled] = useState(true);
+  // Starts off to match the closed-by-default setting, so the switch does not
+  // flash "on" before the fetch resolves.
+  const [browserPosEnabled, setBrowserPosEnabled] = useState(false);
   const [savingBrowserPos, setSavingBrowserPos] = useState(false);
 
   const [queueConfig, setQueueConfig] = useState({ currentNumber: 0, maxNumber: 999, autoResetDaily: true });
@@ -42,8 +44,8 @@ export function PosModeCard() {
       .then(result => {
         if (!result.success) return;
         if (result.data?.posMode) setPosMode(result.data.posMode);
-        // Absent/NULL means allowed — matches the gate's own default.
-        setBrowserPosEnabled(Boolean(Number(result.data?.enableBrowserPos ?? 1)));
+        // Absent/NULL reads as NOT allowed — matches the gate's own default.
+        setBrowserPosEnabled(Boolean(Number(result.data?.enableBrowserPos ?? 0)));
       })
       .catch(() => {});
   }, []);

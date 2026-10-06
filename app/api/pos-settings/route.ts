@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
       { name: 'membership_fee', type: 'DECIMAL(10,2) NOT NULL DEFAULT 0.00' },
       { name: 'membership_duration_months', type: 'INT NOT NULL DEFAULT 12' },
       { name: 'enable_quick_add_customer', type: 'BOOLEAN DEFAULT TRUE' },
-      { name: 'enable_browser_pos', type: 'TINYINT(1) DEFAULT 1' }
+      { name: 'enable_browser_pos', type: 'TINYINT(1) DEFAULT 0' }
     ];
 
     const currentColumnsResult = await query(
