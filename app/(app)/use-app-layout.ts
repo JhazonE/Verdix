@@ -47,8 +47,10 @@ export function useAppLayout() {
       .then(result => {
         if (!result.success) return;
         if (result.data?.businessName) setBusinessName(result.data.businessName);
-        // Absent/NULL means "allowed" so an install predating the column keeps working.
-        const allowed = result.data?.enableBrowserPos ?? 1;
+        // Browser POS is CLOSED by default: absent/NULL reads as "not allowed",
+        // so a store must opt in from Developer Options before /pos answers a
+        // browser. Electron is exempt below and never depends on this value.
+        const allowed = result.data?.enableBrowserPos ?? 0;
         setBrowserPosBlocked(isPOSPage && !isDesktopApp() && !Number(allowed));
       })
       .catch(() => {});

@@ -11,9 +11,11 @@ import { query } from '../../lib/mysql';
  * that door from Developer Options while leaving the desktop app untouched —
  * the gate only ever applies to browser clients, never to Electron.
  *
- * DEFAULT 1 keeps every existing install behaving exactly as it does today;
- * turning POS off in the browser is a deliberate opt-in, so an upgrade can
- * never lock a store out of a terminal it was already using.
+ * DEFAULT 1 here keeps every existing install behaving as it did when this
+ * migration shipped. NOTE: migration 137 subsequently flips the default (and
+ * existing rows) to 0 — browser POS is now CLOSED by default and must be
+ * enabled per store from Developer Options. This file is left as it was
+ * because it is already applied in the wild.
  */
 async function hasColumn(table: string, column: string): Promise<boolean> {
   const rows: any = await query(

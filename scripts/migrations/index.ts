@@ -134,6 +134,7 @@ import './133_add_selling_units_to_repackaging_logs';
 import './134_restore_price_level_min_quantity';
 import './135_alter_sale_item_quantity_precision';
 import './136_add_enable_browser_pos';
+import './137_default_browser_pos_disabled';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';
