@@ -1,8 +1,9 @@
 'use client';
 
 import React, { Suspense } from 'react';
-import { Store } from 'lucide-react';
+import { Store, Lock } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { AnimatedSidebarTrigger } from '@/components/AnimatedSidebarTrigger';
@@ -19,7 +20,7 @@ import { useLicenseHeartbeat } from './use-license-heartbeat';
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const {
     user, isUserLoading, isPOSPage,
-    businessName, hasPermission, getInitials,
+    businessName, browserPosBlocked, hasPermission, getInitials,
     filteredNavItems, filteredOtherNavItems,
     filteredInventoryNavItems, filteredSalesNavItems,
     filteredCustomerNavItems, filteredSuppliersNavItems,
@@ -50,6 +51,26 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       router.replace('/dashboard');
     }
   }, [disabledLoaded, disabledKeys, pathname, router]);
+
+  // POS in a browser can be switched off store-wide from Developer Options.
+  // Render a notice instead of the checkout screen rather than redirecting, so
+  // it is obvious this is a deliberate setting and not a broken URL. The
+  // desktop app is never affected (see `browserPosBlocked`).
+  if (isPOSPage && browserPosBlocked) {
+    return (
+      <div className="flex h-screen w-screen flex-col items-center justify-center gap-4 bg-muted/30 p-8 text-center">
+        <Lock className="h-12 w-12 text-muted-foreground" />
+        <h1 className="text-3xl font-bold tracking-tight">POS Unavailable in Browser</h1>
+        <p className="max-w-md text-muted-foreground">
+          Point of Sale access from a web browser has been disabled for this store.
+          Please use the Verdix POS desktop application on the terminal.
+        </p>
+        <Button variant="outline" onClick={() => router.replace('/dashboard')}>
+          Back to Dashboard
+        </Button>
+      </div>
+    );
+  }
 
   if (isPOSPage) return <>{children}</>;
 

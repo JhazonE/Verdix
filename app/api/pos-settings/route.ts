@@ -60,7 +60,8 @@ export async function GET(request: NextRequest) {
       { name: 'suspended_auth_password', type: 'VARCHAR(255) NULL' },
       { name: 'membership_fee', type: 'DECIMAL(10,2) NOT NULL DEFAULT 0.00' },
       { name: 'membership_duration_months', type: 'INT NOT NULL DEFAULT 12' },
-      { name: 'enable_quick_add_customer', type: 'BOOLEAN DEFAULT TRUE' }
+      { name: 'enable_quick_add_customer', type: 'BOOLEAN DEFAULT TRUE' },
+      { name: 'enable_browser_pos', type: 'TINYINT(1) DEFAULT 1' }
     ];
 
     const currentColumnsResult = await query(
@@ -173,7 +174,8 @@ export async function GET(request: NextRequest) {
         pos_mode AS posMode,
         membership_fee AS membershipFee,
         membership_duration_months AS membershipDurationMonths,
-        enable_quick_add_customer AS enableQuickAddCustomer
+        enable_quick_add_customer AS enableQuickAddCustomer,
+        enable_browser_pos AS enableBrowserPos
       FROM pos_settings
       LIMIT 1
     `;
@@ -422,7 +424,8 @@ export async function POST(request: NextRequest) {
         posMode: 'pos_mode',
         membershipFee: 'membership_fee',
         membershipDurationMonths: 'membership_duration_months',
-        enableQuickAddCustomer: 'enable_quick_add_customer'
+        enableQuickAddCustomer: 'enable_quick_add_customer',
+        enableBrowserPos: 'enable_browser_pos'
       };
 
       const updates: string[] = [];
