@@ -8,8 +8,8 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuCheckboxItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Search, SlidersHorizontal, Columns } from 'lucide-react';
-import { AddSalesInvoiceDialog } from './add-invoice/add-sales-invoice-dialog';
+import Link from 'next/link';
+import { Search, SlidersHorizontal, Columns, PlusCircle } from 'lucide-react';
 
 type Props = {
   searchQuery: string;
@@ -32,7 +32,6 @@ type Props = {
   onOpenReferenceType: () => void;
   onOpenReferenceNumber: () => void;
   onOpenReceiptNumber: () => void;
-  onAddSuccess: () => void;
   table: Table<any>;
 };
 
@@ -43,7 +42,7 @@ export function InvoicesFilterBar({
   hasActiveFilters, resetFilters,
   onOpenStatus, onOpenDateRange, onOpenSalesPerson, onOpenCustomer,
   onOpenTransactionSource, onOpenReferenceType, onOpenReferenceNumber, onOpenReceiptNumber,
-  onAddSuccess, table,
+  table,
 }: Props) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -110,7 +109,12 @@ export function InvoicesFilterBar({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <AddSalesInvoiceDialog onSuccess={onAddSuccess} />
+      <Button size="sm" asChild>
+        <Link href="/sales/invoices/new">
+          <PlusCircle className="mr-2 h-4 w-4" />
+          New Sales Invoice
+        </Link>
+      </Button>
     </div>
   );
 }

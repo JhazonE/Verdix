@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Search, ShoppingCart } from 'lucide-react';
-import { formatStockQuantity } from '@/lib/utils';
+import { formatCartQuantity, formatStockQuantity } from '@/lib/utils';
 import type { SaleItem } from './pos-types';
 
 type Props = {
@@ -37,6 +37,7 @@ type Props = {
   commitQty: (id: string) => void;
   isFrontliner?: boolean;
   handleSendToQueue?: () => void;
+  showQuantityInSearch?: boolean;
 };
 
 export function PosCartTable({
@@ -46,7 +47,7 @@ export function PosCartTable({
   editingQtyItemId, setEditingQtyItemId,
   editingPriceItemId, setEditingPriceItemId,
   qtyDraft, setQtyDraft,
-  startEditName, commitInlineName, isFrontliner, handleSendToQueue,
+  startEditName, commitInlineName, isFrontliner, handleSendToQueue, showQuantityInSearch,
   requestInlinePriceEdit, commitInlinePrice, focusInlineQuantity, commitQty,
 }: Props) {
   const [isSuggestOpen, setIsSuggestOpen] = useState(false);
@@ -167,6 +168,11 @@ export function PosCartTable({
                         {unit?.barcode || product.sellingUnits?.find((su: any) => su.isBase)?.barcode || product.barcode || ''}
                       </div>
                     </div>
+                    {!!showQuantityInSearch && product.stock !== undefined && (
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${Number(product.stock) > 0 ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400' : 'bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400'}`}>
+                        {Number(product.stock) > 0 ? `${formatStockQuantity(product.stock)} ${product.unitOfMeasure ?? ''}` : 'Out of stock'}
+                      </span>
+                    )}
                     <div className="shrink-0 text-sm font-medium text-muted-foreground">
                       ₱{Number(unitPrice ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                     </div>
@@ -276,13 +282,13 @@ export function PosCartTable({
                           <Input
                             id={`pos-qty-${item.lineId}`}
                             type="text"
-                            inputMode="numeric"
+                            inputMode="decimal"
                             value={qtyDraft}
                             className="h-8 w-20 px-2 text-center font-mono"
                             onChange={(e) => setQtyDraft(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') { e.preventDefault(); commitQty(item.lineId); inputRef.current?.focus(); }
-                              else if (e.key === 'Escape') { e.preventDefault(); setQtyDraft(String(item.quantity)); setEditingQtyItemId(null); inputRef.current?.focus(); }
+                              else if (e.key === 'Escape') { e.preventDefault(); setQtyDraft(String(Number((item.quantity * (item.selectedSellingUnit?.factor || 1)).toFixed(4)))); setEditingQtyItemId(null); inputRef.current?.focus(); }
                             }}
                             onBlur={() => commitQty(item.lineId)}
                           />
@@ -291,11 +297,14 @@ export function PosCartTable({
                         <div className="flex items-center justify-center h-full">
                           <button
                             type="button"
-                            className="w-12 rounded py-0.5 text-center font-mono text-sm font-medium hover:bg-muted hover:text-primary"
+                            className="min-w-12 rounded px-1 py-0.5 text-center font-mono text-sm font-medium hover:bg-muted hover:text-primary"
                             title="Edit quantity (F6)"
                             onClick={(e) => { e.stopPropagation(); focusInlineQuantity(item.lineId); }}
                           >
-                            {formatStockQuantity(item.quantity)}
+                            {formatCartQuantity(item.selectedSellingUnit && !item.selectedSellingUnit.isBase ? item.quantity * item.selectedSellingUnit.factor : item.quantity)}
+                            {item.selectedSellingUnit && !item.selectedSellingUnit.isBase && (
+                              <span className="block text-[10px] font-normal leading-tight text-muted-foreground">= {formatCartQuantity(item.quantity)} {item.selectedSellingUnit.name}</span>
+                            )}
                           </button>
                         </div>
                       )}

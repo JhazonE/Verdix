@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { calculateMarkupPercentage, calculateSuggestedPrice } from '@/lib/purchase-utils';
 import { seedDefaultPriceLevel } from '@/lib/price-level-seed';
 import { applyPriceLevelAdjustment } from '@/lib/price-level-calc';
+import { useSellingUnitAutoPricing } from '../use-selling-unit-autopricing';
 import { dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { logActivity } from '@/lib/client-activity-logger';
 import { useToast } from '@/hooks/use-toast';
@@ -231,7 +232,13 @@ export function useEditProductForm({
   useEffect(() => {
     if (product && isOpen) {
       lastAutoRetailPrice.current = null;
-      retailPriceEditedByUser.current = false;
+      // A saved product already HAS a price somebody chose and filed. Whether
+      // they typed it or accepted an earlier suggestion, it is the price of
+      // record now, so the cost→markup effect must not recompute over it on
+      // open — that is what made a hand-edited Retail price snap back to the
+      // computed one every time the product was reopened. Only a product with
+      // no price yet is still the suggestion's to fill.
+      retailPriceEditedByUser.current = Number(product.price) > 0;
       lastAutoSuggestedCost.current = null;
       costEditedByUser.current = false;
       const sanitizedProduct = {
@@ -279,6 +286,21 @@ export function useEditProductForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product, isOpen, form]);
 
+  // Warehouse is required. A stocked product saved before that was enforced may
+  // have none, so preselect the store warehouse (is_main, else 'wh_main', else
+  // first active) rather than leave the form unsubmittable. Only fills an empty
+  // field; declared after the reset effect so it runs after the reset.
+  useEffect(() => {
+    if (!isOpen || product.type === 'service' || warehouses.length === 0) return;
+    if (form.getValues('warehouse')) return;
+    const active = warehouses.filter((w: any) => w.isActive !== false);
+    const store =
+      active.find((w: any) => w.isMain) ||
+      active.find((w: any) => w.id === 'wh_main') ||
+      active[0];
+    if (store) form.setValue('warehouse', store.id);
+  }, [isOpen, product, warehouses, form]);
+
   const refreshSupplierMappings = async () => {
     setIsLoadingSupplierMappings(true);
     try {
@@ -297,7 +319,12 @@ export function useEditProductForm({
 
   const primarySupplierMapping = supplierMappings.find(m => m.isPrimary);
 
-  const [markupSource, setMarkupSource] = useState<string | null>(null);
+  const [markupSource, setMarkupSourceRaw] = useState<string | null>(null);
+  const [autoMarkup, setAutoMarkup] = useState<number | null>(null);
+  const setMarkupSource = (v: string | null) => {
+    setMarkupSourceRaw(v);
+    if (v === null) setAutoMarkup(null);
+  };
 
   // Track initial load to prevent overwriting existing prices
   const [isInitialized, setIsInitialized] = useState(false);
@@ -371,6 +398,7 @@ export function useEditProductForm({
 
     if (source) {
       setMarkupSource(`Calculated from ${source} Markup (${markup}%)`);
+      setAutoMarkup(markup);
       if (watchedCost && watchedCost > 0 && !retailPriceEditedByUser.current) {
           // Calculate base price and default level price
           const defaultLevel = priceLevels.find((l: any) => l.isDefault) || priceLevels[0];
@@ -399,6 +427,16 @@ export function useEditProductForm({
       setMarkupSource(null);
     }
   }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, markupSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, isInitialized, priceLevelFields]);
+
+  useSellingUnitAutoPricing({
+    form,
+    enabled: isInitialized,
+    priceLevels,
+    baseLevelRows: priceLevelFields as any,
+    unitKeys: sellingUnitFields.map(f => f.id),
+    markup: autoMarkup,
+    resetKey: product?.id,
+  });
 
   const [costSuggestionSource, setCostSuggestionSource] = useState<string | null>(null);
 
@@ -528,6 +566,14 @@ export function useEditProductForm({
     if (retailEntry?.price !== undefined) {
       values.price = retailEntry.price;
     }
+    // Drop any base-unit row that carries a tier but no price. A quantity
+    // threshold on its own is not an override — it only qualifies one — and
+    // letting it through would write a ₱0 price for that level, which the
+    // resolver would then pick as the cheapest candidate and sell at zero.
+    // The extra-unit path below filters the same way, for the same reason.
+    values.priceLevels = (values.priceLevels || []).filter(
+      (pl) => pl.price !== undefined && pl.price !== null,
+    );
     // The per-unit price-level sub-table (conversion-tab.tsx) never stores an
     // entry with a blank price — a blank input splices the row out entirely,
     // so `price` is always a concrete number by the time it lands here. This

@@ -173,6 +173,12 @@ export function UnitRepackForm({ onSuccess }: { onSuccess?: () => void }) {
                   adjustment.
                 </p>
               )}
+              {outcome.surplusBase > 0 && (
+                <p className="text-xs text-emerald-600" data-testid="surplus-note">
+                  {outcome.surplusBase} base unit(s) extra — this will be added to stock as a stock
+                  adjustment.
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 Total stock stays the same: {product.sellingUnits.map((u) => u.name).join(' and ')}{' '}
                 share one count.

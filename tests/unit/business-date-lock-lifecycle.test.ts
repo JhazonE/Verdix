@@ -56,20 +56,40 @@ const putHandlerMatch = shiftsSource.match(/export async function PUT[\s\S]*$/);
 assert.ok(putHandlerMatch, 'shifts route.ts has a PUT handler');
 const putHandlerSource = putHandlerMatch![0];
 
-const takeoverBranchMatch = putHandlerSource.match(/if\s*\(\s*takeoverUserId\s*\)\s*\{[\s\S]*?\n\s*\}\s*\n/);
-assert.ok(takeoverBranchMatch, 'PUT handler has a takeoverUserId branch');
-const takeoverBranchSource = takeoverBranchMatch![0];
+// Extract the takeover branch by matching braces rather than with a regex.
+// A non-greedy `[\s\S]*?\n\s*\}` stops at the FIRST nested closing brace —
+// here the `if (lockoutEnforced ...)` guard — truncating the branch before
+// the unlock UPDATE that follows it, so the assertions below would fail on
+// correct code.
+function extractBlockAfter(source: string, headerPattern: RegExp): string | null {
+  const header = source.match(headerPattern);
+  if (!header || header.index === undefined) return null;
+  const open = source.indexOf('{', header.index);
+  if (open === -1) return null;
+  let depth = 0;
+  for (let i = open; i < source.length; i++) {
+    if (source[i] === '{') depth++;
+    else if (source[i] === '}') {
+      depth--;
+      if (depth === 0) return source.slice(header.index, i + 1);
+    }
+  }
+  return null;
+}
+
+const takeoverBranchSource = extractBlockAfter(putHandlerSource, /if\s*\(\s*takeoverUserId\s*\)\s*\{/);
+assert.ok(takeoverBranchSource, 'PUT handler has a takeoverUserId branch');
 
 assert.ok(
-  takeoverBranchSource.includes('business_date_locked_at'),
+  takeoverBranchSource!.includes('business_date_locked_at'),
   'PUT takeover branch references business_date_locked_at (Critical fix: takeover must clear the lock, not just transfer ownership)'
 );
 assert.ok(
-  /business_date_locked_at\s*=\s*NULL/.test(takeoverBranchSource),
+  /business_date_locked_at\s*=\s*NULL/.test(takeoverBranchSource!),
   'PUT takeover branch sets business_date_locked_at = NULL, clearing the lock on the terminal the taken-over shift belongs to'
 );
 assert.ok(
-  /WHERE\s+s\.id\s*=\s*\?/.test(takeoverBranchSource) || /WHERE\s+id\s*=\s*\?/.test(takeoverBranchSource),
+  /WHERE\s+s\.id\s*=\s*\?/.test(takeoverBranchSource!) || /WHERE\s+id\s*=\s*\?/.test(takeoverBranchSource!),
   'PUT takeover branch scopes the unlock to the specific shift/terminal (not store-wide)'
 );
 

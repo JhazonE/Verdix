@@ -63,7 +63,8 @@ import { processReturnLeg } from '../../lib/pos/process-return-leg';
   });
 
   console.log('✓ process-return-leg');
-  process.exit(0);
+  // No process.exit(0) — see the note in bir-or-number.test.ts. run.ts owns the
+  // single exit, after awaiting every test.
 })().catch((e) => {
   console.error('Test failed:', e);
   process.exit(1);

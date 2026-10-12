@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
 import { calculateMarkupPercentage, calculateSuggestedPrice } from '@/lib/purchase-utils';
 import { applyPriceLevelAdjustment } from '@/lib/price-level-calc';
+import { useSellingUnitAutoPricing } from '../use-selling-unit-autopricing';
 import { dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { logActivity } from '@/lib/client-activity-logger';
 import { useToast } from '@/hooks/use-toast';
@@ -232,6 +233,10 @@ export function useAddProductForm({
   const lastAutoRetailPrice = useRef<number | null>(null);
   const retailPriceEditedByUser = useRef(false);
 
+  // Bumped on every dialog open, so the Selling Units auto-pricing hook can
+  // drop the per-cell memory it keeps for the product just entered.
+  const [formSession, setFormSession] = useState(0);
+
   // Mirrors lastAutoRetailPrice/retailPriceEditedByUser above, but for the
   // base unit's Cost field being suggested from the primary supplier
   // mapping's own cost.
@@ -298,8 +303,21 @@ export function useAddProductForm({
       });
   }, [externalProductOptions, isOpen, hasSelfFetchedOptions]);
 
+  // Closing the dialog mid-entry (Escape, a click on the backdrop, or Cancel)
+  // used to throw the half-filled product away, because the effect below reset
+  // the form on EVERY open. Losing ten typed fields to a stray click on the
+  // overlay is not a reset the user asked for, so a started-but-unsaved form is
+  // kept and restored on the next open instead. Only a completed save or an
+  // explicit "Discard" clears it — `discardDraft` below is the one place that
+  // happens, so there is a single answer to "what throws the draft away".
+  const hasDraft = useRef(false);
+
   useEffect(() => {
     if (isOpen) {
+      // A draft survived a close: restore it untouched. Re-running any of the
+      // below would regenerate the barcode and wipe the user's own vatStatus
+      // pick, which is exactly the clearing this fix exists to prevent.
+      if (hasDraft.current) return;
       form.reset();
       generateBarcode();
       // A fresh product for a fresh session — don't carry a previous
@@ -309,6 +327,9 @@ export function useAddProductForm({
       retailPriceEditedByUser.current = false;
       lastAutoSuggestedCost.current = null;
       costEditedByUser.current = false;
+      // Same reasoning for the Selling Units auto-pricing, which keeps its own
+      // per-cell memory: this dialog is reused, so bump the key it resets on.
+      setFormSession(n => n + 1);
 
       // Set default tax rate if available and valid
       if (taxRates.length > 0) {
@@ -319,6 +340,51 @@ export function useAddProductForm({
       setProductType('parent');
     }
   }, [isOpen, form]);
+
+  // What counts as "the user started filling this in".
+  //
+  // react-hook-form's own `isDirty` is useless for this: the effects around
+  // this one call setValue for a generated barcode, a preselected warehouse, a
+  // default tax rate and a mirrored price, so the form is already dirty before
+  // the user has touched a key. Asking "would anything be lost?" directly —
+  // are any of the fields a human actually types non-empty? — is the honest
+  // question, and it is also the one that stays correct when another default
+  // gets preselected later.
+  const draftWatch = form.watch();
+  useEffect(() => {
+    if (!isOpen) return;
+    const v = draftWatch as any;
+    const typedSomething =
+      !!v?.name?.trim() ||
+      !!v?.brand ||
+      !!v?.category ||
+      !!v?.description?.trim() ||
+      !!v?.additionalDescription?.trim() ||
+      !!v?.subcategory ||
+      !!v?.unitOfMeasure ||
+      Number(v?.stock) > 0 ||
+      Number(v?.reorderPoint) > 0 ||
+      Number(v?.cost) > 0 ||
+      Number(v?.price) > 0 ||
+      (v?.sellingUnits?.length ?? 0) > 0 ||
+      (v?.supplierMappings?.length ?? 0) > 0;
+    if (typedSomething) hasDraft.current = true;
+  }, [isOpen, draftWatch]);
+
+  // The one place a draft is thrown away. Called after a successful save and
+  // from the Cancel/close confirmation — never from the open effect, which is
+  // what used to clear the form behind the user's back.
+  const discardDraft = () => {
+    hasDraft.current = false;
+    form.reset();
+    setIsOpen(false);
+  };
+
+  // True only when closing would actually lose work, so the dialog can decide
+  // between confirming and just closing. Reads a ref and is wrapped in
+  // useCallback so consumers can safely list it as an effect dependency —
+  // an unstable identity here would re-run the caller's effects every render.
+  const hasUnsavedDraft = useCallback(() => hasDraft.current, []);
 
   // The base unit's Retail price-level row is required (product-schema.ts
   // treats it as the product's actual `price`), but the form.reset() effect
@@ -341,6 +407,21 @@ export function useAddProductForm({
       appendPriceLevel({ levelId: defaultLevel.id, price: 0 });
     }
   }, [isOpen, priceLevels, form, appendPriceLevel]);
+
+  // Warehouse is required, so preselect the store warehouse (is_main, else the
+  // seeded 'wh_main', else the first active one — same order the product
+  // importer uses). Declared after the reset effect so it re-applies on every
+  // open, and only fills an empty field so a user's own pick is never replaced.
+  useEffect(() => {
+    if (!isOpen || itemType !== 'standard' || warehouses.length === 0) return;
+    if (form.getValues('warehouse')) return;
+    const active = warehouses.filter((w: any) => w.isActive !== false);
+    const store =
+      active.find((w: any) => w.isMain) ||
+      active.find((w: any) => w.id === 'wh_main') ||
+      active[0];
+    if (store) form.setValue('warehouse', store.id);
+  }, [isOpen, itemType, warehouses, form]);
 
   // "There is no standalone price field — the default (Retail) price-level
   // row IS the product's price" only held at submit time (onSubmit copied
@@ -411,7 +492,12 @@ export function useAddProductForm({
   const watchedBrandName = form.watch('brand');
   const watchedSupplierMappings = form.watch('supplierMappings');
   const markupSupplierId = (watchedSupplierMappings || []).find(m => m.isPrimary)?.supplierId;
-  const [markupSource, setMarkupSource] = useState<string | null>(null);
+  const [markupSource, setMarkupSourceRaw] = useState<string | null>(null);
+  const [autoMarkup, setAutoMarkup] = useState<number | null>(null);
+  const setMarkupSource = (v: string | null) => {
+    setMarkupSourceRaw(v);
+    if (v === null) setAutoMarkup(null);
+  };
 
   useEffect(() => {
     if (!systemSettings?.enableAutomaticMarkup) {
@@ -436,6 +522,7 @@ export function useAddProductForm({
 
     if (source) {
       setMarkupSource(`Calculated from ${source} Markup (${markup}%)`);
+      setAutoMarkup(markup);
       if (watchedCost && watchedCost > 0 && !retailPriceEditedByUser.current) {
           // Calculate base price and default level price
           const defaultLevel = priceLevels.find((l: any) => l.isDefault) || priceLevels[0];
@@ -465,6 +552,15 @@ export function useAddProductForm({
     }
 
   }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, markupSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, priceLevelFields]);
+
+  useSellingUnitAutoPricing({
+    form,
+    priceLevels,
+    baseLevelRows: priceLevelFields as any,
+    unitKeys: sellingUnitFields.map(f => f.id),
+    markup: autoMarkup,
+    resetKey: formSession,
+  });
 
   const [costSuggestionSource, setCostSuggestionSource] = useState<string | null>(null);
 
@@ -589,13 +685,21 @@ export function useAddProductForm({
       const retailEntry = (values.priceLevels || []).find((pl) => pl.levelId === defaultLevelDef?.id);
       const retailPrice = retailEntry?.price ?? 0;
 
-      values.priceLevels = (values.priceLevels || []).map((pl) => {
-        if (pl.price !== 0) return pl;
-        const level = priceLevels.find((l: any) => l.id === pl.levelId);
-        if (!level) return pl;
-        const basePrice = (level.calculationBase || 'retail') === 'cost' ? (values.cost || 0) : retailPrice;
-        return { ...pl, price: applyPriceLevelAdjustment(level.adjustmentType, level.percentageAdjustment, basePrice) };
-      });
+      values.priceLevels = (values.priceLevels || [])
+        // Drop any row that carries a tier but no price. A quantity threshold
+        // on its own is not an override — it only qualifies one — and letting
+        // it through would write a ₱0 price for that level, which the resolver
+        // would then pick as the cheapest candidate and sell at zero. This runs
+        // BEFORE the auto-fill below so a price-less row is never mistaken for
+        // the "untouched ₱0" case that auto-fill exists to correct.
+        .filter((pl) => pl.price !== undefined && pl.price !== null)
+        .map((pl) => {
+          if (pl.price !== 0) return pl;
+          const level = priceLevels.find((l: any) => l.id === pl.levelId);
+          if (!level) return pl;
+          const basePrice = (level.calculationBase || 'retail') === 'cost' ? (values.cost || 0) : retailPrice;
+          return { ...pl, price: applyPriceLevelAdjustment(level.adjustmentType, level.percentageAdjustment, basePrice) };
+        });
 
       // products.price stays in the schema/backend (it's the fallback price
       // when a selling unit has no override for the active level) — it is
@@ -608,8 +712,12 @@ export function useAddProductForm({
       // stays the schema/backend fallback for when this unit has no override
       // for the active level.
       values.sellingUnits = (values.sellingUnits || []).map((unit) => {
-        const unitRetailEntry = (unit.priceLevels || []).find((pl) => pl.levelId === defaultLevelDef?.id);
-        return { ...unit, price: unitRetailEntry?.price ?? 0 };
+        // Same tier-without-price filter as the base unit above.
+        const unitPriceLevels = (unit.priceLevels || []).filter(
+          (pl) => pl.price !== undefined && pl.price !== null,
+        );
+        const unitRetailEntry = unitPriceLevels.find((pl) => pl.levelId === defaultLevelDef?.id);
+        return { ...unit, priceLevels: unitPriceLevels, price: unitRetailEntry?.price ?? 0 };
       });
 
       // No child product is built any more. Extra ways to sell this product are
@@ -629,6 +737,9 @@ export function useAddProductForm({
           title: 'Submitted for Approval',
           description: `${values.name} was submitted and is awaiting approval.`,
         });
+        // Saved (pending approval, but filed) — there is no longer a draft to
+        // preserve, so the next open starts clean.
+        hasDraft.current = false;
         form.reset();
         onProductAdded?.();
         setIsOpen(false);
@@ -675,6 +786,8 @@ export function useAddProductForm({
           earnsPoints: values.earnsPoints,
           type: itemType,
         });
+        // Saved — nothing left to preserve for the next open.
+        hasDraft.current = false;
         form.reset();
         onProductAdded?.();
         dispatchStockUpdate();
@@ -721,6 +834,10 @@ export function useAddProductForm({
   return {
     // dialog + submit state
     isOpen, setIsOpen,
+    // Draft preservation: a half-filled form survives a close and is restored
+    // on the next open. hasUnsavedDraft lets the dialog ask before throwing it
+    // away; discardDraft is the only thing that actually does.
+    hasUnsavedDraft, discardDraft,
     isSubmitting,
     productType, setProductType,
     itemType, setItemType,

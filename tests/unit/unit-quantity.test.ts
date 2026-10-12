@@ -57,17 +57,17 @@ assert.throws(() => sumToBase([{ unit: { ...cse, factor: 0 }, quantity: 1 }]), /
 // repackOutcome
 assert.deepEqual(
   repackOutcome({ quantity: 2, fromFactor: 24, toFactor: 1 }),
-  { baseUsed: 48, expectedProduced: 48, actualProduced: 48, shortfallBase: 0 },
+  { baseUsed: 48, expectedProduced: 48, actualProduced: 48, shortfallBase: 0, surplusBase: 0 },
   '2 Case -> 48 Piece, no loss'
 );
 assert.deepEqual(
   repackOutcome({ quantity: 2, fromFactor: 24, toFactor: 1, actualProduced: 46 }),
-  { baseUsed: 48, expectedProduced: 48, actualProduced: 46, shortfallBase: 2 },
+  { baseUsed: 48, expectedProduced: 48, actualProduced: 46, shortfallBase: 2, surplusBase: 0 },
   'shortfall is the missing base units'
 );
 assert.deepEqual(
   repackOutcome({ quantity: 60, fromFactor: 1, toFactor: 24 }),
-  { baseUsed: 60, expectedProduced: 2.5, actualProduced: 2.5, shortfallBase: 0 },
+  { baseUsed: 60, expectedProduced: 2.5, actualProduced: 2.5, shortfallBase: 0, surplusBase: 0 },
   'merge upward can be fractional'
 );
 assert.equal(
@@ -75,7 +75,11 @@ assert.equal(
   1.2,
   'shortfall converts through the target factor'
 );
-assert.throws(() => repackOutcome({ quantity: 1, fromFactor: 24, toFactor: 1, actualProduced: 25 }), /exceed/i);
+assert.deepEqual(
+  repackOutcome({ quantity: 1, fromFactor: 24, toFactor: 1, actualProduced: 25 }),
+  { baseUsed: 24, expectedProduced: 24, actualProduced: 25, shortfallBase: 0, surplusBase: 1 },
+  'surplus is the extra base units'
+);
 assert.throws(() => repackOutcome({ quantity: 0, fromFactor: 24, toFactor: 1 }), /greater than zero/i);
 assert.throws(() => repackOutcome({ quantity: 1, fromFactor: 0, toFactor: 1 }), /factor/i);
 assert.throws(() => repackOutcome({ quantity: 1, fromFactor: 24, toFactor: 1, actualProduced: -1 }), /negative/i);

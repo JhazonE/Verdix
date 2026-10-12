@@ -131,6 +131,10 @@ import './130_merge_user_permissions_into_type';
 import './131_add_selling_unit_to_purchase_order_items';
 import './132_backfill_purchase_order_items_selling_unit';
 import './133_add_selling_units_to_repackaging_logs';
+import './134_restore_price_level_min_quantity';
+import './135_alter_sale_item_quantity_precision';
+import './136_add_enable_browser_pos';
+import './137_default_browser_pos_disabled';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';

@@ -87,7 +87,7 @@ Migrations in `scripts/migrations/` — numbered TypeScript files (001–088+), 
 
 **Product markup** — `lib/purchase-utils.ts` resolves a suggested price's markup in strict precedence: `products.markup_percentage` (a per-product override) first, then subcategory → category → brand → supplier ordered by `settings.markupPriority`, then `defaultMarkupPercentage`. The per-product override deliberately bypasses the `enableAutomaticMarkup` toggle — that toggle suppresses only *inherited* markup, since a value typed against one product is not a guess the system made. `NULL` means inherit and `0` means sell at cost; never coerce between them. Markup only ever *suggests* a price — nothing in this chain writes `products.price`.
 
-**Selling units** — a product has ONE stock figure in `products.stock`, always in base units, and one row per way it can be sold in `product_selling_units` (name, barcode, factor, cost, price; exactly one `is_base = 1` with factor 1). Selling deducts `quantity × factor` from that single figure — there is nothing to synchronise, which is why the old `lib/family-sync.ts` and `products.parent_id` were removed. Barcodes are UNIQUE across selling units so a scan resolves to exactly one. Line items record `selling_unit_id` plus a denormalised `selling_unit_name` and `selling_unit_factor` captured at sale time, so a later edit to a unit cannot change what a filed receipt meant; rows with `NULL` predate this and mean the base unit. Sales reports show the unit sold (1 case); inventory moves in base units (60 pieces). The Add/Edit Product form's **Selling Units** tab manages these rows; markup is unrelated and still lives on the Edit Product form separately. Two things remain unfinished from this migration: `products.parent_id` and `conversion_factors` still exist and are still read by several files (including `TransferStockService.ts`, which still cascades stock across a family on warehouse transfers) because dropping them is deferred to a later task, and `sale_items.cost_at_sale` is still recorded per base unit while `price` is per selling unit — harmless today because every factor is 1, but it will misstate margin once a non-base sale happens.
+**Selling units** — a product has ONE stock figure in `products.stock`, always in base units, and one row per way it can be sold in `product_selling_units` (name, barcode, factor, cost, price; exactly one `is_base = 1` with factor 1). Selling deducts `quantity × factor` from that single figure — there is nothing to synchronise, which is why the old `lib/family-sync.ts` and `products.parent_id` were removed. Barcodes are UNIQUE across selling units so a scan resolves to exactly one. Line items record `selling_unit_id` plus a denormalised `selling_unit_name` and `selling_unit_factor` captured at sale time, so a later edit to a unit cannot change what a filed receipt meant; rows with `NULL` predate this and mean the base unit. Sales reports show the unit sold (1 case); inventory moves in base units (60 pieces). The Add/Edit Product form's **Selling Units** tab manages these rows; markup is unrelated and still lives on the Edit Product form separately. Two things remain unfinished from this migration: `products.parent_id` and `conversion_factors` still exist and are still read by several files (including `TransferStockService.ts`, which still cascades stock across a family on warehouse transfers) because dropping them is deferred to a later task. (`sale_items.cost_at_sale` USED to be recorded per base unit while `price` was per selling unit, which would have misstated margin on the first non-base sale. That is now fixed: `lib/pos/process-sale-leg.ts` writes `weightedAvgCost * factor`, so cost and price are both per selling unit, and every reader agrees — `reports/fiscal-year` scales its `p.cost` fallback by `selling_unit_factor` for rows that predate batch costing.)
 
 Price levels are per SELLING UNIT, not per product: `product_selling_unit_price_levels`
 (keyed by `selling_unit_id`) replaced the old product-keyed `product_price_levels`, so a
@@ -96,6 +96,35 @@ override for the active level falls back to its own `price` column — never ano
 price, never a computed multiple of one. `lib/pricing.ts:calculateEffectivePriceForUnit`
 is the resolver; the POS cart still only ever prices a line against a product's BASE unit —
 letting a cashier choose a non-base unit in the cart is not built yet.
+
+A price-level row may also carry a **quantity tier** in `min_quantity` (restored by
+migration 134 after 128 dropped it): the override becomes a price candidate only once
+quantity reaches that threshold (`>=`, so a "12+" tier applies at exactly 12), and below it
+the row is skipped so the unit's own `price` stands — there is no separate
+below-threshold branch anywhere, that fallback is a consequence of the row simply not
+competing. `0` is the ONLY encoding of "no tier"; the column is `NOT NULL DEFAULT 0` and
+writers collapse blank/negative/NULL to 0 so the resolver never has a second value to
+interpret. The threshold counts in the OWNING unit's terms — a tier of 3 on a Case means
+three cases, not 180 pieces.
+
+**Setting a tier also widens a row's reach, and that is the point.** An UNTIERED override
+competes only when its level is the active or default one, as it always has. A TIERED row
+competes on any cart that reaches its threshold, whatever level that cart is on — so a
+walk-in customer on Retail who buys 12 automatically gets the Wholesale "12+" price without
+the cashier switching price level. That is what makes a quantity break a quantity break;
+scoping tiers to the active level (as this feature first shipped) meant they never fired
+for ordinary customers. Untiered rows stay level-scoped, so this does not leak every
+level's price to everyone — only a deliberate tier opts a row into being visible outside
+its level — and because the resolver takes the MINIMUM of the qualifying candidates, a
+qualifying tier can only ever lower the price, never raise it. `qualifies` in
+`lib/pricing.ts` is the single place that encodes both rules.
+
+Two rules protect the shelf price: the base unit's default-level row is the
+product's price and must stay untiered (the UI disables its Min Qty input, and
+`updateProductPrice` writes `min_quantity = 0`), and **both** product read paths promote
+only an UNTIERED default-level override into `products.price`, since a "12+" row is a bulk
+price and must not be advertised as the price of one. Tiers are entered per unit on the
+Selling Units tab, beside each level's price.
 
 **Two separate product read paths exist, and only one was migrated to selling units.**
 `app/(app)/products/actions.ts`'s `getProducts` (used by the Products back-office pages) and

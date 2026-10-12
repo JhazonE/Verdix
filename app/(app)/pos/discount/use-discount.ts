@@ -14,7 +14,7 @@ type Options = {
 export function useDiscount({ isOpen, item, onApplyDiscount, onOpenChange }: Options) {
   const [discountType, setDiscountType] = useState<DiscountType>('percent');
   const [scope, setScope] = useState<'selected' | 'all'>('selected');
-  const [value, setValue] = useState<string>('0');
+  const [value, setValue] = useState<string>('');
   const [idNumber, setIdNumber] = useState<string>('');
   const [holderName, setHolderName] = useState<string>('');
 
@@ -25,7 +25,7 @@ export function useDiscount({ isOpen, item, onApplyDiscount, onOpenChange }: Opt
     if (isOpen) {
       setDiscountType('percent');
       setScope('selected');
-      setValue(item?.discount.toString() || '0');
+      setValue(item?.discount ? item.discount.toString() : '');
       setIdNumber('');
       setHolderName('');
     }
@@ -59,7 +59,11 @@ export function useDiscount({ isOpen, item, onApplyDiscount, onOpenChange }: Opt
     if (scope === 'all') {
       onApplyDiscount('ALL', percentage, discountType, details);
     } else if (item) {
-      onApplyDiscount(item.id, percentage, discountType, details);
+      // lineId, not id: `id` is the PRODUCT id and is shared by two cart lines
+      // of the same product on different selling units, while handleApplyDiscount
+      // targets the line by lineId. Passing id matched no line at all, so a
+      // single-item discount was silently dropped.
+      onApplyDiscount(item.lineId, percentage, discountType, details);
     }
     onOpenChange(false);
   };

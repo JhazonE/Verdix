@@ -63,6 +63,42 @@ export function resolveSellingUnitForAdd(product: CartProduct, code?: string): C
 }
 
 /**
+ * After a quantity edit, promotes a line to the largest selling unit whose
+ * factor the line's base-unit total reaches exactly (12 Piece -> 1 Dozen,
+ * 2 Pack(x6) -> 1 Dozen). Only exact multiples promote: 13 Piece stays 13
+ * Piece rather than becoming a fractional 1.0833 Dozen. Returns the original
+ * unit and quantity when nothing larger fits.
+ */
+export function promoteToLargestUnit(
+  quantity: number,
+  currentUnit: CartSellingUnit,
+  units: CartSellingUnit[] | undefined
+): { unit: CartSellingUnit; quantity: number } {
+  const unchanged = { unit: currentUnit, quantity };
+  if (!units || units.length < 2) return unchanged;
+  const EPSILON = 1e-9;
+  const totalBase = Number((quantity * currentUnit.factor).toFixed(4));
+  if (!Number.isFinite(totalBase) || totalBase <= 0) return unchanged;
+
+  // A non-base line that no longer holds a whole number of its unit (1 Pack
+  // minus one piece) drops back to the base unit and counts in pieces.
+  if (currentUnit.factor !== 1 && Math.abs(quantity - Math.round(quantity)) > EPSILON) {
+    const base = units.find((u) => u.isBase) ?? units.find((u) => u.factor === 1);
+    if (base) return promoteToLargestUnit(totalBase, base, units);
+  }
+
+  const best = units
+    .filter((u) => Number.isFinite(u.factor) && u.factor > currentUnit.factor)
+    .sort((a, b) => b.factor - a.factor)
+    .find((u) => {
+      const ratio = totalBase / u.factor;
+      return ratio >= 1 - EPSILON && Math.abs(ratio - Math.round(ratio)) < EPSILON;
+    });
+  if (!best) return unchanged;
+  return { unit: best, quantity: Math.round(totalBase / best.factor) };
+}
+
+/**
  * Finds the existing cart line for this exact (product, selling unit)
  * pair, if any. Two lines for the same product but different units are
  * intentionally distinct — a Pack scan must never bump a Piece line's

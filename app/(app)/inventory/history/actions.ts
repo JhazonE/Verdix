@@ -3,6 +3,7 @@
 import { query } from '@/lib/mysql';
 import { recordAdjustmentMovement } from '@/lib/stock-movements';
 import type { StockAdjustment } from '@/lib/types';
+import { toSafeNumber } from '@/lib/utils';
 
 export async function getStockAdjustments(limit?: number, offset?: number) {
   try {
@@ -38,10 +39,10 @@ export async function getStockAdjustments(limit?: number, offset?: number) {
       id: adj.id,
       productId: adj.product_id,
       productName: adj.product_name,
-      quantity: parseInt(adj.quantity),
+      quantity: toSafeNumber(adj.quantity),
       reason: adj.reason,
       date: adj.created_at,
-      newStock: parseInt(adj.new_stock),
+      newStock: toSafeNumber(adj.new_stock),
       status: 'Completed',
       product: adj.product_name ? {
         id: adj.product_id,
@@ -57,7 +58,7 @@ export async function getStockAdjustments(limit?: number, offset?: number) {
         id: item.id,
         productId: txData.productId,
         productName: item.product_name || 'Unknown Product',
-        quantity: parseInt(txData.quantity),
+        quantity: toSafeNumber(txData.quantity),
         reason: txData.reason,
         date: item.created_at,
         newStock: 0, // Not finalized yet
@@ -148,10 +149,10 @@ export async function getStockAdjustmentsByProduct(productId: string, limit?: nu
       id: adj.id,
       productId: adj.product_id,
       productName: adj.product_name,
-      quantity: parseInt(adj.quantity),
+      quantity: toSafeNumber(adj.quantity),
       reason: adj.reason,
       date: adj.created_at,
-      newStock: parseInt(adj.new_stock),
+      newStock: toSafeNumber(adj.new_stock),
       product: adj.product_name ? {
         id: adj.product_id,
         name: adj.product_name

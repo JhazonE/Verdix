@@ -97,6 +97,7 @@ function POSContent() {
               setInputValue={pos.setInputValue}
               handleAddItemBySKU={pos.handleAddItemBySKU}
               getSearchSuggestions={pos.getSearchSuggestions}
+              showQuantityInSearch={pos.showQuantityInSearch}
               findExactCodeMatch={pos.findExactCodeMatch}
               handleAddItem={pos.handleAddItem}
               handleDefaultTender={pos.handleDefaultTender}

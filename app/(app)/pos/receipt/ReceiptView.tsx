@@ -4,7 +4,7 @@ import React, { forwardRef } from 'react';
 import { format, addYears } from 'date-fns';
 import { formatQuantity } from '@/lib/utils';
 import { formatSINumber } from '@/lib/si-number';
-import { abbreviateUOM } from '@/lib/receipt-uom';
+import { receiptLineQuantity } from '@/lib/receipt-uom';
 import { useReceipt } from './use-receipt';
 import type { ReceiptViewProps } from './receipt-types';
 
@@ -67,11 +67,11 @@ export const ReceiptView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ saleD
                 </div>
                 {items.map((item, index) => (
                     <div key={index} className="flex justify-between mb-1 items-start text-[10px]">
-                        <span className="w-10 text-left">{formatQuantity(item.quantity)} {abbreviateUOM(item.selectedSellingUnit?.name ?? item.unitOfMeasure)}</span>
+                        <span className="w-10 text-left">{formatQuantity(receiptLineQuantity(item).qty)} {receiptLineQuantity(item).uom}</span>
                         <span className="flex-1 text-left px-1">
                             <div>{item.name}</div>
                             {item.discount > 0 && <div className="text-[9px] italic">Disc: {item.discount}%</div>}
-                            <div className="text-black">@ {formatCurrency(item.price)}</div>
+                            <div className="text-black">{receiptLineQuantity(item).soldAs ? `= ${formatQuantity(receiptLineQuantity(item).soldAs!.qty)} ${receiptLineQuantity(item).soldAs!.uom} @ ` : '@ '}{formatCurrency(item.price)}</div>
                         </span>
                         <span className="w-12 text-right">{formatCurrency(item.price * item.quantity)}</span>
                     </div>

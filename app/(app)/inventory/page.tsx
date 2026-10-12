@@ -32,6 +32,7 @@ import {
   Layers,
   Rows3,
   PackageOpen,
+  Tags,
 } from 'lucide-react';
 
 import { BatchInventoryDrawer } from './batch-inventory/BatchInventoryDrawer';
@@ -42,6 +43,9 @@ import { ProductTableRowGroup } from './ProductTableRowGroup';
 
 export default function InventoryPage() {
   const {
+    warehouses,
+    warehouseFilter,
+    handleWarehouseFilterChange,
     searchTerm,
     handleSearch,
     handleClearSearch,
@@ -111,6 +115,15 @@ export default function InventoryPage() {
 
                 <div className="h-4 w-px bg-border/60 mx-1 flex-shrink-0" />
 
+                <Link href="/inventory/pricing">
+                  <Button variant="ghost" size="sm" className="h-8 gap-2 font-bold text-primary hover:text-primary hover:bg-primary/10 px-3 transition-colors flex-shrink-0">
+                      <Tags className="h-4 w-4" />
+                      <span className="text-xs">Pricing</span>
+                  </Button>
+                </Link>
+
+                <div className="h-4 w-px bg-border/60 mx-1 flex-shrink-0" />
+
                 <Button
                   variant="ghost"
                   size="sm"
@@ -166,6 +179,17 @@ export default function InventoryPage() {
             <SelectItem value="all">All Types</SelectItem>
             <SelectItem value="standard">Standard</SelectItem>
             <SelectItem value="service">Service</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={warehouseFilter} onValueChange={handleWarehouseFilterChange}>
+          <SelectTrigger className="w-full md:w-[200px]">
+            <SelectValue placeholder="Warehouse" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Warehouses</SelectItem>
+            {warehouses.map((w) => (
+              <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

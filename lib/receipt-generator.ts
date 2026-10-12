@@ -4,7 +4,7 @@ import type { POSSaleItem, Customer } from './types';
 import { SystemSettings } from './types';
 import { formatSINumber } from './si-number';
 import { resolveEffectiveTaxType } from './tax-utils';
-import { abbreviateUOM } from './receipt-uom';
+import { abbreviateUOM, receiptLineQuantity } from './receipt-uom';
 
 // Default for 58mm
 const DEFAULT_COLS = 32;
@@ -233,8 +233,9 @@ export class ReceiptGenerator {
             // print that unit, not the product's base unitOfMeasure — printing
             // "pcs" for a line actually sold as "Pack" would misstate what the
             // customer bought.
-            const uomAbbr = abbreviateUOM((item as any).selectedSellingUnit?.name ?? (item as any).unitOfMeasure);
-            const qtyText = `${item.quantity}${uomAbbr ? ' ' + uomAbbr : ''}`;
+            const lineQty = receiptLineQuantity(item as any);
+            const uomAbbr = lineQty.uom;
+            const qtyText = `${lineQty.qty}${uomAbbr ? ' ' + uomAbbr : ''}`;
             
             const qty     = qtyText.length > QTY_W ? qtyText.substring(0, QTY_W) : qtyText.padEnd(QTY_W, pad);
 
@@ -253,6 +254,12 @@ export class ReceiptGenerator {
             for (let i = 1; i < chunks.length; i++) {
                 absoluteIndent();
                 enc.line(chunks[i]);
+            }
+
+            // Sold-as line: ties the base-unit quantity to the unit and price charged
+            if (lineQty.soldAs) {
+                absoluteIndent();
+                enc.line(`= ${lineQty.soldAs.qty} ${lineQty.soldAs.uom} @ ${this.fmt(item.price)}`);
             }
 
             // Discount line

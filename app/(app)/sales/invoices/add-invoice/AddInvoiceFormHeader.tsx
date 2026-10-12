@@ -2,6 +2,7 @@
 
 import { UseFormReturn } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { InlineWarehouseSelect } from '@/app/(app)/components/inline-selects/inline-warehouse-select';
 import { InlinePaymentMethodSelect } from '@/app/(app)/components/inline-selects/inline-payment-method-select';
@@ -65,7 +66,7 @@ export function AddInvoiceFormHeader({
                 <div className="flex items-center justify-between h-5">
                   <FormLabel className="text-xs font-semibold text-muted-foreground">Invoice Date</FormLabel>
                 </div>
-                <FormControl><Input type="date" className="h-8 bg-background text-xs" {...field} /></FormControl>
+                <FormControl><DatePicker value={field.value} onChange={field.onChange} placeholder="Invoice date" /></FormControl>
               </FormItem>
             )}
           />
@@ -77,7 +78,7 @@ export function AddInvoiceFormHeader({
                 <div className="flex items-center justify-between h-5">
                   <FormLabel className="text-xs font-semibold text-muted-foreground">Due Date</FormLabel>
                 </div>
-                <FormControl><Input type="date" className="h-8 bg-background text-xs" {...field} /></FormControl>
+                <FormControl><DatePicker value={field.value} onChange={field.onChange} placeholder="Due date" /></FormControl>
               </FormItem>
             )}
           />

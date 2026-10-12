@@ -403,8 +403,17 @@ export async function processPullSync(): Promise<void> {
     const lastSync = lastSyncSetting[0]?.setting_value || '';
 
     const url = `${apiConfig.apiEndpoint}/sync/pull?last_sync=${encodeURIComponent(lastSync)}`;
-    const response = await fetch(url);
-    
+    let response: Response;
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    } catch (fetchError: any) {
+      // Remote unreachable (offline, host gone). Expected on a POS terminal;
+      // the next tick retries, so don't dump a stack trace every 2 minutes.
+      const reason = fetchError?.cause?.code || fetchError?.name || 'network error';
+      console.warn(`Pull sync skipped: ${apiConfig.apiEndpoint} unreachable (${reason})`);
+      return;
+    }
+
     if (!response.ok) {
       console.log(`Pull sync failed with status: ${response.status}`);
       return;

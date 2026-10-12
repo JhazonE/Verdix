@@ -1,8 +1,12 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+// The password is deliberately reported only as present/absent: this script is
+// run from a terminal and its output ends up in scrollback, CI logs and
+// screenshots. Knowing whether .env was picked up is the only thing the echo
+// was ever for, and that does not require printing the secret.
 console.log('DB_USER:', process.env.DB_USER);
-console.log('DB_PASSWORD:', process.env.DB_PASSWORD);
+console.log('DB_PASSWORD:', process.env.DB_PASSWORD ? '(set)' : '(not set)');
 console.log('DB_HOST:', process.env.DB_HOST);
 console.log('DB_PORT:', process.env.DB_PORT);
 

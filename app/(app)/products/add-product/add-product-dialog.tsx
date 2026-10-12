@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { PlusCircle, Loader2, Wand2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { DiscardChangesDialog } from '@/components/discard-changes-dialog';
 import { Form } from '@/components/ui/form';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
@@ -29,6 +30,7 @@ export function AddProductDialog(props: UseAddProductFormProps) {
   const controller = useAddProductForm(props);
   const {
     isOpen, setIsOpen,
+    hasUnsavedDraft, discardDraft,
     isSubmitting,
     form,
     tabErrors,
@@ -37,6 +39,26 @@ export function AddProductDialog(props: UseAddProductFormProps) {
     itemType, setItemType,
   } = controller;
   const { toast } = useToast();
+
+  // Closing with a half-filled form asks first instead of silently binning the
+  // work. The prompt's two answers are the two things a user actually wants
+  // here — "Close & keep" (come back to it later, the reason this fix exists)
+  // and "Discard" (really throw it away). There is deliberately no answer that
+  // closes AND loses the form, since that is the bug being fixed. Same prompt
+  // for Cancel, Escape and a backdrop click — the accidental closes are the
+  // whole point.
+  const [isDiscardOpen, setIsDiscardOpen] = useState(false);
+  // Set for the one render in which "Discard" is closing the prompt, so
+  // onOpenChange can tell that case apart from a plain dismissal.
+  const isDiscardingRef = useRef(false);
+
+  const requestClose = () => {
+    if (hasUnsavedDraft()) {
+      setIsDiscardOpen(true);
+      return;
+    }
+    setIsOpen(false);
+  };
 
   // Uncontrolled Tabs meant a validation failure on a tab the user wasn't
   // looking at (e.g. a blank required Name/Brand/SKU on Basic Info while
@@ -47,8 +69,11 @@ export function AddProductDialog(props: UseAddProductFormProps) {
   const [activeTab, setActiveTab] = useState('basic');
 
   useEffect(() => {
-    if (isOpen) setActiveTab('basic');
-  }, [isOpen]);
+    // A restored draft reopens on the tab it was left on — snapping back to
+    // Basic Info would make a preserved form feel like a reset one. Only a
+    // genuinely fresh form starts at the first tab.
+    if (isOpen && !hasUnsavedDraft()) setActiveTab('basic');
+  }, [isOpen, hasUnsavedDraft]);
 
   const handleInvalid = () => {
     // Reuse tabErrors rather than re-deriving which field lives on which tab
@@ -77,7 +102,20 @@ export function AddProductDialog(props: UseAddProductFormProps) {
   const isControlled = props.open !== undefined;
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => {
+        // Radix routes Escape and backdrop clicks through here as `false` —
+        // the two ways a user loses a form by accident — so the confirmation
+        // has to live on this path, not only on the Cancel button.
+        if (!next) {
+          requestClose();
+          return;
+        }
+        setIsOpen(true);
+      }}
+    >
       {!isControlled && (
         <DialogTrigger asChild>
           <Button size="sm">
@@ -213,7 +251,7 @@ export function AddProductDialog(props: UseAddProductFormProps) {
           </div>
         </AddProductFormProvider>
         <DialogFooter className="flex-shrink-0">
-          <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
+          <Button type="button" variant="outline" onClick={requestClose}>
             Cancel
           </Button>
           {markupSource && (
@@ -235,5 +273,31 @@ export function AddProductDialog(props: UseAddProductFormProps) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    {/* Sits outside <Dialog> so it is not unmounted along with it — the prompt
+        has to outlive the thing it is asking about closing. */}
+    <DiscardChangesDialog
+      open={isDiscardOpen}
+      onOpenChange={(next) => {
+        setIsDiscardOpen(next);
+        // Radix fires this for "Discard" too, before onConfirm runs, so the
+        // keep-path has to skip the one close that discardDraft() will do
+        // itself — otherwise which branch wins depends on callback ordering.
+        // Every OTHER dismissal (Escape, backdrop, "Close & keep") closes the
+        // product dialog with the draft intact: the safe outcome is what an
+        // accidental dismissal of this prompt gets.
+        if (!next && !isDiscardingRef.current) setIsOpen(false);
+        isDiscardingRef.current = false;
+      }}
+      onConfirm={() => {
+        isDiscardingRef.current = true;
+        setIsDiscardOpen(false);
+        discardDraft();
+      }}
+      title="Keep this unfinished product?"
+      description="You've started filling this in. Close and keep it — what you typed will still be here next time you open Add Product — or discard it and start fresh."
+      confirmLabel="Discard"
+      cancelLabel="Close & keep"
+    />
+    </>
   );
 }

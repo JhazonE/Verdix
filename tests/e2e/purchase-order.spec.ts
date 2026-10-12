@@ -366,13 +366,14 @@ test.describe('Purchase order', () => {
     expect(Number(caseBatch.unit_cost)).toBeCloseTo(2.5, 2);
   });
 
-  test('UI smoke: Add Purchase Order dialog mo-abli ug ma-fill ang header', async ({ page }) => {
+  test('UI smoke: Add Purchase Order page mo-abli ug ma-fill ang header', async ({ page }) => {
     await seedSession(page, DEFAULT_ADMIN);
     await page.goto('/purchases');
 
     // Ang /purchases mo-load nga walay infinite-loop crash (useProducts stable-array fix).
-    await page.getByRole('button', { name: 'Add New Purchase Order' }).click();
-    const dialog = page.getByRole('dialog');
+    await page.getByRole('link', { name: 'Add New Purchase Order' }).click();
+    await page.waitForURL('**/purchases/new');
+    const dialog = page.locator('main'); // now a full page, not a dialog
     await expect(dialog.getByRole('button', { name: 'Create Order' })).toBeVisible();
 
     // Header selects molihok (supplier/payment/warehouse).

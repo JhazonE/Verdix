@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { resolveSellingUnitForAdd, baseSellingUnitOf, findCartLineForUnit } from '../../lib/pos-cart-units';
+import { resolveSellingUnitForAdd, baseSellingUnitOf, findCartLineForUnit, promoteToLargestUnit } from '../../lib/pos-cart-units';
 
 const baseUnit = { id: 'su-base', name: 'Piece', factor: 1, barcode: '4800000000017', price: 25, isBase: true };
 const packUnit = { id: 'su-pack', name: 'Pack (x12)', factor: 12, barcode: '62217958', price: 250, isBase: false };
@@ -70,3 +70,20 @@ assert.equal(findCartLineForUnit(cart, 'prod-1', 'su-missing'), undefined, 'no m
 assert.equal(findCartLineForUnit(cart, 'prod-9', 'su-base'), undefined, 'no match for an unrelated product id');
 
 console.log('✅ pos-cart-units tests passed');
+
+// promoteToLargestUnit
+const caseUnit = { id: 'su-case', name: 'Case (x24)', factor: 24, price: 480, isBase: false };
+const allUnits = [baseUnit, packUnit, caseUnit];
+assert.deepEqual(promoteToLargestUnit(11, baseUnit, allUnits), { unit: baseUnit, quantity: 11 }, 'below factor stays base');
+assert.deepEqual(promoteToLargestUnit(12, baseUnit, allUnits), { unit: packUnit, quantity: 1 }, 'reaching factor promotes');
+assert.deepEqual(promoteToLargestUnit(13, baseUnit, allUnits), { unit: baseUnit, quantity: 13 }, 'non-multiple stays base');
+assert.deepEqual(promoteToLargestUnit(24, baseUnit, allUnits), { unit: caseUnit, quantity: 1 }, 'picks the largest fitting unit');
+assert.deepEqual(promoteToLargestUnit(36, baseUnit, allUnits), { unit: packUnit, quantity: 3 }, 'falls to a smaller unit when largest does not divide');
+assert.deepEqual(promoteToLargestUnit(2, packUnit, allUnits), { unit: caseUnit, quantity: 1 }, 'promotes from a non-base unit');
+assert.deepEqual(promoteToLargestUnit(5, baseUnit, [baseUnit]), { unit: baseUnit, quantity: 5 }, 'single-unit product unchanged');
+console.log('pos-cart-units: ok');
+
+// demotion: fractional non-base quantity falls back to base pieces
+assert.deepEqual(promoteToLargestUnit(1 - 1 / 12, packUnit, allUnits), { unit: baseUnit, quantity: 11 }, '1 Pack minus a piece = 11 Piece');
+assert.deepEqual(promoteToLargestUnit(1 + 1 / 12, packUnit, allUnits), { unit: baseUnit, quantity: 13 }, '1 Pack plus a piece = 13 Piece');
+console.log('pos-cart-units demotion: ok');

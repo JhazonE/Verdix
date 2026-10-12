@@ -14,7 +14,6 @@ import { InlineEditableMultiSelect } from '../../components/inline-editable-mult
 import {
   addDepartment, updateDepartment,
   addSupplier, updateSupplier, getSuppliers,
-  addWarehouse, updateWarehouse, getWarehouses,
   addShelfLocation, updateShelfLocation, getShelfLocations,
   addUnitOfMeasure, updateUnitOfMeasure,
 } from '../../actions';
@@ -32,7 +31,6 @@ export function InventoryTab() {
     selects, setSelects,
     refreshDepartments,
     refreshSuppliers,
-    refreshWarehouses,
     refreshShelfLocations,
     refreshUnits,
   } = useEditProductFormContext();
@@ -159,7 +157,7 @@ export function InventoryTab() {
               <InlineEditableSelect
                 items={departments}
                 isLoading={isLoadingDepartments}
-                value={field.value}
+                value={field.value ?? ""}
                 onChange={field.onChange}
                 open={selects.departments}
                 onOpenChange={(o) => setSelects((p) => ({ ...p, departments: o }))}
@@ -259,38 +257,25 @@ export function InventoryTab() {
           name="warehouse"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Warehouse (Optional)</FormLabel>
-              <InlineEditableSelect
-                items={warehouses}
-                isLoading={false}
-                value={field.value}
-                onChange={field.onChange}
-                open={selects.warehouses}
-                onOpenChange={(o) => setSelects((p) => ({ ...p, warehouses: o }))}
-                placeholder="Select a warehouse"
-                addLabel="Add Warehouse"
-                emptyLabel="No warehouses found"
-                getId={(w: any) => w.id}
-                getValue={(w: any) => w.id}
-                getOptionLabel={(w: any) => w.name}
-                getName={(w: any) => w.name}
-                onAdd={async (name) => {
-                  const r = await addWarehouse(name);
-                  if (r.success) {
-                    await refreshWarehouses();
-                    const fresh = await getWarehouses();
-                    const created = fresh.find((w: any) => w.name === name);
-                    return created?.id;
-                  }
-                  return { error: r.message };
-                }}
-                onRename={async (id, name) => {
-                  const existing = warehouses.find((w: any) => w.id === id);
-                  const r = await updateWarehouse(id, name, existing?.location);
-                  if (r.success) { await refreshWarehouses(); return id; }
-                  return { error: r.message };
-                }}
+              <FormLabel>Warehouse</FormLabel>
+              {/* Read-only: a product row belongs to exactly one warehouse
+                  (one row per warehouse — see per-warehouse product rows), so
+                  re-pointing it here would silently move stock between
+                  locations without a movement record. Moving stock is what a
+                  stock transfer is for. The field is still registered so the
+                  submitted payload keeps the saved warehouse_id. */}
+              <Input
+                type="text"
+                value={
+                  warehouses.find((w: any) => w.id === field.value)?.name ||
+                  product?.warehouseName ||
+                  ''
+                }
+                disabled
               />
+              <p className="text-sm text-muted-foreground">
+                Warehouse is fixed after creation. Use a stock transfer to move this item.
+              </p>
               <FormMessage />
             </FormItem>
           )}
