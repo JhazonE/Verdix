@@ -34,6 +34,10 @@ import { useSetExpiration } from './use-set-expiration';
  * Dates are per batch because that is where expiry lives — a June delivery and
  * a July delivery of the same product keep separate dates, which is what FIFO
  * deduction and the expiring-soon report already assume.
+ *
+ * Open to any stocked product, not just ones already flagged perishable: saving
+ * a date sets that flag (see lib/batch-expiration-write), so the date no longer
+ * requires a prior trip through Edit Product.
  */
 export function SetExpirationDialog({
   product,
@@ -90,8 +94,8 @@ export function SetExpirationDialog({
             <PackageOpen className="h-10 w-10 opacity-20" />
             <p className="text-sm font-medium">No stock on hand</p>
             <p className="text-xs text-center max-w-[380px]">
-              There is nothing to date. Receive stock for this product first, or set the
-              expiration while adding stock in Adjust Stock.
+              Expiry attaches to stock, so there is nothing to date yet. Receive or add stock
+              for this product first, then set the expiration here.
             </p>
           </div>
         ) : (
@@ -181,6 +185,13 @@ export function SetExpirationDialog({
                 {formatQuantity(untrackedQuantity)} unit(s) of stock on hand are not recorded
                 against any batch. Setting a date here files them as an opening batch so they
                 appear in the Expiring Soon report. Your stock total stays the same.
+              </p>
+            )}
+
+            {!product.isPerishable && (
+              <p className="text-xs text-muted-foreground">
+                This product is not marked as perishable yet. Saving a date here will mark it
+                perishable, so expiry fields appear for it from now on.
               </p>
             )}
 

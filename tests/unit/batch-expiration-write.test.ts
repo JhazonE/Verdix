@@ -196,3 +196,101 @@ import { applyExpirationEdits } from '../../lib/batch-expiration-write';
   console.error('Test failed:', e);
   process.exit(1);
 });
+
+/**
+ * Setting a date on a product that was never flagged perishable must flag it.
+ *
+ * The Set Expiration action used to be hidden unless products.is_perishable was
+ * already 1, which made the feature unreachable for virtually the whole
+ * catalogue (4 of 15,988 rows carried the flag). Dating stock is now the act
+ * that establishes perishability: a user who types an expiry has said this
+ * product expires, so the flag follows the date rather than gating it.
+ *
+ * The flag is set in the SAME transaction as the date, so the two can never
+ * disagree — a product carrying an expiry but not the flag would drop straight
+ * back out of the UI that set it.
+ */
+(async () => {
+  await withTransaction(async (connection) => {
+    const productId = 'TEST-EXPFLAG-PROD-1';
+
+    // is_perishable = 0: the state almost every real product is in.
+    await connection.query(
+      `INSERT INTO products (id, name, sku, stock, cost, price, type, unit_of_measure, is_perishable, earns_points, created_at, updated_at)
+       VALUES (?, 'Test Unflagged Mayo', 'TEST-EXPFLAG-SKU-1', 5, 10, 15, 'standard', 'Piece', 0, 1, NOW(), NOW())`,
+      [productId]
+    );
+
+    // No batch rows at all — the real shape of the product that motivated this
+    // work (stock 5, zero batches), so the date can only land via an opening batch.
+    const plan = resolveExpirationEdits({
+      productStock: 5,
+      batches: [],
+      updates: [],
+      untrackedExpiration: '2027-03-01',
+    });
+
+    assert.equal(plan.openingBatch?.quantity, 5, 'all 5 units are untracked');
+
+    const result = await applyExpirationEdits(connection, {
+      productId,
+      plan,
+      unitCost: 10,
+      sellingPrice: 15,
+    });
+
+    assert.ok(result.openingBatchId, 'an opening batch carries the date');
+
+    const [after]: any = await connection.query(
+      `SELECT stock, is_perishable, DATE_FORMAT(expiration_date, "%Y-%m-%d") AS exp
+       FROM products WHERE id = ?`,
+      [productId]
+    );
+
+    assert.equal(
+      Number(after[0].is_perishable),
+      1,
+      'dating an unflagged product marks it perishable, so it stays reachable in the UI'
+    );
+    assert.equal(after[0].exp, '2027-03-01', 'the date reached the product cache');
+    assert.equal(
+      Number(after[0].stock),
+      5,
+      'flagging perishable must not move stock either'
+    );
+
+    // Clearing every date must NOT unflag: the product is still perishable, the
+    // user has simply not recorded a date for the stock currently on hand.
+    const clearPlan = resolveExpirationEdits({
+      productStock: 5,
+      batches: [{ id: String(result.openingBatchId), quantityRemaining: 5 }],
+      updates: [{ batchId: String(result.openingBatchId), expirationDate: '' }],
+    });
+    await applyExpirationEdits(connection, {
+      productId,
+      plan: clearPlan,
+      unitCost: 10,
+      sellingPrice: 15,
+    });
+
+    const [cleared]: any = await connection.query(
+      'SELECT is_perishable, expiration_date FROM products WHERE id = ?',
+      [productId]
+    );
+    assert.equal(cleared[0].expiration_date, null, 'the cache cleared');
+    assert.equal(
+      Number(cleared[0].is_perishable),
+      1,
+      'clearing a date leaves the product perishable — it must not vanish from the UI'
+    );
+
+    throw new Error('__TEST_ROLLBACK__');
+  }).catch((e: any) => {
+    if (e.message !== '__TEST_ROLLBACK__') throw e;
+  });
+
+  console.log('✓ batch-expiration-write perishable flag');
+})().catch((e) => {
+  console.error('Test failed:', e);
+  process.exit(1);
+});

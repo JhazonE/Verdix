@@ -11,10 +11,11 @@ import { refreshProductExpirationCache } from './expiration';
  * lives in ./batch-expiration-edit and is client-safe; this is the write half,
  * split out so it can be tested against real tables independently of the route.
  *
- * Writes ONLY inventory_batches.expiration_date and, when the plan calls for it,
- * one new batch row. products.stock is never modified — not even when an opening
- * batch is created, because that registers stock already counted in
- * products.stock into the batch ledger rather than adding any.
+ * Writes inventory_batches.expiration_date and, when the plan calls for it, one
+ * new batch row — plus products.is_perishable, which a date implies (see below).
+ * products.stock is never modified — not even when an opening batch is created,
+ * because that registers stock already counted in products.stock into the batch
+ * ledger rather than adding any.
  *
  * No stock_movements row is written either: there is no quantity change to
  * record, and a movement would misreport this as stock entering the business.
@@ -66,6 +67,27 @@ export async function applyExpirationEdits(
         'Opening batch for existing stock, created to record an expiration date',
         plan.openingBatch.expirationDate,
       ]
+    );
+  }
+
+  // Dating stock is what establishes perishability, so the flag follows the
+  // date rather than gating it. Set Expiration used to be hidden unless
+  // is_perishable was already 1, which made it unreachable for virtually the
+  // whole catalogue; a user who types an expiry has said this product expires.
+  //
+  // Set in THIS transaction so the two can never disagree: a product carrying
+  // an expiry but not the flag would drop straight out of the UI that set it.
+  //
+  // Only ever set, never cleared. Clearing a date does not make a product
+  // non-perishable — the user has simply not recorded a date for the stock
+  // currently on hand, and unflagging would hide the dialog they just used.
+  const setsAnyDate =
+    plan.batchUpdates.some((u) => u.expirationDate !== null) || plan.openingBatch !== null;
+
+  if (setsAnyDate) {
+    await connection.query(
+      'UPDATE products SET is_perishable = 1 WHERE id = ? AND is_perishable <> 1',
+      [productId]
     );
   }
 

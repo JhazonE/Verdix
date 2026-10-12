@@ -55,14 +55,15 @@ export function ProductRowActions({ product, onSuccess, requireAdjustmentConfirm
                 <MoveHorizontal className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span>Transfer Stock</span>
               </DropdownMenuItem>
-              {/* Expiry only means something for a perishable, matching the
-                  is_perishable gate the Adjust Stock dialog already applies. */}
-              {product.isPerishable && (
-                <DropdownMenuItem onSelect={() => setIsExpirationOpen(true)}>
-                  <CalendarClock className="mr-2 h-4 w-4 text-muted-foreground" />
-                  <span>Set Expiration</span>
-                </DropdownMenuItem>
-              )}
+              {/* Deliberately NOT gated on is_perishable. The flag follows the
+                  date: saving one marks the product perishable (see
+                  lib/batch-expiration-write). Gating here instead made the
+                  action unreachable for virtually the whole catalogue, and
+                  forced a trip through Edit Product just to type a date. */}
+              <DropdownMenuItem onSelect={() => setIsExpirationOpen(true)}>
+                <CalendarClock className="mr-2 h-4 w-4 text-muted-foreground" />
+                <span>Set Expiration</span>
+              </DropdownMenuItem>
             </>
           )}
         </DropdownMenuContent>
@@ -92,14 +93,12 @@ export function ProductRowActions({ product, onSuccess, requireAdjustmentConfirm
             open={isTransferOpen}
             onOpenChange={setIsTransferOpen}
           />
-          {product.isPerishable && (
-            <SetExpirationDialog
-              product={product}
-              onSuccess={onSuccess}
-              open={isExpirationOpen}
-              onOpenChange={setIsExpirationOpen}
-            />
-          )}
+          <SetExpirationDialog
+            product={product}
+            onSuccess={onSuccess}
+            open={isExpirationOpen}
+            onOpenChange={setIsExpirationOpen}
+          />
         </>
       )}
     </>
