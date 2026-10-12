@@ -1,12 +1,14 @@
 'use server';
 
 import { query, withTransaction } from '@/lib/mysql';
+import { buildLowStockAlertQuery, normalizeThreshold } from '@/lib/low-stock-alerts';
 import { generateBatchId } from '@/lib/batch-utils';
 import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
 import { PriceLevel, Category, Brand, Supplier, Warehouse, Department, UnitOfMeasure, ShelfLocation, Account, TaxRate, SupplierProductMapping, ProductPriceLevelOverride } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { isValidMarkupValue, MARKUP_MAX } from '@/lib/markup-validation';
 import { updateStockAndRecordMovement } from '@/lib/stock-movements';
+import { isWarehouseSibling } from '@/lib/product-identity';
 
 
 export type ProductFormData = {
@@ -81,7 +83,7 @@ class SellingUnitError extends Error {}
  * Rejects a zero or negative factor outright: a 0 factor would convert every
  * quantity to zero, so a sale of that unit would deduct no stock at all.
  */
-function validateSellingUnits(units: SellingUnitInput[] | undefined, baseUnitName: string) {
+function validateSellingUnits(units: SellingUnitInput[] | undefined, baseUnitName: string, baseBarcode?: string | null) {
   if (!units || units.length === 0) return [];
 
   const cleaned = units
@@ -118,6 +120,11 @@ function validateSellingUnits(units: SellingUnitInput[] | undefined, baseUnitNam
       throw new SellingUnitError(`Selling unit "${u.name}" must have a cost of 0 or more.`);
     }
 
+    if (u.barcode && baseBarcode && u.barcode === baseBarcode) {
+      throw new SellingUnitError(
+        `Barcode "${u.barcode}" is already this product's own barcode (its base unit). Give "${u.name}" a different barcode or leave it blank.`,
+      );
+    }
     if (u.barcode) {
       if (seenBarcodes.has(u.barcode)) {
         throw new SellingUnitError(`Barcode "${u.barcode}" is used by more than one selling unit on this product.`);
@@ -156,14 +163,30 @@ function describeAddError(error: any, label: string): string {
  * collision with another product's unit is likely rather than theoretical. It
  * must never reach the user as a raw SQL error, and must never be dropped.
  */
-function rethrowSellingUnitDupe(error: any): never {
+async function rethrowSellingUnitDupe(error: any, connection?: any): Promise<never> {
   if (error?.code === 'ER_DUP_ENTRY') {
     const message = String(error.message || '');
     if (message.includes('uniq_selling_unit_barcode')) {
       const match = message.match(/Duplicate entry '([^']*)'/);
       const barcode = match ? match[1] : 'this barcode';
+      let holder = '';
+      if (connection && match) {
+        try {
+          const [rows]: any = await connection.query(
+            `SELECT u.name AS unit_name, u.is_base, p.name AS product_name
+             FROM product_selling_units u JOIN products p ON p.id = u.product_id
+             WHERE u.barcode = ? LIMIT 1`,
+            [barcode],
+          );
+          if (rows.length > 0) {
+            holder = ` It is held by the ${rows[0].is_base ? 'base unit' : `"${rows[0].unit_name}" unit`} of "${rows[0].product_name}".`;
+          }
+        } catch {
+          // Diagnostics only — fall through to the generic message.
+        }
+      }
       throw new SellingUnitError(
-        `Barcode "${barcode}" is already assigned to another selling unit. Barcodes must be unique across all products.`,
+        `Barcode "${barcode}" is already assigned to another selling unit.${holder} Barcodes must be unique across all products.`,
       );
     }
     if (message.includes('uniq_product_unit_name')) {
@@ -273,7 +296,7 @@ async function writeSellingUnits(
       }
     }
   } catch (error) {
-    rethrowSellingUnitDupe(error);
+    await rethrowSellingUnitDupe(error, connection);
   }
 }
 
@@ -564,16 +587,17 @@ export async function getProductsCount(filters?: ProductFilters) {
 export async function getLowStockAlerts() {
   try {
     const settingsResult = await query('SELECT low_stock_threshold FROM pos_settings LIMIT 1');
-    const globalThreshold = settingsResult.length > 0 ? settingsResult[0].low_stock_threshold : 10;
+    const globalThreshold = normalizeThreshold(
+      settingsResult.length > 0 ? settingsResult[0].low_stock_threshold : null,
+    );
 
     // Services are excluded: they have no stock, so they would otherwise sit
-    // permanently in the notification bell as a low-stock alert.
-    const sql = `
-      SELECT id, name, stock, reorder_point
-      FROM products
-      WHERE type = 'standard' AND (stock < reorder_point OR stock < ?)
-    `;
-    const products = await query(sql, [globalThreshold]);
+    // permanently in the notification bell as a low-stock alert. Zero-stock
+    // products are excluded too — they are out of stock, not low on it — and the
+    // result is capped, because this is a server action whose entire result is
+    // serialised to the browser every refresh. See lib/low-stock-alerts.ts.
+    const { sql, params } = buildLowStockAlertQuery(globalThreshold);
+    const products = await query(sql, params);
     return products.map((p: any) => ({
       id: p.id,
       name: p.name,
@@ -636,7 +660,7 @@ export async function addProduct(
     // Validate before opening the transaction so a bad row costs nothing.
     let sellingUnits: SellingUnitInput[];
     try {
-      sellingUnits = validateSellingUnits(formData.sellingUnits, formData.unitOfMeasure);
+      sellingUnits = validateSellingUnits(formData.sellingUnits, formData.unitOfMeasure, String((formData as any).barcode ?? '').trim() || null);
     } catch (error: any) {
       if (error instanceof SellingUnitError) return { success: false, message: error.message };
       throw error;
@@ -766,7 +790,9 @@ export async function addProduct(
 
       if (formData.conversionFactors && formData.conversionFactors.length > 0) {
         for (const cf of formData.conversionFactors) {
-          const cfId = `${productId}-cf-${cf.unit}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          // Also a uuid rather than a composed id, for the same VARCHAR(50)
+          // overflow reason as the supplier mapping below.
+          const cfId = `cf_${uuidv4()}`;
           await connection.query('INSERT INTO conversion_factors (id, product_id, unit, factor) VALUES (?, ?, ?, ?)', [cfId, productId, cf.unit, cf.factor]);
         }
       }
@@ -791,7 +817,11 @@ export async function addProduct(
 
       if (formData.supplierMappings && formData.supplierMappings.length > 0) {
         for (const mapping of formData.supplierMappings) {
-          const mappingId = `${productId}-sm-${mapping.supplierId}-${Date.now()}`;
+          // A uuid, not `${productId}-sm-${supplierId}-${Date.now()}`: that
+          // composed form overflows this column's VARCHAR(50) now that product
+          // and supplier ids are themselves long, and the timestamp bought
+          // nothing — unique_product_supplier already allows one row per pair.
+          const mappingId = `spm_${uuidv4()}`;
           await connection.query('INSERT INTO supplier_product_mapping (id, product_id, supplier_id, supplier_sku, supplier_lead_time, supplier_specific_rop, supplier_cost, is_primary) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [mappingId, productId, mapping.supplierId, mapping.supplierSku || null, mapping.leadTime, mapping.rop, mapping.cost || null, mapping.isPrimary ? 1 : 0]);
         }
       }
@@ -830,7 +860,7 @@ export async function updateProduct(id: string, formData: ProductFormData) {
     let sellingUnits: SellingUnitInput[] = [];
     if (managesSellingUnits) {
       try {
-        sellingUnits = validateSellingUnits(formData.sellingUnits, formData.unitOfMeasure);
+        sellingUnits = validateSellingUnits(formData.sellingUnits, formData.unitOfMeasure, String((formData as any).barcode ?? '').trim() || null);
       } catch (error: any) {
         if (error instanceof SellingUnitError) return { success: false, message: error.message };
         throw error;
@@ -954,7 +984,8 @@ export async function updateProduct(id: string, formData: ProductFormData) {
       await connection.query('DELETE FROM conversion_factors WHERE product_id = ?', [id]);
       if (formData.conversionFactors && formData.conversionFactors.length > 0) {
         for (const cf of formData.conversionFactors) {
-          const cfId = `${id}-cf-${cf.unit}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          // See addProduct: a composed id overflows this VARCHAR(50) column.
+          const cfId = `cf_${uuidv4()}`;
           await connection.query('INSERT INTO conversion_factors (id, product_id, unit, factor) VALUES (?, ?, ?, ?)', [cfId, id, cf.unit, cf.factor]);
         }
       }
@@ -977,6 +1008,10 @@ export async function updateProduct(id: string, formData: ProductFormData) {
           // product's unit already held the same barcode.
           const currentBarcode = baseRows[0].barcode ?? null;
           const nextBarcode = productData.barcode || null;
+          // Set when the barcode this row wants is already held by a warehouse
+          // sibling: the edit is allowed to proceed, but this row's own barcode
+          // is left exactly as it is rather than written.
+          let keepBaseBarcodeAsIs = false;
 
           if (currentBarcode === nextBarcode) {
             await connection.query(
@@ -991,31 +1026,87 @@ export async function updateProduct(id: string, formData: ProductFormData) {
             // own barcode field, not a row in the Selling Units tab.
             if (nextBarcode) {
               const [clash]: any = await connection.query(
-                `SELECT u.product_id, p.name AS product_name
+                `SELECT u.id AS unit_id, u.product_id, p.name AS product_name,
+                        p.sku AS product_sku, p.warehouse_id AS product_warehouse_id
                  FROM product_selling_units u
                  JOIN products p ON p.id = u.product_id
                  WHERE u.barcode = ? AND u.id <> ? LIMIT 1`,
                 [nextBarcode, baseRows[0].id],
               );
-              if (clash.length > 0) {
+              // A warehouse sibling holding this barcode is the SAME physical
+              // item in another warehouse, not a conflict — see
+              // isWarehouseSibling. Verdix keeps one products row per
+              // warehouse, and a stock transfer copies products.barcode to the
+              // new row while leaving its base unit's barcode NULL (the UNIQUE
+              // index allows only one holder), so without this every
+              // transferred product became permanently un-editable: its own
+              // STORE row was reported as the conflict. The barcode stays on
+              // the row that already holds it; this row keeps NULL.
+              const holder = clash[0];
+              const sibling =
+                holder &&
+                isWarehouseSibling(
+                  {
+                    productId: id,
+                    // existing.sku, NOT productData.sku: the latter is
+                    // mirrored from the barcode a few lines above, so it would
+                    // compare a barcode against the holder's real SKU.
+                    sku: existing.sku ?? null,
+                    name: productData.name,
+                    warehouseId: productData.warehouse_id ?? null,
+                  },
+                  {
+                    productId: String(holder.product_id),
+                    sku: holder.product_sku ?? null,
+                    name: String(holder.product_name ?? ''),
+                    warehouseId: holder.product_warehouse_id ?? null,
+                  },
+                );
+
+              if (holder && !sibling) {
                 throw new SellingUnitError(
-                  `Barcode "${nextBarcode}" is already used by "${clash[0].product_name}". Barcodes must be unique across all products and their selling units.`,
+                  `Barcode "${nextBarcode}" is already used by "${holder.product_name}". Barcodes must be unique across all products and their selling units.`,
                 );
               }
+              if (sibling) {
+                keepBaseBarcodeAsIs = true;
+              }
             }
-            await connection.query(
-              `UPDATE product_selling_units
-               SET name = ?, barcode = ?, cost = ?, price = ?, factor = 1, is_base = 1
-               WHERE id = ?`,
-              [baseName, nextBarcode, productData.cost, productData.price, baseRows[0].id],
-            );
+            if (keepBaseBarcodeAsIs) {
+              await connection.query(
+                `UPDATE product_selling_units
+                 SET name = ?, cost = ?, price = ?, factor = 1, is_base = 1
+                 WHERE id = ?`,
+                [baseName, productData.cost, productData.price, baseRows[0].id],
+              );
+            } else {
+              await connection.query(
+                `UPDATE product_selling_units
+                 SET name = ?, barcode = ?, cost = ?, price = ?, factor = 1, is_base = 1
+                 WHERE id = ?`,
+                [baseName, nextBarcode, productData.cost, productData.price, baseRows[0].id],
+              );
+            }
           }
         } else {
           // A product predating the backfill, or one whose base row was lost.
+          // The barcode can only be claimed if nothing else holds it — a
+          // warehouse sibling legitimately might (see isWarehouseSibling), and
+          // the UNIQUE index permits exactly one holder, so this row falls back
+          // to NULL rather than failing the whole save.
+          const wanted = productData.barcode || null;
+          let claimable = wanted;
+          if (wanted) {
+            const [held]: any = await connection.query(
+              'SELECT 1 FROM product_selling_units WHERE barcode = ? LIMIT 1',
+              [wanted],
+            );
+            if (held.length > 0) claimable = null;
+          }
           await connection.query(
             `INSERT INTO product_selling_units (id, product_id, name, barcode, factor, cost, price, is_base)
              VALUES (?, ?, ?, ?, 1, ?, ?, 1)`,
-            [`psu_base_${id}`, id, baseName, productData.barcode || null, productData.cost, productData.price],
+            [`psu_base_${id}`, id, baseName, claimable, productData.cost, productData.price],
           );
         }
 
@@ -1041,6 +1132,17 @@ export async function updateProduct(id: string, formData: ProductFormData) {
             }
           }
 
+          // Units are updated one at a time, so moving a barcode from one unit
+          // to another (or swapping two) would collide with the row that has not
+          // been updated yet. Release the kept units' barcodes first; every unit
+          // below then writes its final barcode. UNIQUE allows many NULLs.
+          if (keptIds.size > 0) {
+            await connection.query(
+              'UPDATE product_selling_units SET barcode = NULL WHERE is_base = 0 AND id IN (?)',
+              [Array.from(keptIds)],
+            );
+          }
+
           for (const unit of sellingUnits) {
             const barcode = unit.barcode ? unit.barcode : null;
             const cost = unit.cost ?? null;
@@ -1064,13 +1166,14 @@ export async function updateProduct(id: string, formData: ProductFormData) {
           }
         }
       } catch (error) {
-        rethrowSellingUnitDupe(error);
+        await rethrowSellingUnitDupe(error, connection);
       }
 
       if (formData.supplierMappings) {
         await connection.query('DELETE FROM supplier_product_mapping WHERE product_id = ?', [id]);
         for (const mapping of formData.supplierMappings) {
-          const mappingId = `${id}-sm-${mapping.supplierId}-${Date.now()}`;
+          // See addProduct: a composed id overflows this VARCHAR(50) column.
+          const mappingId = `spm_${uuidv4()}`;
           await connection.query('INSERT INTO supplier_product_mapping (id, product_id, supplier_id, supplier_sku, supplier_lead_time, supplier_specific_rop, supplier_cost, is_primary) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [mappingId, id, mapping.supplierId, mapping.supplierSku || null, mapping.leadTime, mapping.rop, mapping.cost || null, mapping.isPrimary ? 1 : 0]);
         }
       }
