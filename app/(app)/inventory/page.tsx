@@ -32,6 +32,7 @@ import {
   Layers,
   Rows3,
   PackageOpen,
+  Tags,
 } from 'lucide-react';
 
 import { BatchInventoryDrawer } from './batch-inventory/BatchInventoryDrawer';
@@ -109,6 +110,15 @@ export default function InventoryPage() {
                   <Button variant="ghost" size="sm" className="h-8 gap-2 font-bold text-primary hover:text-primary hover:bg-primary/10 px-3 transition-colors flex-shrink-0">
                       <Layers className="h-4 w-4" />
                       <span className="text-xs">Bulk Adjustment</span>
+                  </Button>
+                </Link>
+
+                <div className="h-4 w-px bg-border/60 mx-1 flex-shrink-0" />
+
+                <Link href="/inventory/pricing">
+                  <Button variant="ghost" size="sm" className="h-8 gap-2 font-bold text-primary hover:text-primary hover:bg-primary/10 px-3 transition-colors flex-shrink-0">
+                      <Tags className="h-4 w-4" />
+                      <span className="text-xs">Pricing</span>
                   </Button>
                 </Link>
 
