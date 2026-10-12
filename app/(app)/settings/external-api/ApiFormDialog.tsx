@@ -132,7 +132,7 @@ export function ApiFormDialog({ open, onOpenChange, editingApi, form, setForm, i
                 <Label className="text-base">Sta. Lucia Tenant Account</Label>
                 <p className="text-sm text-muted-foreground">
                   Credentials issued by the Sta. Lucia mall for the Tenant Management System —
-                  <span className="font-medium text-foreground"> not your Verdix login.</span>
+                  <span className="font-medium text-foreground"> not your Vendix login.</span>
                 </p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

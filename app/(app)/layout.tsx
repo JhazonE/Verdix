@@ -63,7 +63,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <h1 className="text-3xl font-bold tracking-tight">POS Unavailable in Browser</h1>
         <p className="max-w-md text-muted-foreground">
           Point of Sale access from a web browser has been disabled for this store.
-          Please use the Verdix POS desktop application on the terminal.
+          Please use the Vendix POS desktop application on the terminal.
         </p>
         <Button variant="outline" onClick={() => router.replace('/dashboard')}>
           Back to Dashboard
