@@ -9,7 +9,13 @@ import { classifyRows, type ClassifiedRow } from '@/lib/import/classify';
 import { buildTemplateCsv, buildSkippedCsv } from '@/lib/import/csv-out';
 
 type Step = 'upload' | 'map' | 'preview' | 'result';
-const BATCH = 500;
+// Each NEW product row costs ~12-17 sequential DB round trips (lookup upserts,
+// match SELECTs, products + selling-unit + batch INSERTs, stock movement).
+// Against a REMOTE MySQL (Railway) each trip is tens of ms, not the ~1ms a
+// local socket gives, so a 500-row request ran for minutes and was killed by
+// the platform's request timeout — surfacing as a bare "Import Failed" with
+// every row in the chunk lost. 50 keeps a chunk well inside any edge timeout.
+const BATCH = 50;
 
 function downloadText(filename: string, text: string) {
   const blob = new Blob(['﻿' + text], { type: 'text/csv;charset=utf-8;' });
@@ -27,6 +33,11 @@ export function useImportWizard(entity: EntityKey) {
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
   const [existingKeys, setExistingKeys] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<{ added: number; updated: number; skipped: number } | null>(null);
+  // Rows the SERVER rejected, mapped back to the source rows the user uploaded.
+  // Without these, "Download skipped rows" only ever listed client-side
+  // validation failures, so a row that passed validation and then failed to
+  // insert was counted in `skipped` but appeared in no report at all.
+  const [serverRejects, setServerRejects] = useState<ClassifiedRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,8 +75,14 @@ export function useImportWizard(entity: EntityKey) {
 
   async function confirm() {
     setLoading(true); setError(null);
-    const valid = classified.filter((r) => r.status !== 'error').map((r) => r.values);
+    // Keep the full ClassifiedRow alongside the payload: the route reports
+    // failures by index WITHIN the chunk it was sent, so mapping a rejection
+    // back to the user's original spreadsheet row needs this parallel list.
+    const validRows = classified.filter((r) => r.status !== 'error');
+    const valid = validRows.map((r) => r.values);
     let added = 0, updated = 0, skipped = counts.error;
+    const rejects: ClassifiedRow[] = [];
+    setServerRejects([]);
     try {
       for (let i = 0; i < valid.length; i += BATCH) {
         const chunk = valid.slice(i, i + BATCH);
@@ -73,14 +90,50 @@ export function useImportWizard(entity: EntityKey) {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ rows: chunk }),
         });
-        if (!res.ok) throw new Error('Import request failed');
+        if (!res.ok) {
+          // Report WHAT failed and WHERE. A bare "Import request failed" gave
+          // no way to tell a timeout from a schema error from a bad row, which
+          // is what made this unfixable from the UI alone. Reading the body is
+          // best-effort: a platform timeout returns an HTML error page, not the
+          // route's JSON.
+          let detail = '';
+          try {
+            const body = await res.json();
+            detail = body?.error || body?.message || '';
+          } catch {
+            detail = res.statusText || '';
+          }
+          const at = `rows ${i + 1}-${Math.min(i + BATCH, valid.length)} of ${valid.length}`;
+          throw new Error(
+            `Import stopped at ${at} (HTTP ${res.status}${detail ? `: ${detail}` : ''}). ` +
+            `${added} added, ${updated} updated so far — those are saved.`,
+          );
+        }
         const data = await res.json();
         added += data.added ?? 0; updated += data.updated ?? 0; skipped += data.skipped ?? 0;
+        // `row` is the index inside this chunk; offset it to recover the row the
+        // user actually uploaded, then carry the server's reason onto it.
+        for (const e of (data.errors ?? []) as Array<{ row: number; reason: string }>) {
+          const source = validRows[i + e.row];
+          if (source) rejects.push({ ...source, status: 'error', reason: e.reason });
+        }
+        // Surface progress as it lands so a long import is visibly advancing
+        // and a later failure still shows what already committed.
+        setResult({ added, updated, skipped });
+        setServerRejects([...rejects]);
       }
       setResult({ added, updated, skipped });
       setStep('result');
     } catch (e: any) {
       setError(e?.message || 'Import failed.');
+      // Still advance to the result step. Anything already committed is real,
+      // and staying on the preview hid both that progress and the skipped-rows
+      // download — leaving the user to guess what landed and re-import blind.
+      // The error banner above the summary says it stopped early.
+      if (added > 0 || updated > 0 || skipped > 0) {
+        setResult({ added, updated, skipped });
+        setStep('result');
+      }
     } finally {
       setLoading(false);
     }
@@ -88,12 +141,14 @@ export function useImportWizard(entity: EntityKey) {
 
   function downloadTemplate() { downloadText(`${entity}-template.csv`, buildTemplateCsv(schema)); }
   function downloadSkipped() {
-    const csv = buildSkippedCsv(classified);
+    // Both kinds of skip belong in one report: rows rejected by validation
+    // before sending, and rows the database refused once sent.
+    const csv = buildSkippedCsv([...classified, ...serverRejects]);
     if (csv) downloadText(`${entity}-skipped-rows.csv`, csv);
   }
   function reset() {
     setStep('upload'); setParsed(null); setMapping({}); setExistingKeys(new Set());
-    setResult(null); setError(null);
+    setResult(null); setError(null); setServerRejects([]);
   }
 
   return {

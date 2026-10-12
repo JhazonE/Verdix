@@ -121,10 +121,21 @@ export function ImportWizard({ entity, open, onOpenChange, onImported }: Props) 
         {/* STEP 4: RESULT */}
         {w.step === 'result' && w.result && (
           <div className="space-y-4">
-            <div className="flex items-center gap-2 text-green-700">
-              <CheckCircle2 className="h-5 w-5" />
-              <span className="font-medium">Import complete</span>
-            </div>
+            {/* An import that stopped early still lands here so its partial
+                progress and skipped-rows report stay reachable — but it must
+                not claim to have completed. The error banner above carries the
+                reason and where it stopped. */}
+            {w.error ? (
+              <div className="flex items-center gap-2 text-amber-700">
+                <AlertTriangle className="h-5 w-5" />
+                <span className="font-medium">Import stopped before finishing</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-green-700">
+                <CheckCircle2 className="h-5 w-5" />
+                <span className="font-medium">Import complete</span>
+              </div>
+            )}
             <p className="text-sm">Added: {w.result.added} · Updated: {w.result.updated} · Skipped: {w.result.skipped}</p>
             {w.result.skipped > 0 && (
               <Button variant="outline" onClick={w.actions.downloadSkipped}>
