@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ClipboardCheck, MoreHorizontal, MoveHorizontal, Pencil } from 'lucide-react';
+import { CalendarClock, ClipboardCheck, MoreHorizontal, MoveHorizontal, Pencil } from 'lucide-react';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +19,7 @@ import { formatUnitBreakdown } from '@/lib/unit-quantity';
 import type { Product } from '@/lib/types';
 import { isService } from '@/lib/product-type';
 
+import { SetExpirationDialog } from './set-expiration-dialog/SetExpirationDialog';
 import { StockAdjustmentDialog } from './stock-adjustment-dialog/StockAdjustmentDialog';
 import { StockTransferDialog } from './stock-transfer-dialog/StockTransferDialog';
 import { useStockStatus } from './use-stock-status';
@@ -27,6 +28,7 @@ export function ProductCard({ product, hasChildren = false, onSuccess, requireAd
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const [isCountOpen, setIsCountOpen] = useState(false);
   const [isTransferOpen, setIsTransferOpen] = useState(false);
+  const [isExpirationOpen, setIsExpirationOpen] = useState(false);
 
   // Services have no stock to adjust, count, or transfer — the API rejects
   // these anyway (defense in depth), but hide the dead-end menu items too.
@@ -87,6 +89,14 @@ export function ProductCard({ product, hasChildren = false, onSuccess, requireAd
                       <MoveHorizontal className="mr-2 h-4 w-4 text-muted-foreground" />
                       <span>Transfer Stock</span>
                     </DropdownMenuItem>
+                    {/* Grid view duplicates this menu rather than reusing
+                        ProductRowActions, so Set Expiration has to be added in
+                        both places — it was missing here entirely, which made
+                        the action invisible in the DEFAULT view. */}
+                    <DropdownMenuItem onSelect={() => setIsExpirationOpen(true)}>
+                      <CalendarClock className="mr-2 h-4 w-4 text-muted-foreground" />
+                      <span>Set Expiration</span>
+                    </DropdownMenuItem>
                   </>
                 )}
               </DropdownMenuContent>
@@ -117,6 +127,14 @@ export function ProductCard({ product, hasChildren = false, onSuccess, requireAd
               requireConfirmation={requireTransferConfirmation}
               open={isTransferOpen}
               onOpenChange={setIsTransferOpen}
+            />
+            {/* No requireConfirmation: a date edit moves no stock and has no
+                financial impact, so it applies immediately (see the API route). */}
+            <SetExpirationDialog
+              product={product}
+              onSuccess={onSuccess}
+              open={isExpirationOpen}
+              onOpenChange={setIsExpirationOpen}
             />
           </>
         )}
