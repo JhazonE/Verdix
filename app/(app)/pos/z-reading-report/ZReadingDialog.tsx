@@ -18,6 +18,7 @@ function ZReadingReportView({ onBack, printMode, terminalId, terminalName, initi
   const [data, setData] = useState<ZReadingData | null>(initialData || null);
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(null);
   const [isLoading, setIsLoading] = useState(!initialData);
+  const [isSaving, setIsSaving] = useState(false);
   const nativePrinterName = typeof window !== 'undefined' ? localStorage.getItem('pos_printer_name') || undefined : undefined;
   const { isPrinting, isConnected, connect, print } = usePrinter(printMode, nativePrinterName);
   const { toast } = useToast();
@@ -74,45 +75,83 @@ function ZReadingReportView({ onBack, printMode, terminalId, terminalName, initi
     fetchData();
   }, [toast, initialData, terminalId, terminalName]);
 
-  const handlePrintAndFinalize = async () => {
-    if (!data) return;
+  // Printing is attempted separately from recording and can never abort it.
+  // Returns false if the receipt did not come out, so the caller can say so
+  // without implying the reading was lost.
+  const attemptPrint = async (isReprint: boolean): Promise<boolean> => {
     try {
       if (printMode === 'browser') {
-        if (handleReactToPrint) {
-          handleReactToPrint();
-        } else {
-          throw new Error('Print engine not ready');
-        }
-      } else {
-        if (!isConnected) {
-          const success = await connect();
-          if (!success) throw new Error('Could not connect to printer');
-        }
-        const generator = new ZReadingGenerator();
-        const isReprint = data.id !== 'PREVIEW';
-        const bytes = generator.generate({ ...data, terminalName } as any, businessSettings, isReprint);
-        await print(bytes);
+        if (!handleReactToPrint) throw new Error('Print engine not ready');
+        handleReactToPrint();
+        return true;
       }
-      if (data.id === 'PREVIEW') {
-        setIsLoading(true);
-        const saveResponse = await fetch(getApiUrl('/sales/z-reading'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...data, terminalId: terminalId || 'all', cashierName: data.cashierName || 'Admin' })
-        });
-        const saveResult = await saveResponse.json();
-        if (!saveResult.success) throw new Error(saveResult.error || 'Failed to save Z-Reading to database');
-        toast({ title: 'Z-Reading Finalized', description: `Report ${saveResult.data[0].id} has been saved successfully.` });
-        setTimeout(() => onBack(), 1500);
-      } else {
-        toast({ title: 'Report Printed', description: 'Historical Z-Reading report printed.' });
+      if (!isConnected) {
+        const success = await connect();
+        if (!success) throw new Error('Could not connect to printer');
       }
+      const generator = new ZReadingGenerator();
+      const bytes = generator.generate({ ...data, terminalName } as any, businessSettings, isReprint);
+      await print(bytes);
+      return true;
+    } catch (error: any) {
+      console.error('Z-Reading print error:', error);
+      return false;
+    }
+  };
+
+  const handlePrintAndFinalize = async () => {
+    if (!data) return;
+
+    // A historical report is already recorded — nothing to persist, just print.
+    if (data.id !== 'PREVIEW') {
+      const printed = await attemptPrint(true);
+      toast(
+        printed
+          ? { title: 'Report Printed', description: 'Historical Z-Reading report printed.' }
+          : { title: 'Print Failed', description: 'Could not print the report. The saved Z-Reading is unchanged — you can try printing again.', variant: 'destructive' },
+      );
+      return;
+    }
+
+    // RECORD FIRST, then print. A Z-reading is a required BIR record and the
+    // daily totals reset against it, so a printer fault must never be able to
+    // lose it: this used to print first inside the same try, and any printer
+    // failure threw past the POST, finalizing nothing. A receipt can always be
+    // reprinted from a saved reading; a reading never written is unrecoverable.
+    // Tracked separately from isLoading on purpose: isLoading swaps the whole
+    // component for a spinner, which unmounts the contentRef that
+    // react-to-print prints from. Saving before printing must not tear down the
+    // thing about to be printed.
+    let savedId: string | undefined;
+    try {
+      setIsSaving(true);
+      const saveResponse = await fetch(getApiUrl('/sales/z-reading'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...data, terminalId: terminalId || 'all', cashierName: data.cashierName || 'Admin' })
+      });
+      const saveResult = await saveResponse.json();
+      if (!saveResult.success) throw new Error(saveResult.error || 'Failed to save Z-Reading to database');
+      savedId = saveResult.data?.[0]?.id;
     } catch (error: any) {
       console.error('Z-Reading Error:', error);
       toast({ title: 'Error', description: error.message || 'Failed to finalize Z-Reading.', variant: 'destructive' });
+      return;
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
+
+    const printed = await attemptPrint(false);
+    const label = savedId ? `Report ${savedId}` : 'The Z-Reading';
+
+    // Distinguish "recorded but not printed" from "not recorded" — they need
+    // different actions from the operator (reprint vs. re-run the Z-reading).
+    toast(
+      printed
+        ? { title: 'Z-Reading Finalized', description: `${label} has been saved successfully.` }
+        : { title: 'Z-Reading Saved — Print Failed', description: `${label} was recorded successfully, but the receipt did not print. Reprint it from Sales › Z-Reading.`, variant: 'destructive' },
+    );
+    setTimeout(() => onBack(), 1500);
   };
 
   if (isLoading) {
@@ -151,9 +190,9 @@ function ZReadingReportView({ onBack, printMode, terminalId, terminalName, initi
           </Button>
           <SheetTitle>Z-READING REPORT</SheetTitle>
         </div>
-        <Button size="sm" onClick={handlePrintAndFinalize} disabled={isLoading || isPrinting}>
-          {isPrinting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
-          {data.id === 'PREVIEW' ? 'Finalize & Print' : 'Print'}
+        <Button size="sm" onClick={handlePrintAndFinalize} disabled={isLoading || isPrinting || isSaving}>
+          {isPrinting || isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
+          {isSaving ? 'Recording…' : data.id === 'PREVIEW' ? 'Finalize & Print' : 'Print'}
         </Button>
       </SheetHeader>
       <div className="flex-1 overflow-auto bg-muted/20 p-4 flex justify-center">

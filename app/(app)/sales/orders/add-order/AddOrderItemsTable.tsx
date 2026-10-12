@@ -85,6 +85,7 @@ export function AddOrderItemsTable({ form, fields, remove, total, vatAmount, han
                           render={({ field }) => (
                             <Input
                               type="number"
+                              step="any"
                               className="h-8 w-20 text-center bg-background"
                               {...field}
                               onFocus={e => e.target.select()}

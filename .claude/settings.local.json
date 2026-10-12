@@ -84,5 +84,6 @@
       "Bash(node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(32\\).toString\\('hex'\\)\\)\")",
       "Bash(railway logs *)"
     ]
-  }
+  },
+  "outputStyle": "Proactive"
 }

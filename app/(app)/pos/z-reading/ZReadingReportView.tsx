@@ -20,6 +20,7 @@ export function ZReadingReportView({ onPrint }: ZReadingReportViewProps) {
   const [data, setData] = useState<ZReadingData | null>(null);
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -50,6 +51,38 @@ export function ZReadingReportView({ onPrint }: ZReadingReportViewProps) {
 
   const handlePrint = async () => {
     if (!data) return;
+
+    // RECORD FIRST. This button announces "Z-Reading Finalized / daily totals
+    // have been reset", so it must actually write the reading — it previously
+    // only printed, and on this route no onPrint was wired either, which meant
+    // it reported a finalize that never happened. A Z-reading is a required BIR
+    // record, so recording cannot depend on the printer succeeding.
+    const isPreview = !data.id || data.id === 'PREVIEW';
+    let savedId: string | undefined;
+
+    if (isPreview) {
+      try {
+        setIsSaving(true);
+        const saveRes = await fetch(getApiUrl('/sales/z-reading'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...data, cashierName: data.cashierName || 'Admin' }),
+        });
+        const saveResult = await saveRes.json();
+        if (!saveResult.success) throw new Error(saveResult.error || 'Failed to save Z-Reading');
+        savedId = saveResult.data?.[0]?.id;
+      } catch (e: any) {
+        console.error('[Z-Reading] Failed to save:', e);
+        toast({ title: 'Error', description: e?.message || 'Failed to finalize Z-Reading. Nothing was recorded — please try again.', variant: 'destructive' });
+        setIsSaving(false);
+        return;
+      } finally {
+        setIsSaving(false);
+      }
+    }
+
+    // Only now attempt the receipt. A print failure is reported as such and
+    // never undoes or hides the saved reading.
     let printSuccess = false;
     let printerConnected = isConnected;
     if (!printerConnected) printerConnected = await connect();
@@ -63,9 +96,22 @@ export function ZReadingReportView({ onPrint }: ZReadingReportViewProps) {
         console.error('[Z-Reading] Native print error:', e);
       }
     }
-    if (!printSuccess) window.print();
+    if (!printSuccess) {
+      try {
+        window.print();
+        printSuccess = true;
+      } catch (e) {
+        console.error('[Z-Reading] Browser print error:', e);
+      }
+    }
+
     if (onPrint) onPrint();
-    toast({ title: 'Z-Reading Finalized', description: 'The daily totals have been reset.' });
+
+    toast(
+      printSuccess
+        ? { title: 'Z-Reading Finalized', description: `The reading was recorded${savedId ? ` as ${savedId}` : ''} and the daily totals have been reset.` }
+        : { title: 'Z-Reading Saved — Print Failed', description: `The reading was recorded${savedId ? ` as ${savedId}` : ''} and the daily totals have been reset, but the receipt did not print. Reprint it from Sales › Z-Reading.`, variant: 'destructive' },
+    );
   };
 
   if (isLoading) {
@@ -82,8 +128,9 @@ export function ZReadingReportView({ onPrint }: ZReadingReportViewProps) {
         <ZReadingPreview data={data} printerFormat="58mm" businessSettings={businessSettings} />
       </div>
       <div className="flex justify-center space-x-4 print:hidden">
-        <Button size="lg" onClick={handlePrint}>
-          <Printer className="mr-2 h-5 w-5" /> Print Z-Reading &amp; Finalize Shift
+        <Button size="lg" onClick={handlePrint} disabled={isSaving}>
+          <Printer className="mr-2 h-5 w-5" />
+          {isSaving ? 'Finalizing…' : 'Print Z-Reading & Finalize Shift'}
         </Button>
       </div>
     </div>

@@ -105,14 +105,16 @@ export type RepackOutcome = {
   actualProduced: number;
   /** Base units lost between what went in and what came out. */
   shortfallBase: number;
+  /** Base units gained: more came out than the factors predict. */
+  surplusBase: number;
 };
 
 /**
  * Repackaging inside one product. Stock is a single base-unit figure, so
  * converting Case -> Piece changes nothing by itself; the only stock effect is
  * a shortfall when fewer target units come out than the factors predict.
- * More output than input is rejected: that would create stock from nothing,
- * and the right tool for a genuine surplus is a stock adjustment.
+ * More output than the factors predict is a surplus and adds to stock; it is
+ * logged as an adjustment so the extra units are traceable.
  */
 export function repackOutcome(input: {
   quantity: number;
@@ -136,10 +138,13 @@ export function repackOutcome(input: {
   if (!Number.isFinite(actualProduced) || actualProduced < 0) {
     throw new Error('Actual quantity obtained cannot be negative');
   }
-  if (actualProduced > expectedProduced + EPSILON) {
-    throw new Error('Actual quantity obtained cannot exceed what the conversion allows');
-  }
 
-  const shortfallBase = Number(((expectedProduced - actualProduced) * toFactor).toFixed(4));
-  return { baseUsed, expectedProduced, actualProduced, shortfallBase: shortfallBase > EPSILON ? shortfallBase : 0 };
+  const diffBase = Number(((expectedProduced - actualProduced) * toFactor).toFixed(4));
+  return {
+    baseUsed,
+    expectedProduced,
+    actualProduced,
+    shortfallBase: diffBase > EPSILON ? diffBase : 0,
+    surplusBase: diffBase < -EPSILON ? -diffBase : 0,
+  };
 }

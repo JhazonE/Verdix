@@ -15,14 +15,27 @@ import { badOrderSchema, type BadOrderFormValues } from './bad-order-schema';
 
 export interface UseRecordBadOrderProps {
   onSuccess: () => void;
+  /**
+   * Page mode. A page is always open, so the init effect must run on mount and
+   * "closing" means navigating away rather than hiding a dialog. Left undefined,
+   * the hook keeps its own open state for a dialog mount.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function useRecordBadOrder({ onSuccess }: UseRecordBadOrderProps) {
+export function useRecordBadOrder({ onSuccess, open: openProp, onOpenChange }: UseRecordBadOrderProps) {
   const { user } = useUser();
   const { toast } = useToast();
   const { suppliers } = useSuppliers();
 
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = openProp !== undefined;
+  const open = isControlled ? openProp : internalOpen;
+  const setOpen = (val: boolean) => {
+    if (!isControlled) setInternalOpen(val);
+    onOpenChange?.(val);
+  };
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [posSettings, setPosSettings] = useState<any>(null);

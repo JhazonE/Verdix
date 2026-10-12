@@ -11,11 +11,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { PlusCircle, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Check, PlusCircle, Loader2, X } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import type { SupplierProductMapping, Supplier } from '@/lib/types';
 
-import { ManageSuppliersDialog } from '../suppliers/ManageSuppliersDialog';
+import { addSupplier } from '../actions';
 import { useSupplierMappingForm } from './use-supplier-mapping-form';
 
 interface AddSupplierMappingDialogProps {
@@ -52,6 +54,49 @@ export function AddSupplierMappingDialog({
     onSubmit,
   } = useSupplierMappingForm({ productId, isOpen, onOpenChange, onSuccess, editingMapping });
 
+  // Inline "Add New Supplier": swaps the Select for a name field in place, so no
+  // second drawer opens on top of this dialog. Only the name is captured here;
+  // the rest of the supplier's details can be filled in from Manage Suppliers.
+  const [isAddingSupplier, setIsAddingSupplier] = useState(false);
+  const [newSupplierName, setNewSupplierName] = useState('');
+  const [isSavingSupplier, setIsSavingSupplier] = useState(false);
+  const [isSelectOpen, setIsSelectOpen] = useState(false);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsAddingSupplier(false);
+      setNewSupplierName('');
+    }
+  }, [isOpen]);
+
+  const cancelAddSupplier = () => {
+    setIsAddingSupplier(false);
+    setNewSupplierName('');
+  };
+
+  const handleSaveNewSupplier = async () => {
+    const name = newSupplierName.trim();
+    if (!name) return;
+    setIsSavingSupplier(true);
+    try {
+      const result = await addSupplier({ name, paymentTerms: 'CASH' });
+      if (result.success && 'id' in result && result.id) {
+        onRefreshSuppliers();
+        setSelectedSupplier(result.id);
+        setIsSelectOpen(false);
+        cancelAddSupplier();
+      } else {
+        toast({ variant: 'destructive', title: 'Error', description: result.message });
+      }
+    } catch (error) {
+      console.error('Failed to add supplier', error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Failed to add supplier.' });
+    } finally {
+      setIsSavingSupplier(false);
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
@@ -64,7 +109,16 @@ export function AddSupplierMappingDialog({
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
             <Label htmlFor="supplier">Supplier</Label>
-            <Select value={selectedSupplier} onValueChange={setSelectedSupplier} disabled={!!editingMapping}>
+            <Select
+              value={selectedSupplier}
+              onValueChange={setSelectedSupplier}
+              disabled={!!editingMapping}
+              open={isSelectOpen}
+              onOpenChange={open => {
+                setIsSelectOpen(open);
+                if (!open) cancelAddSupplier();
+              }}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select supplier" />
               </SelectTrigger>
@@ -73,17 +127,48 @@ export function AddSupplierMappingDialog({
                   <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                 ))}
                 {!editingMapping && (
-                    <div className="p-1 w-full border-t mt-1">
-                      <ManageSuppliersDialog
-                          trigger={
-                              <Button variant="ghost" size="sm" type="button" className="w-full justify-start font-normal h-8">
-                                  <PlusCircle className="mr-2 h-4 w-4" />
-                                  Add New Supplier
-                              </Button>
-                          }
-                          onSupplierAdded={onRefreshSuppliers}
+                  <div className="p-1 w-full border-t mt-1">
+                    {isAddingSupplier ? (
+                      // Keydown/pointer events are stopped so Select's typeahead and
+                      // item-focus handling don't steal focus from the input.
+                      <div
+                        className="flex items-center gap-1.5 px-0.5"
+                        onKeyDown={e => e.stopPropagation()}
+                        onPointerMove={e => e.stopPropagation()}
+                      >
+                        <Input
+                          autoFocus
+                          className="h-8 min-w-0 flex-1"
+                          value={newSupplierName}
+                          onChange={e => setNewSupplierName(e.target.value)}
+                          onKeyDown={e => {
+                            e.stopPropagation();
+                            if (e.key === 'Enter') { e.preventDefault(); handleSaveNewSupplier(); }
+                            else if (e.key === 'Escape') { e.preventDefault(); cancelAddSupplier(); }
+                          }}
+                          placeholder="New supplier name"
+                          disabled={isSavingSupplier}
                         />
-                    </div>
+                        <Button type="button" size="icon" className="h-8 w-8 shrink-0" onClick={handleSaveNewSupplier} disabled={isSavingSupplier || !newSupplierName.trim()} aria-label="Save supplier">
+                          {isSavingSupplier ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                        </Button>
+                        <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={cancelAddSupplier} disabled={isSavingSupplier} aria-label="Cancel">
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        type="button"
+                        className="w-full justify-start font-normal h-8"
+                        onClick={() => setIsAddingSupplier(true)}
+                      >
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Add New Supplier
+                      </Button>
+                    )}
+                  </div>
                 )}
               </SelectContent>
             </Select>

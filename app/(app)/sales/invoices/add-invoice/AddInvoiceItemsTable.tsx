@@ -83,7 +83,7 @@ export function AddInvoiceItemsTable({ form, fields, remove, total, vatAmount, h
                           control={form.control}
                           name={`items.${index}.quantity`}
                           render={({ field }) => (
-                            <Input type="number" className="h-8 w-20 text-center bg-background" {...field} onFocus={e => e.target.select()} />
+                            <Input type="number" step="any" className="h-8 w-20 text-center bg-background" {...field} onFocus={e => e.target.select()} />
                           )}
                         />
                       </div>

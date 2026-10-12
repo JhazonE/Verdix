@@ -16,6 +16,8 @@ interface DiscardChangesDialogProps {
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
   title?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
   description?: string;
 }
 
@@ -25,6 +27,8 @@ export function DiscardChangesDialog({
   onOpenChange,
   onConfirm,
   title = 'Discard changes?',
+  confirmLabel = 'Discard',
+  cancelLabel = 'Keep editing',
   description = 'You have unsaved changes. If you leave now, they will be lost.',
 }: DiscardChangesDialogProps) {
   return (
@@ -35,12 +39,12 @@ export function DiscardChangesDialog({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Keep editing</AlertDialogCancel>
+          <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             onClick={onConfirm}
           >
-            Discard
+            {confirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

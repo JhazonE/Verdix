@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { FormTotalsBar, formatPeso } from '@/components/form-totals-bar';
 import { DiscardChangesDialog } from '@/components/discard-changes-dialog';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   TableBody,
   TableCell,
@@ -100,12 +102,7 @@ export function PurchaseOrderForm({ controller, isEdit, onCancel }: PurchaseOrde
     else onCancel();
   };
 
-  useEffect(() => {
-    if (!isDirty) return;
-    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [isDirty]);
+  const reloadGuard = useUnsavedChangesGuard(isDirty);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -221,7 +218,7 @@ export function PurchaseOrderForm({ controller, isEdit, onCancel }: PurchaseOrde
                         <FormLabel className="text-xs font-semibold text-muted-foreground">Issue Date</FormLabel>
                       </div>
                       <FormControl>
-                        <Input type="date" className="h-8 bg-background text-xs" {...field} />
+                        <DatePicker value={field.value} onChange={field.onChange} placeholder="Pick a date" />
                       </FormControl>
                       <FormMessage className="text-xs" />
                     </FormItem>
@@ -237,7 +234,7 @@ export function PurchaseOrderForm({ controller, isEdit, onCancel }: PurchaseOrde
                         <FormLabel className="text-xs font-semibold text-muted-foreground">Due Date</FormLabel>
                       </div>
                       <FormControl>
-                        <Input type="date" className="h-8 bg-background text-xs" {...field} />
+                        <DatePicker value={field.value} onChange={field.onChange} placeholder="Pick a date" />
                       </FormControl>
                     </FormItem>
                   )}
@@ -504,6 +501,7 @@ export function PurchaseOrderForm({ controller, isEdit, onCancel }: PurchaseOrde
                                       render={({ field }) => (
                                         <Input
                                           type="number"
+                                          step="any"
                                           className="h-8 w-20 text-center bg-background"
                                           {...field}
                                           onFocus={(e) => e.target.select()}
@@ -632,10 +630,12 @@ export function PurchaseOrderForm({ controller, isEdit, onCancel }: PurchaseOrde
                                     control={form.control}
                                     name={`items.${index}.expirationDate`}
                                     render={({ field }) => (
-                                      <Input
-                                        type="date"
-                                        className="h-8 w-full border-transparent hover:border-input focus:border-input bg-background text-xs p-1"
-                                        {...field}
+                                      <DatePicker
+                                        value={field.value}
+                                        onChange={field.onChange}
+                                        placeholder="Expiry"
+                                        clearable
+                                        className="border-transparent hover:border-input"
                                       />
                                     )}
                                   />
@@ -737,6 +737,15 @@ export function PurchaseOrderForm({ controller, isEdit, onCancel }: PurchaseOrde
       </AlertDialog>
 
       <DiscardChangesDialog open={isDiscardOpen} onOpenChange={setIsDiscardOpen} onConfirm={onCancel} />
+      <DiscardChangesDialog
+        open={reloadGuard.open}
+        onOpenChange={reloadGuard.setOpen}
+        onConfirm={reloadGuard.confirmReload}
+        title="Reload this page?"
+        description="You have unsaved changes. Reloading will discard them."
+        confirmLabel="Reload"
+        cancelLabel="Stay"
+      />
     </div>
   );
 }

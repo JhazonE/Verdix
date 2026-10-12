@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ClipboardCheck, MoreHorizontal, MoveHorizontal, Pencil } from 'lucide-react';
+import { CalendarClock, ClipboardCheck, MoreHorizontal, MoveHorizontal, Pencil } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -15,6 +15,7 @@ import {
 import type { Product } from '@/lib/types';
 import { isService } from '@/lib/product-type';
 
+import { SetExpirationDialog } from './set-expiration-dialog/SetExpirationDialog';
 import { StockAdjustmentDialog } from './stock-adjustment-dialog/StockAdjustmentDialog';
 import { StockTransferDialog } from './stock-transfer-dialog/StockTransferDialog';
 
@@ -22,6 +23,7 @@ export function ProductRowActions({ product, onSuccess, requireAdjustmentConfirm
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const [isCountOpen, setIsCountOpen] = useState(false);
   const [isTransferOpen, setIsTransferOpen] = useState(false);
+  const [isExpirationOpen, setIsExpirationOpen] = useState(false);
 
   // Services have no stock to adjust, count, or transfer — the API rejects
   // these anyway (defense in depth), but hide the dead-end menu items too.
@@ -53,6 +55,14 @@ export function ProductRowActions({ product, onSuccess, requireAdjustmentConfirm
                 <MoveHorizontal className="mr-2 h-4 w-4 text-muted-foreground" />
                 <span>Transfer Stock</span>
               </DropdownMenuItem>
+              {/* Expiry only means something for a perishable, matching the
+                  is_perishable gate the Adjust Stock dialog already applies. */}
+              {product.isPerishable && (
+                <DropdownMenuItem onSelect={() => setIsExpirationOpen(true)}>
+                  <CalendarClock className="mr-2 h-4 w-4 text-muted-foreground" />
+                  <span>Set Expiration</span>
+                </DropdownMenuItem>
+              )}
             </>
           )}
         </DropdownMenuContent>
@@ -82,6 +92,14 @@ export function ProductRowActions({ product, onSuccess, requireAdjustmentConfirm
             open={isTransferOpen}
             onOpenChange={setIsTransferOpen}
           />
+          {product.isPerishable && (
+            <SetExpirationDialog
+              product={product}
+              onSuccess={onSuccess}
+              open={isExpirationOpen}
+              onOpenChange={setIsExpirationOpen}
+            />
+          )}
         </>
       )}
     </>

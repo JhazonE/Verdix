@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Search, ShoppingCart } from 'lucide-react';
-import { formatStockQuantity } from '@/lib/utils';
+import { formatCartQuantity, formatStockQuantity } from '@/lib/utils';
 import type { SaleItem } from './pos-types';
 
 type Props = {
@@ -282,13 +282,13 @@ export function PosCartTable({
                           <Input
                             id={`pos-qty-${item.lineId}`}
                             type="text"
-                            inputMode="numeric"
+                            inputMode="decimal"
                             value={qtyDraft}
                             className="h-8 w-20 px-2 text-center font-mono"
                             onChange={(e) => setQtyDraft(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') { e.preventDefault(); commitQty(item.lineId); inputRef.current?.focus(); }
-                              else if (e.key === 'Escape') { e.preventDefault(); setQtyDraft(String(item.quantity)); setEditingQtyItemId(null); inputRef.current?.focus(); }
+                              else if (e.key === 'Escape') { e.preventDefault(); setQtyDraft(String(Number((item.quantity * (item.selectedSellingUnit?.factor || 1)).toFixed(4)))); setEditingQtyItemId(null); inputRef.current?.focus(); }
                             }}
                             onBlur={() => commitQty(item.lineId)}
                           />
@@ -297,11 +297,14 @@ export function PosCartTable({
                         <div className="flex items-center justify-center h-full">
                           <button
                             type="button"
-                            className="w-12 rounded py-0.5 text-center font-mono text-sm font-medium hover:bg-muted hover:text-primary"
+                            className="min-w-12 rounded px-1 py-0.5 text-center font-mono text-sm font-medium hover:bg-muted hover:text-primary"
                             title="Edit quantity (F6)"
                             onClick={(e) => { e.stopPropagation(); focusInlineQuantity(item.lineId); }}
                           >
-                            {formatStockQuantity(item.quantity)}
+                            {formatCartQuantity(item.selectedSellingUnit && !item.selectedSellingUnit.isBase ? item.quantity * item.selectedSellingUnit.factor : item.quantity)}
+                            {item.selectedSellingUnit && !item.selectedSellingUnit.isBase && (
+                              <span className="block text-[10px] font-normal leading-tight text-muted-foreground">= {formatCartQuantity(item.quantity)} {item.selectedSellingUnit.name}</span>
+                            )}
                           </button>
                         </div>
                       )}

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { FormTotalsBar, formatPeso } from '@/components/form-totals-bar';
 import { DiscardChangesDialog } from '@/components/discard-changes-dialog';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Form } from '@/components/ui/form';
 import { Loader2, ArrowRight, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAddInvoiceData } from './use-add-invoice-data';
@@ -37,12 +38,7 @@ export function AddInvoiceForm({ onClose, onSuccess }: AddInvoiceFormProps) {
   };
 
   // Warn on tab close / refresh while there is unsaved work.
-  useEffect(() => {
-    if (!isDirty) return;
-    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [isDirty]);
+  const reloadGuard = useUnsavedChangesGuard(isDirty);
 
   // Ctrl/Cmd+S saves.
   useEffect(() => {
@@ -145,6 +141,15 @@ export function AddInvoiceForm({ onClose, onSuccess }: AddInvoiceFormProps) {
       </Form>
 
       <DiscardChangesDialog open={isDiscardOpen} onOpenChange={setIsDiscardOpen} onConfirm={onClose} />
+      <DiscardChangesDialog
+        open={reloadGuard.open}
+        onOpenChange={reloadGuard.setOpen}
+        onConfirm={reloadGuard.confirmReload}
+        title="Reload this page?"
+        description="You have unsaved changes. Reloading will discard them."
+        confirmLabel="Reload"
+        cancelLabel="Stay"
+      />
     </div>
   );
 }

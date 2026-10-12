@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -233,6 +233,10 @@ export function useAddProductForm({
   const lastAutoRetailPrice = useRef<number | null>(null);
   const retailPriceEditedByUser = useRef(false);
 
+  // Bumped on every dialog open, so the Selling Units auto-pricing hook can
+  // drop the per-cell memory it keeps for the product just entered.
+  const [formSession, setFormSession] = useState(0);
+
   // Mirrors lastAutoRetailPrice/retailPriceEditedByUser above, but for the
   // base unit's Cost field being suggested from the primary supplier
   // mapping's own cost.
@@ -299,8 +303,21 @@ export function useAddProductForm({
       });
   }, [externalProductOptions, isOpen, hasSelfFetchedOptions]);
 
+  // Closing the dialog mid-entry (Escape, a click on the backdrop, or Cancel)
+  // used to throw the half-filled product away, because the effect below reset
+  // the form on EVERY open. Losing ten typed fields to a stray click on the
+  // overlay is not a reset the user asked for, so a started-but-unsaved form is
+  // kept and restored on the next open instead. Only a completed save or an
+  // explicit "Discard" clears it — `discardDraft` below is the one place that
+  // happens, so there is a single answer to "what throws the draft away".
+  const hasDraft = useRef(false);
+
   useEffect(() => {
     if (isOpen) {
+      // A draft survived a close: restore it untouched. Re-running any of the
+      // below would regenerate the barcode and wipe the user's own vatStatus
+      // pick, which is exactly the clearing this fix exists to prevent.
+      if (hasDraft.current) return;
       form.reset();
       generateBarcode();
       // A fresh product for a fresh session — don't carry a previous
@@ -310,6 +327,9 @@ export function useAddProductForm({
       retailPriceEditedByUser.current = false;
       lastAutoSuggestedCost.current = null;
       costEditedByUser.current = false;
+      // Same reasoning for the Selling Units auto-pricing, which keeps its own
+      // per-cell memory: this dialog is reused, so bump the key it resets on.
+      setFormSession(n => n + 1);
 
       // Set default tax rate if available and valid
       if (taxRates.length > 0) {
@@ -320,6 +340,51 @@ export function useAddProductForm({
       setProductType('parent');
     }
   }, [isOpen, form]);
+
+  // What counts as "the user started filling this in".
+  //
+  // react-hook-form's own `isDirty` is useless for this: the effects around
+  // this one call setValue for a generated barcode, a preselected warehouse, a
+  // default tax rate and a mirrored price, so the form is already dirty before
+  // the user has touched a key. Asking "would anything be lost?" directly —
+  // are any of the fields a human actually types non-empty? — is the honest
+  // question, and it is also the one that stays correct when another default
+  // gets preselected later.
+  const draftWatch = form.watch();
+  useEffect(() => {
+    if (!isOpen) return;
+    const v = draftWatch as any;
+    const typedSomething =
+      !!v?.name?.trim() ||
+      !!v?.brand ||
+      !!v?.category ||
+      !!v?.description?.trim() ||
+      !!v?.additionalDescription?.trim() ||
+      !!v?.subcategory ||
+      !!v?.unitOfMeasure ||
+      Number(v?.stock) > 0 ||
+      Number(v?.reorderPoint) > 0 ||
+      Number(v?.cost) > 0 ||
+      Number(v?.price) > 0 ||
+      (v?.sellingUnits?.length ?? 0) > 0 ||
+      (v?.supplierMappings?.length ?? 0) > 0;
+    if (typedSomething) hasDraft.current = true;
+  }, [isOpen, draftWatch]);
+
+  // The one place a draft is thrown away. Called after a successful save and
+  // from the Cancel/close confirmation — never from the open effect, which is
+  // what used to clear the form behind the user's back.
+  const discardDraft = () => {
+    hasDraft.current = false;
+    form.reset();
+    setIsOpen(false);
+  };
+
+  // True only when closing would actually lose work, so the dialog can decide
+  // between confirming and just closing. Reads a ref and is wrapped in
+  // useCallback so consumers can safely list it as an effect dependency —
+  // an unstable identity here would re-run the caller's effects every render.
+  const hasUnsavedDraft = useCallback(() => hasDraft.current, []);
 
   // The base unit's Retail price-level row is required (product-schema.ts
   // treats it as the product's actual `price`), but the form.reset() effect
@@ -494,6 +559,7 @@ export function useAddProductForm({
     baseLevelRows: priceLevelFields as any,
     unitKeys: sellingUnitFields.map(f => f.id),
     markup: autoMarkup,
+    resetKey: formSession,
   });
 
   const [costSuggestionSource, setCostSuggestionSource] = useState<string | null>(null);
@@ -671,6 +737,9 @@ export function useAddProductForm({
           title: 'Submitted for Approval',
           description: `${values.name} was submitted and is awaiting approval.`,
         });
+        // Saved (pending approval, but filed) — there is no longer a draft to
+        // preserve, so the next open starts clean.
+        hasDraft.current = false;
         form.reset();
         onProductAdded?.();
         setIsOpen(false);
@@ -717,6 +786,8 @@ export function useAddProductForm({
           earnsPoints: values.earnsPoints,
           type: itemType,
         });
+        // Saved — nothing left to preserve for the next open.
+        hasDraft.current = false;
         form.reset();
         onProductAdded?.();
         dispatchStockUpdate();
@@ -763,6 +834,10 @@ export function useAddProductForm({
   return {
     // dialog + submit state
     isOpen, setIsOpen,
+    // Draft preservation: a half-filled form survives a close and is restored
+    // on the next open. hasUnsavedDraft lets the dialog ask before throwing it
+    // away; discardDraft is the only thing that actually does.
+    hasUnsavedDraft, discardDraft,
     isSubmitting,
     productType, setProductType,
     itemType, setItemType,

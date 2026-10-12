@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { FormTotalsBar, formatPeso } from '@/components/form-totals-bar';
 import { DiscardChangesDialog } from '@/components/discard-changes-dialog';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes-guard';
 import { Form } from '@/components/ui/form';
 import { Loader2, ArrowRight, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Sale } from '@/lib/types';
@@ -47,12 +48,7 @@ export function AddOrderForm({ initialData, onClose, onSuccess }: AddOrderFormPr
     else onClose();
   };
 
-  useEffect(() => {
-    if (!isDirty) return;
-    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [isDirty]);
+  const reloadGuard = useUnsavedChangesGuard(isDirty);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -158,6 +154,15 @@ export function AddOrderForm({ initialData, onClose, onSuccess }: AddOrderFormPr
       </Form>
 
       <DiscardChangesDialog open={isDiscardOpen} onOpenChange={setIsDiscardOpen} onConfirm={onClose} />
+      <DiscardChangesDialog
+        open={reloadGuard.open}
+        onOpenChange={reloadGuard.setOpen}
+        onConfirm={reloadGuard.confirmReload}
+        title="Reload this page?"
+        description="You have unsaved changes. Reloading will discard them."
+        confirmLabel="Reload"
+        cancelLabel="Stay"
+      />
     </div>
   );
 }

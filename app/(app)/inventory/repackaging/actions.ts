@@ -207,7 +207,7 @@ export async function repackSellingUnits(
           consolidating ? 'consolidate' : null, userId,
           from.id, from.name, Number(from.factor),
           to.id, to.name, Number(to.factor),
-          outcome.shortfallBase,
+          outcome.surplusBase > 0 ? -outcome.surplusBase : outcome.shortfallBase,
         ],
       );
 
@@ -223,10 +223,23 @@ export async function repackSellingUnits(
         );
       }
 
+      if (outcome.surplusBase > 0) {
+        await updateStockAndRecordMovement(
+          productId,
+          outcome.surplusBase,
+          'adjustment',
+          logId,
+          'adjustment',
+          `Repackaging surplus: ${input.quantity} ${from.name} yielded ${outcome.actualProduced} ${to.name} (expected ${outcome.expectedProduced})`,
+          connection as any,
+        );
+      }
+
       const lossNote = outcome.shortfallBase > 0 ? ` ${outcome.shortfallBase} base unit(s) written off as shortfall.` : '';
+      const gainNote = outcome.surplusBase > 0 ? ` ${outcome.surplusBase} base unit(s) added as surplus.` : '';
       return {
         success: true,
-        message: `Repackaged ${input.quantity} ${from.name} into ${outcome.actualProduced} ${to.name}.${lossNote}`,
+        message: `Repackaged ${input.quantity} ${from.name} into ${outcome.actualProduced} ${to.name}.${lossNote}${gainNote}`,
       };
     });
   } catch (error: any) {

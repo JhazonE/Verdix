@@ -485,7 +485,7 @@ function PaymentHistory() {
 
     return (
         <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-lg border shadow-sm mb-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-card text-card-foreground p-4 rounded-lg border shadow-sm mb-4">
                 <div className="flex flex-1 items-center gap-2 w-full">
                     <div className="relative w-full sm:w-72">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />

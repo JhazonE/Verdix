@@ -2,13 +2,13 @@
 
 import React, { useMemo, useCallback } from 'react';
 import { format } from 'date-fns';
-import type { SaleItem } from '../pos-content/pos-types';
 import { mapVatStatusToTaxType } from '../pos-content/pos-types';
+import type { ReceiptLineItem } from './receipt-types';
 import { resolveEffectiveTaxType } from '@/lib/tax-utils';
 import type { SystemSettings } from '@/lib/types';
 
 type Options = {
-  items: SaleItem[];
+  items: ReceiptLineItem[];
   totalDue: number;
   saleDetails: {
     transactionDate?: Date;

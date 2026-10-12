@@ -183,7 +183,7 @@ export async function GET(request: NextRequest) {
             barcode: item.barcode || '',
             price: parseFloat(item.price),
           },
-          quantity: parseInt(item.quantity),
+          quantity: Number(item.quantity),
           price: parseFloat(item.price),
           sellingUnitId: item.selling_unit_id || undefined,
           sellingUnitName: item.selling_unit_name || undefined,

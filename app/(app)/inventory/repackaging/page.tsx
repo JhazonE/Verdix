@@ -143,9 +143,14 @@ function RepackagingHistoryTable() {
                     {log.targetUnitName && (
                       <span className="text-muted-foreground font-normal"> ({log.targetUnitName})</span>
                     )}
-                    {!!log.shortfallBaseQty && (
+                    {!!log.shortfallBaseQty && log.shortfallBaseQty > 0 && (
                       <span className="ml-1 text-[10px] font-normal text-amber-600">
                         {log.shortfallBaseQty} short
+                      </span>
+                    )}
+                    {!!log.shortfallBaseQty && log.shortfallBaseQty < 0 && (
+                      <span className="ml-1 text-[10px] font-normal text-emerald-600">
+                        {Math.abs(log.shortfallBaseQty)} extra
                       </span>
                     )}
                   </span>

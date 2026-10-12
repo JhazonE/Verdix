@@ -90,8 +90,8 @@ export function NotificationsBell({ user }: { user: AppUser | null }) {
       }
 
       setNotifications([...lowStockNotifications, ...approvalNotifications]);
-    } catch {
-      console.error('Failed to fetch notifications');
+    } catch (error) {
+      console.error('Failed to fetch notifications', error);
     }
   }, [user]);
 

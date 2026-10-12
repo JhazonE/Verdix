@@ -155,7 +155,7 @@ export function InventoryTab() {
               <InlineEditableSelect
                 items={departments}
                 isLoading={isLoadingDepartments}
-                value={field.value}
+                value={field.value ?? ""}
                 onChange={field.onChange}
                 open={selects.departments}
                 onOpenChange={(o) => setSelects((p) => ({ ...p, departments: o }))}

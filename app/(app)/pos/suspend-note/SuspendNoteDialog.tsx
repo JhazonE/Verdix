@@ -66,7 +66,7 @@ export function SuspendNoteDialog({
           <div className="flex gap-3 pt-2">
             <Button 
               variant="outline" 
-              className="flex-1 h-12 rounded-xl font-bold text-slate-600 border-slate-200 hover:bg-slate-50 transition-colors"
+              className="flex-1 h-12 rounded-xl font-bold text-slate-600 border-slate-200 hover:bg-slate-50 dark:hover:bg-orange-500/15 dark:hover:text-orange-400 dark:hover:border-orange-500 transition-colors"
               onClick={() => onOpenChange(false)}
             >
               Cancel

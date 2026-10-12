@@ -24,11 +24,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, X } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, Search, X } from 'lucide-react';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 
 import { BadOrderStats } from './bad-order-stats';
-import { RecordBadOrderDialog } from './record-bad-order-dialog';
 import { ViewBadOrderDialog } from './view-bad-order-dialog';
 import { BadOrderSkeleton } from './bad-order-skeleton';
 import { BadOrderRow } from './bad-order-row';
@@ -65,7 +65,12 @@ export default function BadOrdersPage() {
                 Track and manage defective or damaged items from suppliers
               </CardDescription>
             </div>
-            <RecordBadOrderDialog onSuccess={refetch} />
+            <Button asChild>
+              <Link href="/purchases/bad-orders/new">
+                <AlertTriangle className="mr-2 h-4 w-4" />
+                Record Bad Order
+              </Link>
+            </Button>
           </div>
 
           <div className="flex items-center justify-between gap-4 pt-4">

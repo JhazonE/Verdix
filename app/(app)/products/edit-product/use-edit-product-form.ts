@@ -232,7 +232,13 @@ export function useEditProductForm({
   useEffect(() => {
     if (product && isOpen) {
       lastAutoRetailPrice.current = null;
-      retailPriceEditedByUser.current = false;
+      // A saved product already HAS a price somebody chose and filed. Whether
+      // they typed it or accepted an earlier suggestion, it is the price of
+      // record now, so the cost→markup effect must not recompute over it on
+      // open — that is what made a hand-edited Retail price snap back to the
+      // computed one every time the product was reopened. Only a product with
+      // no price yet is still the suggestion's to fill.
+      retailPriceEditedByUser.current = Number(product.price) > 0;
       lastAutoSuggestedCost.current = null;
       costEditedByUser.current = false;
       const sanitizedProduct = {
@@ -429,6 +435,7 @@ export function useEditProductForm({
     baseLevelRows: priceLevelFields as any,
     unitKeys: sellingUnitFields.map(f => f.id),
     markup: autoMarkup,
+    resetKey: product?.id,
   });
 
   const [costSuggestionSource, setCostSuggestionSource] = useState<string | null>(null);

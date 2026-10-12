@@ -8,7 +8,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { useCustomerDisplay } from '@/hooks/use-customer-display';
 import { useLiveRefresh, dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { calculateEffectivePriceForUnit } from '@/lib/pricing';
-import { resolveSellingUnitForAdd, baseSellingUnitOf, findCartLineForUnit } from '@/lib/pos-cart-units';
+import { resolveSellingUnitForAdd, baseSellingUnitOf, findCartLineForUnit, promoteToLargestUnit } from '@/lib/pos-cart-units';
 import { resolveEffectiveTaxType } from '@/lib/tax-utils';
 import { getApiUrl } from '@/lib/api-config';
 import { formatStockQuantity } from '@/lib/utils';
@@ -242,7 +242,7 @@ export function usePOS() {
 
   // Sync qty draft and cancel inline edits on row change
   useEffect(() => {
-    setQtyDraft(selectedItem ? String(selectedItem.quantity) : '');
+    setQtyDraft(selectedItem ? String(baseQtyOf(selectedItem)) : '');
     const keepIfCurrent = (prev: string | null) => (prev && prev !== selectedItemId ? null : prev);
     setEditingNameItemId(keepIfCurrent);
     setEditingQtyItemId(keepIfCurrent);
@@ -282,13 +282,16 @@ export function usePOS() {
     setEditingNameItemId(null);
   };
 
+  // The inline qty box counts BASE units (pieces), whatever unit the line is in.
+  const baseQtyOf = (item: any) => Number((item.quantity * (item.selectedSellingUnit?.factor || 1)).toFixed(4));
+
   const commitQty = (itemId: string) => {
     setEditingQtyItemId(null);
     const item = items.find(i => i.lineId === itemId);
     if (!item) return;
     const q = parseFloat(qtyDraft);
-    if (isNaN(q) || q <= 0) { setQtyDraft(String(item.quantity)); return; }
-    if (q !== item.quantity) updateQuantity(itemId, q);
+    if (isNaN(q) || q <= 0) { setQtyDraft(String(baseQtyOf(item))); return; }
+    if (q !== baseQtyOf(item)) updateQuantity(itemId, q, true);
   };
 
   const requestInlinePriceEdit = (itemId: string) => {
@@ -766,17 +769,33 @@ export function usePOS() {
     handleAddItem(undefined);
   };
 
-  const updateQuantity = (lineId: string, newQuantity: number) => {
+  const updateQuantity = (lineId: string, newQuantity: number, quantityIsBase = false) => {
     if (newQuantity <= 0) {
       removeItem(lineId);
     } else {
-      setItems(prevItems => prevItems.map(item => {
-        if (item.lineId === lineId) {
-          const unit = item.selectedSellingUnit ?? baseSellingUnitOf(item);
-          return { ...item, quantity: newQuantity, price: calculateEffectivePriceForUnit(unit, newQuantity, activeLevelId, defaultLevelId) };
+      setItems(prevItems => {
+        const target = prevItems.find(item => item.lineId === lineId);
+        if (!target) return prevItems;
+        const currentUnit = quantityIsBase ? baseSellingUnitOf(target) : (target.selectedSellingUnit ?? baseSellingUnitOf(target));
+        const { unit, quantity } = target.type === 'service'
+          ? { unit: currentUnit, quantity: newQuantity }
+          : promoteToLargestUnit(newQuantity, currentUnit, target.sellingUnits);
+        const price = calculateEffectivePriceForUnit(unit, quantity, activeLevelId, defaultLevelId);
+        const promoted = unit.id !== target.selectedSellingUnit?.id;
+        // A promoted line may land on a unit the cart already carries; fold
+        // the two together rather than showing duplicate lines.
+        const sibling = promoted ? findCartLineForUnit(prevItems.filter(i => i.lineId !== lineId), target.id, unit.id) : undefined;
+        if (sibling) {
+          const mergedQty = sibling.quantity + quantity;
+          const mergedPrice = calculateEffectivePriceForUnit(unit, mergedQty, activeLevelId, defaultLevelId);
+          return prevItems
+            .filter(i => i.lineId !== lineId)
+            .map(i => i === sibling ? { ...i, quantity: mergedQty, price: mergedPrice } : i);
         }
-        return item;
-      }));
+        return prevItems.map(item => item === target
+          ? { ...item, quantity, price, selectedSellingUnit: unit }
+          : item);
+      });
     }
   };
 
@@ -819,6 +838,8 @@ export function usePOS() {
   const unlockInlineQty = (itemId: string) => {
     setSelectedItemId(itemId);
     setEditingQtyItemId(itemId);
+    const lineToEdit = items.find(i => i.lineId === itemId);
+    if (lineToEdit) setQtyDraft(String(baseQtyOf(lineToEdit)));
     setEditingNameItemId(null);
     setEditingPriceItemId(null);
     focusInlineField('pos-qty', itemId);
@@ -831,6 +852,11 @@ export function usePOS() {
     else unlockInlineQty(itemId);
   };
 
+  // +/- always step one BASE unit, expressed in the line's own unit; a Pack
+  // line stepped down becomes fractional and updateQuantity demotes it to pieces.
+  const stepLineQuantity = (item: any, delta: number) =>
+    item.quantity + delta / (item.selectedSellingUnit?.factor || 1);
+
   const requestQuantityDelta = (itemId: string, delta: number) => {
     if (businessSettings?.enableEditQtyAuth) {
       setSelectedItemId(itemId);
@@ -838,7 +864,7 @@ export function usePOS() {
       setIsEditQtyAuthOpen(true);
     } else {
       const item = items.find(i => i.lineId === itemId);
-      if (item) updateQuantity(itemId, item.quantity + delta);
+      if (item) updateQuantity(itemId, stepLineQuantity(item, delta));
     }
   };
 
@@ -847,7 +873,7 @@ export function usePOS() {
     if (!selectedItemId) return;
     if (pendingQtyDelta !== null) {
       const item = items.find(i => i.lineId === selectedItemId);
-      if (item) updateQuantity(selectedItemId, item.quantity + pendingQtyDelta);
+      if (item) updateQuantity(selectedItemId, stepLineQuantity(item, pendingQtyDelta));
       setPendingQtyDelta(null);
     } else {
       unlockInlineQty(selectedItemId);

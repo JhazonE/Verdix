@@ -11,9 +11,12 @@ import { calculateSuggestedPrice } from '@/lib/purchase-utils';
  *   that unit's own price-level rows, from the unit's cost.
  *
  * It only ever fills a cell that is blank/0 or that it wrote itself last time
- * (tracked per cell), so a price the user typed is never overwritten. Levels
- * whose calculation base is "retail" need a markup to mean anything, so they
- * are skipped while `markup` is null; cost-based levels do not.
+ * (tracked per cell), so a price the user typed is never overwritten, and once
+ * a cell holds a value this hook did not write it is locked to the user for as
+ * long as `resetKey` holds — including every price already on a product when
+ * the Edit dialog opens it. Levels whose calculation base is "retail" need a
+ * markup to mean anything, so they are skipped while `markup` is null;
+ * cost-based levels do not.
  */
 export function useSellingUnitAutoPricing({
   form,
@@ -22,6 +25,7 @@ export function useSellingUnitAutoPricing({
   baseLevelRows,
   unitKeys,
   markup,
+  resetKey,
 }: {
   form: UseFormReturn<any>;
   enabled?: boolean;
@@ -31,8 +35,25 @@ export function useSellingUnitAutoPricing({
   /** Stable key (field id) per extra selling unit, in form order. */
   unitKeys: string[];
   markup: number | null;
+  /**
+   * Identifies the product currently loaded in the form. The Edit dialog is
+   * reused across products, so without this the cells this hook remembers
+   * writing for product A stay in `lastAuto` and let it overwrite a
+   * hand-typed price on product B that happens to equal one of them. Changing
+   * it clears that memory, which also means every price already on a freshly
+   * opened product reads as the user's and is left alone.
+   */
+  resetKey?: string | number;
 }) {
   const lastAuto = useRef<Record<string, number>>({});
+  /** Cells the user has taken over; see `writable` below. */
+  const locked = useRef<Record<string, boolean>>({});
+  const lastResetKey = useRef(resetKey);
+  if (lastResetKey.current !== resetKey) {
+    lastResetKey.current = resetKey;
+    lastAuto.current = {};
+    locked.current = {};
+  }
 
   const baseCost = Number(form.watch('cost')) || 0;
   const units: any[] = form.watch('sellingUnits') || [];
@@ -69,8 +90,20 @@ export function useSellingUnitAutoPricing({
     };
 
     // May overwrite a cell only if it is empty or still holds our own value.
-    const writable = (key: string, current: unknown) =>
-      current == null || current === '' || Number(current) === 0 || current === lastAuto.current[key];
+    //
+    // A cell that fails this test once is the user's from then on, recorded in
+    // `locked` — otherwise it would become writable again the moment a cost
+    // change made the newly computed price happen to equal what they typed, or
+    // they cleared it to 0 mid-keystroke, and the next pass would quietly take
+    // the cell back. `locked` is cleared with `lastAuto` when `resetKey`
+    // changes, so the lock lasts exactly as long as the product is open.
+    const writable = (key: string, current: unknown) => {
+      if (locked.current[key]) return false;
+      const ok =
+        current == null || current === '' || Number(current) === 0 || current === lastAuto.current[key];
+      if (!ok) locked.current[key] = true;
+      return ok;
+    };
 
     // --- Base unit price levels ---
     // A level the user never touched has no row at all; add the missing ones

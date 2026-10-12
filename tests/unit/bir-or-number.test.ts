@@ -24,8 +24,11 @@ import { getNextBirOrNumber, withTransaction } from '../../lib/mysql';
   });
 
   console.log('✓ bir-or-number');
-  // Allow pool to close naturally on process exit
-  process.exit(0);
+  // No process.exit(0) here: run.ts imports every test file, and these async
+  // IIFEs settle only after all the imports have finished — so exiting here
+  // killed the runner before the files imported later ever ran, silently
+  // skipping process-return-leg, process-sale-leg and batch-expiration-write.
+  // run.ts exits once, after awaiting everything.
 })().catch((e) => {
   console.error('Test failed:', e);
   process.exit(1);

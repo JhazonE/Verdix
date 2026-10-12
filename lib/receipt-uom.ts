@@ -38,3 +38,33 @@ export function abbreviateUOM(uom?: string): string {
   const upper = trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
   return map[upper] || trimmed.toLowerCase();
 }
+
+type ReceiptLineLike = {
+  quantity: number;
+  unitOfMeasure?: string;
+  selectedSellingUnit?: { name: string; factor: number; isBase?: boolean };
+  sellingUnits?: { name: string; isBase?: boolean }[];
+};
+
+/**
+ * What a receipt line shows in its Qty column. A line sold as a non-base unit
+ * (1 Case of 12) reads in base units ("12 pcs") with the unit it was sold as
+ * as an equivalence ("1 cs"), matching the POS cart. Price and amount stay
+ * per sold unit, so the equivalence is what ties 12 to the price shown.
+ */
+export function receiptLineQuantity(item: ReceiptLineLike): {
+  qty: number;
+  uom: string;
+  soldAs?: { qty: number; uom: string };
+} {
+  const unit = item.selectedSellingUnit;
+  if (!unit || unit.isBase || !(unit.factor > 1)) {
+    return { qty: item.quantity, uom: abbreviateUOM(unit?.name ?? item.unitOfMeasure) };
+  }
+  const baseName = item.sellingUnits?.find((u) => u.isBase)?.name ?? item.unitOfMeasure;
+  return {
+    qty: Number((item.quantity * unit.factor).toFixed(4)),
+    uom: abbreviateUOM(baseName),
+    soldAs: { qty: item.quantity, uom: abbreviateUOM(unit.name) },
+  };
+}

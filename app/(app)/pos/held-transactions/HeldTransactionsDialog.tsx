@@ -6,7 +6,6 @@ import {
   SheetHeader,
   SheetTitle,
   SheetDescription,
-  SheetFooter,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -107,10 +106,6 @@ export function HeldTransactionsDialog({ isOpen, onOpenChange, heldTransactions,
             )}
           </div>
         </ScrollArea>
-
-        <SheetFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
-        </SheetFooter>
       </SheetContent>
     </Sheet>
   );
