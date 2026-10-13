@@ -1,5 +1,5 @@
 import mysql from 'mysql2/promise';
-import { baseQuantity, getBaseUnit } from '../selling-units';
+import { baseQuantity, getBaseUnit, type SellingUnit } from '../selling-units';
 import { updateStockAndRecordMovement } from '../stock-movements';
 import { deductFromBatches } from '../batch-deduction';
 import { isService } from '../product-type';
@@ -42,21 +42,34 @@ export async function processSaleLeg(
     saleId: string;
     itemIndex: number;
     oversellBlock: boolean;
+    /**
+     * Rows a caller selling a whole cart has already fetched in bulk, so this
+     * function doesn't repeat a round trip per line. Both are optional and
+     * purely a latency optimisation: when a map is absent, or simply has no
+     * entry for this product, the per-item query below runs exactly as before.
+     * Callers selling a single line (exchanges) pass neither.
+     */
+    prefetched?: {
+      products?: Map<string, any>;
+      baseUnits?: Map<string, SellingUnit>;
+    };
   }
 ): Promise<SaleLegResult> {
-  const { item, saleId, itemIndex, oversellBlock } = params;
+  const { item, saleId, itemIndex, oversellBlock, prefetched } = params;
   const itemId = `${saleId}-ITEM-${itemIndex + 1}`;
 
-  const [soldProdResult]: any = await connection.query(`
-    SELECT
-      p.id, p.parent_id, p.unit_of_measure, p.name, p.stock, p.type, p.cost,
-      c.markup_percentage, p.category, p.earns_points
-    FROM products p
-    LEFT JOIN categories c ON p.category = c.name
-    WHERE p.id = ?
-  `, [item.id]);
-
-  const soldProd = soldProdResult?.[0];
+  let soldProd = prefetched?.products?.get(String(item.id));
+  if (!soldProd) {
+    const [soldProdResult]: any = await connection.query(`
+      SELECT
+        p.id, p.parent_id, p.unit_of_measure, p.name, p.stock, p.type, p.cost,
+        c.markup_percentage, p.category, p.earns_points
+      FROM products p
+      LEFT JOIN categories c ON p.category = c.name
+      WHERE p.id = ?
+    `, [item.id]);
+    soldProd = soldProdResult?.[0];
+  }
   const itemIsService = soldProd ? isService(soldProd) : false;
 
   let unitId: string | null = item.sellingUnitId ?? null;
@@ -65,7 +78,13 @@ export async function processSaleLeg(
 
   if (soldProd && !itemIsService) {
     if (!unitId || !Number.isFinite(factor) || factor <= 0) {
-      const base = await getBaseUnit(soldProd.id, connection);
+      // A prefetched miss is NOT proof of absence (the caller may simply not
+      // have asked for this product), so fall back to the single-row lookup
+      // before concluding the product has no base unit — that conclusion
+      // throws and must never be reached on a cache miss alone.
+      const base =
+        prefetched?.baseUnits?.get(String(soldProd.id)) ??
+        (await getBaseUnit(soldProd.id, connection));
       if (!base) {
         throw new Error(
           `Product ${soldProd.id} has no base selling unit — cannot record this sale.`

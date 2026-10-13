@@ -75,3 +75,35 @@ export async function getBaseUnit(
   );
   return rows[0] ? mapRow(rows[0]) : null;
 }
+
+/**
+ * The base units for many products in ONE round trip, keyed by product id.
+ *
+ * Same rows getBaseUnit would return one at a time, through the same SELECT
+ * and the same mapRow, so the two cannot drift apart. Exists because callers
+ * that sell a whole cart (POS checkout) otherwise pay one network round trip
+ * per line just to look up a factor — invisible on a LAN, seconds against a
+ * cloud database. A product missing from the result has no base unit, exactly
+ * as getBaseUnit returning null means.
+ */
+export async function getBaseUnitsForProducts(
+  productIds: string[],
+  connection?: PoolConnection,
+): Promise<Map<string, SellingUnit>> {
+  const unique = [...new Set(productIds.map((id) => String(id)))].filter(Boolean);
+  const byProductId = new Map<string, SellingUnit>();
+  if (unique.length === 0) return byProductId;
+
+  const rows: any = await run(
+    `${SELECT_UNIT} WHERE product_id IN (${unique.map(() => '?').join(',')}) AND is_base = 1`,
+    unique,
+    connection,
+  );
+  for (const row of rows || []) {
+    const unit = mapRow(row);
+    // First row wins, mirroring getBaseUnit's LIMIT 1, so duplicate base rows
+    // (which the schema should prevent) behave identically either way.
+    if (!byProductId.has(unit.productId)) byProductId.set(unit.productId, unit);
+  }
+  return byProductId;
+}
