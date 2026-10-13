@@ -7,6 +7,8 @@ import { resolveEffectiveTaxType } from '@/lib/tax-utils';
 import { processSaleLeg } from '@/lib/pos/process-sale-leg';
 import { validateSingleDocumentType } from './mixed-cart-validation';
 import { isTerminalLocked, TERMINAL_LOCKED_MESSAGE } from './terminal-lock-check';
+import { startCheckoutTimer } from '@/lib/pos/checkout-timing';
+import { getBaseUnitsForProducts, type SellingUnit } from '@/lib/selling-units';
 
 // Cached per process — the columns can't disappear once ensured, so don't pay
 // an INFORMATION_SCHEMA round trip on every checkout.
@@ -44,7 +46,9 @@ async function ensurePosTransactionItemsSchema() {
 
 
 export async function POST(request: NextRequest) {
+  const timer = startCheckoutTimer();
   try {
+    timer.phase('ensureSchema');
     await ensurePosTransactionItemsSchema();
     await ensureCustomerCreditColumn();
     const body = await request.json();
@@ -79,6 +83,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Customer is required for Charge to Account' }, { status: 400 });
     }
 
+    timer.phase('preflight:terminalLock');
     if (terminalId) {
       const settingsRows: any = await query(
         'SELECT enforce_z_reading_lockout FROM pos_settings LIMIT 1',
@@ -100,6 +105,7 @@ export async function POST(request: NextRequest) {
     // re-querying products.type fresh — never trust client-supplied type,
     // matching the isService(soldProd) pattern processSaleLeg uses internally
     // for stock/batch-costing.
+    timer.phase('preflight:productTypes');
     const productIds = items.map((it: any) => it.id);
     const productTypeRows: any = await query(
       `SELECT id, type FROM products WHERE id IN (${productIds.map(() => '?').join(',')})`,
@@ -122,6 +128,7 @@ export async function POST(request: NextRequest) {
     const paymentDetailsId = `PD-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
     const auditLogId = `PAL-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
 
+    timer.phase('txn:open+settings');
     return await withTransaction(async (connection) => {
       // Fetch Loyalty & Training Mode Settings
       const [loyaltyRows]: any = await connection.query(
@@ -145,6 +152,7 @@ export async function POST(request: NextRequest) {
       // Generate sequential reference (INV-XXXXXX). All three counters run on
       // THIS transaction: fewer round trips, and a rolled-back sale releases
       // its numbers instead of leaving gaps.
+      timer.phase('txn:numbering');
       const nextRefVal = await getNextReference('sales_invoice', connection);
       const sequentialRef = `INV-${nextRefVal.toString().padStart(6, '0')}`;
 
@@ -196,8 +204,50 @@ export async function POST(request: NextRequest) {
       // means a future edit to a unit can never change what a past receipt meant.
       const resolvedUnits: { id: string | null; name: string | null; factor: number }[] = [];
 
+      // Loyalty eligibility for every line, fetched in ONE round trip before
+      // the loop. This used to be a query per item inside the loop; on a cloud
+      // database that paid full network latency per line, so a 10-item basket
+      // spent ten round trips resolving two small columns. The data is the same
+      // either way — the loyalty rule still keys on the CATEGORY's markup.
+      //
+      // c.markup_percentage stays qualified: products ALSO has a
+      // markup_percentage column (per-product pricing override, migration 117),
+      // so the bare name is ambiguous (ER_NON_UNIQ_ERROR).
+      // The same fetch also feeds processSaleLeg's per-item product lookup, so
+      // one round trip now covers both: the exact column list processSaleLeg
+      // selects, plus the two columns the loyalty rule reads.
+      timer.phase('txn:cartPrefetch');
+      const loyaltyByProductId = new Map<string, any>();
+      const baseUnitsByProductId = new Map<string, SellingUnit>();
+      {
+        const uniqueItemIds: string[] = [...new Set(items.map((it: any) => String(it.id)) as string[])];
+        if (uniqueItemIds.length > 0) {
+          const placeholders = uniqueItemIds.map(() => '?').join(',');
+          const [productRowsForItems]: any = await connection.query(
+            `SELECT
+               p.id, p.parent_id, p.unit_of_measure, p.name, p.stock, p.type, p.cost,
+               c.markup_percentage, p.category, p.earns_points
+             FROM products p
+             LEFT JOIN categories c ON p.category = c.name
+             WHERE p.id IN (${placeholders})`,
+            uniqueItemIds
+          );
+          for (const row of productRowsForItems || []) {
+            loyaltyByProductId.set(String(row.id), row);
+          }
+
+          const fetchedUnits = await getBaseUnitsForProducts(uniqueItemIds, connection);
+          for (const [pid, unit] of fetchedUnits) baseUnitsByProductId.set(pid, unit);
+        }
+      }
+
+      // Resolve batch-costing settings before the loop too, so the first
+      // iteration doesn't pay for it mid-flight.
+      const batchCostingSettings = await getBCS();
+
       // 2. Deduct batches + stock and insert sale_items (cost folded into the
       //    insert — no separate UPDATE per item).
+      timer.phase('txn:itemLoop(saleLeg+FIFO+stock)');
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
 
@@ -210,23 +260,15 @@ export async function POST(request: NextRequest) {
           item,
           saleId,
           itemIndex: i,
-          oversellBlock: (await getBCS()).oversellBlock,
+          oversellBlock: batchCostingSettings.oversellBlock,
+          prefetched: { products: loyaltyByProductId, baseUnits: baseUnitsByProductId },
         });
         resolvedUnits[i] = { id: legResult.unitId, name: legResult.unitName, factor: legResult.factor };
+        timer.count('saleLegCalls');
 
-        // Loyalty Points Calculation — unaffected by the refactor, stays here.
-        // soldProd was fetched inside processSaleLeg and not returned (that
-        // would leak a loyalty-specific concern into the shared function), so
-        // re-fetch the small set of columns loyalty actually needs.
-        const [loyaltyProdResult]: any = await connection.query(
-          // c.markup_percentage, qualified: products ALSO has a markup_percentage
-          // column (per-product pricing override, migration 117), so the bare
-          // name is ambiguous (ER_NON_UNIQ_ERROR). The loyalty 5% rule has always
-          // been keyed on the CATEGORY's markup, matching the pre-refactor query.
-          'SELECT c.markup_percentage, p.earns_points FROM products p LEFT JOIN categories c ON p.category = c.name WHERE p.id = ?',
-          [item.id]
-        );
-        const loyaltyProd = loyaltyProdResult?.[0];
+        // Loyalty Points Calculation — same rule as before, now read from the
+        // single pre-loop fetch above instead of a round trip per line.
+        const loyaltyProd = loyaltyByProductId.get(String(item.id));
         if (loyaltyProd) {
           const hasFivePercentMarkup = Math.abs((loyaltyProd.markup_percentage || 0) - 5) < 0.01;
           const earnsPointsEnabled = loyaltyProd.earns_points !== 0 && loyaltyProd.earns_points !== false;
@@ -239,6 +281,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      timer.phase('txn:invoice+credit');
       // 3. Insert into sales_invoices (to show up in /sales reports)
       const invoiceId = `INV-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
       
@@ -317,6 +360,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      timer.phase('txn:posTransaction');
       // 4. Insert into pos_transactions with payment details reference
       const insertPosTransSql = `
         INSERT INTO pos_transactions (
@@ -348,6 +392,7 @@ export async function POST(request: NextRequest) {
         isTrainingMode
       ]);
 
+      timer.phase('txn:lineItemInserts');
       // 5. Insert items into sales_invoice_items and pos_transaction_items —
       //    one multi-row INSERT per table instead of two round trips per item.
       const invoiceItemRows: any[] = [];
@@ -626,6 +671,7 @@ export async function POST(request: NextRequest) {
       ]);
 
       // Fetch the auto-generated order number
+      timer.phase('txn:finalize(payments+loyalty+orderNo)');
       const [orderResult]: any = await connection.query('SELECT order_number FROM pos_transactions WHERE id = ?', [posTransId]);
       const orderNumber = orderResult[0]?.order_number;
 
@@ -638,6 +684,8 @@ export async function POST(request: NextRequest) {
         pointsRemaining = updatedLoyalty && updatedLoyalty.length > 0 ? updatedLoyalty[0].current_points : 0;
       }
 
+      timer.done({ items: items.length, outcome: 'ok' });
+
       return NextResponse.json({
         success: true,
         data: { saleId, posTransId, invoiceId, paymentDetailsId, orderNumber, siNumber, birOrNumber, pointsEarned: totalPointsEarned, pointsRemaining, creditApplied },
@@ -646,8 +694,13 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: any) {
+    // Emitted here too so a sale that fails slowly is still measurable. Timing
+    // for a successful sale is reported from inside the transaction, just
+    // before the response is built; that figure therefore excludes the COMMIT
+    // itself, which on a cloud database is one more round trip.
+    timer.done({ outcome: 'error' });
     console.error('Error during checkout:', error);
-    
+
     // Log failed payment attempt
     try {
       const { query } = await import('@/lib/mysql');
