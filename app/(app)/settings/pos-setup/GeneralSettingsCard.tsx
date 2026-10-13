@@ -39,6 +39,13 @@ export function GeneralSettingsCard({ settings, set }: Props) {
           </div>
           <Switch id="enableQuickAddCustomer" checked={settings.enableQuickAddCustomer !== false} onCheckedChange={v => set('enableQuickAddCustomer', v)} />
         </div>
+        <div className="flex items-center justify-between pt-4 border-t">
+          <div className="space-y-0.5">
+            <Label htmlFor="enableLargeInvoice">Enable Large Invoice Printing</Label>
+            <p className="text-sm text-muted-foreground">Show the Print Large Invoice option at checkout. Prints a full-page invoice on 9.5 × 5.5in continuous paper instead of a receipt</p>
+          </div>
+          <Switch id="enableLargeInvoice" checked={!!settings.enableLargeInvoice} onCheckedChange={v => set('enableLargeInvoice', v)} />
+        </div>
       </CardContent>
     </Card>
   );

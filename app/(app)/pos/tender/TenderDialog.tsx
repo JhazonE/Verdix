@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { flushSync } from 'react-dom';
 import {
     Sheet,
@@ -67,10 +67,15 @@ function ReceiptActionView({
                     <Printer className="mr-2 h-4 w-4" />
                     Reprint
                 </Button>
-                <Button onClick={onPrintLarge} size="lg" className="w-40" variant="outline">
-                    <FileText className="mr-2 h-4 w-4" />
-                    Large Invoice
-                </Button>
+                {/* MySQL returns BOOLEAN as TINYINT, so this arrives as 0/1, not
+                    false/true — without the coercion a disabled flag renders a
+                    literal "0" instead of nothing. */}
+                {!!settings?.enableLargeInvoice && (
+                    <Button onClick={onPrintLarge} size="lg" className="w-40" variant="outline">
+                        <FileText className="mr-2 h-4 w-4" />
+                        Large Invoice
+                    </Button>
+                )}
                 <Button onClick={onNewSale} size="lg" className="w-40" variant="secondary">
                     New Sale
                 </Button>
@@ -121,6 +126,10 @@ export function TenderDialog(props: TenderDialogProps) {
     const [isReprintPrint, setIsReprintPrint] = useState(false);
     const [isLargeInvoicePreviewOpen, setIsLargeInvoicePreviewOpen] = useState(false);
     const [pendingLargeInvoiceCompletes, setPendingLargeInvoiceCompletes] = useState(false);
+    const [largeInvoiceScale, setLargeInvoiceScale] = useState(1);
+    const [largeInvoiceSheetHeight, setLargeInvoiceSheetHeight] = useState<number | null>(null);
+    const largeInvoiceObserverRef = useRef<ResizeObserver | null>(null);
+    const largeInvoiceSheetObserverRef = useRef<ResizeObserver | null>(null);
 
     const receiptRef = useRef<HTMLDivElement>(null);
     const largeInvoiceRef = useRef<HTMLDivElement>(null);
@@ -161,15 +170,79 @@ export function TenderDialog(props: TenderDialogProps) {
         contentRef: largeInvoicePreviewRef,
         documentTitle: `Invoice-${new Date().getTime()}`,
         pageStyle: `
-            @page { size: 5.5in 8.5in; margin: 0; }
+            /* 9.5in x 5.5in continuous pinfeed stock (dot-matrix). The 9.5in
+               includes the tractor-feed strips, so the printable width is 8in. */
+            @page { size: 9.5in 5.5in; margin: 0 0.75in; }
             @media print {
                 body { -webkit-print-color-adjust: exact; margin: 0; padding: 0; }
-                .printable-area { box-shadow: none !important; margin: 0 !important; }
+                /* globals.css forces .printable-area to width:100% for the
+                   back-office reports; that would stretch this sheet across the
+                   full 9.5in and into the tractor strips, so it is pinned back
+                   to the 8in the invoice is actually laid out for. */
+                .printable-area {
+                    box-shadow: none !important;
+                    margin: 0 !important;
+                    width: 8in !important;
+                    /* The preview wrapper scales the sheet to fit the dialog;
+                       that must never follow it onto the paper. */
+                    transform: none !important;
+                    zoom: 1 !important;
+                }
             }
         `
     });
 
+    // The invoice is a fixed 8in wide, so it has to be fitted to whatever width the
+    // dialog ends up with: shrink it on a narrow screen rather than scroll sideways,
+    // and enlarge it on a wide one so the sheet is actually readable.
+    //
+    // This is a callback ref, not a useEffect: the dialog mounts its content only
+    // after it opens, so an effect keyed on the open flag runs while the node is
+    // still null and never gets a second chance to measure.
+    const largeInvoiceFitRef = useCallback((el: HTMLDivElement | null) => {
+        largeInvoiceObserverRef.current?.disconnect();
+        if (!el) return;
+
+        const INVOICE_WIDTH_PX = 8 * 96; // 8in at the CSS 96dpi reference
+        const MAX_SCALE = 2; // past this the text is larger than it prints
+
+        const fit = () => {
+            // clientWidth includes the horizontal padding the invoice cannot use.
+            // Only width is fitted: constraining on height as well shrank the sheet
+            // to fill a dialog that is deliberately not full height.
+            const style = getComputedStyle(el);
+            const padX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+            const available = el.clientWidth - padX;
+            if (available <= 0) return;
+            setLargeInvoiceScale(Math.min(MAX_SCALE, available / INVOICE_WIDTH_PX));
+        };
+
+        fit();
+        const observer = new ResizeObserver(fit);
+        observer.observe(el);
+        largeInvoiceObserverRef.current = observer;
+    }, []);
+
+    // Tracks the sheet's own unscaled height, which grows with the line-item count.
+    const largeInvoiceSheetRef = useCallback((el: HTMLDivElement | null) => {
+        largeInvoiceSheetObserverRef.current?.disconnect();
+        if (!el) {
+            setLargeInvoiceSheetHeight(null);
+            return;
+        }
+
+        const measure = () => setLargeInvoiceSheetHeight(el.offsetHeight);
+
+        measure();
+        const observer = new ResizeObserver(measure);
+        observer.observe(el);
+        largeInvoiceSheetObserverRef.current = observer;
+    }, []);
+
     const openLargeInvoicePreview = (completesAfterPrint: boolean) => {
+        // Gated here as well as on the buttons, so a keyboard shortcut or any
+        // future caller cannot reach the preview while the feature is off.
+        if (!settings?.enableLargeInvoice) return;
         setPendingLargeInvoiceCompletes(completesAfterPrint);
         setIsLargeInvoicePreviewOpen(true);
     };
@@ -453,15 +526,17 @@ export function TenderDialog(props: TenderDialogProps) {
                                     Yes, Print
                                 </Button>
                             </div>
-                            <Button
-                                variant="outline"
-                                size="lg"
-                                className="w-full h-12 text-sm font-bold"
-                                onClick={handleConfirmPrintLarge}
-                            >
-                                <FileText className="mr-2 h-4 w-4" />
-                                Print Large Invoice
-                            </Button>
+                            {!!settings?.enableLargeInvoice && (
+                                <Button
+                                    variant="outline"
+                                    size="lg"
+                                    className="w-full h-12 text-sm font-bold"
+                                    onClick={handleConfirmPrintLarge}
+                                >
+                                    <FileText className="mr-2 h-4 w-4" />
+                                    Print Large Invoice
+                                </Button>
+                            )}
                             <p className="text-center text-[10px] text-muted-foreground uppercase tracking-wider">
                                 Arrow keys to navigate • Y for Yes • N for No
                             </p>
@@ -787,7 +862,10 @@ export function TenderDialog(props: TenderDialogProps) {
         </Sheet>
 
         <Dialog open={isLargeInvoicePreviewOpen} onOpenChange={setIsLargeInvoicePreviewOpen}>
-            <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
+            {/* sm:max-w-[...] is required, not max-w-[...]: the base DialogContent
+                sets sm:max-w-lg, which outranks an unprefixed class and would pin
+                this preview to 512px. */}
+            <DialogContent className="w-[96vw] sm:max-w-[1600px] max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
                 <DialogHeader className="px-6 py-4 border-b text-left space-y-0.5">
                     <DialogTitle className="text-lg font-bold flex items-center gap-2">
                         <FileText className="h-5 w-5 text-primary" />
@@ -795,9 +873,30 @@ export function TenderDialog(props: TenderDialogProps) {
                     </DialogTitle>
                     <DialogDescription>Review the layout before printing.</DialogDescription>
                 </DialogHeader>
-                <div className="flex-1 overflow-auto bg-muted/40 p-6 flex justify-center">
-                    <div className="bg-white shadow-md h-fit">
-                        {completedSale && <LargeInvoiceView ref={largeInvoicePreviewRef} saleDetails={completedSale} settings={settings} />}
+                {/* Scaling is visual only — react-to-print reads the original node
+                    through its ref, so the printed sheet is unaffected. The outer div
+                    is width-capped to the scaled size so the shrunk sheet still
+                    centres and leaves no dead gutter beside it. */}
+                <div ref={largeInvoiceFitRef} className="flex-1 overflow-y-auto overflow-x-hidden bg-muted/40 px-6 py-6">
+                    <div
+                        className="mx-auto"
+                        style={{
+                            width: `calc(8in * ${largeInvoiceScale})`,
+                            // scale() does not shrink the space the element reserves,
+                            // so the wrapper height is clamped to the scaled height to
+                            // avoid a tall dead area under the sheet.
+                            height: largeInvoiceSheetHeight
+                                ? largeInvoiceSheetHeight * largeInvoiceScale
+                                : undefined,
+                        }}
+                    >
+                        <div
+                            ref={largeInvoiceSheetRef}
+                            className="bg-white shadow-md w-[8in] origin-top-left"
+                            style={{ transform: `scale(${largeInvoiceScale})` }}
+                        >
+                            {completedSale && <LargeInvoiceView ref={largeInvoicePreviewRef} saleDetails={completedSale} settings={settings} />}
+                        </div>
                     </div>
                 </div>
                 <div className="p-4 border-t bg-background flex justify-end gap-3">
