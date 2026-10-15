@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Search, ShoppingCart } from 'lucide-react';
 import { formatCartQuantity, formatStockQuantity } from '@/lib/utils';
+import { formatLineDiscount } from '@/lib/discount-format';
 import type { SaleItem } from './pos-types';
 
 type Props = {
@@ -243,7 +244,7 @@ export function PosCartTable({
                           >
                             {item.name}
                           </button>
-                          {item.discount > 0 && <span className="text-[10px] text-green-600 font-medium">Discount: {item.discount}%</span>}
+                          {item.discount > 0 && <span className="text-[10px] text-green-600 font-medium">Discount: {formatLineDiscount(item, "₱")}</span>}
                         </div>
                       )}
                     </TableCell>

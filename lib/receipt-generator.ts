@@ -5,6 +5,7 @@ import { SystemSettings } from './types';
 import { formatSINumber } from './si-number';
 import { resolveEffectiveTaxType } from './tax-utils';
 import { abbreviateUOM, receiptLineQuantity } from './receipt-uom';
+import { lineDiscountAmount, formatLineDiscount } from './discount-format';
 
 // Default for 58mm
 const DEFAULT_COLS = 32;
@@ -94,7 +95,13 @@ export class ReceiptGenerator {
         const { COLS, QTY_W, AMT_W, NAME_W } = this.getLayout(settings);
         const { items, customer, totalDue, change, paymentMethod, orderNumber, amountTendered, pointsEarned, pointsUsedCount } = sale;
         const subTotal      = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
-        const totalDiscount = items.reduce((acc, item) => acc + (item.discount || 0), 0); // Recent-sales passes total amount
+        // `item.discount` is a PERCENTAGE everywhere in the POS: the discount
+        // dialog converts a fixed peso amount into one, and the cart, the
+        // on-screen preview, the checkout route and the reprint mapper all read
+        // it that way. Summing the raw percentages here printed -8.08 for a
+        // 8.084...% (= ₱5.00) line — disagreeing with the preview and leaving
+        // SUBTOTAL - Discount ≠ AMOUNT DUE on a BIR-significant document.
+        const totalDiscount = items.reduce((acc, item) => acc + lineDiscountAmount(item), 0);
         
         // Calculate tax breakdown if not provided
         let taxBreakdown = sale.taxBreakdown;
@@ -106,7 +113,7 @@ export class ReceiptGenerator {
             let nonVatSales = 0;
 
             items.forEach(item => {
-                const lineTotal = (item.price * item.quantity) - (item.discount || 0);
+                const lineTotal = (item.price * item.quantity) - lineDiscountAmount(item);
                 const baseTaxType = (item as any).taxType || item.taxType || (item as any).product?.taxType || 'VAT';
                 const taxType = resolveEffectiveTaxType(baseTaxType, (item as any).discountType, item.discount);
 
@@ -264,7 +271,8 @@ export class ReceiptGenerator {
 
             // Discount line
             if (item.discount && item.discount > 0) {
-                const discText = `Disc: ${item.discount}%`;
+                // No currency prefix: the printer codepage has no peso glyph.
+                const discText = `Disc: ${formatLineDiscount(item as any)}`;
                 absoluteIndent();
                 enc.line(discText);
             }
