@@ -1018,11 +1018,21 @@ export function usePOS() {
     const discountIdNumber = discountDetails?.idNumber;
     const discountHolderName = discountDetails?.holderName;
     if (itemId === 'ALL') {
-      setItems(items.map(item => ({ ...item, discount: percentage, discountType, discountIdNumber, discountHolderName })));
-      toast({ title: 'Global Discount Applied', description: `Applied ${percentage.toFixed(2)}% discount to all items.` });
+      const next = items.map(item => ({ ...item, discount: percentage, discountType, discountIdNumber, discountHolderName }));
+      setItems(next);
+      // A fixed amount was entered in pesos, so report it back in pesos — the
+      // percentage it was spread into is an implementation detail.
+      const describe = discountType === 'amount'
+        ? `Applied ₱${next.reduce((acc, i) => acc + (i.price * i.quantity * percentage) / 100, 0).toFixed(2)} discount across all items.`
+        : `Applied ${percentage.toFixed(2)}% discount to all items.`;
+      toast({ title: 'Global Discount Applied', description: describe });
     } else {
+      const target = items.find(item => item.lineId === itemId);
       setItems(items.map(item => item.lineId === itemId ? { ...item, discount: percentage, discountType, discountIdNumber, discountHolderName } : item));
-      toast({ title: 'Discount Applied', description: `Discount updated to ${percentage.toFixed(2)}%` });
+      const describe = discountType === 'amount' && target
+        ? `Discount updated to ₱${((target.price * target.quantity * percentage) / 100).toFixed(2)}`
+        : `Discount updated to ${percentage.toFixed(2)}%`;
+      toast({ title: 'Discount Applied', description: describe });
     }
   };
 

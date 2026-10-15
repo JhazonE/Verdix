@@ -20,6 +20,7 @@ import './z-reading-or-range.test';
 import './z-reading-record-before-print.test';
 import './discount-line-targeting.test';
 import './receipt-discount-amount.test';
+import './discount-all-scope-amount.test';
 import './reprint-watermark-browser.test';
 import './ejournal-text-format.test';
 import './ejournal-text-receipt.test';

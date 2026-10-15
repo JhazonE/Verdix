@@ -70,6 +70,7 @@ export function PosDialogs(pos: Props) {
         isOpen={pos.isDiscountDialogOpen}
         onOpenChange={pos.setIsDiscountDialogOpen}
         item={pos.selectedItem}
+        items={pos.items}
         onApplyDiscount={pos.handleApplyDiscount}
         hasItems={pos.items.length > 0}
       />

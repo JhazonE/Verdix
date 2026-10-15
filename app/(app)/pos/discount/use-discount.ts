@@ -7,11 +7,33 @@ import type { DiscountType, DiscountDetails } from './discount-types';
 type Options = {
   isOpen: boolean;
   item: SaleItem | null;
+  items?: SaleItem[];
   onApplyDiscount: (itemId: string | 'ALL', discountPercentage: number, discountType?: string, discountDetails?: DiscountDetails) => void;
   onOpenChange: (isOpen: boolean) => void;
 };
 
-export function useDiscount({ isOpen, item, onApplyDiscount, onOpenChange }: Options) {
+/**
+ * A cart-wide FIXED AMOUNT, expressed as the percentage each line gives up.
+ *
+ * A discount is stored per line as a percentage (see lib/discount-format.ts),
+ * so a peso amount aimed at the whole cart has to be spread over the lines.
+ * It is spread PRO RATA by line value, which means every line gives up the
+ * same percentage and the cart total drops by exactly the amount entered.
+ *
+ * Previously the dialog derived one percentage from the SELECTED line and
+ * stamped it on all of them: ₱5 off a ₱61.85 line is 8.08%, so a ₱300 cart
+ * lost ₱24.25 instead of ₱5.
+ *
+ * Returns 0 for an empty or worthless cart rather than dividing by zero, and
+ * caps at 100% so an amount larger than the cart cannot make a total negative.
+ */
+export function amountToPercentages(items: SaleItem[], amount: number): number {
+  const cartTotal = items.reduce((acc, i) => acc + i.price * i.quantity, 0);
+  if (cartTotal <= 0 || amount <= 0) return 0;
+  return Math.min(100, (Math.min(amount, cartTotal) / cartTotal) * 100);
+}
+
+export function useDiscount({ isOpen, item, items, onApplyDiscount, onOpenChange }: Options) {
   const [discountType, setDiscountType] = useState<DiscountType>('percent');
   const [scope, setScope] = useState<'selected' | 'all'>('selected');
   const [value, setValue] = useState<string>('');
@@ -44,6 +66,10 @@ export function useDiscount({ isOpen, item, onApplyDiscount, onOpenChange }: Opt
       const numValue = parseFloat(value) || 0;
       if (discountType === 'percent') {
         percentage = Math.min(100, Math.max(0, numValue));
+      } else if (scope === 'all') {
+        // A fixed amount aimed at the whole cart is spread across it, so the
+        // cart total drops by exactly what was entered.
+        percentage = amountToPercentages(items ?? [], numValue);
       } else if (item) {
         const totalItemPrice = item.price * item.quantity;
         if (totalItemPrice > 0) {

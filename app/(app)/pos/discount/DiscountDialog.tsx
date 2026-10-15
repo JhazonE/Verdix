@@ -24,7 +24,7 @@ import type { DiscountDialogProps, DiscountType } from './discount-types';
 
 export type { DiscountDetails } from './discount-types';
 
-export function DiscountDialog({ isOpen, onOpenChange, item, onApplyDiscount, hasItems }: DiscountDialogProps) {
+export function DiscountDialog({ isOpen, onOpenChange, item, items, onApplyDiscount, hasItems }: DiscountDialogProps) {
   const {
     discountType, setDiscountType,
     scope, setScope,
@@ -33,7 +33,7 @@ export function DiscountDialog({ isOpen, onOpenChange, item, onApplyDiscount, ha
     holderName, setHolderName,
     isStatutory, statutoryInvalid,
     handleApply,
-  } = useDiscount({ isOpen, item, onApplyDiscount, onOpenChange });
+  } = useDiscount({ isOpen, item, items, onApplyDiscount, onOpenChange });
 
   if (!hasItems) return null;
 
@@ -80,7 +80,7 @@ export function DiscountDialog({ isOpen, onOpenChange, item, onApplyDiscount, ha
                     ? 'bg-white dark:bg-slate-700 shadow-sm text-blue-600 dark:text-blue-400 ring-1 ring-slate-200 dark:ring-slate-600'
                     : 'text-slate-500 dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-700/50'
                 }`}
-                onClick={() => { setScope('all'); setDiscountType('percent'); }}
+                onClick={() => setScope('all')}
               >
                 All Items
               </Button>
@@ -91,13 +91,20 @@ export function DiscountDialog({ isOpen, onOpenChange, item, onApplyDiscount, ha
               <Select
                 value={discountType}
                 onValueChange={(val: DiscountType) => {
+                  const previous = discountType;
                   setDiscountType(val);
                   if (val === 'pwd' || val === 'senior' || val === 'naac') {
                     setValue('20');
                   } else if (val === 'solo_parent') {
                     setValue('10');
-                  } else if (val === 'percent' && item && (discountType === 'pwd' || discountType === 'senior' || discountType === 'naac' || discountType === 'solo_parent')) {
+                  } else if (val === 'percent' && item && (previous === 'pwd' || previous === 'senior' || previous === 'naac' || previous === 'solo_parent')) {
                     setValue(item.discount ? item.discount.toString() : '');
+                  } else if (val !== previous) {
+                    // "50" means ₱50 under Fixed Amount and 50% under
+                    // Percentage. Carrying the figure across that switch
+                    // silently changed what the cashier had entered, so clear
+                    // it and make them retype against the unit now shown.
+                    setValue('');
                   }
                 }}
               >
@@ -111,14 +118,15 @@ export function DiscountDialog({ isOpen, onOpenChange, item, onApplyDiscount, ha
                       <span className="font-medium text-slate-700 dark:text-slate-200">Percentage (%)</span>
                     </div>
                   </SelectItem>
-                  {scope === 'selected' && (
-                    <SelectItem value="amount" className="rounded-lg">
-                      <div className="flex items-center gap-3 py-1">
-                        <div className="bg-green-100 dark:bg-green-950/60 p-1.5 rounded-md"><Banknote className="w-4 h-4 text-green-600 dark:text-green-400" /></div>
-                        <span className="font-medium text-slate-700 dark:text-slate-200">Fixed Amount (₱)</span>
-                      </div>
-                    </SelectItem>
-                  )}
+                  {/* Offered for both scopes: a cart-wide fixed amount is
+                      spread pro rata across the lines, so it takes exactly
+                      the amount entered off the cart. */}
+                  <SelectItem value="amount" className="rounded-lg">
+                    <div className="flex items-center gap-3 py-1">
+                      <div className="bg-green-100 dark:bg-green-950/60 p-1.5 rounded-md"><Banknote className="w-4 h-4 text-green-600 dark:text-green-400" /></div>
+                      <span className="font-medium text-slate-700 dark:text-slate-200">Fixed Amount (₱)</span>
+                    </div>
+                  </SelectItem>
                   <SelectItem value="senior" className="rounded-lg">
                     <div className="flex items-center gap-3 py-1">
                       <div className="bg-orange-100 dark:bg-orange-950/60 p-1.5 rounded-md"><UserRound className="w-4 h-4 text-orange-600 dark:text-orange-400" /></div>
