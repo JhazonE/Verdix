@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import type { SaleItem } from '../pos-content/pos-types';
 import type { DiscountType, DiscountDetails } from './discount-types';
+import { lineDiscountAmount } from '@/lib/discount-format';
 
 type Options = {
   isOpen: boolean;
@@ -33,6 +34,29 @@ export function amountToPercentages(items: SaleItem[], amount: number): number {
   return Math.min(100, (Math.min(amount, cartTotal) / cartTotal) * 100);
 }
 
+/**
+ * What the value box shows when the sheet is reopened on a line that already
+ * carries a discount.
+ *
+ * A discount is stored as a percentage, and the division that produces one
+ * rarely lands on a round number, so echoing `item.discount` back put a raw
+ * float in front of the cashier (`0.07117944337675279`) instead of the figure
+ * they declared. Worse, a discount entered as ₱5.00 came back as 8.084...
+ * because the stored percentage is all that survives.
+ *
+ * So the figure is rebuilt in the terms it was ENTERED in: an 'amount'
+ * discount back into pesos off this line, anything else trimmed to at most
+ * two decimals. An undiscounted line opens empty rather than showing "0",
+ * which `valueInvalid` would reject anyway.
+ */
+export function discountSeedValue(item: SaleItem | null | undefined): string {
+  if (!item?.discount || item.discount <= 0) return '';
+  if (item.discountType === 'amount') {
+    return String(Number(lineDiscountAmount(item).toFixed(2)));
+  }
+  return String(Number(item.discount.toFixed(2)));
+}
+
 export function useDiscount({ isOpen, item, items, onApplyDiscount, onOpenChange }: Options) {
   const [discountType, setDiscountType] = useState<DiscountType>('percent');
   const [scope, setScope] = useState<'selected' | 'all'>('selected');
@@ -54,14 +78,17 @@ export function useDiscount({ isOpen, item, items, onApplyDiscount, onOpenChange
   // who was mid-way through filling the sheet in. use-pos already keys its own
   // selection effects on selectedItemId for exactly this reason.
   const lineId = item?.lineId;
-  const initialValue = item?.discount ? item.discount.toString() : '';
   useEffect(() => {
     if (isOpen) {
-      setDiscountType('percent');
+      // Reopen showing the discount the line already carries, in the terms it
+      // was entered in — otherwise a ₱5.00 discount came back as a percentage
+      // box holding 8.084074373484237 and the cashier could not confirm or
+      // adjust what they had declared.
+      setDiscountType((item?.discount ? (item.discountType as DiscountType) : null) || 'percent');
       setScope('selected');
-      setValue(initialValue);
-      setIdNumber('');
-      setHolderName('');
+      setValue(discountSeedValue(item));
+      setIdNumber(item?.discountIdNumber || '');
+      setHolderName(item?.discountHolderName || '');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, lineId]);

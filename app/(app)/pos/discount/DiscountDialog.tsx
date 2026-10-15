@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Percent, Banknote, UserRound, Accessibility, CreditCard, User, ShieldCheck } from 'lucide-react';
-import { useDiscount } from './use-discount';
+import { useDiscount, discountSeedValue } from './use-discount';
 import type { DiscountDialogProps, DiscountType } from './discount-types';
 
 export type { DiscountDetails } from './discount-types';
@@ -98,7 +98,9 @@ export function DiscountDialog({ isOpen, onOpenChange, item, items, onApplyDisco
                   } else if (val === 'solo_parent') {
                     setValue('10');
                   } else if (val === 'percent' && item && (previous === 'pwd' || previous === 'senior' || previous === 'naac' || previous === 'solo_parent')) {
-                    setValue(item.discount ? item.discount.toString() : '');
+                    // Same seeder the sheet opens with, so this cannot put a
+                    // raw stored float back in the box.
+                    setValue(discountSeedValue(item));
                   }
                   // The figure the cashier typed is deliberately KEPT across a
                   // type change. Clearing it broke the ordinary order of

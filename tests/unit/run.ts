@@ -22,6 +22,7 @@ import './discount-line-targeting.test';
 import './receipt-discount-amount.test';
 import './discount-all-scope-amount.test';
 import './discount-amount-all-applies.test';
+import './discount-reopen-restores.test';
 import './reprint-watermark-browser.test';
 import './ejournal-text-format.test';
 import './ejournal-text-receipt.test';
