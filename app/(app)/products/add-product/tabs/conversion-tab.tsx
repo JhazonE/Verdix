@@ -42,10 +42,17 @@ function PriceLevelOverrides({
   values,
   onChange,
   requireDefaultLevel = false,
+  unitKey = null,
 }: {
   basePath: string;
   values: { levelId: string; price?: number; minQuantity?: number }[];
   onChange: (next: { levelId: string; price?: number; minQuantity?: number }[]) => void;
+  /**
+   * Which selling unit these rows belong to — the unit's field id, or null for
+   * the base unit. Only used to tell the autopricer which cell the user
+   * emptied, so it stops suggesting a price back into it.
+   */
+  unitKey?: string | null;
   /**
    * The base unit has no standalone price any more — its default (Retail)
    * price-level row IS the product's price, so that one row can never be
@@ -54,7 +61,7 @@ function PriceLevelOverrides({
    */
   requireDefaultLevel?: boolean;
 }) {
-  const { priceLevels, isLoadingPriceLevels } = useAddProductFormContext();
+  const { priceLevels, isLoadingPriceLevels, notifyPriceCleared } = useAddProductFormContext();
 
   if (isLoadingPriceLevels) {
     return <p className="text-xs text-muted-foreground px-1 py-2">Loading price levels...</p>;
@@ -71,6 +78,11 @@ function PriceLevelOverrides({
     const next = [...values];
     const idx = next.findIndex(v => v.levelId === levelId);
     if (raw === '') {
+      // Tell the autopricer this cell was emptied on purpose. Removing the row
+      // (below) is otherwise indistinguishable from a level that was never
+      // filled in, and the autopricer seeds those — which is what used to put
+      // the price straight back and made a price level impossible to clear.
+      notifyPriceCleared?.(unitKey, levelId);
       // Blank means "no override" — remove the row entirely rather than
       // writing an empty/0 value. The required default level is the one
       // exception: it can't disappear, since it IS the product's price.
@@ -643,6 +655,7 @@ export function SellingUnitsTab() {
                           values={unitPriceLevels}
                           onChange={(next) => form.setValue(`sellingUnits.${index}.priceLevels`, next, { shouldDirty: true })}
                           requireDefaultLevel
+                          unitKey={field.id}
                         />
                       </div>
                     </CollapsibleContent>

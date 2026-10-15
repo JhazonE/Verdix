@@ -9,6 +9,8 @@ export interface DiscountDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   item: SaleItem | null;
+  /** The whole cart — needed to spread a cart-wide fixed amount across it. */
+  items?: SaleItem[];
   onApplyDiscount: (itemId: string | 'ALL', discountPercentage: number, discountType?: string, discountDetails?: DiscountDetails) => void;
   hasItems: boolean;
 }

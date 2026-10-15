@@ -553,7 +553,7 @@ export function useAddProductForm({
 
   }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, markupSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, priceLevelFields]);
 
-  useSellingUnitAutoPricing({
+  const { notifyPriceCleared } = useSellingUnitAutoPricing({
     form,
     priceLevels,
     baseLevelRows: priceLevelFields as any,
@@ -876,6 +876,7 @@ export function useAddProductForm({
     // handlers
     onSubmit,
     generateBarcode,
+    notifyPriceCleared,
     refreshBrands,
     refreshDepartments,
     refreshCategories,

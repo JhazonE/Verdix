@@ -428,7 +428,7 @@ export function useEditProductForm({
     }
   }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, markupSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, isInitialized, priceLevelFields]);
 
-  useSellingUnitAutoPricing({
+  const { notifyPriceCleared } = useSellingUnitAutoPricing({
     form,
     enabled: isInitialized,
     priceLevels,
@@ -436,6 +436,11 @@ export function useEditProductForm({
     unitKeys: sellingUnitFields.map(f => f.id),
     markup: autoMarkup,
     resetKey: product?.id,
+    // This form is always populated from a saved product, so its price-level
+    // rows are decisions, not blanks — including the levels it has no row for.
+    // Without this, a price level the user deleted and saved was seeded back
+    // the next time the product was opened.
+    adoptSavedRows: true,
   });
 
   const [costSuggestionSource, setCostSuggestionSource] = useState<string | null>(null);
@@ -686,6 +691,7 @@ export function useEditProductForm({
 
     // handlers
     generateBarcode,
+    notifyPriceCleared,
     saveChanges,
     refreshBrands,
     refreshDepartments,

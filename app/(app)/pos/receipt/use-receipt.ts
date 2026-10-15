@@ -5,6 +5,7 @@ import { format } from 'date-fns';
 import { mapVatStatusToTaxType } from '../pos-content/pos-types';
 import type { ReceiptLineItem } from './receipt-types';
 import { resolveEffectiveTaxType } from '@/lib/tax-utils';
+import { lineDiscountAmount } from '@/lib/discount-format';
 import type { SystemSettings } from '@/lib/types';
 
 type Options = {
@@ -32,7 +33,7 @@ export function useReceipt({ items, totalDue, saleDetails, settings }: Options) 
   );
 
   const totalDiscount = useMemo(
-    () => items.reduce((acc, item) => acc + (item.price * item.quantity * (item.discount || 0)) / 100, 0),
+    () => items.reduce((acc, item) => acc + lineDiscountAmount(item), 0),
     [items]
   );
 

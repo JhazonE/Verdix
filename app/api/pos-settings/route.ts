@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
       { name: 'tax_rates_auth_password', type: 'VARCHAR(255) NULL' },
       { name: 'fiscal_year_start_month', type: 'INT DEFAULT 1' },
       { name: 'print_two_receipts', type: 'BOOLEAN DEFAULT FALSE' },
+      { name: 'enable_large_invoice', type: 'BOOLEAN DEFAULT FALSE' },
       { name: 'native_printer_name', type: 'VARCHAR(255) DEFAULT "XP-58-P"' },
       { name: 'require_adjustment_confirmation', type: 'BOOLEAN DEFAULT FALSE' },
       { name: 'require_transfer_confirmation', type: 'BOOLEAN DEFAULT FALSE' },
@@ -145,6 +146,7 @@ export async function GET(request: NextRequest) {
         tax_rates_auth_password AS taxRatesAuthPassword,
         fiscal_year_start_month AS fiscalYearStartMonth,
         print_two_receipts AS printTwoReceipts,
+        enable_large_invoice AS enableLargeInvoice,
         native_printer_name AS nativePrinterName,
         require_adjustment_confirmation AS requireAdjustmentConfirmation,
         require_transfer_confirmation AS requireTransferConfirmation,
@@ -241,7 +243,7 @@ export async function POST(request: NextRequest) {
         operatedBy, minNumber, serialNumber,
         lowStockThreshold, enableEmailNotifications, notificationEmail, enablePushNotifications,
         enableTaxRatesAuth, taxRatesAuthUsername, taxRatesAuthPassword,
-        fiscalYearStartMonth, printTwoReceipts, nativePrinterName,
+        fiscalYearStartMonth, printTwoReceipts, enableLargeInvoice, nativePrinterName,
         enableOverallReadingAuth, overallReadingAuthUsername, overallReadingAuthPassword
       } = body;
 
@@ -259,7 +261,7 @@ export async function POST(request: NextRequest) {
           enable_cash_count_auth, cash_count_auth_username, cash_count_auth_password,
           low_stock_threshold, enable_email_notifications, notification_email, enable_push_notifications,
           enable_tax_rates_auth, tax_rates_auth_username, tax_rates_auth_password,
-          fiscal_year_start_month, print_two_receipts, native_printer_name,
+          fiscal_year_start_month, print_two_receipts, enable_large_invoice, native_printer_name,
           require_adjustment_confirmation, require_transfer_confirmation,
           require_po_confirmation, require_receive_confirmation,
           require_bad_order_confirmation, require_stock_count_approval,
@@ -270,7 +272,7 @@ export async function POST(request: NextRequest) {
           enforce_z_reading_lockout,
           enable_overall_reading_auth, overall_reading_auth_username, overall_reading_auth_password
         )
-        VALUES ('pos_settings_1', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES ('pos_settings_1', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       await query(insertSQL, [
         businessName || 'My Business',
@@ -314,6 +316,7 @@ export async function POST(request: NextRequest) {
         taxRatesAuthPassword || null,
         fiscalYearStartMonth || 1,
         printTwoReceipts ?? false,
+        enableLargeInvoice ?? false,
         nativePrinterName || 'XP-58-P',
         body.requireAdjustmentConfirmation ?? false,
         body.requireTransferConfirmation ?? false,
@@ -395,6 +398,7 @@ export async function POST(request: NextRequest) {
         taxRatesAuthPassword: 'tax_rates_auth_password',
         fiscalYearStartMonth: 'fiscal_year_start_month',
         printTwoReceipts: 'print_two_receipts',
+        enableLargeInvoice: 'enable_large_invoice',
         nativePrinterName: 'native_printer_name',
         requireAdjustmentConfirmation: 'require_adjustment_confirmation',
         requireTransferConfirmation: 'require_transfer_confirmation',

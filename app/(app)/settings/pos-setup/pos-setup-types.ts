@@ -49,6 +49,7 @@ export interface PosSettings {
   taxRatesAuthPassword?: string | null;
   isTrainingMode?: boolean;
   printTwoReceipts?: boolean;
+  enableLargeInvoice?: boolean;
   nativePrinterName?: string | null;
   requireAdjustmentConfirmation?: boolean;
   requireTransferConfirmation?: boolean;
@@ -131,6 +132,7 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   taxRatesAuthPassword: '',
   isTrainingMode: false,
   printTwoReceipts: false,
+  enableLargeInvoice: false,
   nativePrinterName: 'XP-58-P',
   requireAdjustmentConfirmation: false,
   requireTransferConfirmation: false,

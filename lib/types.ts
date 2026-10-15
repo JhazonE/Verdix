@@ -447,6 +447,7 @@ export interface SystemSettings {
   voidAuthUsername?: string | null;
   voidAuthPassword?: string | null;
   printTwoReceipts?: boolean;
+  enableLargeInvoice?: boolean;
   nativePrinterName?: string;
   paperSize?: '58mm' | '80mm';
   requireAdjustmentConfirmation?: boolean;
