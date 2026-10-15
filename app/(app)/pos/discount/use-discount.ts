@@ -43,18 +43,31 @@ export function useDiscount({ isOpen, item, items, onApplyDiscount, onOpenChange
   const isStatutory = ['pwd', 'senior', 'naac', 'solo_parent'].includes(discountType);
   const statutoryInvalid = isStatutory && (!idNumber.trim() || !holderName.trim());
 
+  // A blank or zero box used to apply a 0% discount and close the sheet, which
+  // is indistinguishable from the button not working. Statutory types carry
+  // their own fixed rate, so only the typed kinds are checked.
+  const valueInvalid = !isStatutory && !((parseFloat(value) || 0) > 0);
+
+  // Keyed on the LINE ID, not the item object. `selectedItem` in use-pos is a
+  // useMemo over `items`, so it is a new object on every cart change — making
+  // this effect re-run and reset the type and scope out from under a cashier
+  // who was mid-way through filling the sheet in. use-pos already keys its own
+  // selection effects on selectedItemId for exactly this reason.
+  const lineId = item?.lineId;
+  const initialValue = item?.discount ? item.discount.toString() : '';
   useEffect(() => {
     if (isOpen) {
       setDiscountType('percent');
       setScope('selected');
-      setValue(item?.discount ? item.discount.toString() : '');
+      setValue(initialValue);
       setIdNumber('');
       setHolderName('');
     }
-  }, [isOpen, item]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, lineId]);
 
   const handleApply = () => {
-    if (statutoryInvalid) return;
+    if (statutoryInvalid || valueInvalid) return;
 
     let percentage = 0;
 
@@ -100,7 +113,7 @@ export function useDiscount({ isOpen, item, items, onApplyDiscount, onOpenChange
     value, setValue,
     idNumber, setIdNumber,
     holderName, setHolderName,
-    isStatutory, statutoryInvalid,
+    isStatutory, statutoryInvalid, valueInvalid,
     handleApply,
   };
 }

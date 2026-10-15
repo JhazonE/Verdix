@@ -31,7 +31,7 @@ export function DiscountDialog({ isOpen, onOpenChange, item, items, onApplyDisco
     value, setValue,
     idNumber, setIdNumber,
     holderName, setHolderName,
-    isStatutory, statutoryInvalid,
+    isStatutory, statutoryInvalid, valueInvalid,
     handleApply,
   } = useDiscount({ isOpen, item, items, onApplyDiscount, onOpenChange });
 
@@ -99,13 +99,14 @@ export function DiscountDialog({ isOpen, onOpenChange, item, items, onApplyDisco
                     setValue('10');
                   } else if (val === 'percent' && item && (previous === 'pwd' || previous === 'senior' || previous === 'naac' || previous === 'solo_parent')) {
                     setValue(item.discount ? item.discount.toString() : '');
-                  } else if (val !== previous) {
-                    // "50" means ₱50 under Fixed Amount and 50% under
-                    // Percentage. Carrying the figure across that switch
-                    // silently changed what the cashier had entered, so clear
-                    // it and make them retype against the unit now shown.
-                    setValue('');
                   }
+                  // The figure the cashier typed is deliberately KEPT across a
+                  // type change. Clearing it broke the ordinary order of
+                  // operations — type the amount, then pick Fixed Amount —
+                  // leaving an empty box that applied a 0% discount and looked
+                  // like the button doing nothing. Both types are valid in
+                  // both scopes now, so the figure is applied under whichever
+                  // unit the ₱/% prefix shows at Apply time.
                 }}
               >
                 <SelectTrigger className="w-full h-12 border-slate-200 dark:border-slate-700 rounded-xl focus:ring-blue-500 bg-slate-50/30 dark:bg-slate-800/50">
@@ -157,7 +158,11 @@ export function DiscountDialog({ isOpen, onOpenChange, item, items, onApplyDisco
 
             <div className="space-y-2">
               <Label className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-tight ml-1">
-                {['pwd', 'senior', 'naac', 'solo_parent'].includes(discountType) ? 'Fixed Rate' : 'Value to Subtract'}
+                {['pwd', 'senior', 'naac', 'solo_parent'].includes(discountType)
+                  ? 'Fixed Rate'
+                  : discountType === 'amount' && scope === 'all'
+                    ? 'Amount off the whole cart'
+                    : 'Value to Subtract'}
               </Label>
               <div className="relative group">
                 <Input
@@ -180,6 +185,13 @@ export function DiscountDialog({ isOpen, onOpenChange, item, items, onApplyDisco
                   {discountType === 'amount' ? '₱' : '%'}
                 </div>
               </div>
+              {valueInvalid && (
+                <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 ml-1">
+                  {discountType === 'amount'
+                    ? `Enter the peso amount to take off${scope === 'all' ? ' the whole cart' : ''}.`
+                    : 'Enter a percentage greater than zero.'}
+                </p>
+              )}
             </div>
 
             {isStatutory && (
@@ -236,7 +248,7 @@ export function DiscountDialog({ isOpen, onOpenChange, item, items, onApplyDisco
             <Button
               className="flex-1 h-12 rounded-xl font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-200/50 dark:shadow-blue-900/30 transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
               onClick={handleApply}
-              disabled={statutoryInvalid}
+              disabled={statutoryInvalid || valueInvalid}
             >
               Apply Discount
             </Button>

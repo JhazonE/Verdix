@@ -135,11 +135,16 @@ assert.ok(
   'the Fixed Amount option is no longer hidden from the All Items scope',
 );
 
-// Changing the TYPE still changes what a bare number means, so the box clears.
+// NOTE: an earlier version of this fix CLEARED the value on a type change to
+// stop "50" meaning two different things. That broke the ordinary workflow
+// (type the figure, then pick the type) by leaving an empty box that applied
+// a 0% discount, which is what "dili mugana" reported. The figure is kept
+// now; a zero/empty value is refused at the button instead. See
+// discount-amount-all-applies.test.ts.
 assert.ok(
-  /val !== previous[\s\S]{0,400}setValue\(''\)/.test(dialog),
-  'switching between Percentage and Fixed Amount clears the value instead ' +
-    'of reinterpreting it',
+  /valueInvalid/.test(dialog),
+  'a zero or empty value is refused at the Apply button rather than being ' +
+    'applied as a 0% discount',
 );
 
 console.log('✓ discount-all-scope-amount');
