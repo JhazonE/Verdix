@@ -71,6 +71,12 @@ export interface PosSettings {
   enableCashTransferAuth?: boolean;
   cashTransferAuthUsername?: string | null;
   cashTransferAuthPassword?: string | null;
+  enableXReadingAuth?: boolean;
+  xReadingAuthUsername?: string | null;
+  xReadingAuthPassword?: string | null;
+  enableZReadingAuth?: boolean;
+  zReadingAuthUsername?: string | null;
+  zReadingAuthPassword?: string | null;
   enableCustomerDisplay?: boolean;
   customerDisplayMessage?: string | null;
   customerDisplayShowLogo?: boolean;
@@ -154,6 +160,12 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   enableCashTransferAuth: false,
   cashTransferAuthUsername: '',
   cashTransferAuthPassword: '',
+  enableXReadingAuth: false,
+  xReadingAuthUsername: '',
+  xReadingAuthPassword: '',
+  enableZReadingAuth: false,
+  zReadingAuthUsername: '',
+  zReadingAuthPassword: '',
   enableCustomerDisplay: false,
   customerDisplayMessage: 'Welcome! Thank you for shopping.',
   customerDisplayShowLogo: true,

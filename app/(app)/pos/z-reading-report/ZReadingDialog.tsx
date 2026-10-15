@@ -204,8 +204,10 @@ function ZReadingReportView({ onBack, printMode, terminalId, terminalName, initi
   );
 }
 
-export function ZReadingDialog({ isOpen, onOpenChange, terminalId, terminalName, printMode, initialData, autoShow }: ZReadingDialogProps) {
-  const skipAuth = !!initialData || !!autoShow;
+export function ZReadingDialog({ isOpen, onOpenChange, terminalId, terminalName, printMode, initialData, autoShow, requireAuth = true, authCredentials }: ZReadingDialogProps) {
+  // initialData/autoShow are the end-shift report paths; !requireAuth is the
+  // POS Setup toggle being off. All three go straight to the report.
+  const skipAuth = !!initialData || !!autoShow || !requireAuth;
   const [showReport, setShowReport] = useState(skipAuth);
 
   useEffect(() => {
@@ -232,6 +234,7 @@ export function ZReadingDialog({ isOpen, onOpenChange, terminalId, terminalName,
           itself, closing the report the instant auth succeeds. */}
       <AdminAuthDialog
         isOpen={isOpen && !showReport}
+        requiredCredentials={authCredentials}
         onOpenChange={(open) => {
           // useAdminAuth calls onSuccess() then onOpenChange(false) as part
           // of the same authenticate flow - only treat this as the user

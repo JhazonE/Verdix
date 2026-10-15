@@ -9,14 +9,14 @@ import { AdminAuthDialog } from '../admin-auth/AdminAuthDialog';
 import { useXReadingReport } from './use-x-reading-report';
 import type { XReadingDialogProps } from './x-reading-report-types';
 
-export function XReadingDialog({ isOpen, onOpenChange, shiftId, autoShow = false, terminalName, printMode }: XReadingDialogProps) {
+export function XReadingDialog({ isOpen, onOpenChange, shiftId, autoShow = false, terminalName, printMode, requireAuth = true, authCredentials }: XReadingDialogProps) {
   const {
     isAuthDialogOpen, setIsAuthDialogOpen,
     showReport,
     reportData, businessSettings, loading,
     isPrinting,
     handlePrint, loadReportData, handleAdminAuthSuccess,
-  } = useXReadingReport({ isOpen, shiftId, autoShow, terminalName, printMode });
+  } = useXReadingReport({ isOpen, shiftId, autoShow, terminalName, printMode, requireAuth });
 
   const authSucceededRef = useRef(false);
 
@@ -28,7 +28,8 @@ export function XReadingDialog({ isOpen, onOpenChange, shiftId, autoShow = false
           detection to treat the nested Dialog as "outside" and dismiss
           itself, closing the report the instant auth succeeds. */}
       <AdminAuthDialog
-        isOpen={isAuthDialogOpen}
+        isOpen={requireAuth && isAuthDialogOpen}
+        requiredCredentials={authCredentials}
         onOpenChange={(open) => {
           setIsAuthDialogOpen(open);
           // useAdminAuth calls onSuccess() then onOpenChange(false) as part

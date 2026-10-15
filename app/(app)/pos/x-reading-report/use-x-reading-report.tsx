@@ -14,9 +14,11 @@ type Options = {
   autoShow?: boolean;
   terminalName?: string;
   printMode: 'browser' | 'escpos' | 'usb' | 'native';
+  /** When false, the X-Reading auth step is skipped entirely (POS Setup toggle). */
+  requireAuth?: boolean;
 };
 
-export function useXReadingReport({ isOpen, shiftId, autoShow = false, terminalName, printMode }: Options) {
+export function useXReadingReport({ isOpen, shiftId, autoShow = false, terminalName, printMode, requireAuth = true }: Options) {
   type ReturnType = {
     isAuthDialogOpen: boolean;
     setIsAuthDialogOpen: (v: boolean) => void;
@@ -114,7 +116,9 @@ export function useXReadingReport({ isOpen, shiftId, autoShow = false, terminalN
   };
 
   useEffect(() => {
-    if (isOpen && autoShow) {
+    if (isOpen && (autoShow || !requireAuth)) {
+      // autoShow is the end-shift report path; !requireAuth is the POS Setup
+      // toggle being off. Both go straight to the report with no auth step.
       setShowReport(true);
       loadReportData();
     } else if (isOpen) {
@@ -125,7 +129,7 @@ export function useXReadingReport({ isOpen, shiftId, autoShow = false, terminalN
       setShowReport(false);
       setReportData(null);
     }
-  }, [isOpen, autoShow, loadReportData]);
+  }, [isOpen, autoShow, requireAuth, loadReportData]);
 
   useEffect(() => {
     if (isOpen) {

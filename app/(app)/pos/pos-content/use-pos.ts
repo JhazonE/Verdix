@@ -146,6 +146,8 @@ export function usePOS() {
   const [isSuspendedAuthOpen, setIsSuspendedAuthOpen] = useState(false);
   const [isOverallReadingAuthOpen, setIsOverallReadingAuthOpen] = useState(false);
   const [overallReadingAuthCredentials, setOverallReadingAuthCredentials] = useState<{ username?: string | null; password?: string | null } | null>(null);
+  const [xReadingAuthCredentials, setXReadingAuthCredentials] = useState<{ username?: string | null; password?: string | null } | null>(null);
+  const [zReadingAuthCredentials, setZReadingAuthCredentials] = useState<{ username?: string | null; password?: string | null } | null>(null);
   const [isTrainingMode, setIsTrainingMode] = useState(false);
 
   const [isInsufficientStockOpen, setIsInsufficientStockOpen] = useState(false);
@@ -317,6 +319,8 @@ export function usePOS() {
         setSuspendAuthCredentials({ username: result.data.suspendAuthUsername, password: result.data.suspendAuthPassword });
         setSuspendedAuthCredentials({ username: result.data.suspendedAuthUsername, password: result.data.suspendedAuthPassword });
         setOverallReadingAuthCredentials({ username: result.data.overallReadingAuthUsername, password: result.data.overallReadingAuthPassword });
+        setXReadingAuthCredentials({ username: result.data.xReadingAuthUsername, password: result.data.xReadingAuthPassword });
+        setZReadingAuthCredentials({ username: result.data.zReadingAuthUsername, password: result.data.zReadingAuthPassword });
         setIsTrainingMode(result.data.isTrainingMode || false);
         setShowQuantityInSearch(result.data.showQuantityInSearch ?? true);
         setEnableCustomerDisplay(result.data.enableCustomerDisplay || false);
@@ -1535,6 +1539,7 @@ export function usePOS() {
     isSuspendedAuthOpen, setIsSuspendedAuthOpen, suspendedAuthCredentials, handleSuspendedAuthSuccess,
     handleOpenSuspended,
     isOverallReadingAuthOpen, setIsOverallReadingAuthOpen, overallReadingAuthCredentials,
+    xReadingAuthCredentials, zReadingAuthCredentials,
     // price levels
     priceLevels, selectedPriceLevelId, setSelectedPriceLevelId,
     activeLevelId, defaultLevelId, activeLevelName,

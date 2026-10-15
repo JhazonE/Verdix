@@ -239,6 +239,8 @@ export function PosDialogs(pos: Props) {
         terminalId={pos.selectedTerminalId}
         terminalName={pos.currentTerminalName}
         autoShow={false}
+        requireAuth={!!pos.businessSettings?.enableZReadingAuth}
+        authCredentials={pos.zReadingAuthCredentials}
       />
 
       <ZReadingWarningDialog
@@ -269,6 +271,8 @@ export function PosDialogs(pos: Props) {
         shiftId={pos.currentShiftId ?? pos.lastEndedShiftId ?? undefined}
         terminalName={pos.currentTerminalName}
         printMode={pos.businessSettings?.printMode || 'browser'}
+        requireAuth={!!pos.businessSettings?.enableXReadingAuth}
+        authCredentials={pos.xReadingAuthCredentials}
       />
 
       <ShutdownConfirmationDialog
