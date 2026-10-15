@@ -428,7 +428,7 @@ export function useEditProductForm({
     }
   }, [watchedCost, watchedCategoryName, watchedSubcategoryName, watchedBrandName, markupSupplierId, categories, subcategories, brands, suppliers, form, priceLevels, systemSettings, isInitialized, priceLevelFields]);
 
-  useSellingUnitAutoPricing({
+  const { notifyPriceCleared } = useSellingUnitAutoPricing({
     form,
     enabled: isInitialized,
     priceLevels,
@@ -686,6 +686,7 @@ export function useEditProductForm({
 
     // handlers
     generateBarcode,
+    notifyPriceCleared,
     saveChanges,
     refreshBrands,
     refreshDepartments,

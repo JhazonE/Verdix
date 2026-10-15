@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 
 import { calculateSuggestedPrice } from '@/lib/purchase-utils';
+import { createAutoPriceCellTracker } from '@/lib/selling-unit-autoprice-cells';
 
 /**
  * Auto-fills the Selling Units tab from the base cost:
@@ -38,21 +39,26 @@ export function useSellingUnitAutoPricing({
   /**
    * Identifies the product currently loaded in the form. The Edit dialog is
    * reused across products, so without this the cells this hook remembers
-   * writing for product A stay in `lastAuto` and let it overwrite a
+   * writing for product A stay in the cell tracker and let it overwrite a
    * hand-typed price on product B that happens to equal one of them. Changing
    * it clears that memory, which also means every price already on a freshly
    * opened product reads as the user's and is left alone.
    */
   resetKey?: string | number;
 }) {
-  const lastAuto = useRef<Record<string, number>>({});
-  /** Cells the user has taken over; see `writable` below. */
-  const locked = useRef<Record<string, boolean>>({});
+  // Which cells this hook owns, which the user has taken over, and which the
+  // user deliberately EMPTIED — see lib/selling-unit-autoprice-cells.ts. The
+  // cleared case is why this is not just a "last written value" map: blanking a
+  // price removes its row, and a removed row is otherwise indistinguishable
+  // from a level that was never filled in, so the price came straight back and
+  // a price level could not be cleared at all.
+  const cellsRef = useRef<ReturnType<typeof createAutoPriceCellTracker>>();
+  if (!cellsRef.current) cellsRef.current = createAutoPriceCellTracker();
+  const cells = cellsRef.current;
   const lastResetKey = useRef(resetKey);
   if (lastResetKey.current !== resetKey) {
     lastResetKey.current = resetKey;
-    lastAuto.current = {};
-    locked.current = {};
+    cells.reset();
   }
 
   const baseCost = Number(form.watch('cost')) || 0;
@@ -89,29 +95,30 @@ export function useSellingUnitAutoPricing({
       return parseFloat(calculateSuggestedPrice(cost, markup ?? 0, 0, level).toFixed(2));
     };
 
-    // May overwrite a cell only if it is empty or still holds our own value.
-    //
-    // A cell that fails this test once is the user's from then on, recorded in
-    // `locked` — otherwise it would become writable again the moment a cost
-    // change made the newly computed price happen to equal what they typed, or
-    // they cleared it to 0 mid-keystroke, and the next pass would quietly take
-    // the cell back. `locked` is cleared with `lastAuto` when `resetKey`
-    // changes, so the lock lasts exactly as long as the product is open.
-    const writable = (key: string, current: unknown) => {
-      if (locked.current[key]) return false;
-      const ok =
-        current == null || current === '' || Number(current) === 0 || current === lastAuto.current[key];
-      if (!ok) locked.current[key] = true;
-      return ok;
-    };
+    // May overwrite a cell only if it is empty or still holds our own value,
+    // and never one the user typed into or emptied. The tracker remembers both
+    // for as long as `resetKey` holds, so a cost change cannot hand a cell back
+    // the moment the newly computed price happens to equal what they typed.
+    const writable = (key: string, current: unknown) => cells.writable(key, current);
 
     // --- Base unit price levels ---
     // A level the user never touched has no row at all; add the missing ones
     // so there is a cell to fill.
     const current: any[] = form.getValues('priceLevels') || [];
-    const missing = priceLevels.filter((l: any) => !current.some(r => r?.levelId === l.id));
+    const missing = priceLevels.filter(
+      (l: any) =>
+        !current.some(r => r?.levelId === l.id) &&
+        // A row missing because the USER cleared that price stays missing — a
+        // blank price means "no override" and removes the row, so re-seeding
+        // every absent level here is what made a cleared cell refill itself.
+        cells.shouldSeedMissingRow(`base:${l.id}`),
+    );
     if (baseCost > 0 && missing.length) {
       form.setValue('priceLevels', [...current, ...missing.map((l: any) => ({ levelId: l.id, price: 0 }))], { shouldDirty: true });
+      // The 0 just written is this hook's own placeholder, not a price anyone
+      // chose, so claim it — otherwise the pass that re-runs below reads it as
+      // a deliberate "sell at cost" and leaves the new row stuck at 0.
+      missing.forEach((l: any) => cells.recordAuto(`base:${l.id}`, 0));
       return; // re-runs via the signature once the rows exist
     }
     const baseRows: any[] = current;
@@ -127,7 +134,7 @@ export function useSellingUnitAutoPricing({
       const path = `priceLevels.${idx}.price`;
       if (!writable(key, form.getValues(path))) return;
       if (form.getValues(path) !== price) form.setValue(path, price, { shouldDirty: true });
-      lastAuto.current[key] = price;
+      cells.recordAuto(key, price);
     });
 
     // --- Extra selling units ---
@@ -143,7 +150,7 @@ export function useSellingUnitAutoPricing({
         const costKey = `cost:${uKey}`;
         if (writable(costKey, unit?.cost)) {
           if (unit?.cost !== auto) form.setValue(`sellingUnits.${i}.cost`, auto, { shouldDirty: true });
-          lastAuto.current[costKey] = auto;
+          cells.recordAuto(costKey, auto);
           unitCost = auto;
         }
       }
@@ -158,12 +165,16 @@ export function useSellingUnitAutoPricing({
         const key = `unit:${uKey}:${level.id}`;
         const idx = rows.findIndex(r => r.levelId === level.id);
         if (idx === -1) {
+          // Only seed a level that has never been filled in. A level whose row
+          // is absent because the user CLEARED its price must stay absent,
+          // otherwise the clear is undone on the very next pass.
+          if (!cells.shouldSeedMissingRow(key)) return;
           rows.push({ levelId: level.id, price });
-          lastAuto.current[key] = price;
+          cells.recordAuto(key, price);
           changed = true;
         } else if (writable(key, rows[idx].price) && rows[idx].price !== price) {
           rows[idx] = { ...rows[idx], price };
-          lastAuto.current[key] = price;
+          cells.recordAuto(key, price);
           changed = true;
         }
       });
@@ -171,4 +182,19 @@ export function useSellingUnitAutoPricing({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature, enabled, priceLevels]);
+
+  return {
+    /**
+     * Tell the autopricer the user emptied a price-level cell, so it stops
+     * suggesting into it. The form only ever records the ABSENCE of a price
+     * (a blank price means "no override" and removes the row), which on its
+     * own is indistinguishable from a level that was never filled in — this is
+     * how the hook learns which of the two it is looking at.
+     *
+     * `unitKey` is the selling unit's field id, or null for the base unit.
+     */
+    notifyPriceCleared: useCallback((unitKey: string | null, levelId: string) => {
+      cells.recordCleared(unitKey ? `unit:${unitKey}:${levelId}` : `base:${levelId}`);
+    }, [cells]),
+  };
 }

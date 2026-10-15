@@ -67,6 +67,7 @@ import './product-markup-resolution.test';
 import './markup-validation.test';
 import './selling-units.test';
 import './selling-unit-rows.test';
+import './selling-unit-autopricing-clear.test';
 import './warehouse-sibling-barcode.test';
 import './pos-cart-units.test';
 import './cart-quantity-format.test';
