@@ -62,7 +62,13 @@ export async function GET(request: NextRequest) {
       { name: 'membership_fee', type: 'DECIMAL(10,2) NOT NULL DEFAULT 0.00' },
       { name: 'membership_duration_months', type: 'INT NOT NULL DEFAULT 12' },
       { name: 'enable_quick_add_customer', type: 'BOOLEAN DEFAULT TRUE' },
-      { name: 'enable_browser_pos', type: 'TINYINT(1) DEFAULT 0' }
+      { name: 'enable_browser_pos', type: 'TINYINT(1) DEFAULT 0' },
+      { name: 'enable_x_reading_auth', type: 'BOOLEAN DEFAULT FALSE' },
+      { name: 'x_reading_auth_username', type: 'VARCHAR(255) NULL' },
+      { name: 'x_reading_auth_password', type: 'VARCHAR(255) NULL' },
+      { name: 'enable_z_reading_auth', type: 'BOOLEAN DEFAULT FALSE' },
+      { name: 'z_reading_auth_username', type: 'VARCHAR(255) NULL' },
+      { name: 'z_reading_auth_password', type: 'VARCHAR(255) NULL' }
     ];
 
     const currentColumnsResult = await query(
@@ -173,6 +179,12 @@ export async function GET(request: NextRequest) {
         enable_cash_transfer_auth AS enableCashTransferAuth,
         cash_transfer_auth_username AS cashTransferAuthUsername,
         cash_transfer_auth_password AS cashTransferAuthPassword,
+        enable_x_reading_auth AS enableXReadingAuth,
+        x_reading_auth_username AS xReadingAuthUsername,
+        x_reading_auth_password AS xReadingAuthPassword,
+        enable_z_reading_auth AS enableZReadingAuth,
+        z_reading_auth_username AS zReadingAuthUsername,
+        z_reading_auth_password AS zReadingAuthPassword,
         pos_mode AS posMode,
         membership_fee AS membershipFee,
         membership_duration_months AS membershipDurationMonths,
@@ -425,6 +437,12 @@ export async function POST(request: NextRequest) {
         enableCashTransferAuth: 'enable_cash_transfer_auth',
         cashTransferAuthUsername: 'cash_transfer_auth_username',
         cashTransferAuthPassword: 'cash_transfer_auth_password',
+        enableXReadingAuth: 'enable_x_reading_auth',
+        xReadingAuthUsername: 'x_reading_auth_username',
+        xReadingAuthPassword: 'x_reading_auth_password',
+        enableZReadingAuth: 'enable_z_reading_auth',
+        zReadingAuthUsername: 'z_reading_auth_username',
+        zReadingAuthPassword: 'z_reading_auth_password',
         posMode: 'pos_mode',
         membershipFee: 'membership_fee',
         membershipDurationMonths: 'membership_duration_months',

@@ -463,6 +463,12 @@ export interface SystemSettings {
   enableCashTransferAuth?: boolean;
   cashTransferAuthUsername?: string | null;
   cashTransferAuthPassword?: string | null;
+  enableXReadingAuth?: boolean;
+  xReadingAuthUsername?: string | null;
+  xReadingAuthPassword?: string | null;
+  enableZReadingAuth?: boolean;
+  zReadingAuthUsername?: string | null;
+  zReadingAuthPassword?: string | null;
   posMode?: 'default' | 'pharmacy';
   enableQuickAddCustomer?: boolean;
 }
