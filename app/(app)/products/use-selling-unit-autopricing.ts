@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { UseFormReturn } from 'react-hook-form';
 
 import { calculateSuggestedPrice } from '@/lib/purchase-utils';
@@ -27,6 +27,7 @@ export function useSellingUnitAutoPricing({
   unitKeys,
   markup,
   resetKey,
+  adoptSavedRows = false,
 }: {
   form: UseFormReturn<any>;
   enabled?: boolean;
@@ -45,6 +46,17 @@ export function useSellingUnitAutoPricing({
    * opened product reads as the user's and is left alone.
    */
   resetKey?: string | number;
+  /**
+   * True when the form was populated from a SAVED product (the Edit dialog).
+   * Such a product's price-level rows are all of record: the ones it carries
+   * were chosen by somebody, and the levels it carries no row for are absent
+   * because somebody removed them. Adopting both on open is what stops a
+   * deleted price level from being seeded straight back the next time the
+   * product is opened. The Add dialog leaves this off — a product being
+   * created genuinely has nothing filled in yet, so every level is the
+   * autopricer's to suggest into.
+   */
+  adoptSavedRows?: boolean;
 }) {
   // Which cells this hook owns, which the user has taken over, and which the
   // user deliberately EMPTIED — see lib/selling-unit-autoprice-cells.ts. The
@@ -63,6 +75,74 @@ export function useSellingUnitAutoPricing({
 
   const baseCost = Number(form.watch('cost')) || 0;
   const units: any[] = form.watch('sellingUnits') || [];
+
+  // Adopt a saved product's rows once per product load, before the suggesting
+  // effect below gets a chance to seed anything. `enabled` is the Edit
+  // dialog's "the form.reset has landed" signal, so the values read here are
+  // the product's own and not the previously opened product's leftovers. This
+  // runs in a layout effect so the adoption is recorded in the same commit the
+  // values arrive in; the suggesting effect is a plain effect and so runs
+  // after it.
+  //
+  // It re-adopts whenever `enabled` goes false→true, not only when `resetKey`
+  // changes: the dialog drops `enabled` on every open and reopening the SAME
+  // product keeps the same key, yet that reopen is exactly the case this
+  // exists for — the form has just been reset from freshly saved data whose
+  // absent rows must be read as removals all over again.
+  const adoptedFor = useRef<string | number | undefined>(undefined);
+  const wasEnabled = useRef(false);
+  useLayoutEffect(() => {
+    if (!adoptSavedRows) return;
+    if (!enabled) {
+      wasEnabled.current = false;
+      return;
+    }
+    if (!priceLevels?.length) return;
+    // The field-array ids this adoption keys its cells by must already be the
+    // reset product's. If they have not caught up with the form's own units
+    // yet, adopting now would record cells under ids the suggesting effect
+    // never looks at, so wait for the render where they agree.
+    const formUnits: any[] = form.getValues('sellingUnits') || [];
+    if (unitKeys.length !== formUnits.length) return;
+    const reopened = !wasEnabled.current;
+    wasEnabled.current = true;
+    if (!reopened && adoptedFor.current === resetKey) return;
+    adoptedFor.current = resetKey;
+    cells.reset();
+
+    const keys: string[] = [];
+    const present = new Set<string>();
+
+    const adoptUnit = (prefix: string, rows: any[]) => {
+      for (const level of priceLevels) {
+        const key = `${prefix}:${level.id}`;
+        keys.push(key);
+        const row = (rows || []).find((r: any) => r?.levelId === level.id);
+        // A row with no price is not an override (the write side skips it), so
+        // it counts as absent here for the same reason.
+        if (row && row.price !== undefined && row.price !== null) present.add(key);
+      }
+    };
+
+    adoptUnit('base', form.getValues('priceLevels') || []);
+    formUnits.forEach((unit, i) => {
+      const uKey = unitKeys[i];
+      if (!uKey) return;
+      // A saved cost is equally the user's, so the base-cost × factor
+      // suggestion must not overwrite it on reopen. A unit with NO saved cost
+      // is deliberately left out of the adoption: unlike a price level, an
+      // empty cost is not a removed override but a blank the suggestion is
+      // still meant to fill.
+      if (unit?.cost !== undefined && unit?.cost !== null) {
+        keys.push(`cost:${uKey}`);
+        present.add(`cost:${uKey}`);
+      }
+      adoptUnit(`unit:${uKey}`, unit?.priceLevels || []);
+    });
+
+    cells.adoptSaved(keys, (key) => present.has(key));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adoptSavedRows, enabled, priceLevels, resetKey, unitKeys.join('|')]);
 
   // Primitive signature so the effect re-runs only when an input changes, not
   // on the re-render triggered by its own writes.

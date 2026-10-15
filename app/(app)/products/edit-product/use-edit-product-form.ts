@@ -436,6 +436,11 @@ export function useEditProductForm({
     unitKeys: sellingUnitFields.map(f => f.id),
     markup: autoMarkup,
     resetKey: product?.id,
+    // This form is always populated from a saved product, so its price-level
+    // rows are decisions, not blanks — including the levels it has no row for.
+    // Without this, a price level the user deleted and saved was seeded back
+    // the next time the product was opened.
+    adoptSavedRows: true,
   });
 
   const [costSuggestionSource, setCostSuggestionSource] = useState<string | null>(null);
