@@ -137,7 +137,10 @@ export async function GET(request: NextRequest) {
             quantity: Math.abs(qty),
             previousStock: newStock - qty,
             newStock,
-            reason: r.reason || null,
+            // Bulk rows carry the batch memo in `reason`, which the dialog
+            // already shows once in its Notes block; only a genuinely
+            // per-item reason is worth repeating on the line.
+            reason: r.reason && r.reason !== r.note ? r.reason : null,
           };
         }),
       },

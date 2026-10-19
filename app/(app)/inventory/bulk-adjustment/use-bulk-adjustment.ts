@@ -125,7 +125,7 @@ export function useBulkAdjustment() {
       toast({ title: 'Already added', description: `${product.name} is already in the list.` });
       return;
     }
-    setAdjustments(prev => [...prev, { product, quantity: 1, type: adjustmentType, reason: '' }]);
+    setAdjustments(prev => [...prev, { product, quantity: 1, type: adjustmentType }]);
     setSearch('');
     setShowResults(false);
     setShowMobileSearch(false);
@@ -168,7 +168,8 @@ export function useBulkAdjustment() {
         adjustments: adjustments.map(a => ({
           productId: a.product.id,
           quantity: a.quantity,
-          reason: a.reason || note || 'Bulk Stock Adjustment',
+          // The batch memo is the reason for every line now.
+          reason: note || 'Bulk Stock Adjustment',
           expirationDate: a.product.isPerishable && adjustmentType === 'add' ? (a.expirationDate || null) : null,
         })),
         notes: note || 'Bulk Stock Adjustment',
@@ -214,7 +215,10 @@ export function useBulkAdjustment() {
             unitOfMeasure: a.product.unitOfMeasure || null,
             quantity: a.quantity,
             previousStock: a.product.stock,
-            reason: a.reason || note || null,
+            // Left blank deliberately: the memo is a property of the BATCH and
+            // already prints in the slip's Notes block, so repeating it on
+            // every line would just be the same sentence N times.
+            reason: null,
             expirationDate: a.expirationDate || null,
             pendingApproval: queuedIds.has(String(a.product.id)),
           })),

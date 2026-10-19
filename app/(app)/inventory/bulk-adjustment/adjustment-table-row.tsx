@@ -97,14 +97,6 @@ export function AdjustmentTableRow({
           )}
         </TableCell>
       )}
-      <TableCell className="py-4">
-        <Input
-          placeholder="Optional note..."
-          className="h-8 text-xs w-full"
-          value={adj.reason}
-          onChange={e => onUpdate(adj.product.id, { reason: e.target.value })}
-        />
-      </TableCell>
       <TableCell className="py-4 pr-4">
         <Button
           variant="ghost"

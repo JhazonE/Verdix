@@ -135,22 +135,19 @@ export default function BulkAdjustmentClient() {
             {adjustments.length === 0 ? (
               <EmptyState />
             ) : (
-              // min-w keeps every column at a usable size on a narrow window
-              // instead of letting the browser squeeze Note to nothing; the
+              // min-w keeps every column usable on a narrow window; the
               // wrapper scrolls horizontally rather than crushing the row.
-              <Table className="min-w-[840px]">
+              <Table className="min-w-[760px]">
                 <TableHeader className="sticky top-0 bg-card z-10 border-b border-border">
                   <TableRow className="hover:bg-transparent">
-                    {/* Product was a fixed 280px, which left nothing for Note
-                        once the Expiry column appeared — it squeezed to a few
-                        unusable pixels. Product now shrinks instead, and Note
-                        keeps a floor wide enough to type in. */}
-                    <TableHead className="pl-6 py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground min-w-[150px]">Product</TableHead>
-                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[100px]">Type</TableHead>
-                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[135px]">Quantity</TableHead>
-                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[105px]">Impact</TableHead>
-                    {showExpirationColumn && <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[135px]">Expiry</TableHead>}
-                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[170px]">Note</TableHead>
+                    {/* Product takes the slack so long names wrap rather than
+                        widening the row; the rest are sized to fit the pane
+                        (viewport minus the 340px config sidebar). */}
+                    <TableHead className="pl-6 py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground min-w-[220px]">Product</TableHead>
+                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[110px]">Type</TableHead>
+                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[150px]">Quantity</TableHead>
+                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[120px]">Impact</TableHead>
+                    {showExpirationColumn && <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[160px]">Expiry</TableHead>}
                     <TableHead className="pr-4 py-3 w-10"></TableHead>
                   </TableRow>
                 </TableHeader>

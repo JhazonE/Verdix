@@ -152,7 +152,12 @@ export async function GET(request: NextRequest) {
         // the difference. Reconstructed rather than stored, which keeps this
         // correct for rows written before this feature existed.
         previousStock: newStock - qty,
-        reason: r.reason || null,
+        // Bulk adjustments write the batch memo into every row's `reason`,
+        // and it already prints in the slip's Notes block — so drop the
+        // per-line copy when it is just that same text repeated. A row whose
+        // reason genuinely differs (single adjustments, older bulk rows that
+        // carried a per-item note) still shows it.
+        reason: r.reason && r.reason !== r.note ? r.reason : null,
         expirationDate: null,
       };
     });
