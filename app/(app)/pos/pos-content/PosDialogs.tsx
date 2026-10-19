@@ -100,6 +100,16 @@ export function PosDialogs(pos: Props) {
       />
 
       <AdminAuthDialog
+        isOpen={pos.isDiscountAuthOpen}
+        onOpenChange={pos.setIsDiscountAuthOpen}
+        title="Discount Authorization"
+        description="Please provide credentials to apply a discount"
+        requiredCredentials={pos.discountAuthCredentials}
+        onSuccess={pos.handleDiscountAuthSuccess}
+        preventCloseAutoFocus
+      />
+
+      <AdminAuthDialog
         isOpen={pos.isEditItemAuthOpen}
         onOpenChange={pos.setIsEditItemAuthOpen}
         title="Edit Item Authorization"

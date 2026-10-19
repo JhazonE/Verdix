@@ -463,6 +463,9 @@ export interface SystemSettings {
   enableCashTransferAuth?: boolean;
   cashTransferAuthUsername?: string | null;
   cashTransferAuthPassword?: string | null;
+  enableDiscountAuth?: boolean;
+  discountAuthUsername?: string | null;
+  discountAuthPassword?: string | null;
   enableXReadingAuth?: boolean;
   xReadingAuthUsername?: string | null;
   xReadingAuthPassword?: string | null;
