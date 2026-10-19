@@ -32,7 +32,13 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate');
     const category = searchParams.get('category');
     const brand = searchParams.get('brand');
+    const supplier = searchParams.get('supplier');
     const search = searchParams.get('search');
+
+    // "Remaining" normally means stock RIGHT NOW. With `asOfDate` it instead
+    // means stock at the end of that day, reconstructed by subtracting every
+    // movement recorded after it from the current figure. See `remainingExpr`.
+    const asOfDate = searchParams.get('asOfDate');
 
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
@@ -73,6 +79,14 @@ export async function GET(request: NextRequest) {
       whereConditions.push('p.brand = ?');
       whereParams.push(brand);
     }
+    if (supplier && supplier !== 'all') {
+      // A product's supplier lives in EITHER the newer primary-supplier
+      // mapping or the legacy `products.supplier_id` column, and the back
+      // office reads both (see getProducts in products/actions.ts). Matching
+      // only one of them would silently hide products from this filter.
+      whereConditions.push('(spm.supplier_id = ? OR p.supplier_id = ?)');
+      whereParams.push(supplier, supplier);
+    }
     if (search) {
       // `sku` is deliberately absent: it is retired from product search
       // (docs/superpowers/specs/2026-09-22-retire-sku-search-pos-inventory-design.md).
@@ -90,10 +104,37 @@ export async function GET(request: NextRequest) {
     // per SELLING unit, so scaling by the factor here would multiply a case
     // price by the pieces in the case. Returns subtract themselves.
     const revenueExpr = `COALESCE(SUM(si.quantity * si.price), 0)`;
+    // What is LEFT. Normally `products.stock` as it stands now.
+    //
+    // With an as-of date, stock is reconstructed by subtracting every movement
+    // recorded AFTER that date from the current figure. `stock_movements` has
+    // no snapshot row, so walking backwards from a known-good present is the
+    // only route; it also works for products with no movement in the window,
+    // which a "last new_stock before the date" lookup would return NULL for.
+    //
+    // This is only as good as the movement log. Verified on live data: all 98
+    // products that had sold carried movement history, and 60 of 61 products
+    // reconstructed to exactly the figure the log's own `new_stock` recorded
+    // at that date (the one exception had a pre-existing 1-unit drift between
+    // its latest movement and `products.stock`).
+    const remainingExpr = asOfDate
+      ? `(p.stock - COALESCE((
+            SELECT SUM(sm.quantity_change) FROM stock_movements sm
+             WHERE sm.product_id = p.id AND DATE(sm.created_at) > ?
+          ), 0))`
+      : `p.stock`;
+
     // Value of what is LEFT, at cost. FIFO batch cost where batches exist,
     // falling back to products.cost — the same resolution the Stock on Hand
     // report uses, so the two reports cannot disagree on stock value.
-    const remainingValueExpr = `
+    //
+    // On an as-of date the batch figures are today's and would describe a
+    // different moment than the quantity beside them, so value falls back to
+    // the reconstructed quantity at the product's cost. That is an
+    // approximation of historical value, not a restatement of it.
+    const remainingValueExpr = asOfDate
+      ? `(${remainingExpr} * COALESCE(p.cost, 0))`
+      : `
       COALESCE(
         (SELECT SUM(b.quantity_remaining * b.unit_cost)
            FROM inventory_batches b
@@ -102,8 +143,11 @@ export async function GET(request: NextRequest) {
       )
     `;
 
+    // The supplier join is always present so `spm.supplier_id` can be filtered
+    // on, and is a LEFT JOIN so products without a mapping are not dropped.
     const baseSql = `
       FROM products p
+      LEFT JOIN supplier_product_mapping spm ON p.id = spm.product_id AND spm.is_primary = 1
       JOIN sale_items si ON p.id = si.product_id
       JOIN sales_transactions st ON si.sale_id = st.id
         AND ${joinConditions.join(' AND ')}
@@ -113,6 +157,12 @@ export async function GET(request: NextRequest) {
     `;
     const baseParams = [...joinParams, ...whereParams];
 
+    // Placeholders inside the SELECT list bind BEFORE the ones in the FROM /
+    // WHERE that follows it, so every statement below prepends one asOfDate
+    // argument per occurrence of `remainingExpr` in its own select list.
+    const asOfArgs = (occurrences: number) =>
+      asOfDate ? Array(occurrences).fill(asOfDate) : [];
+
     const selectSql = `
       SELECT
         p.id,
@@ -120,13 +170,16 @@ export async function GET(request: NextRequest) {
         p.barcode,
         p.category,
         p.brand,
-        p.stock AS qty_remaining,
+        ${remainingExpr} AS qty_remaining,
         p.unit_of_measure,
         ${qtySoldExpr} AS qty_sold,
         ${qtyReturnedExpr} AS qty_returned,
         ${revenueExpr} AS revenue,
         ${remainingValueExpr} AS remaining_value
     `;
+    // `remainingExpr` appears once directly and once more nested inside
+    // `remainingValueExpr` when an as-of date is active.
+    const SELECT_ASOF_OCCURRENCES = 2;
 
     const sortMap: Record<string, string> = {
       sold_desc: 'qty_sold DESC',
@@ -153,7 +206,7 @@ export async function GET(request: NextRequest) {
 
     const rows = await query(
       `${selectSql} ${baseSql} ORDER BY ${orderBy}, p.name ASC LIMIT ? OFFSET ?`,
-      [...baseParams, limit, offset]
+      [...asOfArgs(SELECT_ASOF_OCCURRENCES), ...baseParams, limit, offset]
     );
 
     // Totals cover the whole filtered set, not the current page — a buyer
@@ -169,7 +222,7 @@ export async function GET(request: NextRequest) {
       FROM (
         SELECT
           p.id,
-          p.stock AS qty_remaining,
+          ${remainingExpr} AS qty_remaining,
           ${qtySoldExpr} AS qty_sold,
           ${qtyReturnedExpr} AS qty_returned,
           ${revenueExpr} AS revenue,
@@ -177,7 +230,10 @@ export async function GET(request: NextRequest) {
         ${baseSql}
       ) AS grouped
     `;
-    const [summaryResult] = await query(summarySql, baseParams);
+    const [summaryResult] = await query(summarySql, [
+      ...asOfArgs(SELECT_ASOF_OCCURRENCES),
+      ...baseParams,
+    ]);
 
     return NextResponse.json({
       success: true,

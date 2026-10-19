@@ -10,15 +10,15 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { Loader2, Printer, FileSpreadsheet } from 'lucide-react';
+import { Loader2, Printer, FileSpreadsheet, X } from 'lucide-react';
 import { formatCurrency, formatStockQuantity } from '@/lib/utils';
 import { ReportHeader } from '@/components/reports/ReportHeader';
 import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
 import { getApiUrl } from '@/lib/api-config';
 import { printReportTable, exportReportExcel } from '@/lib/report-print';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
-import { getCategories, getBrands } from '@/app/(app)/products/actions';
-import { Category } from '@/lib/types';
+import { getCategories, getBrands, getSuppliers } from '@/app/(app)/products/actions';
+import { Category, Supplier } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { PRODUCT_SEARCH_DEBOUNCE_MS } from '@/lib/product-search';
 import { format, startOfMonth } from 'date-fns';
@@ -85,11 +85,18 @@ export default function StockSalesReportPage() {
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedBrand, setSelectedBrand] = useState('all');
+  const [selectedSupplier, setSelectedSupplier] = useState('all');
+  /**
+   * Empty means "stock as it stands right now". A date means stock
+   * reconstructed as of the end of that day, from the movement log.
+   */
+  const [asOfDate, setAsOfDate] = useState('');
   const [sort, setSort] = useState('sold_desc');
   const [searchTerm, setSearchTerm] = useState('');
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [settings, setSettings] = useState<any>(null);
 
   const [page, setPage] = useState(1);
@@ -116,6 +123,8 @@ export default function StockSalesReportPage() {
     if (endDate) params.append('endDate', endDate);
     if (selectedCategory !== 'all') params.append('category', selectedCategory);
     if (selectedBrand !== 'all') params.append('brand', selectedBrand);
+    if (selectedSupplier !== 'all') params.append('supplier', selectedSupplier);
+    if (asOfDate) params.append('asOfDate', asOfDate);
     if (searchTerm.trim()) params.append('search', searchTerm.trim());
     params.append('sort', sort);
     params.append('page', String(pageNum));
@@ -126,6 +135,7 @@ export default function StockSalesReportPage() {
   useEffect(() => {
     getCategories().then(setCategories).catch((e) => console.error('Failed to fetch categories:', e));
     getBrands().then(setBrands).catch((e) => console.error('Failed to fetch brands:', e));
+    getSuppliers().then(setSuppliers).catch((e) => console.error('Failed to fetch suppliers:', e));
     (async () => {
       try {
         const res = await fetch(getApiUrl('/pos-settings'));
@@ -141,7 +151,7 @@ export default function StockSalesReportPage() {
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startDate, endDate, selectedCategory, selectedBrand, sort, page, pageSize]);
+  }, [startDate, endDate, selectedCategory, selectedBrand, selectedSupplier, asOfDate, sort, page, pageSize]);
 
   // The search term drives a SERVER-side filter, so it needs its own refetch —
   // without one, the summary tiles and pagination keep describing the
@@ -190,6 +200,15 @@ export default function StockSalesReportPage() {
 
   const periodLabel = `${startDate} to ${endDate}`;
 
+  // The remaining figure means two different things depending on `asOfDate`,
+  // so it is labelled differently everywhere it appears. A printed report that
+  // just said "Remaining" would be read as current stock whatever it showed.
+  const remainingLabel = asOfDate ? `Remaining as of ${asOfDate}` : 'Remaining';
+  const remainingValueLabel = asOfDate ? `Value as of ${asOfDate}` : 'Remaining Value';
+  const periodWithAsOf = asOfDate
+    ? `${periodLabel} · stock as of ${asOfDate}`
+    : periodLabel;
+
   const handlePrint = async () => {
     setIsPrinting(true);
     try {
@@ -202,7 +221,7 @@ export default function StockSalesReportPage() {
       printReportTable<Row>({
         title: REPORT_TITLE,
         subtitle: REPORT_SUBTITLE,
-        period: periodLabel,
+        period: periodWithAsOf,
         business: settings || undefined,
         columns: [
           { header: 'Barcode', cell: (r) => r.barcode || '-' },
@@ -210,9 +229,9 @@ export default function StockSalesReportPage() {
           { header: 'Category', cell: (r) => r.category || '-' },
           { header: 'Sold', align: 'right', emphasize: true, cell: (r) => formatStockQuantity(r.qty_sold) },
           { header: 'Returned', align: 'right', cell: (r) => formatStockQuantity(r.qty_returned) },
-          { header: 'Remaining', align: 'right', emphasize: true, cell: (r) => `${formatStockQuantity(r.qty_remaining)} ${r.unit_of_measure || ''}`.trim() },
+          { header: remainingLabel, align: 'right', emphasize: true, cell: (r) => `${formatStockQuantity(r.qty_remaining)} ${r.unit_of_measure || ''}`.trim() },
           { header: 'Sales', align: 'right', cell: (r) => formatCurrency(r.revenue) },
-          { header: 'Remaining Value', align: 'right', cell: (r) => formatCurrency(r.remaining_value) },
+          { header: remainingValueLabel, align: 'right', cell: (r) => formatCurrency(r.remaining_value) },
         ],
         rows: printRows,
         summary: [
@@ -220,7 +239,7 @@ export default function StockSalesReportPage() {
           { label: 'Total Qty Sold', value: formatStockQuantity(all.summary.totalSold) },
           { label: 'Total Qty Returned', value: formatStockQuantity(all.summary.totalReturned) },
           { label: 'Total Sales', value: formatCurrency(all.summary.totalRevenue) },
-          { label: 'Total Remaining Value', value: formatCurrency(all.summary.totalRemainingValue) },
+          { label: asOfDate ? `Total ${remainingValueLabel}` : 'Total Remaining Value', value: formatCurrency(all.summary.totalRemainingValue) },
         ],
         showSignature: true,
         emptyMessage: 'No products were sold in this period.',
@@ -245,10 +264,10 @@ export default function StockSalesReportPage() {
       const revenueSum = exportRows.reduce((s, r) => s + Number(r.revenue), 0);
       const remainingValueSum = exportRows.reduce((s, r) => s + Number(r.remaining_value), 0);
 
-      const fileName = `Stock_and_Sales_${format(new Date(startDate), 'yyyyMMdd')}_${format(new Date(endDate), 'yyyyMMdd')}.xls`;
+      const fileName = `Stock_and_Sales_${format(new Date(startDate), 'yyyyMMdd')}_${format(new Date(endDate), 'yyyyMMdd')}${asOfDate ? `_asof_${format(new Date(asOfDate), 'yyyyMMdd')}` : ''}.xls`;
       const ok = exportReportExcel<Row>({
         title: REPORT_TITLE,
-        subtitle: periodLabel,
+        subtitle: periodWithAsOf,
         columns: [
           { header: 'Barcode', cell: (r) => r.barcode || '-' },
           { header: 'Product Name', cell: (r) => r.name },
@@ -257,9 +276,9 @@ export default function StockSalesReportPage() {
           { header: 'Unit', cell: (r) => r.unit_of_measure || '-' },
           { header: 'Sold', align: 'right', cell: (r) => r.qty_sold },
           { header: 'Returned', align: 'right', cell: (r) => r.qty_returned },
-          { header: 'Remaining', align: 'right', cell: (r) => r.qty_remaining },
+          { header: remainingLabel, align: 'right', cell: (r) => r.qty_remaining },
           { header: 'Sales', align: 'right', cell: (r) => r.revenue },
-          { header: 'Remaining Value', align: 'right', cell: (r) => r.remaining_value },
+          { header: remainingValueLabel, align: 'right', cell: (r) => r.remaining_value },
         ],
         rows: exportRows,
         totals: [
@@ -368,6 +387,45 @@ export default function StockSalesReportPage() {
               </Select>
             </div>
             <div className="grid gap-2">
+              <label className="text-sm font-medium">Supplier</label>
+              <Select value={selectedSupplier} onValueChange={(v) => { setSelectedSupplier(v); resetPage(); }}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="All Suppliers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Suppliers</SelectItem>
+                  {suppliers.map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">
+                Stock As Of
+                <span className="ml-1 font-normal text-muted-foreground">(blank = now)</span>
+              </label>
+              <div className="flex items-center gap-1">
+                <Input
+                  type="date"
+                  value={asOfDate}
+                  onChange={(e) => { setAsOfDate(e.target.value); resetPage(); }}
+                  className="w-[150px]"
+                />
+                {asOfDate && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    title="Back to current stock"
+                    onClick={() => { setAsOfDate(''); resetPage(); }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="grid gap-2">
               <label className="text-sm font-medium">Sort By</label>
               <Select value={sort} onValueChange={(v) => { setSort(v); resetPage(); }}>
                 <SelectTrigger className="w-[200px]">
@@ -401,7 +459,7 @@ export default function StockSalesReportPage() {
           <CardContent><div className="text-2xl font-bold">{formatCurrency(summary.totalRevenue)}</div></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Remaining Stock Value</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">{asOfDate ? `Stock Value as of ${asOfDate}` : 'Remaining Stock Value'}</CardTitle></CardHeader>
           <CardContent><div className="text-2xl font-bold">{formatCurrency(summary.totalRemainingValue)}</div></CardContent>
         </Card>
       </div>
@@ -410,7 +468,7 @@ export default function StockSalesReportPage() {
         <ReportHeader
           title={REPORT_TITLE}
           subtitle={REPORT_SUBTITLE}
-          period={periodLabel}
+          period={periodWithAsOf}
           businessName={settings?.businessName}
           address={settings?.address}
           contactNumber={settings?.contactNumber}
@@ -426,9 +484,9 @@ export default function StockSalesReportPage() {
                 <TableHead>Category</TableHead>
                 <TableHead className="text-right">Sold</TableHead>
                 <TableHead className="text-right">Returned</TableHead>
-                <TableHead className="text-right">Remaining</TableHead>
+                <TableHead className="text-right">{remainingLabel}</TableHead>
                 <TableHead className="text-right">Sales</TableHead>
-                <TableHead className="text-right">Remaining Value</TableHead>
+                <TableHead className="text-right">{remainingValueLabel}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
