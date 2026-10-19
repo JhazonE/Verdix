@@ -12,8 +12,18 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Search, Package, TrendingDown, TrendingUp, Loader2,
-  CheckCircle2, Repeat, SlidersHorizontal, X,
+  CheckCircle2, Repeat, SlidersHorizontal, X, Printer,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -58,6 +68,9 @@ export default function BulkAdjustmentClient() {
     removeAdjustment,
     updateAdjustment,
     handleProcessAdjustments,
+    printableSlip,
+    confirmPrintSlip,
+    skipPrintSlip,
     hasNegativeStock,
     addCount,
     removeCount,
@@ -304,6 +317,36 @@ export default function BulkAdjustmentClient() {
           </Button>
         </div>
       </div>
+
+      {/* ══════════ PRINT SLIP CONFIRMATION (after a successful batch) ══════════ */}
+      <AlertDialog open={printableSlip !== null}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              Adjustment Applied
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {printableSlip
+                ? `${printableSlip.items.length} item${printableSlip.items.length !== 1 ? 's' : ''} processed.`
+                : ''}{' '}
+              Print an adjustment slip with Prepared By and Received By signature lines?
+              {printableSlip?.items.some(i => i.pendingApproval) && (
+                <span className="mt-2 block text-amber-600 dark:text-amber-500">
+                  Some items are waiting for approval and will be marked as pending on the slip.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={skipPrintSlip}>Skip</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmPrintSlip} className="gap-2">
+              <Printer className="h-4 w-4" />
+              Print Slip
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
