@@ -341,6 +341,12 @@ export interface StockAdjustment {
   date: string;
   newStock: number;
   status: 'Pending' | 'Approved' | 'Rejected' | 'Completed';
+  /**
+   * The bulk batch this adjustment was submitted in, so a reprint can produce
+   * the whole transaction rather than this one line. Null for single-item
+   * adjustments and for rows written before migration 141.
+   */
+  batchId?: string | null;
 }
 
 export interface Order {

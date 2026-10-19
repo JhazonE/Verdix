@@ -44,6 +44,9 @@ export async function getStockAdjustments(limit?: number, offset?: number) {
       date: adj.created_at,
       newStock: toSafeNumber(adj.new_stock),
       status: 'Completed',
+      // Carried through so the row's reprint can cover the whole batch it
+      // belonged to instead of just this line.
+      batchId: adj.batch_id || null,
       product: adj.product_name ? {
         id: adj.product_id,
         name: adj.product_name,

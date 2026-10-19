@@ -38,6 +38,9 @@ export async function POST(request: NextRequest) {
     // what lets the slip be reprinted as the transaction it actually was.
     const batchId = `adj_batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
+    // Monotonic per-row suffix for adjustment ids; see where it is consumed.
+    let insertSeq = 0;
+
     // Transfers use exactly the same path as the Transfer board (TransferStockUseCase):
     // it creates the product in the target warehouse when missing, records the
     // transfer, and writes stock movements for both sides.
@@ -267,7 +270,15 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        const adjustmentId = `adj_bulk_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        // `id` is the PRIMARY KEY and this loop can insert many rows inside a
+        // single millisecond, so Date.now() alone does not separate them and a
+        // 5-char random suffix collides measurably on large batches (~1 in 2000
+        // runs at 100 items). A duplicate key would abort the whole
+        // transaction, losing the entire adjustment — so the row's index in the
+        // batch is included, which is unique by construction. (A dedicated
+        // counter, not results.length — that only grows on success, so the
+        // `continue` paths above would hand two rows the same index.)
+        const adjustmentId = `adj_bulk_${Date.now()}_${insertSeq++}_${Math.random().toString(36).slice(2, 10)}`;
 
         // Create adjustment record with new metadata
         await connection.query(

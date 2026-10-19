@@ -48,7 +48,12 @@ function AdjustmentRow({ adjustment }: { adjustment: StockAdjustment }) {
 
   const handleReprint = async () => {
     setIsPrinting(true);
-    const result = await reprintStockAdjustment({ adjustmentId: adjustment.id });
+    // Print the whole batch when this row came from one — the list shows items
+    // individually, but the slip is a record of the TRANSACTION. Falls back to
+    // the single row for standalone adjustments and pre-migration-141 rows.
+    const result = await reprintStockAdjustment(
+      adjustment.batchId ? { batchId: adjustment.batchId } : { adjustmentId: adjustment.id }
+    );
     setIsPrinting(false);
     if (!result.ok) {
       toast({ variant: 'destructive', title: 'Could not print slip', description: result.message });
@@ -79,7 +84,13 @@ function AdjustmentRow({ adjustment }: { adjustment: StockAdjustment }) {
         <Button
           variant="ghost"
           size="icon"
-          title={isPending ? 'Not yet approved — nothing to print' : 'Reprint slip'}
+          title={
+            isPending
+              ? 'Not yet approved — nothing to print'
+              : adjustment.batchId
+                ? 'Reprint the full batch slip'
+                : 'Reprint slip'
+          }
           onClick={handleReprint}
           disabled={isPending || isPrinting}
         >
