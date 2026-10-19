@@ -148,10 +148,17 @@ hardened read-only endpoint is explicitly **not** part of this work.
 
 What was exercised by automated checks on this machine:
 
-- **Price agreement with POS** — the spec's primary anti-goal. 25 real
-  products from the live DB resolved through `resolveKioskPrice` and through
-  `calculateEffectivePriceForUnit` (what POS charges for one base unit at the
-  default level): **25/25 agreed exactly**, 0 mismatches.
+- **Price agreement with POS** — the spec's primary anti-goal. After the
+  post-review fix, `resolveKioskPrice` calls `calculateEffectivePriceForUnit`
+  on the scanned unit — the same function POS calls — so agreement is
+  structural rather than a property of current data. Swept **all 15,994
+  products** in the live DB at quantity 1 / default level: **0 mismatches**.
+  Separately, all 3 products carrying a scannable non-base barcode agree on
+  unit, price and displayed barcode (before the fix, one read ₱62 against
+  POS's ₱690).
+- **Idle clear under live traffic** — verified with a stub that churns an
+  unrendered field between refetches, the condition under which the original
+  timer never expired.
 - **A real barcode end to end, no stubs** — `4800103343532` scanned into the
   kiosk against the live API returned "Chubby Funmix 40pcs" at ₱44.90,
   matching the DB, with no cost/stock text anywhere in the rendered body.
