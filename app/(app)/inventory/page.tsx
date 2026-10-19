@@ -115,6 +115,15 @@ export default function InventoryPage() {
 
                 <div className="h-4 w-px bg-border/60 mx-1 flex-shrink-0" />
 
+                <Link href="/inventory/adjustment-batches">
+                  <Button variant="ghost" size="sm" className="h-8 gap-2 hover:bg-muted font-medium px-3 flex-shrink-0">
+                      <History className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-xs">Adjustment Batches</span>
+                  </Button>
+                </Link>
+
+                <div className="h-4 w-px bg-border/60 mx-1 flex-shrink-0" />
+
                 <Link href="/inventory/pricing">
                   <Button variant="ghost" size="sm" className="h-8 gap-2 font-bold text-primary hover:text-primary hover:bg-primary/10 px-3 transition-colors flex-shrink-0">
                       <Tags className="h-4 w-4" />

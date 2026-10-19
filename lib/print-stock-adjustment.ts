@@ -34,6 +34,19 @@ export interface AdjustmentSlipData {
   supplierName?: string | null;
   preparedBy?: string | null;
   notes?: string | null;
+  /**
+   * When the transaction happened. Omitted for a slip printed at the moment of
+   * the adjustment; set on a reprint so the slip is dated by the transaction,
+   * not by the day someone happened to reprint it.
+   */
+  transactionDate?: string | Date | null;
+  /** Marks the document as a reprint so it cannot pass as the original. */
+  isReprint?: boolean;
+  /**
+   * Transfers never recorded the source stock at the time, so printing a
+   * previous/new figure would be a guess. Drops both columns instead.
+   */
+  omitStockColumns?: boolean;
   items: AdjustmentSlipItem[];
 }
 
@@ -79,6 +92,9 @@ export const printStockAdjustment = async (data: AdjustmentSlipData): Promise<bo
   const businessName = await fetchBusinessName();
   const config = modeConfig[data.mode];
   const now = new Date();
+  // A reprint is dated by the transaction it reproduces; a fresh slip by now.
+  const txDate = data.transactionDate ? new Date(data.transactionDate) : now;
+  const showStock = !data.omitStockColumns;
   const isTransfer = data.mode === 'transfer';
   const showExpiry = data.mode === 'add' && data.items.some(i => i.expirationDate);
   const hasPending = data.items.some(i => i.pendingApproval);
@@ -96,7 +112,7 @@ export const printStockAdjustment = async (data: AdjustmentSlipData): Promise<bo
       <span class="info-value">${escapeHtml(value)}</span>
     </div>`;
 
-  const columnCount = 6 + (showExpiry ? 1 : 0);
+  const columnCount = 4 + (showStock ? 2 : 0) + (showExpiry ? 1 : 0);
 
   const rows = data.items
     .map(item => {
@@ -112,8 +128,9 @@ export const printStockAdjustment = async (data: AdjustmentSlipData): Promise<bo
         </td>
         <td class="ctr">${escapeHtml(item.unitOfMeasure || '-')}</td>
         <td class="ctr qty">${qty.toLocaleString('en-US')}</td>
+        ${showStock ? `
         <td class="ctr">${prev.toLocaleString('en-US')}</td>
-        <td class="ctr">${item.pendingApproval ? '<span class="muted">—</span>' : next.toLocaleString('en-US')}</td>
+        <td class="ctr">${item.pendingApproval ? '<span class="muted">—</span>' : next.toLocaleString('en-US')}</td>` : ''}
         ${showExpiry ? `<td class="ctr">${item.expirationDate ? escapeHtml(format(new Date(item.expirationDate), 'MMM dd, yyyy')) : '-'}</td>` : ''}
         <td>${escapeHtml(item.reason || '-')}</td>
       </tr>`;
@@ -133,6 +150,9 @@ export const printStockAdjustment = async (data: AdjustmentSlipData): Promise<bo
     .slip-title { text-align: right; }
     .slip-title h2 { margin: 0; font-size: 18px; color: ${config.color}; letter-spacing: 0.02em; }
     .slip-title p { margin: 4px 0 0; font-size: 13px; font-weight: 700; font-family: monospace; }
+    /* A reprint must be visibly a reprint: two copies of one transaction in a
+       folder are otherwise indistinguishable. */
+    .reprint-mark { display: inline-block; margin-top: 6px !important; padding: 2px 8px; border: 1px solid #9ca3af; border-radius: 4px; font-size: 9px !important; letter-spacing: 0.1em; color: #4b5563; font-family: inherit !important; }
 
     .pending-banner { border: 1px solid #fcd34d; background: #fffbeb; color: #92400e; padding: 10px 14px; border-radius: 6px; font-size: 12px; margin-bottom: 18px; }
 
@@ -181,7 +201,8 @@ export const printStockAdjustment = async (data: AdjustmentSlipData): Promise<bo
       </div>
       <div class="slip-title">
         <h2>${escapeHtml(config.title)}${allPending ? ' — FOR APPROVAL' : ''}</h2>
-        <p>${escapeHtml(data.referenceNo || format(now, 'yyyyMMdd-HHmmss'))}</p>
+        <p>${escapeHtml(data.referenceNo || format(txDate, 'yyyyMMdd-HHmmss'))}</p>
+        ${data.isReprint ? '<p class="reprint-mark">REPRINT</p>' : ''}
       </div>
     </div>
 
@@ -193,8 +214,8 @@ export const printStockAdjustment = async (data: AdjustmentSlipData): Promise<bo
 
     <div class="info-section">
       <div class="info-box">
-        ${infoRow('Date', format(now, 'MMMM dd, yyyy'))}
-        ${infoRow('Time', format(now, 'h:mm a'))}
+        ${infoRow('Date', format(txDate, 'MMMM dd, yyyy'))}
+        ${infoRow('Time', format(txDate, 'h:mm a'))}
         ${infoRow('Reference No.', data.referenceNo || 'Not specified')}
         ${infoRow('Transaction', config.title.replace(' SLIP', ''))}
       </div>
@@ -214,8 +235,7 @@ export const printStockAdjustment = async (data: AdjustmentSlipData): Promise<bo
           <th style="width: 30%;">Product</th>
           <th class="ctr">Unit</th>
           <th class="ctr">Qty ${escapeHtml(config.verb)}</th>
-          <th class="ctr">Prev. Stock</th>
-          <th class="ctr">New Stock</th>
+          ${showStock ? '<th class="ctr">Prev. Stock</th><th class="ctr">New Stock</th>' : ''}
           ${showExpiry ? '<th class="ctr">Expiry</th>' : ''}
           <th>Reason / Note</th>
         </tr>
@@ -254,7 +274,11 @@ export const printStockAdjustment = async (data: AdjustmentSlipData): Promise<bo
     </div>
 
     <div class="footer">
-      ${escapeHtml(businessName)} · Printed ${escapeHtml(format(now, 'MMMM dd, yyyy h:mm a'))} · This is a computer-generated document.
+      ${escapeHtml(businessName)} · Printed ${escapeHtml(format(now, 'MMMM dd, yyyy h:mm a'))}${
+        data.isReprint
+          ? ' · Reprint of a transaction dated ' + escapeHtml(format(txDate, 'MMMM dd, yyyy h:mm a'))
+          : ''
+      } · This is a computer-generated document.
     </div>
   `);
 

@@ -25,11 +25,15 @@ import { Skeleton } from '@/components/ui/skeleton';
 import type { StockAdjustment } from '@/lib/types';
 import { format } from 'date-fns';
 import { DateRange } from 'react-day-picker';
-import { CalendarIcon, Search, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarIcon, Search, X, ChevronLeft, ChevronRight, Printer, Loader2 } from 'lucide-react';
 import { cn, formatQuantity } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
+import { reprintStockAdjustment } from '@/lib/reprint-stock-adjustment';
 import { getStockAdjustments, getStockAdjustmentsCount } from './actions';
 
 function AdjustmentRow({ adjustment }: { adjustment: StockAdjustment }) {
+  const { toast } = useToast();
+  const [isPrinting, setIsPrinting] = useState(false);
   const formattedDate = useMemo(() => {
     try {
       return format(new Date(adjustment.date), 'PP p');
@@ -37,6 +41,19 @@ function AdjustmentRow({ adjustment }: { adjustment: StockAdjustment }) {
       return 'Invalid Date';
     }
   }, [adjustment.date]);
+
+  // A pending adjustment lives in the approval queue, not stock_adjustments —
+  // there is no committed transaction to reprint yet.
+  const isPending = adjustment.status === 'Pending';
+
+  const handleReprint = async () => {
+    setIsPrinting(true);
+    const result = await reprintStockAdjustment({ adjustmentId: adjustment.id });
+    setIsPrinting(false);
+    if (!result.ok) {
+      toast({ variant: 'destructive', title: 'Could not print slip', description: result.message });
+    }
+  };
 
   return (
     <TableRow key={adjustment.id} className={cn(adjustment.status === 'Pending' && "bg-blue-50/30 italic")}>
@@ -58,6 +75,17 @@ function AdjustmentRow({ adjustment }: { adjustment: StockAdjustment }) {
       <TableCell className="text-right font-bold">
         {adjustment.status === 'Pending' ? '---' : formatQuantity(adjustment.newStock)}
       </TableCell>
+      <TableCell className="w-10">
+        <Button
+          variant="ghost"
+          size="icon"
+          title={isPending ? 'Not yet approved — nothing to print' : 'Reprint slip'}
+          onClick={handleReprint}
+          disabled={isPending || isPrinting}
+        >
+          {isPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+        </Button>
+      </TableCell>
     </TableRow>
   );
 }
@@ -70,6 +98,7 @@ function AdjustmentSkeleton() {
       <TableCell><Skeleton className="h-6 w-12 rounded-full" /></TableCell>
       <TableCell><Skeleton className="h-5 w-48" /></TableCell>
       <TableCell className="text-right"><Skeleton className="h-5 w-10 ml-auto" /></TableCell>
+      <TableCell><Skeleton className="h-8 w-8 rounded-md" /></TableCell>
     </TableRow>
   );
 }
@@ -215,6 +244,7 @@ export default function AdjustmentHistoryPage() {
                 <TableHead>Quantity</TableHead>
                 <TableHead>Reason</TableHead>
                 <TableHead className="text-right">Resulting Stock</TableHead>
+                <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
           <TableBody>
@@ -226,7 +256,7 @@ export default function AdjustmentHistoryPage() {
             ) : (
               !isLoading && (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
+                  <TableCell colSpan={6} className="h-24 text-center">
                     No adjustments found for the selected criteria.
                   </TableCell>
                 </TableRow>
