@@ -80,7 +80,7 @@ export function PriceCheckScreen() {
             autoComplete="off"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="I-scan ang barcode o i-type ang pangalan…"
+            placeholder="Scan a barcode or type a product name…"
             aria-label="Scan a barcode or type a product name"
             className="w-full rounded-2xl border-2 border-slate-700 bg-slate-900 py-5 pl-16 pr-6 text-2xl text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
           />
@@ -100,7 +100,7 @@ export function PriceCheckScreen() {
 
             <div className="w-full rounded-3xl border-2 border-emerald-500/20 bg-emerald-500/5 py-12">
               <div className="mb-2 text-sm font-bold uppercase tracking-[0.2em] text-emerald-400/70">
-                Presyo
+                Price
               </div>
               <div
                 data-testid="kiosk-price"
@@ -113,7 +113,7 @@ export function PriceCheckScreen() {
                 })}
               </div>
               {result.unitName && (
-                <div className="mt-3 text-xl text-slate-400">matag {result.unitName}</div>
+                <div className="mt-3 text-xl text-slate-400">per {result.unitName}</div>
               )}
             </div>
 
@@ -126,25 +126,21 @@ export function PriceCheckScreen() {
           // product does not exist when the terminal is merely offline may
           // send them to put the item back.
           <div data-testid="kiosk-offline" className="flex flex-col items-center gap-3">
-            <p className="text-3xl font-bold text-sky-400">Dili makonektar</p>
+            <p className="text-3xl font-bold text-sky-400">Not connected</p>
             <p className="text-lg text-slate-400">
-              Temporaryo nga walay koneksyon. Palihog pangutana sa staff.
-            </p>
-            <p className="text-sm text-slate-500">
-              Price lookup unavailable — please ask a staff member.
+              Price lookup is temporarily unavailable. Please ask a staff member.
             </p>
           </div>
         ) : notFound ? (
           <div data-testid="kiosk-not-found" className="flex flex-col items-center gap-3">
-            <p className="text-3xl font-bold text-amber-400">Wala nakit-an</p>
+            <p className="text-3xl font-bold text-amber-400">Not found</p>
             <p className="text-lg text-slate-400">
-              Walay produkto niini nga barcode. Palihog sulayi pag-usab.
+              No product matches that barcode. Please try again.
             </p>
-            <p className="text-sm text-slate-500">No product found — please try again.</p>
           </div>
         ) : showPickList ? (
           <div className="w-full max-w-3xl">
-            <p className="mb-4 text-lg text-slate-400">Pilia ang produkto:</p>
+            <p className="mb-4 text-lg text-slate-400">Select a product:</p>
             <ul className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
               {candidates.slice(0, 8).map((product) => (
                 <li key={product.id}>
@@ -160,17 +156,17 @@ export function PriceCheckScreen() {
             </ul>
             {candidates.length > 8 && (
               <p className="mt-4 text-base text-slate-500">
-                +{candidates.length - 8} pa — i-scan ang barcode o i-specify ang pangalan.
+                +{candidates.length - 8} more — scan the barcode or type a more specific name.
               </p>
             )}
           </div>
         ) : loading && searchTerm.trim() ? (
-          <p className="text-2xl text-slate-500">Nangita…</p>
+          <p className="text-2xl text-slate-500">Searching…</p>
         ) : (
-          <div className="flex flex-col items-center gap-4">
+          <div data-testid="kiosk-idle" className="flex flex-col items-center gap-4">
             <Search className="h-20 w-20 text-slate-700" />
-            <p className="text-4xl font-bold text-slate-200 sm:text-5xl">I-scan ang barcode</p>
-            <p className="text-xl text-slate-500">Scan a barcode to see the price</p>
+            <p className="text-4xl font-bold text-slate-200 sm:text-5xl">Scan a barcode</p>
+            <p className="text-xl text-slate-500">Scan a product to see its price</p>
           </div>
         )}
       </div>

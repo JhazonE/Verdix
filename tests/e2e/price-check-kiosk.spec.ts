@@ -122,7 +122,7 @@ test.describe('Price Inquiry kiosk screen', () => {
   test('shows the idle prompt before any scan', async ({ page }) => {
     await openKiosk(page);
 
-    await expect(page.getByText(/I-scan ang barcode/i)).toBeVisible();
+    await expect(page.getByTestId('kiosk-idle')).toBeVisible();
   });
 
   test('an exact barcode scan shows the product name and its retail price', async ({ page }) => {
@@ -179,7 +179,7 @@ test.describe('Price Inquiry kiosk screen', () => {
     await expect(page.getByTestId('kiosk-price')).toBeVisible();
 
     // Ang 10-segundo nga timer mo-clear sa screen para andam sa sunod.
-    await expect(page.getByText(/I-scan ang barcode/i)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('kiosk-idle')).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('kiosk-price')).toHaveCount(0);
   });
 
@@ -193,7 +193,7 @@ test.describe('Price Inquiry kiosk screen', () => {
     await scan(page, COKE.barcode);
     await expect(page.getByTestId('kiosk-price')).toBeVisible();
 
-    await expect(page.getByText(/I-scan ang barcode/i)).toBeVisible({ timeout: 25_000 });
+    await expect(page.getByTestId('kiosk-idle')).toBeVisible({ timeout: 25_000 });
     await expect(page.getByTestId('kiosk-price')).toHaveCount(0);
   });
 

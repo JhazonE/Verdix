@@ -55,7 +55,7 @@ test.describe('Price Inquiry kiosk routing', () => {
     // Ang idle prompt mao ang pruba nga ang kiosk page mismo ang gi-render —
     // kung wala ni, ang mga absence-assertion sa ubos trivially mo-pass sa
     // usa ka 404 page.
-    await expect(page.getByText(/I-scan ang barcode/i)).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByTestId('kiosk-idle')).toBeVisible({ timeout: 40_000 });
     await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
     await expect(page.getByRole('button', { name: /log ?out|sign ?out/i })).toHaveCount(0);
   });
