@@ -36,6 +36,9 @@ export function useBulkAdjustment() {
   const [targetWarehouseId, setTargetWarehouseId] = useState<string>('');
   const [supplierId, setSupplierId] = useState<string>('');
   const [referenceNo, setReferenceNo] = useState('');
+  // The last value this hook suggested. Lets the mode switch replace its own
+  // suggestion while never clobbering a reference the user typed themselves.
+  const suggestedRef = useRef('');
   const [note, setNote] = useState('');
 
   const [adjustments, setAdjustments] = useState<AdjustmentItem[]>([]);
@@ -67,6 +70,28 @@ export function useBulkAdjustment() {
     loadProducts();
     loadMetadata();
   }, []);
+
+  // The reference identifies the transaction on the slip and in history, so
+  // the field starts filled instead of blank. Re-fetched when the mode changes
+  // because a transfer is numbered TRF- rather than ADJ-. Only ever overwrites
+  // a previous suggestion — anything the user typed is left alone.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const type = adjustmentType === 'transfer' ? 'transfer' : 'adjustment';
+        const res = await fetch(`/api/inventory/adjust/next-reference?type=${type}`);
+        const payload = await res.json();
+        if (cancelled || !payload.success) return;
+        setReferenceNo(prev => (prev === '' || prev === suggestedRef.current ? payload.reference : prev));
+        suggestedRef.current = payload.reference;
+      } catch {
+        // Leave the field blank and editable; a suggestion is a convenience,
+        // not a requirement for submitting the batch.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [adjustmentType]);
 
   // Close search results when clicking outside
   useEffect(() => {
