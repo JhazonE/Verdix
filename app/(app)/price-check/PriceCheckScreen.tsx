@@ -26,29 +26,46 @@ import { usePriceCheck } from './use-price-check';
 const IDLE_CLEAR_MS = 10_000;
 
 export function PriceCheckScreen() {
-  const { searchTerm, setSearchTerm, result, candidates, notFound, loading, select, clear } =
-    usePriceCheck();
+  const {
+    searchTerm, setSearchTerm, result, resultToken,
+    candidates, notFound, offline, loading, select, clear,
+  } = usePriceCheck();
 
   const inputRef = useRef<HTMLInputElement>(null);
 
   // The scanner is the primary input device, so the field must never lose
-  // focus — not after a result renders, not after the idle timer clears it.
+  // focus. Keyed on `resultToken`, not `result`, so a background refetch does
+  // not steal focus from anything the customer is doing.
   useEffect(() => {
     inputRef.current?.focus();
-  }, [result, searchTerm]);
+  }, [resultToken, searchTerm]);
 
-  // Return to idle so the terminal is always ready for the next customer.
-  // Reset by each keystroke and by each new result.
+  /**
+   * Return to idle so the terminal is always ready for the next customer.
+   *
+   * Armed whenever ANYTHING is on screen — a result, a not-found, an offline
+   * notice, or a pick-list the customer walked away from — which is why this
+   * keys on `searchTerm` rather than only on `result`.
+   *
+   * `resultToken` is a string, deliberately: `result` is re-created on every
+   * background refetch (every 30s, and on every sale in the store), so an
+   * effect depending on it would clear and re-arm this timer forever and the
+   * screen would never go idle.
+   */
   useEffect(() => {
-    if (!result && !notFound) return;
+    if (!searchTerm.trim() && !resultToken) return;
     const timer = setTimeout(() => {
       clear();
       inputRef.current?.focus();
     }, IDLE_CLEAR_MS);
     return () => clearTimeout(timer);
-  }, [result, notFound, searchTerm, clear]);
+  }, [resultToken, searchTerm, clear]);
 
-  const showPickList = !result && !notFound && searchTerm.trim().length > 0 && candidates.length > 1;
+  // A single fuzzy name match lands here too, not on the big-price screen: the
+  // customer confirms it, so a partially-read barcode is never presented as a
+  // definitive answer.
+  const showPickList =
+    !result && !notFound && !offline && searchTerm.trim().length > 0 && candidates.length > 0;
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-slate-950 text-slate-100">
@@ -104,6 +121,19 @@ export function PriceCheckScreen() {
               <div className="font-mono text-sm text-slate-500">{result.barcode}</div>
             )}
           </div>
+        ) : offline ? (
+          // Distinct from not-found on purpose: telling a customer their
+          // product does not exist when the terminal is merely offline may
+          // send them to put the item back.
+          <div data-testid="kiosk-offline" className="flex flex-col items-center gap-3">
+            <p className="text-3xl font-bold text-sky-400">Dili makonektar</p>
+            <p className="text-lg text-slate-400">
+              Temporaryo nga walay koneksyon. Palihog pangutana sa staff.
+            </p>
+            <p className="text-sm text-slate-500">
+              Price lookup unavailable — please ask a staff member.
+            </p>
+          </div>
         ) : notFound ? (
           <div data-testid="kiosk-not-found" className="flex flex-col items-center gap-3">
             <p className="text-3xl font-bold text-amber-400">Wala nakit-an</p>
@@ -128,6 +158,11 @@ export function PriceCheckScreen() {
                 </li>
               ))}
             </ul>
+            {candidates.length > 8 && (
+              <p className="mt-4 text-base text-slate-500">
+                +{candidates.length - 8} pa — i-scan ang barcode o i-specify ang pangalan.
+              </p>
+            )}
           </div>
         ) : loading && searchTerm.trim() ? (
           <p className="text-2xl text-slate-500">Nangita…</p>

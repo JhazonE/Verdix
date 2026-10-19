@@ -26,7 +26,7 @@ const COKE = {
   name: 'Coca-Cola 1.5L',
   category: 'Beverages',
   brand: 'Coke',
-  stock: 24,
+  stock: 4321,
   price: '89.00',
   cost: '70.00',
   sku: 'SKU-COKE',
@@ -62,22 +62,33 @@ const CATALOGUE = [COKE, PANCIT];
  * string), mao nga ang stub kinahanglan mo-filter sab — kung dili, ang
  * not-found nga test dili gyud mo-fire.
  */
-async function stubApis(page: Page) {
+async function stubApis(page: Page, opts: { churnStock?: boolean } = {}) {
+  let churn = 0;
   await page.route('**/api/products**', async (route) => {
     const url = new URL(route.request().url());
     const search = (url.searchParams.get('search') || '').trim().toLowerCase();
+    // Gi-awat ang tinuod nga server: usa ka LIKE match sa name/SKU/barcode —
+    // mao nga ang partial barcode mo-match gihapon, nga mao ang sentro sa
+    // gisi-nga-barcode nga test.
     const data = search
       ? CATALOGUE.filter(
           (p) =>
             p.name.toLowerCase().includes(search) ||
-            p.barcode === search ||
-            p.sku.toLowerCase() === search,
+            p.barcode.includes(search) ||
+            p.sku.toLowerCase().includes(search),
         )
       : CATALOGUE;
+    // `churnStock` simulates a live store: every refetch sees a different
+    // `stock`, which is never rendered but DOES change the payload's identity.
+    // This is the shape that broke the idle timer while byte-identical stubs
+    // passed, so it is worth stubbing deliberately.
+    const body = opts.churnStock
+      ? data.map((p) => ({ ...p, stock: 1000 - churn++ }))
+      : data;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ success: true, data }),
+      body: JSON.stringify({ success: true, data: body }),
     });
   });
 
@@ -93,9 +104,9 @@ async function stubApis(page: Page) {
   );
 }
 
-async function openKiosk(page: Page) {
+async function openKiosk(page: Page, opts: { churnStock?: boolean } = {}) {
   await seedSession(page, KIOSK_USER);
-  await stubApis(page);
+  await stubApis(page, opts);
   await page.goto('/price-check', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('kiosk-search')).toBeVisible({ timeout: 40_000 });
 }
@@ -129,10 +140,11 @@ test.describe('Price Inquiry kiosk screen', () => {
     await scan(page, COKE.barcode);
     await expect(page.getByTestId('kiosk-price')).toBeVisible();
 
-    // Ang cost (70) ug ang stock (24) naa sa API payload pero dili gyud dapat
-    // mo-abot sa screen.
+    // Ang cost (70.00) ug ang stock (24) naa sa API payload pero dili gyud
+    // dapat mo-abot sa screen. Gipili ang 4321 isip stock value kay dili ni
+    // matabunan sa bisan unsang presyo sa fixture (89.00 / 17.00).
     const body = await page.locator('body').innerText();
-    expect(body).not.toMatch(/\b24\b/);
+    expect(body).not.toMatch(/4321/);
     expect(body).not.toMatch(/70\.00/);
     expect(body).not.toMatch(/stock|on hand|cost/i);
   });
@@ -169,5 +181,51 @@ test.describe('Price Inquiry kiosk screen', () => {
     // Ang 10-segundo nga timer mo-clear sa screen para andam sa sunod.
     await expect(page.getByText(/I-scan ang barcode/i)).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('kiosk-price')).toHaveCount(0);
+  });
+
+  // Regression para sa review finding C2 — ang bersyon nga nakalusot sa unang
+  // review. Ang byte-identical nga stub mo-pass; ang tinuod nga tindahan (nga
+  // nag-usab sa stock kada sale) dili. Ang `stock` wala gi-render, pero
+  // mo-usab sa payload identity, nga mao ang nag-reset sa timer kaniadto.
+  test('still returns to idle while background refetches churn the payload', async ({ page }) => {
+    await openKiosk(page, { churnStock: true });
+
+    await scan(page, COKE.barcode);
+    await expect(page.getByTestId('kiosk-price')).toBeVisible();
+
+    await expect(page.getByText(/I-scan ang barcode/i)).toBeVisible({ timeout: 25_000 });
+    await expect(page.getByTestId('kiosk-price')).toHaveCount(0);
+  });
+
+  // Regression para sa review finding I3 — ang gisi nga barcode.
+  test('a partial barcode offers a choice instead of asserting a price', async ({ page }) => {
+    await openKiosk(page);
+
+    // Ang kataposang digit nawala: mo-LIKE-match ni sa usa ka produkto, pero
+    // dili ni exact hit, mao nga ang kustomer ang mo-confirm.
+    await scan(page, COKE.barcode.slice(0, -1));
+
+    await expect(page.getByRole('button', { name: /Coca-Cola 1\.5L/ })).toBeVisible();
+    await expect(page.getByTestId('kiosk-price')).toHaveCount(0);
+  });
+
+  // Regression para sa review finding C3 — ang patay nga terminal.
+  test('an API failure says ask a staff member, not "no product found"', async ({ page }) => {
+    await seedSession(page, KIOSK_USER);
+    await page.route('**/api/price-levels**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: [{ id: 'retail-level', name: 'Retail', isDefault: true }] }),
+      }),
+    );
+    await page.route('**/api/products**', (route) => route.fulfill({ status: 500, body: 'boom' }));
+    await page.goto('/price-check', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByTestId('kiosk-search')).toBeVisible({ timeout: 40_000 });
+
+    await scan(page, COKE.barcode);
+
+    await expect(page.getByTestId('kiosk-offline')).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('kiosk-not-found')).toHaveCount(0);
   });
 });

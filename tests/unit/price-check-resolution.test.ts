@@ -1,14 +1,22 @@
 import assert from 'node:assert/strict';
 import type { Product } from '../../lib/types';
 import { resolveKioskPrice } from '../../lib/kiosk-price';
+import { calculateEffectivePriceForUnit } from '../../lib/pricing';
 
 /**
  * Ang price-checker kiosk walay cashier nga mobantay, mao nga walay makapili ug
- * price level — ang default level (Retail) ra gyud, quantity 1, base unit.
+ * price level — ang default level (Retail) ra gyud, ug quantity 1.
  *
  * Ang importante dinhi: kung ang gi-quote sa kiosk lahi sa gi-charge sa
  * register, ang kiosk mas grabe pa kay sa wala. Mao nga ang presyo moagi sa
- * parehas nga `calculateEffectivePrice` nga gigamit sa POS.
+ * PAREHAS nga `calculateEffectivePriceForUnit` nga gigamit sa POS, sa unit nga
+ * gi-scan — dili sa base unit kung lain ang gi-scan.
+ *
+ * FIXTURE SHAPE MATTERS. Ang `GET /api/products` WALAY gi-populate nga
+ * `product.priceLevels` — ang `mapApiProduct` mo-set niini ngadto sa `[]`, ug
+ * ang mga override naa sa `sellingUnits[].priceLevels`. Ang mga fixture dinhi
+ * nagsunod sa tinuod nga shape, kay kung dili, mag-test ta sa patay nga code
+ * path (mao ni ang rason nga nakalusot ang duha ka bug sa unang review).
  */
 
 const BASE: Product = {
@@ -26,87 +34,133 @@ const BASE: Product = {
   imageUrl: '',
   imageHint: '',
   unitOfMeasure: 'Bottle',
+  priceLevels: [], // what the API actually returns
 };
 
 // --- Review Focus #1: a base unit with no level override ---------------------
-// Falls back to the unit's own price. NEVER another unit's price, and never a
-// computed multiple of one — `NULL` means inherit, it does not mean derive.
 const noOverride: Product = {
   ...BASE,
   sellingUnits: [
-    { id: 'su1', name: 'Bottle', factor: 1, barcode: '4800016641116', price: 89, isBase: true },
+    { id: 'su1', name: 'Bottle', factor: 1, barcode: '4800016641116', price: 89, isBase: true, priceLevels: [] },
   ],
 };
-assert.equal(resolveKioskPrice(noOverride, 'retail-level').price, 89, 'falls back to the unit own price');
-assert.equal(resolveKioskPrice(noOverride, 'retail-level').unitName, 'Bottle', 'names the base unit');
-assert.equal(
-  resolveKioskPrice(noOverride, 'retail-level').barcode,
-  '4800016641116',
-  'reports the base unit barcode',
-);
+{
+  const r = resolveKioskPrice(noOverride, 'retail-level');
+  assert.equal(r.price, 89, 'falls back to the unit own price');
+  assert.equal(r.unitName, 'Bottle', 'names the base unit');
+  assert.equal(r.barcode, '4800016641116', 'reports the base unit barcode');
+}
 
-// --- Review Focus #5: a product with several selling units -------------------
-// Base = Piece @ 17, non-base = Case @ 1020. The kiosk quotes what an ordinary
-// customer buys, which is the base unit — not the first unit in the array and
-// not the cheapest.
+// --- Review Focus #5: several selling units, no code scanned ----------------
+// Base = Piece @ 17, non-base = Case @ 1020. With nothing scanned the kiosk
+// quotes the base unit: what an ordinary customer carries to the register.
 const multiUnit: Product = {
   ...BASE,
   name: 'Lucky Me Pancit Canton',
   price: 17,
   unitOfMeasure: 'Piece',
   sellingUnits: [
-    { id: 'su-case', name: 'Case', factor: 60, barcode: '1000000000060', price: 1020, isBase: false },
-    { id: 'su-piece', name: 'Piece', factor: 1, barcode: '1000000000001', price: 17, isBase: true },
+    { id: 'su-case', name: 'Case', factor: 60, barcode: '1000000000060', price: 1020, isBase: false, priceLevels: [] },
+    { id: 'su-piece', name: 'Piece', factor: 1, barcode: '1000000000001', price: 17, isBase: true, priceLevels: [] },
   ],
 };
-const multi = resolveKioskPrice(multiUnit, 'retail-level');
-assert.equal(multi.price, 17, 'returns the BASE unit price');
-assert.equal(multi.unitName, 'Piece', 'names the base unit, not the first in the array');
-assert.equal(multi.barcode, '1000000000001', 'reports the base unit barcode, not the case barcode');
+{
+  const r = resolveKioskPrice(multiUnit, 'retail-level');
+  assert.equal(r.price, 17, 'returns the BASE unit price');
+  assert.equal(r.unitName, 'Piece', 'names the base unit, not the first in the array');
+  assert.equal(r.barcode, '1000000000001', 'reports the base unit barcode');
+}
 
-// --- An untiered default-level override wins over the unit's own price -------
-const withOverride: Product = {
+// --- A SCANNED non-base barcode must price THAT unit ------------------------
+// Regression for the review's C1: the kiosk used to quote the Piece price for
+// a scanned Case barcode and display the Piece barcode, so a customer read
+// ₱17 and was charged ₱1020. POS resolves a non-base barcode to that unit
+// (lib/pos-cart-units.ts resolveSellingUnitForAdd), and so must the kiosk.
+{
+  const r = resolveKioskPrice(multiUnit, 'retail-level', '1000000000060');
+  assert.equal(r.price, 1020, 'a scanned Case barcode quotes the Case price');
+  assert.equal(r.unitName, 'Case', 'names the scanned unit');
+  assert.equal(r.barcode, '1000000000060', 'echoes the barcode the customer scanned');
+}
+
+// Scanning the BASE barcode still gives the base unit.
+{
+  const r = resolveKioskPrice(multiUnit, 'retail-level', '1000000000001');
+  assert.equal(r.price, 17, 'a scanned base barcode quotes the base price');
+  assert.equal(r.unitName, 'Piece', 'names the base unit');
+}
+
+// --- Agreement with POS is STRUCTURAL, not a coincidence --------------------
+// Same function POS calls, on the same unit. A tier of min_quantity = 1 is the
+// case that used to diverge: `qualifies` lets a TIERED row compete on ANY
+// level, so POS honoured a Wholesale tier@1 at quantity 1 while the kiosk —
+// reading only products.price — did not.
+const tieredAtOne: Product = {
   ...BASE,
-  priceLevels: [
-    { levelId: 'retail-level', price: 85, minQuantity: 0 } as any,
-  ],
   sellingUnits: [
-    { id: 'su1', name: 'Bottle', factor: 1, barcode: '4800016641116', price: 89, isBase: true },
+    {
+      id: 'su1', name: 'Bottle', factor: 1, barcode: '4800016641116', price: 100, isBase: true,
+      priceLevels: [{ levelId: 'wholesale-level', price: 80, minQuantity: 1 } as any],
+    },
   ],
 };
-assert.equal(
-  resolveKioskPrice(withOverride, 'retail-level').price,
-  85,
-  'default-level override applies',
-);
+{
+  const unit = tieredAtOne.sellingUnits![0];
+  const pos = calculateEffectivePriceForUnit(unit as any, 1, 'retail-level', 'retail-level');
+  const kiosk = resolveKioskPrice(tieredAtOne, 'retail-level');
+  assert.equal(kiosk.price, pos, 'kiosk agrees with POS on a tier@1 row');
+  assert.equal(kiosk.price, 80, 'the qualifying tier@1 lowers the price, as POS does');
+}
 
-// --- A "12+" bulk tier must NOT be advertised as the price of one -----------
-// The kiosk always asks at quantity 1, so a tiered row cannot qualify. A
-// customer reading 85 off the screen and being charged 89 at the till is the
-// exact failure this guards.
+// A "12+" bulk tier must NOT be quoted as the price of one.
 const withBulkTier: Product = {
   ...BASE,
-  priceLevels: [
-    { levelId: 'retail-level', price: 85, minQuantity: 12 } as any,
-  ],
   sellingUnits: [
-    { id: 'su1', name: 'Bottle', factor: 1, barcode: '4800016641116', price: 89, isBase: true },
+    {
+      id: 'su1', name: 'Bottle', factor: 1, barcode: '4800016641116', price: 89, isBase: true,
+      priceLevels: [{ levelId: 'retail-level', price: 85, minQuantity: 12 } as any],
+    },
   ],
 };
-assert.equal(
-  resolveKioskPrice(withBulkTier, 'retail-level').price,
-  89,
-  'a 12+ bulk tier is not quoted as the single-unit price',
-);
+{
+  const unit = withBulkTier.sellingUnits![0];
+  const pos = calculateEffectivePriceForUnit(unit as any, 1, 'retail-level', 'retail-level');
+  const kiosk = resolveKioskPrice(withBulkTier, 'retail-level');
+  assert.equal(kiosk.price, 89, 'a 12+ bulk tier is not quoted as the single-unit price');
+  assert.equal(kiosk.price, pos, 'kiosk agrees with POS on a bulk-tier row');
+}
+
+// An untiered default-level override on the base unit applies, as in POS.
+const withOverride: Product = {
+  ...BASE,
+  sellingUnits: [
+    {
+      id: 'su1', name: 'Bottle', factor: 1, barcode: '4800016641116', price: 89, isBase: true,
+      priceLevels: [{ levelId: 'retail-level', price: 85, minQuantity: 0 } as any],
+    },
+  ],
+};
+{
+  const unit = withOverride.sellingUnits![0];
+  const pos = calculateEffectivePriceForUnit(unit as any, 1, 'retail-level', 'retail-level');
+  const kiosk = resolveKioskPrice(withOverride, 'retail-level');
+  assert.equal(kiosk.price, 85, 'default-level override applies');
+  assert.equal(kiosk.price, pos, 'kiosk agrees with POS on an untiered override');
+}
 
 // --- A product with no sellingUnits array at all -----------------------------
 // Rows predating the selling-unit migration still exist; the kiosk must render
 // them rather than crash on an undefined base unit.
-assert.equal(resolveKioskPrice(BASE, 'retail-level').price, 89, 'legacy product still resolves');
-assert.equal(
-  resolveKioskPrice(BASE, 'retail-level').unitName,
-  'Bottle',
-  'legacy product falls back to unitOfMeasure',
-);
+{
+  const r = resolveKioskPrice(BASE, 'retail-level');
+  assert.equal(r.price, 89, 'legacy product still resolves');
+  assert.equal(r.unitName, 'Bottle', 'legacy product falls back to unitOfMeasure');
+}
+
+// An unknown scanned code on a legacy product must not throw either.
+{
+  const r = resolveKioskPrice(BASE, 'retail-level', '9999999999999');
+  assert.equal(r.price, 89, 'unknown code on a legacy product falls back to the product price');
+}
 
 console.log('✓ price-check-resolution tests passed');
