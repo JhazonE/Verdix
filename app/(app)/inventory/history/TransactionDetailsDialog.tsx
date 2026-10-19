@@ -39,7 +39,6 @@ interface TransactionItem {
   quantity: number;
   previousStock: number | null;
   newStock: number | null;
-  reason: string | null;
 }
 
 interface TransactionDetails {
@@ -204,7 +203,8 @@ export function TransactionDetailsDialog({
                       <TableHead className="text-xs font-bold uppercase tracking-wider text-center">New</TableHead>
                     </>
                   )}
-                  <TableHead className="text-xs font-bold uppercase tracking-wider">Reason</TableHead>
+                  {/* No per-item Reason column: the reason belongs to the
+                      transaction and is shown once in the Notes block below. */}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -230,9 +230,6 @@ export function TransactionDetailsDialog({
                         </TableCell>
                       </>
                     )}
-                    <TableCell className="text-xs text-muted-foreground italic">
-                      {item.reason || '—'}
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

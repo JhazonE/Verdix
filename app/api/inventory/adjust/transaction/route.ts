@@ -80,7 +80,6 @@ export async function GET(request: NextRequest) {
             quantity: Number(r.quantity) || 0,
             previousStock: null,
             newStock: null,
-            reason: null,
           })),
         },
       });
@@ -89,7 +88,7 @@ export async function GET(request: NextRequest) {
     const where = kind === 'single' ? 'sa.id = ?' : 'sa.batch_id = ?';
 
     const rows: any = await query(
-      `SELECT sa.id, sa.quantity, sa.reason, sa.new_stock, sa.reference_no,
+      `SELECT sa.id, sa.quantity, sa.new_stock, sa.reference_no,
               sa.note, sa.adj_type, sa.created_at,
               p.name AS product_name, p.unit_of_measure,
               su.barcode AS base_unit_barcode, p.barcode,
@@ -137,10 +136,6 @@ export async function GET(request: NextRequest) {
             quantity: Math.abs(qty),
             previousStock: newStock - qty,
             newStock,
-            // Bulk rows carry the batch memo in `reason`, which the dialog
-            // already shows once in its Notes block; only a genuinely
-            // per-item reason is worth repeating on the line.
-            reason: r.reason && r.reason !== r.note ? r.reason : null,
           };
         }),
       },
