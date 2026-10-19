@@ -5,6 +5,7 @@ import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 import { MySqlInventoryTransferRepository } from '@/src/infrastructure/repositories/MySqlInventoryTransferRepository';
 import { TransferStockService } from '@/src/infrastructure/services/TransferStockService';
 import { TransferStockUseCase } from '@/src/core/inventory/application/TransferStockUseCase';
+import { toLocalDateTime } from '@/lib/fiscal-utils';
 
 /**
  * Bulk Stock Adjustment API
@@ -64,7 +65,9 @@ export async function POST(request: NextRequest) {
         query('SELECT name FROM warehouses WHERE id = ?', [targetWarehouseId]),
       ]);
       const transferNotes = batchNotes || 'Bulk Transfer';
-      const transferDate = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      // Local time, not UTC: the column is a timezone-less DATETIME, so an ISO
+      // string would file every transfer hours early. See toLocalDateTime.
+      const transferDate = toLocalDateTime();
       const immediateItems: any[] = [];
 
       for (const adj of adjustments) {
@@ -217,7 +220,7 @@ export async function POST(request: NextRequest) {
             // Match TransferStockRequest structure for compatibility
             approvalData.sourceWarehouseId = warehouseId;
             approvalData.targetWarehouseId = targetWarehouseId;
-            approvalData.transferDate = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            approvalData.transferDate = toLocalDateTime();
             approvalData.reference = referenceNo;
             approvalData.notes = finalReason;
             approvalData.items = [{

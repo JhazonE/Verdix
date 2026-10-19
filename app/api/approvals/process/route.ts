@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { toLocalDateTime } from '@/lib/fiscal-utils';
 import { query, withTransaction } from '@/lib/mysql';
 import { v4 as uuidv4 } from 'uuid';
 import { adjustStock } from '@/app/(app)/inventory/history/actions';
@@ -107,7 +108,7 @@ export async function POST(request: NextRequest) {
             const transferRequest = {
               sourceWarehouseId: txData.warehouseId || txData.fromWarehouseId,
               targetWarehouseId: txData.targetWarehouseId || txData.toWarehouseId,
-              transferDate: new Date().toISOString().slice(0, 19).replace('T', ' '),
+              transferDate: toLocalDateTime(),
               reference: txData.referenceNo || 'BULK-TRF-FINAL',
               notes: txData.reason || 'Processed from Bulk Adjustment',
               items: [{

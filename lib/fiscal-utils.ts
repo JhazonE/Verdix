@@ -16,8 +16,25 @@ export function toLocalYmd(date: Date): string {
 }
 
 /**
+ * Formats a Date as a local `YYYY-MM-DD HH:MM:SS` string for a MySQL DATETIME
+ * column (no UTC conversion).
+ *
+ * Use this instead of `.toISOString().slice(0, 19).replace('T', ' ')`, which
+ * converts to UTC and then stores the result in a column that has no timezone
+ * — so in UTC+8 a 4:15 PM transaction is written as 08:15 and reads back eight
+ * hours early. MySQL's own NOW() and CURRENT_TIMESTAMP use the server's local
+ * time, so a UTC string stored beside them is inconsistent as well as wrong.
+ */
+export function toLocalDateTime(date: Date = new Date()): string {
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  return `${toLocalYmd(date)} ${hh}:${mi}:${ss}`;
+}
+
+/**
  * Gets the fiscal year for a given date and start month.
- * 
+ *
  * @param date The date to check
  * @param startMonth The month the fiscal year starts (1-12)
  * @returns The fiscal year number

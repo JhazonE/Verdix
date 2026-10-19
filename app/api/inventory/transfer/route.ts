@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { toLocalDateTime } from '@/lib/fiscal-utils';
 import { query } from '@/lib/mysql';
 import { MySqlInventoryTransferRepository } from '../../../../src/infrastructure/repositories/MySqlInventoryTransferRepository';
 import { TransferStockService } from '../../../../src/infrastructure/services/TransferStockService';
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
     // Direct execution
     const transferPayload = {
       ...body,
-      transferDate: body.transferDate || new Date().toISOString().slice(0, 19).replace('T', ' ')
+      transferDate: body.transferDate || toLocalDateTime()
     };
     const result = await processTransferStock(transferPayload);
 
