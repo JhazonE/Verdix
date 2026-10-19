@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { useToast } from '@/hooks/use-toast';
 import { useProducts, mapApiProduct } from '@/hooks/use-api';
@@ -49,6 +50,7 @@ export function usePOS() {
   }, []);
 
   const { toast } = useToast();
+  const router = useRouter();
 
   const [currentTime, setCurrentTime] = useState('');
   const [items, setItems] = useState<SaleItem[]>([]);
@@ -135,6 +137,8 @@ export function usePOS() {
   const [isLineVoidAuthOpen, setIsLineVoidAuthOpen] = useState(false);
   const [priceEditAuthCredentials, setPriceEditAuthCredentials] = useState<{ username?: string | null; password?: string | null } | null>(null);
   const [isPriceEditAuthOpen, setIsPriceEditAuthOpen] = useState(false);
+  const [discountAuthCredentials, setDiscountAuthCredentials] = useState<{ username?: string | null; password?: string | null } | null>(null);
+  const [isDiscountAuthOpen, setIsDiscountAuthOpen] = useState(false);
   const [editItemAuthCredentials, setEditItemAuthCredentials] = useState<{ username?: string | null; password?: string | null } | null>(null);
   const [isEditItemAuthOpen, setIsEditItemAuthOpen] = useState(false);
   const [editQtyAuthCredentials, setEditQtyAuthCredentials] = useState<{ username?: string | null; password?: string | null } | null>(null);
@@ -209,7 +213,16 @@ export function usePOS() {
     const storedUser = localStorage.getItem('pos_current_user');
     if (storedUser) {
       try {
-        setCurrentUser(JSON.parse(storedUser));
+        const parsedUser = JSON.parse(storedUser);
+        // A kiosk account must not be restored into checkout either — a
+        // session stored before this guard existed would otherwise walk
+        // straight back in on reload.
+        if (parsedUser?.userType === 'Price Inquiry') {
+          localStorage.removeItem('pos_current_user');
+          router.replace('/price-check');
+          return;
+        }
+        setCurrentUser(parsedUser);
         setIsPosLoggedIn(true);
       } catch {}
     }
@@ -314,6 +327,7 @@ export function usePOS() {
         setEnableLineVoidAuth(result.data.enableLineVoidAuth);
         setLineVoidAuthCredentials({ username: result.data.lineVoidAuthUsername, password: result.data.lineVoidAuthPassword });
         setPriceEditAuthCredentials({ username: result.data.priceEditAuthUsername, password: result.data.priceEditAuthPassword });
+        setDiscountAuthCredentials({ username: result.data.discountAuthUsername, password: result.data.discountAuthPassword });
         setEditItemAuthCredentials({ username: result.data.editItemAuthUsername, password: result.data.editItemAuthPassword });
         setEditQtyAuthCredentials({ username: result.data.editQtyAuthUsername, password: result.data.editQtyAuthPassword });
         setSuspendAuthCredentials({ username: result.data.suspendAuthUsername, password: result.data.suspendAuthPassword });
@@ -1014,8 +1028,19 @@ export function usePOS() {
   };
 
   const handleOpenDiscountDialog = () => {
-    if (selectedItem) setIsDiscountDialogOpen(true);
-    else toast({ title: 'No Item Selected', description: 'Please select an item to apply a discount.', variant: 'destructive' });
+    if (!selectedItem) {
+      toast({ title: 'No Item Selected', description: 'Please select an item to apply a discount.', variant: 'destructive' });
+      return;
+    }
+    // The no-item guard stays FIRST: prompting for credentials and then
+    // refusing to open the sheet would make the cashier authorise nothing.
+    if (businessSettings?.enableDiscountAuth) setIsDiscountAuthOpen(true);
+    else setIsDiscountDialogOpen(true);
+  };
+
+  const handleDiscountAuthSuccess = () => {
+    setIsDiscountAuthOpen(false);
+    setIsDiscountDialogOpen(true);
   };
 
   const handleApplyDiscount = (itemId: string | 'ALL', percentage: number, discountType?: string, discountDetails?: { idNumber?: string; holderName?: string }) => {
@@ -1184,6 +1209,21 @@ export function usePOS() {
   };
 
   const handlePosLoginSuccess = async (user: any) => {
+    // A Price Inquiry account is the unattended price-checker kiosk: it must
+    // never reach checkout. POS has its OWN login, separate from the main one
+    // and from the app-layout pin, so without this check the kiosk account can
+    // sign in here and ring up a real sale. Rejected BEFORE any logged-in
+    // state is set, so the checkout screen never paints.
+    if (user?.userType === 'Price Inquiry') {
+      toast({
+        variant: 'destructive',
+        title: 'Price Inquiry account',
+        description: 'This account can only use the price checker, not the register.',
+      });
+      router.replace('/price-check');
+      return;
+    }
+
     const userIsFrontliner = !!(user?.permissions as string[] | undefined)?.includes('pos_frontliner');
 
     // Block frontliner when POS is not in pharmacy mode
@@ -1533,6 +1573,7 @@ export function usePOS() {
     isLineVoidAuthOpen, setIsLineVoidAuthOpen, lineVoidAuthCredentials, pendingVoidItemId,
     isVoidLineChoiceOpen, setIsVoidLineChoiceOpen, handleVoidLineChoice,
     isPriceEditAuthOpen, setIsPriceEditAuthOpen, priceEditAuthCredentials,
+    isDiscountAuthOpen, setIsDiscountAuthOpen, discountAuthCredentials, handleDiscountAuthSuccess,
     isEditItemAuthOpen, setIsEditItemAuthOpen, editItemAuthCredentials, handleEditItemAuthSuccess,
     isEditQtyAuthOpen, setIsEditQtyAuthOpen, editQtyAuthCredentials, handleEditQtyAuthSuccess,
     isSuspendAuthOpen, setIsSuspendAuthOpen, suspendAuthCredentials, handleSuspendAuthSuccess,

@@ -76,6 +76,7 @@ import './stock-quantity-format.test';
 import './pricing.test';
 import './price-check-resolution.test';
 import './price-check-idle-timer.test';
+import './pos-login-blocks-price-inquiry.test';
 import './process-return-leg.test';
 import './process-sale-leg.test';
 import './checkout-cart-prefetch.test';
