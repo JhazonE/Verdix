@@ -215,10 +215,6 @@ export function useBulkAdjustment() {
             unitOfMeasure: a.product.unitOfMeasure || null,
             quantity: a.quantity,
             previousStock: a.product.stock,
-            // Left blank deliberately: the memo is a property of the BATCH and
-            // already prints in the slip's Notes block, so repeating it on
-            // every line would just be the same sentence N times.
-            reason: null,
             expirationDate: a.expirationDate || null,
             pendingApproval: queuedIds.has(String(a.product.id)),
           })),

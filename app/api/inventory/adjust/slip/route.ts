@@ -32,7 +32,6 @@ interface SlipItemRow {
   unitOfMeasure: string | null;
   quantity: number;
   previousStock: number;
-  reason: string | null;
   expirationDate: string | null;
 }
 
@@ -91,7 +90,6 @@ export async function GET(request: NextRequest) {
         unitOfMeasure: r.unit_of_measure || null,
         quantity: Number(r.quantity) || 0,
         previousStock: NaN,
-        reason: null,
         expirationDate: null,
       }));
 
@@ -116,7 +114,7 @@ export async function GET(request: NextRequest) {
     const param = batchId || adjustmentId;
 
     const rows: any = await query(
-      `SELECT sa.id, sa.quantity, sa.reason, sa.new_stock, sa.reference_no,
+      `SELECT sa.id, sa.quantity, sa.new_stock, sa.reference_no,
               sa.note, sa.adj_type, sa.created_at,
               p.name AS product_name, p.unit_of_measure,
               su.barcode AS base_unit_barcode, p.barcode,
@@ -152,12 +150,6 @@ export async function GET(request: NextRequest) {
         // the difference. Reconstructed rather than stored, which keeps this
         // correct for rows written before this feature existed.
         previousStock: newStock - qty,
-        // Bulk adjustments write the batch memo into every row's `reason`,
-        // and it already prints in the slip's Notes block — so drop the
-        // per-line copy when it is just that same text repeated. A row whose
-        // reason genuinely differs (single adjustments, older bulk rows that
-        // carried a per-item note) still shows it.
-        reason: r.reason && r.reason !== r.note ? r.reason : null,
         expirationDate: null,
       };
     });

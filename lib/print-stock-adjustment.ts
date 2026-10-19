@@ -20,7 +20,6 @@ export interface AdjustmentSlipItem {
   unitOfMeasure?: string | null;
   quantity: number;
   previousStock: number;
-  reason?: string | null;
   expirationDate?: string | null;
   /** Items held in the approval queue have not moved any stock yet. */
   pendingApproval?: boolean;
@@ -112,7 +111,8 @@ export const printStockAdjustment = async (data: AdjustmentSlipData): Promise<bo
       <span class="info-value">${escapeHtml(value)}</span>
     </div>`;
 
-  const columnCount = 4 + (showStock ? 2 : 0) + (showExpiry ? 1 : 0);
+  // Product, Unit, Qty — plus the optional stock pair and expiry.
+  const columnCount = 3 + (showStock ? 2 : 0) + (showExpiry ? 1 : 0);
 
   const rows = data.items
     .map(item => {
@@ -132,7 +132,6 @@ export const printStockAdjustment = async (data: AdjustmentSlipData): Promise<bo
         <td class="ctr">${prev.toLocaleString('en-US')}</td>
         <td class="ctr">${item.pendingApproval ? '<span class="muted">—</span>' : next.toLocaleString('en-US')}</td>` : ''}
         ${showExpiry ? `<td class="ctr">${item.expirationDate ? escapeHtml(format(new Date(item.expirationDate), 'MMM dd, yyyy')) : '-'}</td>` : ''}
-        <td>${escapeHtml(item.reason || '-')}</td>
       </tr>`;
     })
     .join('');
@@ -232,20 +231,22 @@ export const printStockAdjustment = async (data: AdjustmentSlipData): Promise<bo
     <table class="items-table">
       <thead>
         <tr>
-          <th style="width: 30%;">Product</th>
+          <th style="width: 45%;">Product</th>
           <th class="ctr">Unit</th>
           <th class="ctr">Qty ${escapeHtml(config.verb)}</th>
           ${showStock ? '<th class="ctr">Prev. Stock</th><th class="ctr">New Stock</th>' : ''}
           ${showExpiry ? '<th class="ctr">Expiry</th>' : ''}
-          <th>Reason / Note</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
       <tfoot>
         <tr>
           <td colspan="2">TOTAL</td>
+          <!-- Product + Unit span 2, then the qty cell, then whatever optional
+               columns remain. A transfer reprint has none, so the trailing
+               cell is omitted rather than emitted with a zero span. -->
           <td class="ctr">${totalQty.toLocaleString('en-US')}</td>
-          <td colspan="${columnCount - 3}"></td>
+          ${columnCount > 3 ? `<td colspan="${columnCount - 3}"></td>` : ''}
         </tr>
       </tfoot>
     </table>
