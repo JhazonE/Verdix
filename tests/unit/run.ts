@@ -74,6 +74,7 @@ import './cart-quantity-format.test';
 import './decimal-quantity-read.test';
 import './stock-quantity-format.test';
 import './pricing.test';
+import './price-check-resolution.test';
 import './process-return-leg.test';
 import './process-sale-leg.test';
 import './checkout-cart-prefetch.test';
