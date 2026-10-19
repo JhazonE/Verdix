@@ -136,6 +136,8 @@ import './135_alter_sale_item_quantity_precision';
 import './136_add_enable_browser_pos';
 import './137_default_browser_pos_disabled';
 import './138_add_x_z_reading_auth';
+import './139_add_discount_auth';
+import './140_add_price_inquiry_user_type';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';
