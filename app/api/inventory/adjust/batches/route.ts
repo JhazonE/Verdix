@@ -12,11 +12,11 @@ import { query } from '@/lib/mysql';
  * 141), while transfers are already one header row each in
  * `inventory_transfers`.
  *
- * Rows written before migration 141 have no `batch_id` and are deliberately
- * NOT shown here: they were never recorded as batches, and inventing groups for
- * them by timestamp would put transactions on an inventory document that may
- * never have happened. They remain individually reprintable from Inventory →
- * History.
+ * Rows with no `batch_id` — standalone adjustments, and everything written
+ * before migration 141 — are listed as one-item transactions rather than being
+ * grouped or hidden. They are still never MERGED with each other: grouping them
+ * by timestamp proximity would put transactions on an inventory document that
+ * may never have happened.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20')));
     const offset = (page - 1) * limit;
+    const search = (searchParams.get('search') || '').trim();
 
     const dateWhere = (col: string, params: any[]) => {
       const parts: string[] = [];
@@ -48,11 +49,23 @@ export async function GET(request: NextRequest) {
     // this a read-only change against live data.
     const COLL = 'utf8mb4_0900_ai_ci';
 
+    // COALESCE(batch_id, id) makes one listing out of both shapes: a bulk row
+    // groups with the rest of its batch, while a standalone adjustment (the
+    // Stock Adjustment dialog, POS adjust-quantity, and every row written
+    // before migration 141) groups alone and appears as a one-item
+    // transaction. The id that comes back is therefore a batch_id OR an
+    // adjustment id, which is why `kind` below distinguishes them — the slip
+    // route has to look the two up with different WHERE clauses.
     const adjParams: any[] = [];
     const adjSql = `
       SELECT
-        sa.batch_id COLLATE ${COLL}         AS id,
-        'batch'                             AS kind,
+        -- MIN() rather than a bare COALESCE: under ONLY_FULL_GROUP_BY the
+        -- COLLATE makes the expression no longer match the GROUP BY term, so
+        -- MySQL treats batch_id as a nonaggregated column and rejects it.
+        MIN(COALESCE(sa.batch_id, sa.id)) COLLATE ${COLL} AS id,
+        -- MIN() so this stays legal under ONLY_FULL_GROUP_BY; every row in a
+        -- group has the same batch_id nullness, so the aggregate is exact.
+        MIN(CASE WHEN sa.batch_id IS NULL THEN 'single' ELSE 'batch' END) COLLATE ${COLL} AS kind,
         MIN(sa.adj_type) COLLATE ${COLL}    AS mode,
         MIN(sa.created_at)                  AS transaction_date,
         MIN(sa.reference_no) COLLATE ${COLL} AS reference_no,
@@ -64,8 +77,22 @@ export async function GET(request: NextRequest) {
       FROM stock_adjustments sa
       LEFT JOIN warehouses wh  ON wh.id  = sa.warehouse_id
       LEFT JOIN warehouses twh ON twh.id = sa.target_warehouse_id
-      WHERE sa.batch_id IS NOT NULL${dateWhere('sa.created_at', adjParams)}
-      GROUP BY sa.batch_id
+      WHERE 1=1${dateWhere('sa.created_at', adjParams)}${
+        // A transaction matches when ANY of its lines does, so the search is an
+        // EXISTS over the sibling rows rather than a filter on this row — the
+        // latter would drop the other items from a batch that did match.
+        search
+          ? (adjParams.push(`%${search}%`, `%${search}%`, `%${search}%`),
+            ` AND EXISTS (
+                SELECT 1 FROM stock_adjustments sib
+                LEFT JOIN products sp ON sp.id = sib.product_id
+                WHERE (sib.batch_id <=> sa.batch_id AND sib.batch_id IS NOT NULL
+                       OR sib.id = sa.id)
+                  AND (sp.name LIKE ? OR sib.reason LIKE ? OR sib.reference_no LIKE ?)
+              )`)
+          : ''
+      }
+      GROUP BY COALESCE(sa.batch_id, sa.id)
     `;
 
     const trParams: any[] = [];
@@ -90,7 +117,16 @@ export async function GET(request: NextRequest) {
       LEFT JOIN warehouses src ON src.id = t.source_warehouse_id COLLATE ${COLL}
       LEFT JOIN warehouses dst ON dst.id = t.target_warehouse_id COLLATE ${COLL}
       LEFT JOIN inventory_transfer_items ti ON ti.transfer_id = t.id
-      WHERE 1=1${dateWhere('t.transfer_date', trParams)}
+      WHERE 1=1${dateWhere('t.transfer_date', trParams)}${
+        search
+          ? (trParams.push(`%${search}%`, `%${search}%`),
+            ` AND EXISTS (
+                SELECT 1 FROM inventory_transfer_items sti
+                WHERE sti.transfer_id = t.id
+                  AND (sti.product_name LIKE ? OR t.reference LIKE ?)
+              )`)
+          : ''
+      }
       GROUP BY t.id, t.transfer_date, t.reference, t.notes, src.name, dst.name
     `;
 
