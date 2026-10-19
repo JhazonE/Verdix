@@ -21,6 +21,7 @@ import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { printReportTable, exportReportExcel } from '@/lib/report-print';
 import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
 import { useToast } from '@/hooks/use-toast';
+import { reprintStockAdjustment } from '@/lib/reprint-stock-adjustment';
 
 interface Adjustment {
   id: string;
@@ -31,6 +32,40 @@ interface Adjustment {
   created_at: string;
   barcode: string;
   unit_of_measure: string;
+  /** Null for rows written before batch tracking (migration 141). */
+  batch_id?: string | null;
+}
+
+/**
+ * Reprints the slip for one row: the whole batch when the row belongs to one,
+ * otherwise just that adjustment. Split out so the row stays presentational.
+ */
+function SlipPrintButton({ adjustment }: { adjustment: Adjustment }) {
+  const { toast } = useToast();
+  const [isPrinting, setIsPrinting] = useState(false);
+
+  const handleClick = async () => {
+    setIsPrinting(true);
+    const result = await reprintStockAdjustment(
+      adjustment.batch_id ? { batchId: adjustment.batch_id } : { adjustmentId: adjustment.id }
+    );
+    setIsPrinting(false);
+    if (!result.ok) {
+      toast({ variant: 'destructive', title: 'Could not print slip', description: result.message });
+    }
+  };
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      title={adjustment.batch_id ? 'Reprint this batch slip' : 'Reprint this adjustment slip'}
+      onClick={handleClick}
+      disabled={isPrinting}
+    >
+      {isPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+    </Button>
+  );
 }
 
 export default function AdjustmentReportPage() {
@@ -261,18 +296,19 @@ export default function AdjustmentReportPage() {
                 <TableHead>Reason</TableHead>
                 <TableHead className="text-right">Adjustment</TableHead>
                 <TableHead className="text-right">New Stock</TableHead>
+                <TableHead className="w-10 print:hidden"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">
+                  <TableCell colSpan={7} className="h-24 text-center">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                   </TableCell>
                 </TableRow>
               ) : filteredAdjustments.length === 0 ? (
                 <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center">
+                    <TableCell colSpan={7} className="h-24 text-center">
                         No adjustments found for this period.
                     </TableCell>
                 </TableRow>
@@ -293,6 +329,9 @@ export default function AdjustmentReportPage() {
                     </TableCell>
                     <TableCell className="text-right">
                         {formatQuantity(adj.new_stock, adj.unit_of_measure)}
+                    </TableCell>
+                    <TableCell className="w-10 print:hidden">
+                        <SlipPrintButton adjustment={adj} />
                     </TableCell>
                   </TableRow>
                 ))

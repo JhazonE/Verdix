@@ -28,7 +28,9 @@ export function AdjustmentTableRow({
     <TableRow className="group hover:bg-accent/50 transition-colors border-b border-border last:border-0">
       <TableCell className="py-4 pl-6">
         <div className="flex flex-col gap-0.5">
-          <span className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors">
+          {/* A long product name would otherwise widen this column and push
+              Note off the row; let it wrap instead. */}
+          <span className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors break-words">
             {adj.product.name}
           </span>
           <div className="flex items-center gap-2 mt-0.5">
@@ -50,7 +52,7 @@ export function AdjustmentTableRow({
         </Badge>
       </TableCell>
       <TableCell className="py-4">
-        <div className="flex items-center gap-2 w-36">
+        <div className="flex items-center gap-1.5">
           <button
             className="w-7 h-7 rounded-md bg-muted hover:bg-muted/70 flex items-center justify-center text-foreground font-bold transition-colors"
             onClick={() => onUpdate(adj.product.id, { quantity: Math.max(1, adj.quantity - 1) })}
@@ -86,7 +88,7 @@ export function AdjustmentTableRow({
           {adj.product.isPerishable ? (
             <Input
               type="date"
-              className="h-8 text-xs w-[150px]"
+              className="h-8 text-xs w-full"
               value={adj.expirationDate || ''}
               onChange={e => onUpdate(adj.product.id, { expirationDate: e.target.value })}
             />
@@ -95,14 +97,6 @@ export function AdjustmentTableRow({
           )}
         </TableCell>
       )}
-      <TableCell className="py-4">
-        <Input
-          placeholder="Optional note..."
-          className="h-8 text-xs w-full min-w-[160px]"
-          value={adj.reason}
-          onChange={e => onUpdate(adj.product.id, { reason: e.target.value })}
-        />
-      </TableCell>
       <TableCell className="py-4 pr-4">
         <Button
           variant="ghost"

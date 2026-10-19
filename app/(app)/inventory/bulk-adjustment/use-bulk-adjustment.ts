@@ -7,6 +7,7 @@ import { logActivity } from '@/lib/client-activity-logger';
 import { dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { useToast } from '@/hooks/use-toast';
 import { matchesNormalizedSearch, normalizeSearchTerm } from '@/lib/product-search';
+import { printStockAdjustment, type AdjustmentSlipData } from '@/lib/print-stock-adjustment';
 import type { Product, Supplier, Warehouse } from '@/lib/types';
 
 import { getProducts } from '../../products/actions';
@@ -35,10 +36,17 @@ export function useBulkAdjustment() {
   const [targetWarehouseId, setTargetWarehouseId] = useState<string>('');
   const [supplierId, setSupplierId] = useState<string>('');
   const [referenceNo, setReferenceNo] = useState('');
+  // The last value this hook suggested. Lets the mode switch replace its own
+  // suggestion while never clobbering a reference the user typed themselves.
+  const suggestedRef = useRef('');
   const [note, setNote] = useState('');
 
   const [adjustments, setAdjustments] = useState<AdjustmentItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Snapshot of the batch that just succeeded, kept alive for the print
+  // confirmation after `adjustments` is cleared. Null means no prompt is open.
+  const [printableSlip, setPrintableSlip] = useState<AdjustmentSlipData | null>(null);
 
   // The column only earns its width when it can actually be used: adding stock,
   // with at least one perishable product in the batch.
@@ -62,6 +70,28 @@ export function useBulkAdjustment() {
     loadProducts();
     loadMetadata();
   }, []);
+
+  // The reference identifies the transaction on the slip and in history, so
+  // the field starts filled instead of blank. Re-fetched when the mode changes
+  // because a transfer is numbered TRF- rather than ADJ-. Only ever overwrites
+  // a previous suggestion — anything the user typed is left alone.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const type = adjustmentType === 'transfer' ? 'transfer' : 'adjustment';
+        const res = await fetch(`/api/inventory/adjust/next-reference?type=${type}`);
+        const payload = await res.json();
+        if (cancelled || !payload.success) return;
+        setReferenceNo(prev => (prev === '' || prev === suggestedRef.current ? payload.reference : prev));
+        suggestedRef.current = payload.reference;
+      } catch {
+        // Leave the field blank and editable; a suggestion is a convenience,
+        // not a requirement for submitting the batch.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [adjustmentType]);
 
   // Close search results when clicking outside
   useEffect(() => {
@@ -120,7 +150,7 @@ export function useBulkAdjustment() {
       toast({ title: 'Already added', description: `${product.name} is already in the list.` });
       return;
     }
-    setAdjustments(prev => [...prev, { product, quantity: 1, type: adjustmentType, reason: '' }]);
+    setAdjustments(prev => [...prev, { product, quantity: 1, type: adjustmentType }]);
     setSearch('');
     setShowResults(false);
     setShowMobileSearch(false);
@@ -157,12 +187,14 @@ export function useBulkAdjustment() {
     setIsProcessing(true);
     try {
       const userSession = localStorage.getItem('mock-user-session');
-      const userId = userSession ? JSON.parse(userSession).uid : 'system';
+      const session = userSession ? JSON.parse(userSession) : null;
+      const userId = session?.uid || 'system';
       const payload = {
         adjustments: adjustments.map(a => ({
           productId: a.product.id,
           quantity: a.quantity,
-          reason: a.reason || note || 'Bulk Stock Adjustment',
+          // The batch memo is the reason for every line now.
+          reason: note || 'Bulk Stock Adjustment',
           expirationDate: a.product.isPerishable && adjustmentType === 'add' ? (a.expirationDate || null) : null,
         })),
         notes: note || 'Bulk Stock Adjustment',
@@ -181,9 +213,41 @@ export function useBulkAdjustment() {
           description: `Bulk stock adjustment: processed ${result.processed} item(s)`,
         });
         toast({ title: 'Bulk Adjustment Successful', description: `Processed ${result.processed} items.` });
+
+        // Capture the slip BEFORE clearing the batch — the prompt outlives it.
+        // Items the API held for approval are flagged so the slip cannot claim
+        // stock moved when it has not.
+        const queuedIds = new Set<string>(
+          (result.queuedItems || []).map((q: any) => String(q.productId))
+        );
+        setPrintableSlip({
+          mode: adjustmentType,
+          referenceNo: referenceNo || null,
+          warehouseName:
+            warehouseId && warehouseId !== 'none'
+              ? warehouses.find(w => w.id === warehouseId)?.name || null
+              : null,
+          targetWarehouseName: warehouses.find(w => w.id === targetWarehouseId)?.name || null,
+          supplierName:
+            supplierId && supplierId !== 'none'
+              ? suppliers.find(s => s.id === supplierId)?.name || null
+              : null,
+          preparedBy: session?.displayName || null,
+          notes: note || null,
+          items: adjustments.map(a => ({
+            productName: a.product.name,
+            barcode: a.product.barcode || null,
+            unitOfMeasure: a.product.unitOfMeasure || null,
+            quantity: a.quantity,
+            previousStock: a.product.stock,
+            expirationDate: a.expirationDate || null,
+            pendingApproval: queuedIds.has(String(a.product.id)),
+          })),
+        });
+
         setAdjustments([]);
         dispatchStockUpdate();
-        router.push('/inventory');
+        // Redirect waits for the print prompt — see confirmPrintSlip/skipPrintSlip.
       } else {
         throw new Error(result.error || 'Failed to process adjustments');
       }
@@ -192,6 +256,32 @@ export function useBulkAdjustment() {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  /** Print the captured slip, then leave for the inventory list. */
+  const confirmPrintSlip = async () => {
+    const slip = printableSlip;
+    setPrintableSlip(null);
+    if (slip) {
+      const printed = await printStockAdjustment(slip);
+      // A blocked popup must not look like a successful print: the stock has
+      // already moved, so say so rather than redirecting in silence.
+      if (!printed) {
+        toast({
+          variant: 'destructive',
+          title: 'Could not open the print window',
+          description:
+            'Your browser blocked the popup. The adjustment was still applied — allow popups for this site to print the slip.',
+        });
+      }
+    }
+    router.push('/inventory');
+  };
+
+  /** Decline the slip and leave, exactly as the screen behaved before. */
+  const skipPrintSlip = () => {
+    setPrintableSlip(null);
+    router.push('/inventory');
   };
 
   const hasNegativeStock = adjustments.some(a => {
@@ -238,6 +328,9 @@ export function useBulkAdjustment() {
     removeAdjustment,
     updateAdjustment,
     handleProcessAdjustments,
+    printableSlip,
+    confirmPrintSlip,
+    skipPrintSlip,
     hasNegativeStock,
     addCount,
     removeCount,

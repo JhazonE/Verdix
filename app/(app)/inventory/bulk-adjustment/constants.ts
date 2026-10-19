@@ -8,8 +8,9 @@ export interface AdjustmentItem {
   product: Product;
   quantity: number;
   type: AdjustmentType;
-  reason: string;
   expirationDate?: string;
+  // No per-item reason: the batch's Memo / Reason in the config panel is the
+  // one place a reason is written, and it applies to every item.
 }
 
 export const typeConfig: Record<AdjustmentType, { label: string; color: string; icon: LucideIcon; dot: string }> = {

@@ -47,6 +47,9 @@ export async function GET(request: NextRequest) {
         sa.reason,
         sa.new_stock,
         sa.created_at,
+        -- Lets a row reprint the whole transaction it belonged to, falling back
+        -- to its own slip when it predates batch tracking (migration 141).
+        sa.batch_id,
         p.name as product_name,
         p.barcode,
         p.unit_of_measure

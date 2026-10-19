@@ -5,6 +5,7 @@ import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 import { MySqlInventoryTransferRepository } from '@/src/infrastructure/repositories/MySqlInventoryTransferRepository';
 import { TransferStockService } from '@/src/infrastructure/services/TransferStockService';
 import { TransferStockUseCase } from '@/src/core/inventory/application/TransferStockUseCase';
+import { toLocalDateTime } from '@/lib/fiscal-utils';
 
 /**
  * Bulk Stock Adjustment API
@@ -32,6 +33,15 @@ export async function POST(request: NextRequest) {
     const results: any[] = [];
     const queuedItems: any[] = [];
 
+    // One id for the whole press of Apply Adjustments, generated once OUTSIDE
+    // the per-item loop. The per-row `adj_bulk_...` ids cannot serve as a batch
+    // key — their timestamp advances and their suffix is random — so this is
+    // what lets the slip be reprinted as the transaction it actually was.
+    const batchId = `adj_batch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    // Monotonic per-row suffix for adjustment ids; see where it is consumed.
+    let insertSeq = 0;
+
     // Transfers use exactly the same path as the Transfer board (TransferStockUseCase):
     // it creates the product in the target warehouse when missing, records the
     // transfer, and writes stock movements for both sides.
@@ -55,7 +65,9 @@ export async function POST(request: NextRequest) {
         query('SELECT name FROM warehouses WHERE id = ?', [targetWarehouseId]),
       ]);
       const transferNotes = batchNotes || 'Bulk Transfer';
-      const transferDate = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      // Local time, not UTC: the column is a timezone-less DATETIME, so an ISO
+      // string would file every transfer hours early. See toLocalDateTime.
+      const transferDate = toLocalDateTime();
       const immediateItems: any[] = [];
 
       for (const adj of adjustments) {
@@ -130,12 +142,16 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Transfers are already grouped properly by inventory_transfers /
+      // inventory_transfer_items, so they need no batch_id — the transferId IS
+      // the batch key, and it is what a reprint looks the slip up by.
       return NextResponse.json({
         success: true,
         processed: results.length,
         queued: queuedItems.length,
         results,
         queuedItems,
+        transferId: results[0]?.transferId || null,
         timestamp: new Date().toISOString(),
       });
     }
@@ -204,7 +220,7 @@ export async function POST(request: NextRequest) {
             // Match TransferStockRequest structure for compatibility
             approvalData.sourceWarehouseId = warehouseId;
             approvalData.targetWarehouseId = targetWarehouseId;
-            approvalData.transferDate = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            approvalData.transferDate = toLocalDateTime();
             approvalData.reference = referenceNo;
             approvalData.notes = finalReason;
             approvalData.items = [{
@@ -257,25 +273,34 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        const adjustmentId = `adj_bulk_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        // `id` is the PRIMARY KEY and this loop can insert many rows inside a
+        // single millisecond, so Date.now() alone does not separate them and a
+        // 5-char random suffix collides measurably on large batches (~1 in 2000
+        // runs at 100 items). A duplicate key would abort the whole
+        // transaction, losing the entire adjustment — so the row's index in the
+        // batch is included, which is unique by construction. (A dedicated
+        // counter, not results.length — that only grows on success, so the
+        // `continue` paths above would hand two rows the same index.)
+        const adjustmentId = `adj_bulk_${Date.now()}_${insertSeq++}_${Math.random().toString(36).slice(2, 10)}`;
 
         // Create adjustment record with new metadata
         await connection.query(
-          `INSERT INTO stock_adjustments 
-            (id, product_id, quantity, reason, new_stock, warehouse_id, target_warehouse_id, reference_no, supplier_id, note, adj_type) 
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO stock_adjustments
+            (id, product_id, quantity, reason, new_stock, warehouse_id, target_warehouse_id, reference_no, supplier_id, note, adj_type, batch_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            adjustmentId, 
-            productId, 
-            finalQuantity, 
-            finalReason, 
-            newStock, 
-            warehouseId || null, 
-            targetWarehouseId || null, 
-            referenceNo || null, 
-            supplierId || null, 
-            batchNotes || null, 
-            adjustmentType
+            adjustmentId,
+            productId,
+            finalQuantity,
+            finalReason,
+            newStock,
+            warehouseId || null,
+            targetWarehouseId || null,
+            referenceNo || null,
+            supplierId || null,
+            batchNotes || null,
+            adjustmentType,
+            batchId
           ]
         );
 
@@ -318,6 +343,10 @@ export async function POST(request: NextRequest) {
       queued: queuedItems.length,
       results,
       queuedItems,
+      // Only meaningful when something was actually written: a batch where
+      // every item went to the approval queue has no stock_adjustments rows,
+      // so there is nothing for this id to find on a reprint.
+      batchId: results.length > 0 ? batchId : null,
       timestamp: new Date().toISOString()
     });
   } catch (error: any) {

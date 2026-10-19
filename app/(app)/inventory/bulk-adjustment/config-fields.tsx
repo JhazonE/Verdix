@@ -113,12 +113,13 @@ export function ConfigFields({
         <div className="relative">
           <Tag className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
-            placeholder="e.g. ADJ-10023"
+            placeholder="e.g. ADJ-20260119-001"
             className="pl-9 h-10"
             value={referenceNo}
             onChange={e => setReferenceNo(e.target.value)}
           />
         </div>
+        <p className="text-[11px] text-muted-foreground">Generated automatically — you can change it.</p>
       </div>
 
       {/* Supplier */}

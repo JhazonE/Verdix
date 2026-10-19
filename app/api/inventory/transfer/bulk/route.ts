@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { toLocalDateTime } from '@/lib/fiscal-utils';
 import { withTransaction, query } from '@/lib/mysql';
 import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
 import { processTransferStock } from '@/lib/transfer-actions';
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
           targetWarehouseId: targetWhId,
           fromWarehouseName: sourceRes[0]?.name || 'Unknown',
           toWarehouseName: targetRes[0]?.name || 'Unknown',
-          transferDate: new Date().toISOString().slice(0, 19).replace('T', ' '),
+          transferDate: toLocalDateTime(),
           notes: globalNotes || 'Bulk Warehouse Transfer',
           items: enrichedItems
         };
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest) {
       const transferPayload = {
         sourceWarehouseId: sourceWhId,
         targetWarehouseId: targetWhId,
-        transferDate: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        transferDate: toLocalDateTime(),
         notes: globalNotes || 'Bulk Warehouse Transfer',
         items: await Promise.all(items.map(async item => {
           const rows: any = await query('SELECT name FROM products WHERE id = ?', [item.sourceProductId]);

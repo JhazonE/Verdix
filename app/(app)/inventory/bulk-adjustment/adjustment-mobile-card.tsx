@@ -82,16 +82,9 @@ export function AdjustmentMobileCard({
           </div>
         </div>
 
-        {/* Note */}
-        <div>
-          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">Note (optional)</p>
-          <Input
-            placeholder="Reason for this item..."
-            className="h-8 text-xs"
-            value={adj.reason}
-            onChange={e => onUpdate(adj.product.id, { reason: e.target.value })}
-          />
-        </div>
+        {/* The per-item note was removed: the batch's Memo / Reason in the
+            config panel applies to every item, so two places to write a
+            reason was one too many. */}
 
         {showExpirationColumn && adj.product.isPerishable && (
           <div className="space-y-1">
