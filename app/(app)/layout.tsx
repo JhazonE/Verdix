@@ -19,7 +19,7 @@ import { useLicenseHeartbeat } from './use-license-heartbeat';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const {
-    user, isUserLoading, isPOSPage,
+    user, isUserLoading, isPOSPage, isChromelessPage,
     businessName, browserPosBlocked, hasPermission, getInitials,
     filteredNavItems, filteredOtherNavItems,
     filteredInventoryNavItems, filteredSalesNavItems,
@@ -72,7 +72,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (isPOSPage) return <>{children}</>;
+  // POS, customer-display and the price-check kiosk are fullscreen screens:
+  // they render their own shell, with no sidebar, header or nav around it.
+  if (isChromelessPage) return <>{children}</>;
 
   if (isUserLoading || !user) {
     return (

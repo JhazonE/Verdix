@@ -90,8 +90,13 @@ export default function LoginPage() {
         photoURL: result.photoURL
       }));
 
-      // Redirect based on user type (logic adapted from previous mock)
-      if (result.userType === 'Cashier' || result.userType === 'Employee') {
+      // Redirect based on user type (logic adapted from previous mock).
+      // `Price Inquiry` is the unattended self-service kiosk account: it owns
+      // the price-checker screen and nothing else. The app layout also pins it
+      // there, so a typed URL cannot escape — this is just the first hop.
+      if (result.userType === 'Price Inquiry') {
+         router.push('/price-check');
+      } else if (result.userType === 'Cashier' || result.userType === 'Employee') {
          router.push('/pos');
       } else {
          router.push('/');

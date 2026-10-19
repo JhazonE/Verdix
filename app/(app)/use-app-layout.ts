@@ -26,6 +26,16 @@ export function useAppLayout() {
 
   const isPOSPage = pathname === '/pos' || pathname === '/pos/customer-display';
 
+  // The price-checker kiosk (`/price-check`) is fullscreen like POS: no
+  // sidebar, no header, no nav. `isChromelessPage` is what the layout keys its
+  // chrome bypass on. `isPOSPage` keeps its narrower meaning because
+  // `browserPosBlocked` is specifically about POS checkout in a browser.
+  //
+  // Deliberately NOT used by the auth check below: the kiosk needs its session
+  // loaded, because the redirect that pins a Price Inquiry account to this
+  // screen reads `user.userType`.
+  const isChromelessPage = isPOSPage || pathname === '/price-check';
+
   // Auth check
   useEffect(() => {
     if (isPOSPage) { setIsUserLoading(false); return; }
@@ -56,10 +66,11 @@ export function useAppLayout() {
       .catch(() => {});
   }, [isPOSPage]);
 
-  // Disabled pages (store-wide developer toggles). Skipped on POS/customer-display,
-  // which render before the sidebar and never consume the disabled set.
+  // Disabled pages (store-wide developer toggles). Skipped on the chromeless
+  // screens — POS, customer-display and the price-check kiosk — which render
+  // before the sidebar and never consume the disabled set.
   useEffect(() => {
-    if (isPOSPage) { setDisabledLoaded(true); return; }
+    if (isChromelessPage) { setDisabledLoaded(true); return; }
     fetch(getApiUrl('/developer/disabled-pages'))
       .then(res => { if (!res.ok) throw new Error(); return res.json(); })
       .then(result => {
@@ -69,20 +80,26 @@ export function useAppLayout() {
       })
       .catch(() => {})
       .finally(() => setDisabledLoaded(true));
-  }, [isPOSPage]);
+  }, [isChromelessPage]);
 
   // Document title
   useEffect(() => { document.title = businessName; }, [businessName]);
 
-  // Force Cashiers to POS
+  // Force Cashiers to POS, and Price Inquiry accounts to the kiosk.
+  //
+  // The kiosk pin is what makes the restricted account actually restricted:
+  // the customer is standing at an unattended terminal, so a typed URL must
+  // not land them in inventory or reports.
   useEffect(() => {
     if (user?.userType === 'Cashier' && pathname !== '/pos') router.push('/pos');
+    if (user?.userType === 'Price Inquiry' && pathname !== '/price-check') router.push('/price-check');
   }, [user, pathname, router]);
 
   const hasPermission = (permission?: string) => {
     if (!user) return false;
     if (user.permissions?.includes('super_admin')) return true;
     if (user.userType === 'Cashier') return permission === 'access_pos';
+    if (user.userType === 'Price Inquiry') return permission === 'price_inquiry';
     if (permission && !user.permissions?.includes(permission)) return false;
     return true;
   };
@@ -109,7 +126,7 @@ export function useAppLayout() {
   const filteredPurchasesNavItems = purchasesNavItems.filter(i => isEnabled(i.href));
 
   return {
-    user, isUserLoading, isPOSPage,
+    user, isUserLoading, isPOSPage, isChromelessPage,
     businessName,
     browserPosBlocked,
     hasPermission, getInitials,
