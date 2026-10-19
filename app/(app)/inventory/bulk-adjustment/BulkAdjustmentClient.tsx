@@ -135,15 +135,22 @@ export default function BulkAdjustmentClient() {
             {adjustments.length === 0 ? (
               <EmptyState />
             ) : (
-              <Table>
+              // min-w keeps every column at a usable size on a narrow window
+              // instead of letting the browser squeeze Note to nothing; the
+              // wrapper scrolls horizontally rather than crushing the row.
+              <Table className="min-w-[840px]">
                 <TableHeader className="sticky top-0 bg-card z-10 border-b border-border">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="pl-6 py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[280px]">Product</TableHead>
-                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Type</TableHead>
-                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Quantity</TableHead>
-                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Impact</TableHead>
-                    {showExpirationColumn && <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Expiry</TableHead>}
-                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Note</TableHead>
+                    {/* Product was a fixed 280px, which left nothing for Note
+                        once the Expiry column appeared — it squeezed to a few
+                        unusable pixels. Product now shrinks instead, and Note
+                        keeps a floor wide enough to type in. */}
+                    <TableHead className="pl-6 py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground min-w-[150px]">Product</TableHead>
+                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[100px]">Type</TableHead>
+                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[135px]">Quantity</TableHead>
+                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[105px]">Impact</TableHead>
+                    {showExpirationColumn && <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[135px]">Expiry</TableHead>}
+                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[170px]">Note</TableHead>
                     <TableHead className="pr-4 py-3 w-10"></TableHead>
                   </TableRow>
                 </TableHeader>
