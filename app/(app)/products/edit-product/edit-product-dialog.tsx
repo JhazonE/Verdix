@@ -142,6 +142,23 @@ export function EditProductDialog({
                     e.stopPropagation();
                     form.handleSubmit(saveChanges, handleInvalid)(e);
                   }}
+                  onKeyDown={(e) => {
+                    // A barcode scanner is a keyboard: it types the digits and
+                    // then sends Enter. Inside a <form> that Enter is an
+                    // implicit submit, so a scan into a Barcode field used to
+                    // SAVE the product instead of just filling the field.
+                    // Suppress implicit submission from single-line inputs —
+                    // saving stays on the explicit Save button (type="submit").
+                    // Enter in a <textarea> (newline) and on buttons/links
+                    // (activation) must still work, so they are exempt.
+                    if (e.key !== 'Enter' || e.shiftKey) return;
+                    const el = e.target as HTMLElement | null;
+                    const tag = el?.tagName;
+                    if (tag === 'TEXTAREA' || tag === 'BUTTON' || tag === 'A') return;
+                    if (el?.getAttribute('role') === 'button') return;
+                    if (el?.isContentEditable) return;
+                    e.preventDefault();
+                  }}
                 >
                   <div className="h-full">
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full h-full">

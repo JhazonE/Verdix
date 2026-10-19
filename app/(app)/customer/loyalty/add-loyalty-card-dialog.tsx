@@ -219,7 +219,27 @@ export function AddLoyaltyCardDialog({
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            onKeyDown={(e) => {
+              // An RFID reader is a keyboard: it types the card code and then
+              // sends Enter. Inside a <form> that Enter is an implicit submit,
+              // so a scan into the RFID Card Code field used to ADD the card
+              // instead of just filling the field. Suppress implicit
+              // submission from single-line inputs — adding stays on the
+              // explicit "Add Loyalty Card" button (type="submit"). Enter in a
+              // <textarea> (newline) and on buttons/links (activation) must
+              // still work, so they are exempt.
+              if (e.key !== 'Enter' || e.shiftKey) return;
+              const el = e.target as HTMLElement | null;
+              const tag = el?.tagName;
+              if (tag === 'TEXTAREA' || tag === 'BUTTON' || tag === 'A') return;
+              if (el?.getAttribute('role') === 'button') return;
+              if (el?.isContentEditable) return;
+              e.preventDefault();
+            }}
+            className="space-y-4"
+          >
             {isGeneralDialog && (
               <FormField
                 control={form.control}
