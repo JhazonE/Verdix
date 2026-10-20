@@ -184,6 +184,10 @@ export function usePOS() {
   const [isCheckingShift, setIsCheckingShift] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<{ id: string; name: string; isActive: boolean; isReferenceRequired?: boolean; pointsAmount?: number; currencyEquivalent?: number }[]>([]);
   const [showQuantityInSearch, setShowQuantityInSearch] = useState(true);
+  // Defaults OFF, matching the column default: the picker changes what a
+  // cashier can do at the till, so a store opts in rather than finding a new
+  // control after an update.
+  const [enablePriceLevelPicker, setEnablePriceLevelPicker] = useState(false);
 
   // Sticky focus on main input when all dialogs close
   useEffect(() => {
@@ -337,6 +341,7 @@ export function usePOS() {
         setZReadingAuthCredentials({ username: result.data.zReadingAuthUsername, password: result.data.zReadingAuthPassword });
         setIsTrainingMode(result.data.isTrainingMode || false);
         setShowQuantityInSearch(result.data.showQuantityInSearch ?? true);
+        setEnablePriceLevelPicker(result.data.enablePriceLevelPicker ?? false);
         setEnableCustomerDisplay(result.data.enableCustomerDisplay || false);
 
         const localPrintMode = localStorage.getItem('pos_printer_mode');
@@ -1515,7 +1520,7 @@ export function usePOS() {
     currentShiftId, selectedTerminalId, currentTerminalName, terminals,
     currentTime, shiftActive, isPosLoggedIn, isCheckingShift, isEndingShift,
     currentUser, businessSettings, isTrainingMode, enableCustomerDisplay,
-    openOnSecondScreen, showQuantityInSearch, showOverlay,
+    openOnSecondScreen, showQuantityInSearch, enablePriceLevelPicker, showOverlay,
     // frontliner / queue
     isFrontliner, queuedOrders, editingQueueOrder, isQueuePanelOpen, setIsQueuePanelOpen,
     isSendToQueueOpen, setIsSendToQueueOpen,

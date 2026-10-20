@@ -29,6 +29,7 @@ export interface PosSettings {
   cashCountAuthUsername?: string | null;
   cashCountAuthPassword?: string | null;
   showQuantityInSearch?: boolean;
+  enablePriceLevelPicker?: boolean;
   enablePriceEditAuth?: boolean;
   priceEditAuthUsername?: string | null;
   priceEditAuthPassword?: string | null;
@@ -121,6 +122,7 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   cashCountAuthUsername: '',
   cashCountAuthPassword: '',
   showQuantityInSearch: true,
+  enablePriceLevelPicker: false,
   enablePriceEditAuth: false,
   priceEditAuthUsername: '',
   priceEditAuthPassword: '',
