@@ -132,3 +132,43 @@ export function calculateEffectivePriceForUnit(
 
   return priceCandidates.length > 0 ? Math.min(...priceCandidates) : Number(unit.price);
 }
+
+/**
+ * The price for ONE deliberately picked level on one selling unit, ignoring
+ * quantity tiers entirely.
+ *
+ * This is the cashier picking "Wholesale" on a cart line. It is a different
+ * question from the one `calculateEffectivePriceForUnit` answers, in two ways
+ * that matter:
+ *
+ * **It does not consult `qualifies`, and must not.** A tiered row competes
+ * only once its threshold is reached; here the cashier has named the level
+ * outright, so the override applies at any quantity. Quantity tiers remain the
+ * mechanism for *automatic* breaks — this is the mechanism for *deliberate*
+ * ones, and consulting the tier is the bug this function exists to avoid.
+ *
+ * **It is not min-of-candidates.** `calculateEffectivePriceForUnit` takes the
+ * MINIMUM of qualifying candidates, which is what guarantees an automatic tier
+ * can only ever lower a price. A direct pick carries no such guarantee because
+ * it is an explicit instruction: picking a level whose price is above the shelf
+ * price RAISES the line, and that is correct. The caller is responsible for
+ * showing the resulting price before it is committed.
+ *
+ * A level with no override row for this unit falls back to the unit's OWN
+ * price — never another unit's price, never another level's, never a computed
+ * multiple, and never 0. That covers a deleted or unknown level id too, so a
+ * stale pick degrades to the shelf price rather than to free.
+ */
+export function resolvePriceForLevel(
+  unit: PricedSellingUnit,
+  levelId: string,
+): number {
+  const row = unit.priceLevels?.find(pl => pl.levelId === levelId);
+  // A row whose price is not a usable number is treated as no row at all: the
+  // shelf price is always a safer answer than NaN reaching a receipt.
+  if (row) {
+    const price = Number(row.price);
+    if (Number.isFinite(price)) return price;
+  }
+  return Number(unit.price);
+}
