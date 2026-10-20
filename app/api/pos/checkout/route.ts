@@ -219,6 +219,31 @@ export async function POST(request: NextRequest) {
       timer.phase('txn:cartPrefetch');
       const loyaltyByProductId = new Map<string, any>();
       const baseUnitsByProductId = new Map<string, SellingUnit>();
+
+      // Names for any price levels the cart picked, resolved HERE rather than
+      // trusted from the client: price_levels is the table that owns the name,
+      // and a stale cart could otherwise file a receipt under a label the
+      // level no longer has. One query for the whole cart, in keeping with the
+      // rest of this prefetch block; best-effort, because a sale must never
+      // fail over a label.
+      const priceLevelNameById = new Map<string, string>();
+      {
+        const pickedLevelIds: string[] = [...new Set(
+          items.map((it: any) => it?.priceLevelId).filter(Boolean).map(String) as string[]
+        )];
+        if (pickedLevelIds.length > 0) {
+          try {
+            const placeholders = pickedLevelIds.map(() => '?').join(',');
+            const [levelRows]: any = await connection.query(
+              `SELECT id, name FROM price_levels WHERE id IN (${placeholders})`,
+              pickedLevelIds
+            );
+            for (const row of levelRows || []) priceLevelNameById.set(String(row.id), row.name);
+          } catch (levelErr) {
+            console.warn('[Checkout] Could not resolve price level names:', levelErr);
+          }
+        }
+      }
       {
         const uniqueItemIds: string[] = [...new Set(items.map((it: any) => String(it.id)) as string[])];
         if (uniqueItemIds.length > 0) {
@@ -257,7 +282,14 @@ export async function POST(request: NextRequest) {
         // points are deliberately NOT part of that shared function (an
         // exchange's sale leg must not earn points), so they stay here.
         const legResult = await processSaleLeg(connection, {
-          item,
+          item: {
+            ...item,
+            // An unresolvable id still records the id, with a NULL name: a
+            // half-known record beats a lost one.
+            priceLevelName: item.priceLevelId
+              ? priceLevelNameById.get(String(item.priceLevelId)) ?? null
+              : null,
+          },
           saleId,
           itemIndex: i,
           oversellBlock: batchCostingSettings.oversellBlock,

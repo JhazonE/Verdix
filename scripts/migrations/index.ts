@@ -140,6 +140,7 @@ import './139_add_discount_auth';
 import './140_add_price_inquiry_user_type';
 import './141_add_batch_id_to_stock_adjustments';
 import './142_add_pos_price_level_picker';
+import './143_add_price_level_to_sale_items';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';

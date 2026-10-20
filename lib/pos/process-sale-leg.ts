@@ -13,6 +13,17 @@ export interface SaleLegItem {
   sellingUnitId?: string | null;
   sellingUnitName?: string | null;
   sellingUnitFactor?: number | null;
+  /**
+   * The price level a cashier deliberately picked for this line in the POS
+   * Edit Price dialog. Absent on an ordinary line, which is priced by the
+   * cart-wide level or a quantity tier.
+   *
+   * The NAME is carried alongside the id and stored denormalised, exactly as
+   * `sellingUnitName` is: a level later renamed or deleted must not change
+   * what a filed receipt meant.
+   */
+  priceLevelId?: string | null;
+  priceLevelName?: string | null;
 }
 
 export interface SaleLegResult {
@@ -128,8 +139,9 @@ export async function processSaleLeg(
   await connection.query(`
     INSERT INTO sale_items (
       id, sale_id, product_id, product_name, quantity, price, cost_at_sale, batch_source,
-      selling_unit_id, selling_unit_name, selling_unit_factor, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+      selling_unit_id, selling_unit_name, selling_unit_factor,
+      price_level_id, price_level_name, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
   `, [
     itemId,
     saleId,
@@ -142,6 +154,11 @@ export async function processSaleLeg(
     unitId,
     unitName,
     factor,
+    // NULL on an ordinary line. An id with no resolvable name still writes
+    // the id rather than failing the sale — a half-known record beats a lost
+    // one, and the sale must never fail over a label.
+    item.priceLevelId ?? null,
+    item.priceLevelName ?? null,
   ]);
 
   if (soldProd && !itemIsService) {
