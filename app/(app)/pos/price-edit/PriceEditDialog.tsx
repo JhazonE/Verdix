@@ -18,12 +18,19 @@ export function PriceEditDialog({
   onOpenChange,
   item,
   onUpdate,
+  priceLevels,
+  showPriceLevelPicker,
 }: PriceEditDialogProps) {
-  const { price, setPrice, save } = usePriceEdit({
+  const {
+    price, setPrice, save,
+    pickedLevelId, pickLevel, levelOptions, canPickLevel,
+  } = usePriceEdit({
     isOpen,
     item,
     onOpenChange,
     onUpdate,
+    priceLevels,
+    showPriceLevelPicker,
   });
 
   if (!item) return null;
@@ -68,6 +75,43 @@ export function PriceEditDialog({
                 />
               </div>
               
+              {canPickLevel && (
+                <div className="space-y-1.5">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-tight px-2">Price Level</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    {levelOptions.map((level) => {
+                      const isPicked = level.id === pickedLevelId;
+                      return (
+                        <button
+                          key={level.id}
+                          type="button"
+                          /* Not focusable by Tab: the price input keeps the
+                             keyboard, so Enter still saves without the cashier
+                             tabbing past a grid of levels first. */
+                          tabIndex={-1}
+                          onClick={() => pickLevel(level.id)}
+                          className={`flex flex-col items-start rounded-xl border px-3 py-2 text-left transition-colors ${
+                            isPicked
+                              ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40'
+                              : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <span className={`text-xs font-bold truncate w-full ${isPicked ? 'text-purple-700 dark:text-purple-300' : 'text-slate-600 dark:text-slate-300'}`}>
+                            {level.name}
+                          </span>
+                          <span className={`font-mono text-sm font-bold ${isPicked ? 'text-purple-700 dark:text-purple-300' : 'text-slate-700 dark:text-slate-200'}`}>
+                            ₱{level.price.toFixed(2)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-slate-400 px-2">
+                    Applies at any quantity. You can still type a different price.
+                  </p>
+                </div>
+              )}
+
               <div className="flex justify-between items-center text-xs px-2">
                 <span className="font-bold text-slate-500 uppercase tracking-tight">Original Price</span>
                 <span className="font-mono font-bold text-slate-700">₱{item.price.toFixed(2)}</span>

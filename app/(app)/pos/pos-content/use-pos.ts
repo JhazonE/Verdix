@@ -174,6 +174,10 @@ export function usePOS() {
   const [editingNameItemId, setEditingNameItemId] = useState<string | null>(null);
   const [editingQtyItemId, setEditingQtyItemId] = useState<string | null>(null);
   const [editingPriceItemId, setEditingPriceItemId] = useState<string | null>(null);
+  // F7 (and clicking a cart line's price) now opens the Edit Price dialog
+  // instead of unlocking the inline cell: the dialog has room to show each
+  // price level's resulting price, which a table cell does not.
+  const [isPriceEditOpen, setIsPriceEditOpen] = useState(false);
   const [pendingVoidItemId, setPendingVoidItemId] = useState<string | null>(null);
   const [pendingVoidScope, setPendingVoidScope] = useState<'selected' | 'all'>('selected');
   const [isVoidLineChoiceOpen, setIsVoidLineChoiceOpen] = useState(false);
@@ -313,10 +317,14 @@ export function usePOS() {
     if (q !== baseQtyOf(item)) updateQuantity(itemId, q, true);
   };
 
+  // Clicking a line's price in the cart goes to the SAME dialog as F7.
+  // Keeping the inline editor alive as a second price-entry path is what the
+  // dialog decision rejected: two places to change a price is a support
+  // problem, and only one of them could offer the price level picker.
   const requestInlinePriceEdit = (itemId: string) => {
     setSelectedItemId(itemId);
     if (businessSettings?.enablePriceEditAuth) setIsPriceEditAuthOpen(true);
-    else unlockInlinePrice(itemId);
+    else openPriceEditDialog(itemId);
   };
 
   const fetchSettings = useCallback(async (signal?: AbortSignal) => {
@@ -880,8 +888,34 @@ export function usePOS() {
     }
   };
 
-  const handleUpdateItem = (itemId: string, newName: string, newQty: number, newPrice: number, newDiscount: number) => {
-    setItems(prev => prev.map(item => item.lineId === itemId ? { ...item, name: newName, quantity: newQty, price: newPrice, discount: newDiscount } : item));
+  /**
+   * `itemId` is a LINE id, not a product id — two lines of the same product on
+   * different selling units must be editable independently.
+   *
+   * `pickedPriceLevelId` is optional and only ever SETS a pick. When it is
+   * undefined the line keeps whatever pick it already had, so Edit Item and
+   * the inline price edit — neither of which knows about price levels — cannot
+   * silently clear one. Expressing "clear the pick" would need a distinct
+   * sentinel; nothing needs that yet.
+   */
+  const handleUpdateItem = (
+    itemId: string,
+    newName: string,
+    newQty: number,
+    newPrice: number,
+    newDiscount: number,
+    pickedPriceLevelId?: string,
+  ) => {
+    setItems(prev => prev.map(item => item.lineId === itemId
+      ? {
+          ...item,
+          name: newName,
+          quantity: newQty,
+          price: newPrice,
+          discount: newDiscount,
+          pickedPriceLevelId: pickedPriceLevelId ?? item.pickedPriceLevelId,
+        }
+      : item));
   };
 
   const handleVoidLine = (itemId: string | null) => {
@@ -1403,10 +1437,29 @@ export function usePOS() {
   const handleRequestPriceEdit = () => {
     if (selectedItem) {
       if (businessSettings?.enablePriceEditAuth) setIsPriceEditAuthOpen(true);
-      else unlockInlinePrice(selectedItem.lineId);
+      else openPriceEditDialog(selectedItem.lineId);
     } else {
       toast({ title: 'No Item Selected', description: 'Please select an item to authorize price change.', variant: 'destructive' });
     }
+  };
+
+  /**
+   * The single destination for every price-edit entry point: F7, clicking the
+   * price in the cart, and the manager-credential success handler.
+   *
+   * It deliberately does NOT bypass the enablePriceEditAuth gate — each caller
+   * checks that first, exactly as they did when this unlocked the inline cell.
+   * Losing that gate would be a security regression, not a cosmetic one.
+   */
+  const openPriceEditDialog = (itemId: string) => {
+    setSelectedItemId(itemId);
+    // The inline editors are mutually exclusive with the dialog; close any
+    // that happen to be open so the cart is not left with a live input behind
+    // the modal.
+    setEditingPriceItemId(null);
+    setEditingNameItemId(null);
+    setEditingQtyItemId(null);
+    setIsPriceEditOpen(true);
   };
 
   const unlockInlinePrice = (itemId: string) => {
@@ -1428,7 +1481,8 @@ export function usePOS() {
 
   const handlePriceEditAuthSuccess = () => {
     setIsPriceEditAuthOpen(false);
-    if (selectedItemId) unlockInlinePrice(selectedItemId);
+    // The gate now stands in front of the DIALOG rather than the inline cell.
+    if (selectedItemId) openPriceEditDialog(selectedItemId);
   };
 
   const handleEditItemAuthSuccess = () => {
@@ -1606,6 +1660,7 @@ export function usePOS() {
     editingNameItemId, setEditingNameItemId,
     editingQtyItemId, setEditingQtyItemId,
     editingPriceItemId, setEditingPriceItemId,
+    isPriceEditOpen, setIsPriceEditOpen,
     qtyDraft, setQtyDraft,
     heldTransactions, isHeldTransOpen, setIsHeldTransOpen,
     isSuspendNoteOpen, setIsSuspendNoteOpen,
