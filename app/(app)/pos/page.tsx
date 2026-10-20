@@ -121,6 +121,7 @@ function POSContent() {
               commitQty={pos.commitQty}
               isFrontliner={pos.isFrontliner}
               handleSendToQueue={pos.handleSendToQueue}
+              priceLevelNameFor={pos.priceLevelNameFor}
             />
             <PosFooterActions
               handleOpenEndShift={pos.handleOpenEndShift}

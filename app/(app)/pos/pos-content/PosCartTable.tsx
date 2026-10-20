@@ -38,7 +38,9 @@ type Props = {
   commitQty: (id: string) => void;
   isFrontliner?: boolean;
   handleSendToQueue?: () => void;
-  showQuantityInSearch?: boolean;
+  /** Resolves a line's picked level to a display name; undefined for no pick
+      or a level that has since been deleted. */
+  priceLevelNameFor?: (pickedPriceLevelId?: string) => string | undefined;
 };
 
 export function PosCartTable({
@@ -50,6 +52,7 @@ export function PosCartTable({
   qtyDraft, setQtyDraft,
   startEditName, commitInlineName, isFrontliner, handleSendToQueue, showQuantityInSearch,
   requestInlinePriceEdit, commitInlinePrice, focusInlineQuantity, commitQty,
+  priceLevelNameFor,
 }: Props) {
   const [isSuggestOpen, setIsSuggestOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -274,6 +277,15 @@ export function PosCartTable({
                           onClick={(e) => { e.stopPropagation(); requestInlinePriceEdit(item.lineId); }}
                         >
                           ₱{item.price.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                          {/* A line priced off the cart's level with nothing on
+                              screen saying so is a support call. A pick naming a
+                              level that no longer exists renders nothing rather
+                              than "undefined" — the id is kept either way. */}
+                          {priceLevelNameFor?.(item.pickedPriceLevelId) && (
+                            <span className="ml-1.5 rounded bg-purple-100 px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-tight text-purple-700 dark:bg-purple-950/60 dark:text-purple-300">
+                              {priceLevelNameFor(item.pickedPriceLevelId)}
+                            </span>
+                          )}
                         </button>
                       )}
                     </TableCell>
