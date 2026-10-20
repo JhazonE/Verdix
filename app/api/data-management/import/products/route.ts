@@ -29,6 +29,11 @@ export async function POST(request: NextRequest) {
     // subcategory pass can never race an insert of its own parent category.
     await ensureLookupsForBatch(rows);
 
+    // Resolved once for the batch, for the same reason as the lookups above:
+    // per-row it would be one more round trip against a remote DB for an
+    // answer that cannot change mid-import.
+    const validLevelIds = await loadValidPriceLevelIds();
+
     for (let i = 0; i < rows.length; i++) {
       const p = rows[i];
       if (!p.name || String(p.name).trim() === '') {
@@ -89,12 +94,15 @@ export async function POST(request: NextRequest) {
                 'UPDATE product_selling_units SET cost = ?, price = ?, updated_at = NOW() WHERE id = ?',
                 [upCost || null, upPrice, base.id],
               );
+              await writePriceLevels(conn, base.id, p, validLevelIds);
             } else {
+              const newBaseId = `psu_base_${existing.id}`;
               await conn.query(
                 `INSERT INTO product_selling_units (id, product_id, name, factor, cost, price, is_base)
                  VALUES (?, ?, 'Piece', 1, ?, ?, 1)`,
-                [`psu_base_${existing.id}`, existing.id, upCost || null, upPrice],
+                [newBaseId, existing.id, upCost || null, upPrice],
               );
+              await writePriceLevels(conn, newBaseId, p, validLevelIds);
             }
           });
           updated++;
@@ -136,6 +144,8 @@ export async function POST(request: NextRequest) {
                VALUES (?, ?, 'Piece', ?, 1, ?, ?, 1)`,
               [`psu_base_${id}`, id, barcode, cost || null, price],
             );
+
+            await writePriceLevels(conn, `psu_base_${id}`, p, validLevelIds);
           });
 
           // Opening stock -> FIFO batch + audit movement (keeps costing correct).
@@ -281,6 +291,81 @@ async function ensureLookupsForBatch(rows: Record<string, any>[]): Promise<void>
   }
   for (const { sub, category } of subcategories.values()) {
     await ensureSubcategoryExists(sub, category);
+  }
+}
+
+/** Prefix the wizard uses for a generated price-level column. */
+const PRICE_LEVEL_PREFIX = 'price_level__';
+
+/**
+ * The price level ids a row is allowed to write to.
+ *
+ * A row names its level by id inside the column key, which comes from the
+ * client. Writing it unchecked would let a stale or hand-edited payload create
+ * rows against a level that no longer exists — invisible in every UI (they all
+ * list levels by joining `price_levels`) yet still occupying the primary key.
+ *
+ * Resolved once per request and passed down, not cached in a module: the server
+ * is long-lived, and a level added or deleted in Settings must take effect on
+ * the next import rather than after a restart.
+ */
+async function loadValidPriceLevelIds(): Promise<Set<string>> {
+  try {
+    const rows = (await query('SELECT id, is_default FROM price_levels')) as any[];
+    // The default level is excluded for the same reason the wizard omits its
+    // column: its base-unit row mirrors products.price, which `selling_price`
+    // already wrote a few statements earlier. Honouring a column for it would
+    // let one row carry two conflicting shelf prices.
+    return new Set(rows.filter((r) => !r.is_default).map((r) => String(r.id)));
+  } catch (err) {
+    console.warn('[Import] Could not load price levels:', err);
+    return new Set();
+  }
+}
+
+/**
+ * Apply a row's price-level columns to one selling unit.
+ *
+ * Runs inside the caller's transaction, so a bad level price fails the whole
+ * row rather than leaving a product priced half-old and half-new.
+ *
+ * A blank or unmapped column is skipped, NOT written as 0: the wizard gives
+ * these fields no default precisely so "absent" survives to here and means
+ * "leave this level alone". Only a value actually typed into the sheet moves a
+ * price.
+ *
+ * `min_quantity` is deliberately never written — a new row takes the column's
+ * DEFAULT 0 (no tier) and an existing row keeps whatever tier the Selling Units
+ * tab set. An import carries prices, not thresholds, matching
+ * lib/price-list-import.ts.
+ */
+async function writePriceLevels(
+  conn: { query: (sql: string, values?: any[]) => Promise<any> },
+  sellingUnitId: string,
+  row: Record<string, any>,
+  allowed: Set<string>,
+): Promise<void> {
+  const keys = Object.keys(row).filter((k) => k.startsWith(PRICE_LEVEL_PREFIX));
+  if (keys.length === 0) return;
+
+  for (const key of keys) {
+    const raw = row[key];
+    if (raw === undefined || raw === null || String(raw).trim() === '') continue;
+
+    const levelId = key.slice(PRICE_LEVEL_PREFIX.length);
+    if (!allowed.has(levelId)) continue;
+
+    const price = num(raw);
+    // A negative price is a typo, not an intent. Skipping keeps the rest of a
+    // good row importable instead of failing it outright.
+    if (price < 0) continue;
+
+    await conn.query(
+      `INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE price = VALUES(price)`,
+      [sellingUnitId, levelId, price],
+    );
   }
 }
 
