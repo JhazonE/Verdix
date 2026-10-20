@@ -637,6 +637,24 @@ export function usePOS() {
    * higher than the shelf price — a deliberate instruction is allowed to raise
    * a line). Without one, this is exactly today's behaviour.
    */
+  /**
+   * The display name of a line's picked level, or undefined when there is no
+   * pick or the level has since been deleted.
+   *
+   * A deleted level must NOT clear `pickedPriceLevelId`. The id is the record
+   * of why the line is priced as it is, and the price already degrades safely
+   * to the unit's own price (see resolvePriceForLevel). Clearing it would
+   * silently re-price the line and lose that reason — so the badge simply
+   * renders nothing and the line stays as the cashier set it.
+   */
+  const priceLevelNameFor = useCallback(
+    (pickedPriceLevelId?: string): string | undefined =>
+      pickedPriceLevelId
+        ? priceLevels.find((l: any) => l.id === pickedPriceLevelId)?.name
+        : undefined,
+    [priceLevels],
+  );
+
   const priceLineFor = useCallback((
     unit: Parameters<typeof calculateEffectivePriceForUnit>[0],
     quantity: number,
@@ -1629,6 +1647,10 @@ export function usePOS() {
     // price levels
     priceLevels, selectedPriceLevelId, setSelectedPriceLevelId,
     activeLevelId, defaultLevelId, activeLevelName,
+    // The Edit Price dialog (Task 5) prices its preview with priceLineFor and
+    // labels a line's pick with priceLevelNameFor, so both resolve exactly as
+    // the cart does rather than re-deriving the rules in the UI.
+    priceLineFor, priceLevelNameFor,
     // products (for search filters)
     products,
     // totals
