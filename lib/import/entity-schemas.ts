@@ -33,7 +33,12 @@ export const ENTITY_SCHEMAS: Record<EntityKey, EntitySchema> = {
       { key: 'subcategory', label: 'Subcategory', type: 'text', aliases: ['subcategory', 'sub category', 'subcat'] },
       { key: 'unit', label: 'Unit', type: 'text', default: 'pcs', aliases: ['unit', 'uom', 'unit of measure', 'measure'] },
       { key: 'cost_price', label: 'Cost Price', type: 'number', default: 0, aliases: ['cost_price', 'cost', 'buy price', 'purchase price'] },
-      { key: 'selling_price', label: 'Selling Price', type: 'number', default: 0, aliases: ['selling_price', 'price', 'srp', 'sell price', 'retail price'] },
+      // 'retail' (bare) is here on purpose. The DEFAULT price level is
+      // commonly named "Retail", and it gets no generated column of its own
+      // because `selling_price` IS that level's price. Without this alias a
+      // sheet headed plainly "Retail" matched nothing and imported as 0,
+      // silently wiping the shelf price of every row.
+      { key: 'selling_price', label: 'Selling Price', type: 'number', default: 0, aliases: ['selling_price', 'price', 'srp', 'sell price', 'retail price', 'retail'] },
       { key: 'stock_quantity', label: 'Stock Quantity', type: 'number', default: 0, aliases: ['stock_quantity', 'stock', 'qty', 'quantity', 'on hand', 'onhand'] },
       { key: 'reorder_point', label: 'Reorder Point', type: 'number', default: 0, aliases: ['reorder_point', 'reorder', 'rop', 'min stock'] },
       { key: 'image_url', label: 'Image URL', type: 'text', aliases: ['image_url', 'image', 'photo', 'img'] },

@@ -55,20 +55,32 @@ export async function POST(request: NextRequest) {
         }
 
         if (existing) {
-          const upCost = num(p.cost_price);
-          const upPrice = num(p.selling_price);
+          // An ABSENT price/cost column means "leave it alone", not "set to 0".
+          // A stock-only or category-only sheet must not wipe the shelf price
+          // of every product it touches. A column that IS present but blank
+          // still reads as 0, which is the user explicitly saying so.
+          const hasCost = p.cost_price !== undefined && p.cost_price !== null;
+          const hasPrice = p.selling_price !== undefined && p.selling_price !== null;
+          const upCost = hasCost ? num(p.cost_price) : null;
+          const upPrice = hasPrice ? num(p.selling_price) : null;
 
           // Catalogue fields and the base unit's price move together, so a
           // failure on either leaves neither half applied.
           await withTransaction(async (conn) => {
             // Update catalog fields only — never touch stock on an existing product.
+            // cost/price are spliced in only when the sheet actually carried
+            // them, so an omitted column leaves the stored value untouched
+            // rather than zeroing it.
             await conn.query(
               `UPDATE products SET name=?, barcode=?, description=?, category=?, brand=?, subcategory=?,
-                 unit_of_measure=?, cost=?, price=?, reorder_point=?, image_url=?, conversion_factor=?, updated_at=NOW()
+                 unit_of_measure=?,${hasCost ? ' cost=?,' : ''}${hasPrice ? ' price=?,' : ''} reorder_point=?, image_url=?, conversion_factor=?, updated_at=NOW()
                WHERE id=?`,
               [
                 p.name, barcode, p.description ?? '', p.category ?? 'General', p.brand ?? null, p.subcategory ?? null,
-                p.unit ?? 'pcs', upCost, upPrice, num(p.reorder_point),
+                p.unit ?? 'pcs',
+                ...(hasCost ? [upCost] : []),
+                ...(hasPrice ? [upPrice] : []),
+                num(p.reorder_point),
                 p.image_url ?? null, p.conversion_factor != null ? num(p.conversion_factor) : 1, existing.id,
               ],
             );
@@ -90,17 +102,31 @@ export async function POST(request: NextRequest) {
               // selling units, so reassigning it belongs to the explicit Selling
               // Units editor rather than a bulk price refresh that would fail the
               // whole row on a collision with another product's unit.
-              await conn.query(
-                'UPDATE product_selling_units SET cost = ?, price = ?, updated_at = NOW() WHERE id = ?',
-                [upCost || null, upPrice, base.id],
-              );
+              // Same omitted-column rule as `products` above: a sheet that
+              // never mentioned price must not zero the unit POS prices from.
+              const sets: string[] = [];
+              const vals: any[] = [];
+              if (hasCost) { sets.push('cost = ?'); vals.push(upCost || null); }
+              if (hasPrice) { sets.push('price = ?'); vals.push(upPrice); }
+              if (sets.length > 0) {
+                await conn.query(
+                  `UPDATE product_selling_units SET ${sets.join(', ')}, updated_at = NOW() WHERE id = ?`,
+                  [...vals, base.id],
+                );
+              }
               await writePriceLevels(conn, base.id, p, validLevelIds);
             } else {
+              // Back-filling a missing base unit: with no price in the sheet,
+              // fall back to the product's own stored price rather than 0, so
+              // the new unit matches the shelf price it is standing in for.
               const newBaseId = `psu_base_${existing.id}`;
+              const fallback: any = hasPrice
+                ? upPrice
+                : (await conn.query('SELECT price FROM products WHERE id = ?', [existing.id]) as any[])[0]?.[0]?.price ?? 0;
               await conn.query(
                 `INSERT INTO product_selling_units (id, product_id, name, factor, cost, price, is_base)
                  VALUES (?, ?, 'Piece', 1, ?, ?, 1)`,
-                [newBaseId, existing.id, upCost || null, upPrice],
+                [newBaseId, existing.id, upCost || null, fallback],
               );
               await writePriceLevels(conn, newBaseId, p, validLevelIds);
             }
