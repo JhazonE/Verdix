@@ -349,7 +349,11 @@ export function usePOS() {
         setZReadingAuthCredentials({ username: result.data.zReadingAuthUsername, password: result.data.zReadingAuthPassword });
         setIsTrainingMode(result.data.isTrainingMode || false);
         setShowQuantityInSearch(result.data.showQuantityInSearch ?? true);
-        setEnablePriceLevelPicker(result.data.enablePriceLevelPicker ?? false);
+        // `!!`, not `?? false`: the column is TINYINT(1), so this arrives as
+        // the NUMBER 0 or 1. `?? false` only replaces null/undefined, leaving
+        // a raw 0 to flow into `showPriceLevelPicker && (...)` in the Edit
+        // Price dialog — where JSX renders the 0 itself as stray text.
+        setEnablePriceLevelPicker(!!result.data.enablePriceLevelPicker);
         setEnableCustomerDisplay(result.data.enableCustomerDisplay || false);
 
         const localPrintMode = localStorage.getItem('pos_printer_mode');

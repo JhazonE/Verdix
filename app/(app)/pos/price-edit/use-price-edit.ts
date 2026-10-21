@@ -32,6 +32,12 @@ export function usePriceEdit({
 }: Options) {
   const [price, setPrice] = useState(item?.price || 0);
   const [pickedLevelId, setPickedLevelId] = useState<string | undefined>(undefined);
+  /**
+   * Which level the arrow keys are sitting on. -1 means the cashier has not
+   * moved the cursor yet, so nothing is outlined and the dialog looks exactly
+   * as it did before the keyboard path existed.
+   */
+  const [cursorIndex, setCursorIndex] = useState(-1);
 
   useEffect(() => {
     if (isOpen && item) {
@@ -39,6 +45,7 @@ export function usePriceEdit({
       // Reopening shows the pick the line already carries, so the dialog
       // reflects the cart rather than starting blank every time.
       setPickedLevelId(item.pickedPriceLevelId);
+      setCursorIndex(-1);
     }
   }, [isOpen, item]);
 
@@ -69,7 +76,10 @@ export function usePriceEdit({
 
   // A service line has no units to price against, and an empty level list
   // leaves nothing to pick — either way the picker is not rendered.
-  const canPickLevel = showPriceLevelPicker && !!pricingUnit && levelOptions.length > 0;
+  // Coerced to a real boolean. The setting originates as a TINYINT(1), so a
+  // caller can hand us the number 0 — and `0 && ...` is `0`, which JSX dutifully
+  // renders as a stray "0" next to the price box instead of hiding the picker.
+  const canPickLevel = !!showPriceLevelPicker && !!pricingUnit && levelOptions.length > 0;
 
   /**
    * Picking a level writes its price into the box so the cashier sees the
@@ -81,7 +91,37 @@ export function usePriceEdit({
     const option = levelOptions.find(o => o.id === levelId);
     setPickedLevelId(levelId);
     if (option) setPrice(option.price);
+    // Clicking a level moves the keyboard cursor onto it too, so a mouse pick
+    // followed by an arrow key carries on from where the cashier just was.
+    setCursorIndex(levelOptions.findIndex(o => o.id === levelId));
   }, [levelOptions]);
+
+  /**
+   * Left/Right walk the levels and pick as they go, so the price box tracks the
+   * cursor and the cashier reads the number without a second keystroke.
+   *
+   * Up/Down are deliberately NOT used: the price box is a number input and
+   * those already nudge the amount, which is worth more than a second axis
+   * across a two-column grid.
+   *
+   * Starting point when nothing is picked yet is the level the line already
+   * carries, so the first press continues from the current state rather than
+   * jumping to the front of the list.
+   */
+  const moveCursor = useCallback((delta: number) => {
+    if (levelOptions.length === 0) return;
+    const current = cursorIndex >= 0
+      ? cursorIndex
+      : levelOptions.findIndex(o => o.id === pickedLevelId);
+    // Wraps, so a two-level store flips between them with one key held down.
+    const next = current < 0
+      ? (delta > 0 ? 0 : levelOptions.length - 1)
+      : (current + delta + levelOptions.length) % levelOptions.length;
+    setCursorIndex(next);
+    const option = levelOptions[next];
+    setPickedLevelId(option.id);
+    setPrice(option.price);
+  }, [levelOptions, cursorIndex, pickedLevelId]);
 
   const save = useCallback(() => {
     if (item) {
@@ -101,5 +141,7 @@ export function usePriceEdit({
     pickLevel,
     levelOptions,
     canPickLevel,
+    cursorIndex,
+    moveCursor,
   };
 }
