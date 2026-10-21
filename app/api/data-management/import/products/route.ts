@@ -162,6 +162,24 @@ export async function POST(request: NextRequest) {
               ],
             );
 
+            // Reclaim a barcode still held by an ORPHANED selling unit: one
+            // whose product row no longer exists. Selling-unit barcodes are
+            // UNIQUE globally, so such a leftover makes its barcode
+            // permanently un-importable — the row cannot be matched (no
+            // product to find) and cannot be created (barcode taken), and the
+            // whole row fails with ER_DUP_ENTRY. The unit is unreachable from
+            // every UI and belongs to nothing, so releasing it loses nothing.
+            // Scoped to orphans only: a barcode belonging to a LIVE product is
+            // a real conflict and must still fail loudly.
+            if (barcode) {
+              await conn.query(
+                `DELETE su FROM product_selling_units su
+                 LEFT JOIN products p ON p.id = su.product_id
+                 WHERE su.barcode = ? AND p.id IS NULL`,
+                [barcode],
+              );
+            }
+
             // Every product needs a base selling unit (factor 1, is_base = 1) or
             // it is unsellable and unmatchable by barcode on a later import —
             // matches the convention actions.ts's writeSellingUnits() established.
@@ -232,8 +250,12 @@ function describeDbError(err: any): string {
   switch (code) {
     case 'ER_DUP_ENTRY':
       // Selling-unit barcodes are UNIQUE globally, so the usual cause is the
-      // same barcode already belonging to a different product.
-      return `Duplicate value — a barcode in this row is already used by another product (${msg})`;
+      // same barcode already belonging to a different product. The import
+      // releases barcodes held by ORPHANED units automatically, so reaching
+      // here means the holder is a live product — most often the same barcode
+      // appearing twice in one file under two different names.
+      return `Duplicate barcode — this barcode already belongs to another product. `
+        + `Check for the same barcode on two rows of this file. (${msg})`;
     case 'ER_DATA_TOO_LONG':
       return `A value is too long for its column (${msg})`;
     case 'ER_BAD_FIELD_ERROR':
