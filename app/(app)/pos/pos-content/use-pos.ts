@@ -317,14 +317,12 @@ export function usePOS() {
     if (q !== baseQtyOf(item)) updateQuantity(itemId, q, true);
   };
 
-  // Clicking a line's price in the cart goes to the SAME dialog as F7.
-  // Keeping the inline editor alive as a second price-entry path is what the
-  // dialog decision rejected: two places to change a price is a support
-  // problem, and only one of them could offer the price level picker.
+  // Clicking a line's price goes wherever F7 goes: inline when the price
+  // level picker is off, the dialog when it is on. See startPriceEdit.
   const requestInlinePriceEdit = (itemId: string) => {
     setSelectedItemId(itemId);
     if (businessSettings?.enablePriceEditAuth) setIsPriceEditAuthOpen(true);
-    else openPriceEditDialog(itemId);
+    else startPriceEdit(itemId);
   };
 
   const fetchSettings = useCallback(async (signal?: AbortSignal) => {
@@ -1441,20 +1439,34 @@ export function usePOS() {
   const handleRequestPriceEdit = () => {
     if (selectedItem) {
       if (businessSettings?.enablePriceEditAuth) setIsPriceEditAuthOpen(true);
-      else openPriceEditDialog(selectedItem.lineId);
+      else startPriceEdit(selectedItem.lineId);
     } else {
       toast({ title: 'No Item Selected', description: 'Please select an item to authorize price change.', variant: 'destructive' });
     }
   };
 
   /**
-   * The single destination for every price-edit entry point: F7, clicking the
-   * price in the cart, and the manager-credential success handler.
+   * Where a price edit lands, for every entry point: F7, clicking the price in
+   * the cart, and the manager-credential success handler.
+   *
+   * With the price level picker OFF there is nothing a dialog can offer that
+   * the cart cell cannot, so editing stays INLINE — the faster, keyboard-native
+   * path cashiers already know. Turning the picker ON is what brings up the
+   * dialog, because each level and its resulting price need room to be shown
+   * and compared, which a table cell does not have.
+   *
+   * Routing all three entry points through here is what keeps them agreeing:
+   * the toggle must never send F7 somewhere different from a click.
    *
    * It deliberately does NOT bypass the enablePriceEditAuth gate — each caller
-   * checks that first, exactly as they did when this unlocked the inline cell.
-   * Losing that gate would be a security regression, not a cosmetic one.
+   * checks that first, exactly as they did before. Losing that gate would be a
+   * security regression, not a cosmetic one.
    */
+  const startPriceEdit = (itemId: string) => {
+    if (enablePriceLevelPicker) openPriceEditDialog(itemId);
+    else unlockInlinePrice(itemId);
+  };
+
   const openPriceEditDialog = (itemId: string) => {
     setSelectedItemId(itemId);
     // The inline editors are mutually exclusive with the dialog; close any
@@ -1485,8 +1497,8 @@ export function usePOS() {
 
   const handlePriceEditAuthSuccess = () => {
     setIsPriceEditAuthOpen(false);
-    // The gate now stands in front of the DIALOG rather than the inline cell.
-    if (selectedItemId) openPriceEditDialog(selectedItemId);
+    // The gate stands in front of whichever editor the toggle selects.
+    if (selectedItemId) startPriceEdit(selectedItemId);
   };
 
   const handleEditItemAuthSuccess = () => {
