@@ -455,6 +455,11 @@ function ProductsContent() {
       ]);
       return { productsData, totalCount };
     },
+    // This page builds its own queries rather than going through the
+    // use-api.ts hooks, so it never inherited their polling. On a shared
+    // database that meant a product edited on one terminal could sit stale
+    // on another indefinitely, since no cross-machine invalidation exists.
+    refetchInterval: 60 * 1000,
   });
 
   const allProducts = productsDataResult?.productsData || [];
@@ -465,7 +470,14 @@ function ProductsContent() {
     queryFn: async () => {
       const { getProductOptions } = await import('./actions');
       return getProductOptions();
-    }
+    },
+    // Lookup tables (brands, categories, suppliers, warehouses…) change
+    // rarely but are what the Add/Edit forms are built out of, so a stale
+    // copy is felt as a missing dropdown entry rather than a stale number.
+    // Polled slowly because this fans out to eleven queries; the forms also
+    // force a refetch of their own when they open.
+    staleTime: 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
   });
 
   const { data: posSettings } = useQuery({

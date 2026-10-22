@@ -11,6 +11,13 @@ const queryConfig: DefaultOptions = {
     retry: 1, // Retry failed requests once
     refetchOnWindowFocus: true, // Refetch when window regains focus
     refetchOnReconnect: true, // Refetch when reconnecting to network
+    // Several terminals share one database, and a write on one of them
+    // reaches the others through nothing at all — the app's only live-refresh
+    // channel is a BroadcastChannel, which by definition stays inside the
+    // browser that posted to it. Remounting a screen is a deliberate "show me
+    // this" from the user, so it is the right moment to go back to the server
+    // rather than paint another terminal's stale cache entry.
+    refetchOnMount: 'always',
   },
 };
 
