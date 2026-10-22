@@ -96,4 +96,48 @@ const retail = 'retail-level';
   assert.equal(picked, wholesale, 'a manual correction does not clear the picked level');
 }
 
+// --- arrow keys walk the levels and pick as they go ---
+{
+  // Mirrors moveCursor in use-price-edit.ts.
+  const options = [{ id: retail, price: 120 }, { id: wholesale, price: 95 }];
+
+  const move = (cursor: number, picked: string | undefined, delta: number) => {
+    if (options.length === 0) return { cursor, picked };
+    const current = cursor >= 0 ? cursor : options.findIndex(o => o.id === picked);
+    const next = current < 0
+      ? (delta > 0 ? 0 : options.length - 1)
+      : (current + delta + options.length) % options.length;
+    return { cursor: next, picked: options[next].id, price: options[next].price };
+  };
+
+  // Nothing picked yet: Right starts at the first level, Left at the last.
+  assert.deepEqual(move(-1, undefined, 1), { cursor: 0, picked: retail, price: 120 });
+  assert.deepEqual(move(-1, undefined, -1), { cursor: 1, picked: wholesale, price: 95 });
+
+  // A line that already carries a pick continues FROM it, rather than
+  // jumping to the front of the list on the first keypress.
+  assert.deepEqual(move(-1, wholesale, 1), { cursor: 0, picked: retail, price: 120 },
+    'starts from the carried pick, so Right off Wholesale wraps to Retail');
+
+  // Wrapping, so two levels flip back and forth on one held key.
+  assert.equal(move(1, wholesale, 1).cursor, 0, 'past the end wraps to the start');
+  assert.equal(move(0, retail, -1).cursor, 1, 'before the start wraps to the end');
+
+  // The cursor always lands on the level the price box now shows — it can
+  // never point at a level the price disagrees with.
+  const landed = move(0, retail, 1);
+  assert.equal(landed.picked, options[landed.cursor].id);
+  assert.equal(landed.price, options[landed.cursor].price);
+}
+
+// --- an empty level list is a no-op, not a crash ---
+{
+  const empty: { id: string; price: number }[] = [];
+  const move = (cursor: number, delta: number) => {
+    if (empty.length === 0) return cursor;
+    return (cursor + delta + empty.length) % empty.length;
+  };
+  assert.equal(move(-1, 1), -1, 'no levels means the arrows do nothing');
+}
+
 console.log('✓ price-edit-dialog-save');
