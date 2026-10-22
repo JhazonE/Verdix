@@ -14,6 +14,7 @@ import { SecuritySettingsCard } from './SecuritySettingsCard';
 import { TerminalCard } from './TerminalCard';
 import { CustomerDisplayCard } from './CustomerDisplayCard';
 import { MembershipCard } from './MembershipCard';
+import { StartupCard } from './StartupCard';
 import { DataManagementGrid } from './DataManagementGrid';
 
 export default function PosSetupPage() {
@@ -76,6 +77,7 @@ export default function PosSetupPage() {
               <div className="space-y-4">
                 <CustomerDisplayCard settings={settings} set={set} />
                 <MembershipCard settings={settings} set={set} />
+                <StartupCard />
               </div>
             </div>
           </TabsContent>

@@ -222,6 +222,101 @@ function createWindow() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Launch-at-startup IPC
+//
+// The installer drops a shortcut at {userstartup}\Vendix POS so the POS opens
+// at boot (see setup.iss [Icons]). Turning that off again has to remove BOTH
+// mechanisms: Electron's own login-item registry entry AND that .lnk file,
+// because either one alone is enough to launch the app. Reading the state is
+// the same union — enabled means "one of them would fire".
+//
+// This is deliberately NOT a database setting. POS settings live in the shared
+// DB, but "does THIS computer open the POS at boot" is machine-local: a store
+// runs several terminals plus a back-office PC off one database, and only the
+// terminals should autostart.
+// ---------------------------------------------------------------------------
+
+// Path of the per-user Startup shortcut the installer creates. Named to match
+// setup.iss exactly — a different name would leave the installer's own copy
+// behind and the toggle would appear to do nothing after a reboot.
+function startupShortcutPath() {
+  const path = require('path');
+  const appData = process.env.APPDATA;
+  if (!appData) return null;
+  return path.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'Vendix POS.lnk');
+}
+
+// The args the installer's shortcut passes. Kept here so a startup launch we
+// create lands on /pos as a terminal, exactly like the installer's shortcut.
+const POS_LAUNCH_ARGS = ['--route=/pos', '--role=POS Terminal'];
+
+ipcMain.handle('startup:get', () => {
+  if (process.platform !== 'win32') {
+    return { supported: false, enabled: false };
+  }
+  const fs = require('fs');
+  let shortcutExists = false;
+  const shortcut = startupShortcutPath();
+  if (shortcut) {
+    try {
+      shortcutExists = fs.existsSync(shortcut);
+    } catch (_) {}
+  }
+
+  let loginItem = false;
+  try {
+    loginItem = app.getLoginItemSettings({ args: POS_LAUNCH_ARGS }).openAtLogin;
+  } catch (_) {}
+
+  return { supported: true, enabled: shortcutExists || loginItem };
+});
+
+ipcMain.handle('startup:set', (event, enabled) => {
+  if (process.platform !== 'win32') {
+    return { supported: false, enabled: false };
+  }
+
+  const fs = require('fs');
+  const shortcut = startupShortcutPath();
+  const want = Boolean(enabled);
+
+  try {
+    // Only register a login item when process.execPath IS the POS. In an
+    // unpackaged run it is electron.exe, and registering that would launch a
+    // bare Electron at boot instead of the POS. There we manage the Startup
+    // shortcut alone, which is what the installer uses anyway.
+    if (app.isPackaged) {
+      app.setLoginItemSettings({
+        openAtLogin: want,
+        path: process.execPath,
+        args: POS_LAUNCH_ARGS,
+      });
+    } else if (want) {
+      return {
+        supported: true,
+        enabled: false,
+        error: 'Cannot enable startup from a development run — the running program is electron.exe, not the installed POS. Use the installed desktop app.',
+      };
+    }
+  } catch (err) {
+    return { supported: true, enabled: false, error: String(err && err.message || err) };
+  }
+
+  // When enabling we leave the installer's shortcut alone (the login item now
+  // covers it, and a duplicate is harmless thanks to the single-instance lock).
+  // When disabling we must delete it, or boot still launches the POS.
+  if (!want && shortcut) {
+    try {
+      if (fs.existsSync(shortcut)) fs.unlinkSync(shortcut);
+    } catch (err) {
+      return { supported: true, enabled: true, error: `Could not remove the Startup shortcut: ${String(err && err.message || err)}` };
+    }
+  }
+
+  return { supported: true, enabled: want };
+});
+
 // Window Controls IPC Handlers
 ipcMain.handle('window:minimize', (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);

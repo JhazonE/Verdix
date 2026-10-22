@@ -14,6 +14,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cutEpsonPaper: () => ipcRenderer.invoke('epson-printer:cut'),
   openEpsonDrawer: () => ipcRenderer.invoke('epson-printer:open-drawer'),
 
+  // Launch-at-startup (Windows desktop only). getStartup reports
+  // { supported, enabled } so the UI can hide the toggle where it means
+  // nothing (web builds, dev runs, non-Windows).
+  getStartup: () => ipcRenderer.invoke('startup:get'),
+  setStartup: (enabled) => ipcRenderer.invoke('startup:set', enabled),
+
   // Clears the Chromium HTTP/asset cache (does NOT touch the database)
   clearCache: () => ipcRenderer.invoke('cache:clear'),
 
