@@ -25,8 +25,9 @@ import {
   Search, Package, TrendingDown, TrendingUp, Loader2,
   CheckCircle2, Repeat, SlidersHorizontal, X, Printer,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 
+import { FROZEN_EDGE, FROZEN_HEAD, FROZEN_QTY_LEFT, FROZEN_TYPE_LEFT } from './constants';
 import { useBulkAdjustment } from './use-bulk-adjustment';
 import { SearchResultsDropdown } from './search-results-dropdown';
 import { ConfigFields } from './config-fields';
@@ -72,6 +73,7 @@ export default function BulkAdjustmentClient() {
     confirmPrintSlip,
     skipPrintSlip,
     hasNegativeStock,
+    totalCostValue,
     addCount,
     removeCount,
     transferCount,
@@ -130,25 +132,46 @@ export default function BulkAdjustmentClient() {
             </div>
           </div>
 
-          {/* Table */}
-          <ScrollArea className="flex-1">
+          {/* Table.
+
+              A plain overflow container, NOT a Radix ScrollArea: the frozen
+              columns are `position: sticky`, which anchors to the nearest
+              scrollable ancestor. A ScrollArea scrolls its own inner viewport
+              element, so the sticky cells would anchor to that and the freeze
+              would simply not hold. One element owning both axes is what makes
+              it work. */}
+          <div className="flex-1 min-h-0 flex flex-col">
             {adjustments.length === 0 ? (
               <EmptyState />
             ) : (
-              // min-w keeps every column usable on a narrow window; the
-              // wrapper scrolls horizontally rather than crushing the row.
-              <Table className="min-w-[760px]">
-                <TableHeader className="sticky top-0 bg-card z-10 border-b border-border">
+              // The Table's OWN wrapper owns BOTH scroll axes, and that is
+              // load-bearing: `position: sticky` resolves against the nearest
+              // scrollable ancestor PER AXIS, so splitting the axes across two
+              // elements makes the header (sticky top) and the frozen columns
+              // (sticky left) anchor to different boxes — the header then
+              // scrolls horizontally away from the cells it labels.
+              //
+              // `w-max` lets the table take its natural width instead of being
+              // squeezed back to the wrapper, which would collapse the columns
+              // and leave nothing to scroll.
+              <Table className="w-max min-w-full" wrapperClassName="flex-1 min-h-0 overflow-auto">
+                <TableHeader className="sticky top-0 bg-card z-30 border-b border-border">
                   <TableRow className="hover:bg-transparent">
-                    {/* Product takes the slack so long names wrap rather than
-                        widening the row; the rest are sized to fit the pane
-                        (viewport minus the 340px config sidebar). */}
-                    <TableHead className="pl-6 py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground min-w-[220px]">Product</TableHead>
-                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[110px]">Type</TableHead>
-                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[150px]">Quantity</TableHead>
+                    {/* Product / Type / Quantity are frozen; see the FROZEN_*
+                        constants, whose left offsets are the running sum of
+                        these three widths. Change a width here and the offset
+                        there must change with it.
+
+                        Product is a FIXED 240px rather than min-w: the sticky
+                        offsets are only correct if the frozen columns cannot
+                        resize to their content. Long names wrap instead. */}
+                    <TableHead className={cn(FROZEN_HEAD, "left-0 pl-6 py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[240px]")}>Product</TableHead>
+                    <TableHead className={cn(FROZEN_HEAD, FROZEN_TYPE_LEFT, "py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[110px]")}>Type</TableHead>
+                    <TableHead className={cn(FROZEN_HEAD, FROZEN_QTY_LEFT, FROZEN_EDGE, "py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[150px]")}>Quantity</TableHead>
+                    <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[130px]">Cost / Unit</TableHead>
                     <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[120px]">Impact</TableHead>
                     {showExpirationColumn && <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground w-[160px]">Expiry</TableHead>}
-                    <TableHead className="pr-4 py-3 w-10"></TableHead>
+                    <TableHead className="pr-4 py-3 w-14"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -158,7 +181,7 @@ export default function BulkAdjustmentClient() {
                 </TableBody>
               </Table>
             )}
-          </ScrollArea>
+          </div>
         </div>
 
         {/* Right: Config Sidebar */}
@@ -290,8 +313,13 @@ export default function BulkAdjustmentClient() {
               <Repeat className="h-3 w-3" /> {transferCount} Transfer
             </Badge>
           )}
+          {totalCostValue > 0 && (
+            <span className="text-xs font-semibold text-muted-foreground tabular-nums ml-auto">
+              Batch value <span className="text-foreground">{formatCurrency(totalCostValue)}</span>
+            </span>
+          )}
           {hasNegativeStock && (
-            <Badge variant="destructive" className="text-[11px] ml-auto">
+            <Badge variant="destructive" className={cn("text-[11px]", totalCostValue > 0 ? "ml-3" : "ml-auto")}>
               ⚠ Negative stock detected
             </Badge>
           )}

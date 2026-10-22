@@ -21,6 +21,13 @@ export interface AdjustmentSlipItem {
   quantity: number;
   previousStock: number;
   expirationDate?: string | null;
+  /**
+   * Cost per base unit recorded for this line. `null`/absent means no cost was
+   * captured (every row written before the cost column existed), and the slip
+   * then drops the Cost and Value columns rather than printing zeroes that
+   * would read as "this stock was free".
+   */
+  unitCost?: number | null;
   /** Items held in the approval queue have not moved any stock yet. */
   pendingApproval?: boolean;
 }
@@ -101,6 +108,18 @@ export const printStockAdjustment = async (data: AdjustmentSlipData): Promise<bo
 
   const totalQty = data.items.reduce((sum, i) => sum + Math.abs(Number(i.quantity) || 0), 0);
 
+  // Cost is only printed when the transaction actually recorded one. A slip is
+  // an inventory control document, so a column of zeroes standing in for
+  // "unknown" would be a false statement about what the stock cost.
+  const hasCost = (i: AdjustmentSlipItem) =>
+    i.unitCost !== null && i.unitCost !== undefined && Number.isFinite(Number(i.unitCost));
+  const showCost = data.items.some(hasCost);
+  const lineValue = (i: AdjustmentSlipItem) =>
+    Number(i.unitCost) * Math.abs(Number(i.quantity) || 0);
+  const totalValue = data.items.reduce((sum, i) => (hasCost(i) ? sum + lineValue(i) : sum), 0);
+  const peso = (n: number) =>
+    `₱${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
   // "New stock" is only meaningful for an item that actually moved. A removal
   // and a transfer both take stock off the source side.
   const signedDelta = (qty: number) => (data.mode === 'add' ? Math.abs(qty) : -Math.abs(qty));
@@ -111,8 +130,8 @@ export const printStockAdjustment = async (data: AdjustmentSlipData): Promise<bo
       <span class="info-value">${escapeHtml(value)}</span>
     </div>`;
 
-  // Product, Unit, Qty — plus the optional stock pair and expiry.
-  const columnCount = 3 + (showStock ? 2 : 0) + (showExpiry ? 1 : 0);
+  // Product, Unit, Qty — plus the optional cost pair, stock pair and expiry.
+  const columnCount = 3 + (showCost ? 2 : 0) + (showStock ? 2 : 0) + (showExpiry ? 1 : 0);
 
   const rows = data.items
     .map(item => {
@@ -128,6 +147,9 @@ export const printStockAdjustment = async (data: AdjustmentSlipData): Promise<bo
         </td>
         <td class="ctr">${escapeHtml(item.unitOfMeasure || '-')}</td>
         <td class="ctr qty">${qty.toLocaleString('en-US')}</td>
+        ${showCost ? `
+        <td class="ctr">${hasCost(item) ? escapeHtml(peso(Number(item.unitCost))) : '<span class="muted">—</span>'}</td>
+        <td class="ctr">${hasCost(item) ? escapeHtml(peso(lineValue(item))) : '<span class="muted">—</span>'}</td>` : ''}
         ${showStock ? `
         <td class="ctr">${prev.toLocaleString('en-US')}</td>
         <td class="ctr">${item.pendingApproval ? '<span class="muted">—</span>' : next.toLocaleString('en-US')}</td>` : ''}
@@ -234,6 +256,7 @@ export const printStockAdjustment = async (data: AdjustmentSlipData): Promise<bo
           <th style="width: 45%;">Product</th>
           <th class="ctr">Unit</th>
           <th class="ctr">Qty ${escapeHtml(config.verb)}</th>
+          ${showCost ? '<th class="ctr">Cost / Unit</th><th class="ctr">Value</th>' : ''}
           ${showStock ? '<th class="ctr">Prev. Stock</th><th class="ctr">New Stock</th>' : ''}
           ${showExpiry ? '<th class="ctr">Expiry</th>' : ''}
         </tr>
@@ -244,9 +267,12 @@ export const printStockAdjustment = async (data: AdjustmentSlipData): Promise<bo
           <td colspan="2">TOTAL</td>
           <!-- Product + Unit span 2, then the qty cell, then whatever optional
                columns remain. A transfer reprint has none, so the trailing
-               cell is omitted rather than emitted with a zero span. -->
+               cell is omitted rather than emitted with a zero span. The cost
+               pair, when present, totals the Value column and leaves Cost /
+               Unit blank — summing per-unit costs would be meaningless. -->
           <td class="ctr">${totalQty.toLocaleString('en-US')}</td>
-          ${columnCount > 3 ? `<td colspan="${columnCount - 3}"></td>` : ''}
+          ${showCost ? `<td></td><td class="ctr">${escapeHtml(peso(totalValue))}</td>` : ''}
+          ${columnCount - (showCost ? 5 : 3) > 0 ? `<td colspan="${columnCount - (showCost ? 5 : 3)}"></td>` : ''}
         </tr>
       </tfoot>
     </table>

@@ -167,6 +167,17 @@ export async function POST(request: NextRequest) {
 
         if (quantity === 0) continue;
 
+        // What this line cost per base unit. Absent/blank/negative means the
+        // caller captured no cost, and everything downstream falls back to
+        // products.cost exactly as it did before the column existed — 0 is NOT
+        // that case, it is a real cost and is kept.
+        const rawUnitCost = Number(adj.unitCost);
+        const unitCost =
+          adj.unitCost === null || adj.unitCost === undefined || adj.unitCost === ''
+            || !Number.isFinite(rawUnitCost) || rawUnitCost < 0
+            ? null
+            : rawUnitCost;
+
         // Fetch product info. sku is still needed below (line ~134) to find the
         // matching product in the target warehouse on a transfer — do not drop
         // it from this SELECT the way the approvalData.productSku display field
@@ -213,7 +224,10 @@ export async function POST(request: NextRequest) {
             referenceNo,
             supplierId,
             adjustmentType,
-            expirationDate: expirationDate || null
+            expirationDate: expirationDate || null,
+            // Carried through the queue so an approved line enters stock at the
+            // cost the user typed, not at the product's standing cost.
+            unitCost
           };
 
           if (isTransfer) {
@@ -286,8 +300,8 @@ export async function POST(request: NextRequest) {
         // Create adjustment record with new metadata
         await connection.query(
           `INSERT INTO stock_adjustments
-            (id, product_id, quantity, reason, new_stock, warehouse_id, target_warehouse_id, reference_no, supplier_id, note, adj_type, batch_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (id, product_id, quantity, reason, new_stock, warehouse_id, target_warehouse_id, reference_no, supplier_id, note, adj_type, batch_id, unit_cost)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             adjustmentId,
             productId,
@@ -300,7 +314,8 @@ export async function POST(request: NextRequest) {
             supplierId || null,
             batchNotes || null,
             adjustmentType,
-            batchId
+            batchId,
+            unitCost
           ]
         );
 
@@ -329,7 +344,10 @@ export async function POST(request: NextRequest) {
             'adjustment',
             finalReason,
             connection,
-            adjustQty > 0 ? expirationDate : null
+            adjustQty > 0 ? expirationDate : null,
+            // Only an increase creates a batch to cost; a removal deducts FIFO
+            // from the batches already there, at the cost they were received at.
+            adjustQty > 0 ? unitCost : null
           );
         }
 

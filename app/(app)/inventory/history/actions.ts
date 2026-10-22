@@ -212,7 +212,14 @@ import { checkApprovalRequired, submitToApprovalQueue } from '@/lib/approvals';
 import { withTransaction } from '@/lib/mysql';
 import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 
-export async function adjustStock(productId: string, quantity: number, reason: string, userId: string = 'system', isInternalFinalization: boolean = false, expirationDate?: string | null) {
+/**
+ * `unitCost` is what the stock being ADDED cost per base unit. Null/undefined
+ * means no cost was captured and the batch is costed at `products.cost`, which
+ * is how every caller behaved before the Bulk Adjustment screen started
+ * collecting it. It is ignored for a removal, which deducts FIFO from existing
+ * batches at their own cost.
+ */
+export async function adjustStock(productId: string, quantity: number, reason: string, userId: string = 'system', isInternalFinalization: boolean = false, expirationDate?: string | null, unitCost?: number | null) {
   try {
     // 1. Check if multi-level approval is required
     const isApprovalRequired = !isInternalFinalization && await checkApprovalRequired('STOCK_ADJUSTMENT');
@@ -240,7 +247,8 @@ export async function adjustStock(productId: string, quantity: number, reason: s
         warehouseName: productInfo.warehouse_name,
         shelfName: productInfo.shelf_name,
         currentStock: parseInt(productInfo.stock || 0),
-        expirationDate: expirationDate || null
+        expirationDate: expirationDate || null,
+        unitCost: unitCost ?? null
       }, userId);
       
       if (pendingApproval) {
@@ -279,10 +287,17 @@ export async function adjustStock(productId: string, quantity: number, reason: s
 
     // Create stock adjustment record for the main product (before we update stock)
     const createAdjustmentSql = `
-      INSERT INTO stock_adjustments (id, product_id, quantity, reason, new_stock)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO stock_adjustments (id, product_id, quantity, reason, new_stock, unit_cost)
+      VALUES (?, ?, ?, ?, ?, ?)
     `;
-    await query(createAdjustmentSql, [adjustmentId, productId, quantity, reason, newStock]);
+    // Normalized the same way the bulk route does: blank/negative/non-finite is
+    // "not captured" (NULL), while 0 is a real cost and is kept.
+    const normalizedUnitCost =
+      unitCost === null || unitCost === undefined
+        || !Number.isFinite(Number(unitCost)) || Number(unitCost) < 0
+        ? null
+        : Number(unitCost);
+    await query(createAdjustmentSql, [adjustmentId, productId, quantity, reason, newStock, normalizedUnitCost]);
 
     // The adjustment applies to this product's own stock figure, which is already
     // in base units. One product, one stock figure — nothing cascades to another
@@ -299,7 +314,8 @@ export async function adjustStock(productId: string, quantity: number, reason: s
           'adjustment',
           reason,
           connection,
-          quantity > 0 ? expirationDate : null
+          quantity > 0 ? expirationDate : null,
+          quantity > 0 ? normalizedUnitCost : null
         );
       }
       return { success: true, adjustmentId, newStock };
