@@ -6,11 +6,13 @@ export interface SaleEntity {
   invoiceDate: string;
   dueDate?: string;
   total: number;
+  /** Settled so far. Below `total` on a part-paid charge, so never derive this from `status`. */
+  amountPaid?: number;
   /** 12% VAT summed across this sale's vatable lines. Already folded into `total`. */
   vatAmount?: number;
   paymentMethod: string;
   paymentReference?: string;
-  status: 'Paid' | 'Pending' | 'Failed' | 'Shipped' | 'Delivered' | 'Returned' | 'Voided' | 'To Deliver' | 'Fully Delivered';
+  status: 'Paid' | 'Partially Paid' | 'Pending' | 'Failed' | 'Shipped' | 'Delivered' | 'Returned' | 'Voided' | 'To Deliver' | 'Fully Delivered';
   transactionSource: 'POS' | 'Backoffice';
   notes?: string;
   orderNumber?: number;

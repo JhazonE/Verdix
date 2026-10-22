@@ -15,7 +15,7 @@ import {
 import { Printer, MoreHorizontal, X, ArrowUp, ArrowDown, ArrowUpDown, Loader2 } from 'lucide-react';
 import type { Sale } from '@/lib/types';
 import { useUser } from '@/hooks/use-user';
-import { formatAmount, getStatusInfo } from './use-invoices-utils';
+import { formatAmount, getStatusInfo, getAmountPaid } from './use-invoices-utils';
 
 function SortBtn({ column, children }: { column: any; children: React.ReactNode }) {
   return (
@@ -134,13 +134,13 @@ export function useInvoicesTable({
     },
     {
       id: 'amountPaid',
-      accessorFn: (row) => (row.status === 'Paid' ? row.total : 0),
+      accessorFn: (row) => getAmountPaid(row),
       header: ({ column }) => <SortBtn column={column}>Amount Paid</SortBtn>,
       cell: ({ getValue }) => <span className="text-right block">₱{formatAmount(getValue())}</span>,
     },
     {
       id: 'balance',
-      accessorFn: (row) => row.total - (row.status === 'Paid' ? row.total : 0),
+      accessorFn: (row) => row.total - getAmountPaid(row),
       header: ({ column }) => <SortBtn column={column}>Balance</SortBtn>,
       cell: ({ getValue }) => <span className="text-right block">₱{formatAmount(getValue())}</span>,
     },

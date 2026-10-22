@@ -14,6 +14,7 @@ export class MySqlSaleRepository implements SaleRepository {
         si.invoice_date as invoiceDate,
         si.due_date as dueDate,
         si.total,
+        COALESCE(si.amount_paid, 0) as amountPaid,
         si.vat_amount as vatAmount,
         si.payment_method as paymentMethod,
         si.payment_reference as paymentReference,

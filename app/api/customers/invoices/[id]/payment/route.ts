@@ -107,7 +107,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         ]);
 
         // 4. Update Invoice Status
-        const newStatus = newAmountPaid >= Number(invoice.total) ? 'Paid' : 'Pending';
+        // A part-paid invoice is 'Partially Paid', not 'Pending' — 'Pending'
+        // cannot distinguish "nothing paid yet" from "partly settled".
+        const newStatus = newAmountPaid >= Number(invoice.total)
+            ? 'Paid'
+            : newAmountPaid > 0 ? 'Partially Paid' : 'Pending';
         
         const updateInvoiceSql = `
             UPDATE sales_invoices

@@ -375,7 +375,9 @@ export async function POST(request: NextRequest) {
 
         if (creditApplied > 0) {
           const creditCoversAll = creditApplied >= totalDue;
-          const newStatus = creditCoversAll ? 'Paid' : 'Pending';
+          // This branch only runs when creditApplied > 0, so anything short of the
+          // full amount really is a part-settled charge, not an untouched one.
+          const newStatus = creditCoversAll ? 'Paid' : 'Partially Paid';
 
           await connection.query(
             'UPDATE sales_invoices SET amount_paid = COALESCE(amount_paid, 0) + ?, status = ?, updated_at = NOW() WHERE id = ?',

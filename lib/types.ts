@@ -178,7 +178,7 @@ export interface Sale {
   amountPaid?: number;
   balance?: number;
   paymentMethod: string;
-  status: 'Paid' | 'Pending' | 'Failed' | 'Shipped' | 'Delivered' | 'Returned' | 'Voided' | 'To Deliver' | 'Fully Delivered' | 'Invoiced' | 'Cancelled';
+  status: 'Paid' | 'Partially Paid' | 'Pending' | 'Failed' | 'Shipped' | 'Delivered' | 'Returned' | 'Voided' | 'To Deliver' | 'Fully Delivered' | 'Invoiced' | 'Cancelled';
   orderNumber?: number;
   siNumber?: number | string;
   birOrNumber?: string;

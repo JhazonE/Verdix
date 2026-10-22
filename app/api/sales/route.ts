@@ -104,6 +104,7 @@ export async function GET(request: NextRequest) {
         invoiceDate: row.invoiceDate,
         dueDate: row.dueDate,
         total: Number(row.total || 0),
+        amountPaid: Number(row.amountPaid || 0),
         vatAmount: Number(row.vatAmount || 0),
         paymentMethod: row.paymentMethod || '',
         paymentReference: row.paymentReference || '',

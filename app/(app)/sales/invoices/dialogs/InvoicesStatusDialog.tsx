@@ -20,7 +20,7 @@ export function InvoicesStatusDialog({ open, onClose, tempStatus, setTempStatus,
           <Select value={tempStatus} onValueChange={setTempStatus}>
             <SelectTrigger className="mt-2"><SelectValue placeholder="Select status" /></SelectTrigger>
             <SelectContent>
-              {['all', 'Paid', 'Pending', 'Voided', 'Shipped', 'Delivered'].map(s => (
+              {['all', 'Paid', 'Partially Paid', 'Pending', 'Voided', 'Shipped', 'Delivered'].map(s => (
                 <SelectItem key={s} value={s}>{s === 'all' ? 'All' : s}</SelectItem>
               ))}
             </SelectContent>
