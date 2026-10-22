@@ -170,7 +170,6 @@ export function WarehouseRow({ warehouse, onUpdate, onDelete }: WarehouseRowProp
         <TableCell className="font-mono text-sm">{warehouse.id}</TableCell>
         <TableCell className="font-medium">{warehouse.name}</TableCell>
         <TableCell>{warehouse.location || 'N/A'}</TableCell>
-        <TableCell>{warehouse.isActive ? 'Yes' : 'No'}</TableCell>
         <TableCell>{warehouse.createdAt ? new Date(warehouse.createdAt).toLocaleDateString() : 'N/A'}</TableCell>
         <TableCell className="text-right">
           <DropdownMenu modal={false}>
@@ -257,7 +256,6 @@ export function WarehouseSkeleton() {
       <TableCell><Skeleton className="h-5 w-24" /></TableCell>
       <TableCell><Skeleton className="h-5 w-48" /></TableCell>
       <TableCell><Skeleton className="h-5 w-32" /></TableCell>
-      <TableCell><Skeleton className="h-5 w-8" /></TableCell>
       <TableCell><Skeleton className="h-5 w-20" /></TableCell>
       <TableCell className="text-right">
         <div className="flex justify-end gap-2">
