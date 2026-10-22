@@ -48,6 +48,14 @@ export function classifyRows(
 
       if (isEmpty) {
         if (field.required) { error = error ?? `Missing required "${field.label}"`; continue; }
+        // A field whose column was never mapped at all is OMITTED, not
+        // defaulted. The default exists for a blank CELL in a column the user
+        // did map ("this row has no reorder point"), not for a column they
+        // never supplied. Defaulting an unmapped column let a sheet with no
+        // price column at all overwrite every product's shelf price with 0 —
+        // the import route reads an absent key as "leave this alone", which is
+        // the only safe reading when the user never mentioned the field.
+        if (!header) continue;
         if (field.default !== undefined) { values[field.key] = field.default; continue; }
         // leave unset -> route applies its own null default
         continue;

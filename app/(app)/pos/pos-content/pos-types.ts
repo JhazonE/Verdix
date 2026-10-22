@@ -47,5 +47,18 @@ export type SaleItem = Product & {
    * Generated once when a line is created; never recomputed or reused.
    */
   lineId: string;
+  /**
+   * Set when a cashier picks a price level for THIS line. It overrides the
+   * cart-wide `activeLevelId` and ignores quantity tiers entirely — a picked
+   * level applies at any quantity, which is the whole point of the picker.
+   *
+   * `undefined` means "follow the cart", which is both the default and the
+   * correct reading for a cart held before this feature shipped.
+   *
+   * A plain string, deliberately: the cart crosses JSON four times (the
+   * localStorage draft, hold/restore, and the queue claim/recall round trips
+   * through app/api/pos/queue), and a scalar survives all of them for free.
+   */
+  pickedPriceLevelId?: string;
 };
 

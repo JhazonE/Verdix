@@ -33,6 +33,12 @@ interface SlipItemRow {
   quantity: number;
   previousStock: number;
   expirationDate: string | null;
+  /**
+   * Null for a transfer (no cost is recorded against one) and for every
+   * adjustment written before migration 144. The slip drops its cost columns
+   * entirely when no item carries one.
+   */
+  unitCost: number | null;
 }
 
 export async function GET(request: NextRequest) {
@@ -91,6 +97,10 @@ export async function GET(request: NextRequest) {
         quantity: Number(r.quantity) || 0,
         previousStock: NaN,
         expirationDate: null,
+        // inventory_transfer_items records no cost, and a transfer moves stock
+        // between warehouses at the cost it was already carried at, so there is
+        // nothing to print here.
+        unitCost: null,
       }));
 
       return NextResponse.json({
@@ -115,7 +125,7 @@ export async function GET(request: NextRequest) {
 
     const rows: any = await query(
       `SELECT sa.id, sa.quantity, sa.new_stock, sa.reference_no,
-              sa.note, sa.adj_type, sa.created_at,
+              sa.note, sa.adj_type, sa.created_at, sa.unit_cost,
               p.name AS product_name, p.unit_of_measure,
               su.barcode AS base_unit_barcode, p.barcode,
               wh.name AS warehouse_name, twh.name AS target_warehouse_name,
@@ -151,6 +161,9 @@ export async function GET(request: NextRequest) {
         // correct for rows written before this feature existed.
         previousStock: newStock - qty,
         expirationDate: null,
+        // NULL means no cost was captured, which is not 0 — the slip must be
+        // able to tell "free" from "unknown".
+        unitCost: r.unit_cost === null || r.unit_cost === undefined ? null : Number(r.unit_cost),
       };
     });
 

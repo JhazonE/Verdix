@@ -11,7 +11,7 @@ import { printStockAdjustment, type AdjustmentSlipData } from '@/lib/print-stock
 import type { Product, Supplier, Warehouse } from '@/lib/types';
 
 import { getProducts } from '../../products/actions';
-import type { AdjustmentItem, AdjustmentType } from './constants';
+import { parseUnitCost, type AdjustmentItem, type AdjustmentType } from './constants';
 
 /**
  * Controller for the bulk stock adjustment screen: owns product/metadata
@@ -150,7 +150,14 @@ export function useBulkAdjustment() {
       toast({ title: 'Already added', description: `${product.name} is already in the list.` });
       return;
     }
-    setAdjustments(prev => [...prev, { product, quantity: 1, type: adjustmentType }]);
+    // Seeded from the product's standing cost so the common case — stock coming
+    // in at the price it has always cost — needs no typing. A blank cost on the
+    // product stays blank here rather than being shown as a confident 0.
+    const seededCost =
+      product.cost === null || product.cost === undefined || !Number.isFinite(Number(product.cost))
+        ? ''
+        : String(Number(product.cost));
+    setAdjustments(prev => [...prev, { product, quantity: 1, type: adjustmentType, unitCost: seededCost }]);
     setSearch('');
     setShowResults(false);
     setShowMobileSearch(false);
@@ -196,6 +203,7 @@ export function useBulkAdjustment() {
           // The batch memo is the reason for every line now.
           reason: note || 'Bulk Stock Adjustment',
           expirationDate: a.product.isPerishable && adjustmentType === 'add' ? (a.expirationDate || null) : null,
+          unitCost: parseUnitCost(a.unitCost),
         })),
         notes: note || 'Bulk Stock Adjustment',
         userId, warehouseId, targetWarehouseId, referenceNo, supplierId, adjustmentType
@@ -241,6 +249,7 @@ export function useBulkAdjustment() {
             quantity: a.quantity,
             previousStock: a.product.stock,
             expirationDate: a.expirationDate || null,
+            unitCost: parseUnitCost(a.unitCost),
             pendingApproval: queuedIds.has(String(a.product.id)),
           })),
         });
@@ -289,6 +298,14 @@ export function useBulkAdjustment() {
     return newStock < 0;
   });
 
+  // What the batch is worth at the costs entered. Lines with no cost captured
+  // contribute nothing rather than silently being counted at the product's
+  // standing cost — the total must only ever add up the figures on screen.
+  const totalCostValue = adjustments.reduce((sum, a) => {
+    const cost = parseUnitCost(a.unitCost);
+    return cost === null ? sum : sum + cost * a.quantity;
+  }, 0);
+
   const addCount = adjustments.filter(a => a.type === 'add').length;
   const removeCount = adjustments.filter(a => a.type === 'remove').length;
   const transferCount = adjustments.filter(a => a.type === 'transfer').length;
@@ -332,6 +349,7 @@ export function useBulkAdjustment() {
     confirmPrintSlip,
     skipPrintSlip,
     hasNegativeStock,
+    totalCostValue,
     addCount,
     removeCount,
     transferCount,

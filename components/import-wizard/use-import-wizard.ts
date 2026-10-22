@@ -1,8 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getApiUrl } from '@/lib/api-config';
-import { ENTITY_SCHEMAS, type EntityKey } from '@/lib/import/entity-schemas';
+import {
+  ENTITY_SCHEMAS,
+  productsSchemaWithPriceLevels,
+  type EntityKey,
+  type ImportPriceLevel,
+} from '@/lib/import/entity-schemas';
 import { parseFile, type ParsedFile } from '@/lib/import/parse-file';
 import { autoMapColumns } from '@/lib/import/auto-map';
 import { classifyRows, type ClassifiedRow } from '@/lib/import/classify';
@@ -27,7 +32,33 @@ function downloadText(filename: string, text: string) {
 }
 
 export function useImportWizard(entity: EntityKey) {
-  const schema = ENTITY_SCHEMAS[entity];
+  // Configured price levels become one optional column each (products only).
+  // Loaded on mount rather than at file-pick time so "Download template"
+  // already carries them on the very first step.
+  const [priceLevels, setPriceLevels] = useState<ImportPriceLevel[]>([]);
+  const schema = useMemo(
+    () => (entity === 'products' ? productsSchemaWithPriceLevels(priceLevels) : ENTITY_SCHEMAS[entity]),
+    [entity, priceLevels],
+  );
+
+  useEffect(() => {
+    if (entity !== 'products') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(getApiUrl('/data-management/import/products/price-levels'));
+        if (!res.ok) return;
+        const data = await res.json();
+        // Price-level columns are a convenience, never a precondition: if this
+        // fails the wizard stays on the static schema and the import still runs.
+        if (!cancelled) setPriceLevels(Array.isArray(data?.levels) ? data.levels : []);
+      } catch {
+        /* keep the static schema */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [entity]);
+
   const [step, setStep] = useState<Step>('upload');
   const [parsed, setParsed] = useState<ParsedFile | null>(null);
   const [mapping, setMapping] = useState<Record<string, string | null>>({});

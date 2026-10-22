@@ -428,6 +428,7 @@ export interface SystemSettings {
   enableAutomaticMarkup?: boolean;
   defaultMarkupPercentage?: number;
   markupPriority?: string[];
+  enablePriceLevelPicker?: boolean;
   enablePriceEditAuth?: boolean;
   priceEditAuthUsername?: string | null;
   priceEditAuthPassword?: string | null;

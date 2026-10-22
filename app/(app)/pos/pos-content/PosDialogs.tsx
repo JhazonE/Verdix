@@ -4,6 +4,7 @@ import { TenderDialog } from '../tender/TenderDialog';
 import { ProductSearchDialog } from '../product-search/ProductSearchDialog';
 import { HeldTransactionsDialog } from '../held-transactions/HeldTransactionsDialog';
 import { DiscountDialog } from '../discount/DiscountDialog';
+import { PriceEditDialog } from '../price-edit/PriceEditDialog';
 import { SuspendNoteDialog } from '../suspend-note/SuspendNoteDialog';
 import { AdminAuthDialog } from '../admin-auth/AdminAuthDialog';
 import { EndShiftDialog } from '../end-shift/EndShiftDialog';
@@ -64,6 +65,15 @@ export function PosDialogs(pos: Props) {
         activeLevelName={pos.activeLevelName}
         warehouseId={pos.inventoryLocation}
         allProducts={pos.products}
+      />
+
+      <PriceEditDialog
+        isOpen={pos.isPriceEditOpen}
+        onOpenChange={(open: boolean) => { pos.setIsPriceEditOpen(open); if (!open) setTimeout(() => pos.inputRef.current?.focus(), 50); }}
+        item={pos.selectedItem}
+        onUpdate={pos.handleUpdateItem}
+        priceLevels={pos.priceLevels}
+        showPriceLevelPicker={pos.enablePriceLevelPicker}
       />
 
       <DiscountDialog

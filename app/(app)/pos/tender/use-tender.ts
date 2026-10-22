@@ -266,6 +266,11 @@ export function useTender({
             sellingUnitId: item.selectedSellingUnit?.id ?? null,
             sellingUnitName: item.selectedSellingUnit?.name ?? null,
             sellingUnitFactor: item.selectedSellingUnit?.factor ?? null,
+            // Only the id travels: the checkout route resolves its name from
+            // price_levels, which is the table that owns it. Sending a name
+            // the client happened to be holding would let a stale cart file a
+            // receipt under a label the level no longer has.
+            priceLevelId: item.pickedPriceLevelId ?? null,
           })),
           customer: customer || { id: 'walk-in', name: 'Walk-in Customer' },
           status: 'completed',

@@ -101,7 +101,7 @@ export function EditItemDialog({ isOpen, onOpenChange, item, onUpdate, mode = 'f
           <div className="flex gap-3 pt-2">
             <Button
               variant="outline"
-              className="flex-1 h-12 rounded-xl font-bold text-slate-600 border-slate-200 hover:bg-slate-50 transition-colors"
+              className="flex-1 h-12 rounded-xl font-bold border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-transparent dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100 transition-colors"
               onClick={() => onOpenChange(false)}
             >
               Cancel

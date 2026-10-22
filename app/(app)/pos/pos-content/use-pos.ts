@@ -8,7 +8,7 @@ import { useProducts, mapApiProduct } from '@/hooks/use-api';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useCustomerDisplay } from '@/hooks/use-customer-display';
 import { useLiveRefresh, dispatchStockUpdate } from '@/hooks/use-live-refresh';
-import { calculateEffectivePriceForUnit } from '@/lib/pricing';
+import { calculateEffectivePriceForUnit, resolvePriceForLevel } from '@/lib/pricing';
 import { resolveSellingUnitForAdd, baseSellingUnitOf, findCartLineForUnit, promoteToLargestUnit } from '@/lib/pos-cart-units';
 import { resolveEffectiveTaxType } from '@/lib/tax-utils';
 import { getApiUrl } from '@/lib/api-config';
@@ -174,6 +174,10 @@ export function usePOS() {
   const [editingNameItemId, setEditingNameItemId] = useState<string | null>(null);
   const [editingQtyItemId, setEditingQtyItemId] = useState<string | null>(null);
   const [editingPriceItemId, setEditingPriceItemId] = useState<string | null>(null);
+  // F7 (and clicking a cart line's price) now opens the Edit Price dialog
+  // instead of unlocking the inline cell: the dialog has room to show each
+  // price level's resulting price, which a table cell does not.
+  const [isPriceEditOpen, setIsPriceEditOpen] = useState(false);
   const [pendingVoidItemId, setPendingVoidItemId] = useState<string | null>(null);
   const [pendingVoidScope, setPendingVoidScope] = useState<'selected' | 'all'>('selected');
   const [isVoidLineChoiceOpen, setIsVoidLineChoiceOpen] = useState(false);
@@ -184,6 +188,10 @@ export function usePOS() {
   const [isCheckingShift, setIsCheckingShift] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<{ id: string; name: string; isActive: boolean; isReferenceRequired?: boolean; pointsAmount?: number; currencyEquivalent?: number }[]>([]);
   const [showQuantityInSearch, setShowQuantityInSearch] = useState(true);
+  // Defaults OFF, matching the column default: the picker changes what a
+  // cashier can do at the till, so a store opts in rather than finding a new
+  // control after an update.
+  const [enablePriceLevelPicker, setEnablePriceLevelPicker] = useState(false);
 
   // Sticky focus on main input when all dialogs close
   useEffect(() => {
@@ -309,10 +317,12 @@ export function usePOS() {
     if (q !== baseQtyOf(item)) updateQuantity(itemId, q, true);
   };
 
+  // Clicking a line's price goes wherever F7 goes: inline when the price
+  // level picker is off, the dialog when it is on. See startPriceEdit.
   const requestInlinePriceEdit = (itemId: string) => {
     setSelectedItemId(itemId);
     if (businessSettings?.enablePriceEditAuth) setIsPriceEditAuthOpen(true);
-    else unlockInlinePrice(itemId);
+    else startPriceEdit(itemId);
   };
 
   const fetchSettings = useCallback(async (signal?: AbortSignal) => {
@@ -337,6 +347,11 @@ export function usePOS() {
         setZReadingAuthCredentials({ username: result.data.zReadingAuthUsername, password: result.data.zReadingAuthPassword });
         setIsTrainingMode(result.data.isTrainingMode || false);
         setShowQuantityInSearch(result.data.showQuantityInSearch ?? true);
+        // `!!`, not `?? false`: the column is TINYINT(1), so this arrives as
+        // the NUMBER 0 or 1. `?? false` only replaces null/undefined, leaving
+        // a raw 0 to flow into `showPriceLevelPicker && (...)` in the Edit
+        // Price dialog — where JSX renders the 0 itself as stray text.
+        setEnablePriceLevelPicker(!!result.data.enablePriceLevelPicker);
         setEnableCustomerDisplay(result.data.enableCustomerDisplay || false);
 
         const localPrintMode = localStorage.getItem('pos_printer_mode');
@@ -616,12 +631,58 @@ export function usePOS() {
   const activeLevelId = useMemo(() => selectedCustomer?.priceLevelId || selectedPriceLevelId || defaultLevelId, [selectedCustomer, selectedPriceLevelId, defaultLevelId]);
   const activeLevelName = useMemo(() => priceLevels.find((l: any) => l.id === activeLevelId)?.name || 'Retail', [activeLevelId, priceLevels]);
 
+  /**
+   * The price for ONE cart line. Every re-pricing site in this hook goes
+   * through here and calls neither resolver directly.
+   *
+   * That single entry point is the point: a line carrying a picked level must
+   * keep it when the quantity changes, when the item is re-scanned, and when
+   * the cart-wide level moves. Those are separate code paths, and a fix
+   * applied to only some of them produces a price that silently reverts —
+   * intermittently, at the till, which is the worst failure this feature can
+   * have. Routing them all through one helper makes a partial fix impossible
+   * rather than merely unlikely.
+   *
+   * With a pick, tiers are ignored and the level's own price wins (it may be
+   * higher than the shelf price — a deliberate instruction is allowed to raise
+   * a line). Without one, this is exactly today's behaviour.
+   */
+  /**
+   * The display name of a line's picked level, or undefined when there is no
+   * pick or the level has since been deleted.
+   *
+   * A deleted level must NOT clear `pickedPriceLevelId`. The id is the record
+   * of why the line is priced as it is, and the price already degrades safely
+   * to the unit's own price (see resolvePriceForLevel). Clearing it would
+   * silently re-price the line and lose that reason — so the badge simply
+   * renders nothing and the line stays as the cashier set it.
+   */
+  const priceLevelNameFor = useCallback(
+    (pickedPriceLevelId?: string): string | undefined =>
+      pickedPriceLevelId
+        ? priceLevels.find((l: any) => l.id === pickedPriceLevelId)?.name
+        : undefined,
+    [priceLevels],
+  );
+
+  const priceLineFor = useCallback((
+    unit: Parameters<typeof calculateEffectivePriceForUnit>[0],
+    quantity: number,
+    pickedPriceLevelId?: string,
+  ): number => {
+    if (pickedPriceLevelId) return resolvePriceForLevel(unit, pickedPriceLevelId);
+    return calculateEffectivePriceForUnit(unit, quantity, activeLevelId, defaultLevelId);
+  }, [activeLevelId, defaultLevelId]);
+
   // Re-price items when price level changes
   useEffect(() => {
     if (!activeLevelId) return;
     setItems(currentItems => {
       if (currentItems.length === 0) return currentItems;
-      const updated = currentItems.map(item => ({ ...item, price: calculateEffectivePriceForUnit(item.selectedSellingUnit ?? baseSellingUnitOf(item), item.quantity, activeLevelId, defaultLevelId) }));
+      // A line with a picked level resolves to the same price here, so the
+      // `changed` guard below leaves it untouched — the cart-wide level moving
+      // must not drag a deliberately priced line with it.
+      const updated = currentItems.map(item => ({ ...item, price: priceLineFor(item.selectedSellingUnit ?? baseSellingUnitOf(item), item.quantity, item.pickedPriceLevelId) }));
       const changed = JSON.stringify(currentItems.map(i => i.price)) !== JSON.stringify(updated.map(i => i.price));
       return changed ? updated : currentItems;
     });
@@ -662,7 +723,9 @@ export function usePOS() {
         if (existingLine) {
           const newQty = existingLine.quantity + 1;
           const priceUnit = unit ?? baseSellingUnitOf(product);
-          const newPrice = calculateEffectivePriceForUnit(priceUnit, newQty, activeLevelId, defaultLevelId);
+          // Re-scanning a line the cashier priced by level must not undo that
+          // pick — the line keeps its level and its price.
+          const newPrice = priceLineFor(priceUnit, newQty, existingLine.pickedPriceLevelId);
           return prevItems.map(item => item === existingLine ? { ...item, quantity: newQty, price: newPrice } : item);
         } else {
           const priceUnit = unit ?? baseSellingUnitOf(product);
@@ -670,7 +733,8 @@ export function usePOS() {
             ...product, quantity: 1, discount: 0, name: product.name,
             selectedSellingUnit: unit,
             lineId: crypto.randomUUID(),
-            price: calculateEffectivePriceForUnit(priceUnit, 1, activeLevelId, defaultLevelId),
+            // A brand-new line carries no pick and follows the cart.
+            price: priceLineFor(priceUnit, 1, undefined),
             taxType: mapVatStatusToTaxType(product.vatStatus),
           };
           setSelectedItemId(newItem.lineId);
@@ -798,17 +862,26 @@ export function usePOS() {
         const { unit, quantity } = target.type === 'service'
           ? { unit: currentUnit, quantity: newQuantity }
           : promoteToLargestUnit(newQuantity, currentUnit, target.sellingUnits);
-        const price = calculateEffectivePriceForUnit(unit, quantity, activeLevelId, defaultLevelId);
+        // Changing the quantity must never undo a picked level. This is the
+        // headline case: a price that snaps back to Retail when the cashier
+        // types a quantity is a wrong-price bug at the till.
+        const price = priceLineFor(unit, quantity, target.pickedPriceLevelId);
         const promoted = unit.id !== target.selectedSellingUnit?.id;
         // A promoted line may land on a unit the cart already carries; fold
         // the two together rather than showing duplicate lines.
         const sibling = promoted ? findCartLineForUnit(prevItems.filter(i => i.lineId !== lineId), target.id, unit.id) : undefined;
         if (sibling) {
           const mergedQty = sibling.quantity + quantity;
-          const mergedPrice = calculateEffectivePriceForUnit(unit, mergedQty, activeLevelId, defaultLevelId);
+          // Two lines folding into one may carry different picks. The line
+          // being promoted is the one the cashier just acted on, so its pick
+          // wins; the sibling's stands only when the promoted line has none.
+          // Dropping both would silently re-price a deliberately priced line
+          // the moment a promotion happened to merge it.
+          const mergedPick = target.pickedPriceLevelId ?? sibling.pickedPriceLevelId;
+          const mergedPrice = priceLineFor(unit, mergedQty, mergedPick);
           return prevItems
             .filter(i => i.lineId !== lineId)
-            .map(i => i === sibling ? { ...i, quantity: mergedQty, price: mergedPrice } : i);
+            .map(i => i === sibling ? { ...i, quantity: mergedQty, price: mergedPrice, pickedPriceLevelId: mergedPick } : i);
         }
         return prevItems.map(item => item === target
           ? { ...item, quantity, price, selectedSellingUnit: unit }
@@ -817,8 +890,34 @@ export function usePOS() {
     }
   };
 
-  const handleUpdateItem = (itemId: string, newName: string, newQty: number, newPrice: number, newDiscount: number) => {
-    setItems(prev => prev.map(item => item.lineId === itemId ? { ...item, name: newName, quantity: newQty, price: newPrice, discount: newDiscount } : item));
+  /**
+   * `itemId` is a LINE id, not a product id — two lines of the same product on
+   * different selling units must be editable independently.
+   *
+   * `pickedPriceLevelId` is optional and only ever SETS a pick. When it is
+   * undefined the line keeps whatever pick it already had, so Edit Item and
+   * the inline price edit — neither of which knows about price levels — cannot
+   * silently clear one. Expressing "clear the pick" would need a distinct
+   * sentinel; nothing needs that yet.
+   */
+  const handleUpdateItem = (
+    itemId: string,
+    newName: string,
+    newQty: number,
+    newPrice: number,
+    newDiscount: number,
+    pickedPriceLevelId?: string,
+  ) => {
+    setItems(prev => prev.map(item => item.lineId === itemId
+      ? {
+          ...item,
+          name: newName,
+          quantity: newQty,
+          price: newPrice,
+          discount: newDiscount,
+          pickedPriceLevelId: pickedPriceLevelId ?? item.pickedPriceLevelId,
+        }
+      : item));
   };
 
   const handleVoidLine = (itemId: string | null) => {
@@ -1340,10 +1439,43 @@ export function usePOS() {
   const handleRequestPriceEdit = () => {
     if (selectedItem) {
       if (businessSettings?.enablePriceEditAuth) setIsPriceEditAuthOpen(true);
-      else unlockInlinePrice(selectedItem.lineId);
+      else startPriceEdit(selectedItem.lineId);
     } else {
       toast({ title: 'No Item Selected', description: 'Please select an item to authorize price change.', variant: 'destructive' });
     }
+  };
+
+  /**
+   * Where a price edit lands, for every entry point: F7, clicking the price in
+   * the cart, and the manager-credential success handler.
+   *
+   * With the price level picker OFF there is nothing a dialog can offer that
+   * the cart cell cannot, so editing stays INLINE — the faster, keyboard-native
+   * path cashiers already know. Turning the picker ON is what brings up the
+   * dialog, because each level and its resulting price need room to be shown
+   * and compared, which a table cell does not have.
+   *
+   * Routing all three entry points through here is what keeps them agreeing:
+   * the toggle must never send F7 somewhere different from a click.
+   *
+   * It deliberately does NOT bypass the enablePriceEditAuth gate — each caller
+   * checks that first, exactly as they did before. Losing that gate would be a
+   * security regression, not a cosmetic one.
+   */
+  const startPriceEdit = (itemId: string) => {
+    if (enablePriceLevelPicker) openPriceEditDialog(itemId);
+    else unlockInlinePrice(itemId);
+  };
+
+  const openPriceEditDialog = (itemId: string) => {
+    setSelectedItemId(itemId);
+    // The inline editors are mutually exclusive with the dialog; close any
+    // that happen to be open so the cart is not left with a live input behind
+    // the modal.
+    setEditingPriceItemId(null);
+    setEditingNameItemId(null);
+    setEditingQtyItemId(null);
+    setIsPriceEditOpen(true);
   };
 
   const unlockInlinePrice = (itemId: string) => {
@@ -1365,7 +1497,8 @@ export function usePOS() {
 
   const handlePriceEditAuthSuccess = () => {
     setIsPriceEditAuthOpen(false);
-    if (selectedItemId) unlockInlinePrice(selectedItemId);
+    // The gate stands in front of whichever editor the toggle selects.
+    if (selectedItemId) startPriceEdit(selectedItemId);
   };
 
   const handleEditItemAuthSuccess = () => {
@@ -1515,7 +1648,7 @@ export function usePOS() {
     currentShiftId, selectedTerminalId, currentTerminalName, terminals,
     currentTime, shiftActive, isPosLoggedIn, isCheckingShift, isEndingShift,
     currentUser, businessSettings, isTrainingMode, enableCustomerDisplay,
-    openOnSecondScreen, showQuantityInSearch, showOverlay,
+    openOnSecondScreen, showQuantityInSearch, enablePriceLevelPicker, showOverlay,
     // frontliner / queue
     isFrontliner, queuedOrders, editingQueueOrder, isQueuePanelOpen, setIsQueuePanelOpen,
     isSendToQueueOpen, setIsSendToQueueOpen,
@@ -1543,6 +1676,7 @@ export function usePOS() {
     editingNameItemId, setEditingNameItemId,
     editingQtyItemId, setEditingQtyItemId,
     editingPriceItemId, setEditingPriceItemId,
+    isPriceEditOpen, setIsPriceEditOpen,
     qtyDraft, setQtyDraft,
     heldTransactions, isHeldTransOpen, setIsHeldTransOpen,
     isSuspendNoteOpen, setIsSuspendNoteOpen,
@@ -1584,6 +1718,10 @@ export function usePOS() {
     // price levels
     priceLevels, selectedPriceLevelId, setSelectedPriceLevelId,
     activeLevelId, defaultLevelId, activeLevelName,
+    // The Edit Price dialog (Task 5) prices its preview with priceLineFor and
+    // labels a line's pick with priceLevelNameFor, so both resolve exactly as
+    // the cart does rather than re-deriving the rules in the UI.
+    priceLineFor, priceLevelNameFor,
     // products (for search filters)
     products,
     // totals

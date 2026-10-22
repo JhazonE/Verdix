@@ -325,6 +325,13 @@ export async function getStockMovements(filters?: {
  * @param referenceId Optional reference ID
  * @param referenceType Optional reference type
  * @param notes Optional notes
+ * @param unitCostOverride What this stock actually cost per base unit, for the
+ *   batch created by a stock INCREASE. `undefined`/`null` means "not captured"
+ *   and keeps the long-standing behaviour of costing the batch at
+ *   `products.cost`; a supplied number is used verbatim, 0 included, because a
+ *   line entered at zero cost (a free case, a sample) is a real figure and not
+ *   a missing one. Ignored on a decrease, which deducts from existing batches
+ *   at the cost they were received at.
  * @returns The recorded stock movement
  */
 export async function updateStockAndRecordMovement(
@@ -335,7 +342,8 @@ export async function updateStockAndRecordMovement(
   referenceType?: 'sale' | 'purchase' | 'adjustment' | 'return' | 'transfer',
   notes?: string,
   connection?: mysql.PoolConnection | mysql.Pool,
-  expirationDate?: string | null
+  expirationDate?: string | null,
+  unitCostOverride?: number | null
 ): Promise<StockMovement> {
   // Get current product info
   const productSql = 'SELECT name, stock FROM products WHERE id = ?';
@@ -432,7 +440,17 @@ export async function updateStockAndRecordMovement(
           ? (await connection.query('SELECT cost, price FROM products WHERE id = ?', [productId]))[0] as any[]
           : await query('SELECT cost, price FROM products WHERE id = ?', [productId]);
           
-        const unitCost = costInfo?.[0]?.cost ? parseFloat(costInfo[0].cost) : 0;
+        // A caller-supplied cost wins over the product's standing cost: it is
+        // what this particular stock was actually received at, and it is what
+        // FIFO will charge against the sales that draw from this batch.
+        // Number.isFinite, not a truthiness check — 0 is a valid cost and must
+        // not fall through to products.cost.
+        const overrideCost = Number(unitCostOverride);
+        const hasOverride = unitCostOverride !== null && unitCostOverride !== undefined
+          && Number.isFinite(overrideCost) && overrideCost >= 0;
+        const unitCost = hasOverride
+          ? overrideCost
+          : (costInfo?.[0]?.cost ? parseFloat(costInfo[0].cost) : 0);
         const sellingPrice = costInfo?.[0]?.price ? parseFloat(costInfo[0].price) : 0;
 
         const normalizedExpiry = normalizeExpirationDate(expirationDate);

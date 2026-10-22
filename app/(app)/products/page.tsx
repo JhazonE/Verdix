@@ -52,6 +52,47 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useLiveRefresh, dispatchStockUpdate } from '@/hooks/use-live-refresh';
 
+/**
+ * Every configured price level with the price this unit actually sells at,
+ * for the Price Levels column.
+ *
+ * Listing only the rows in `product_selling_unit_price_levels` hid the DEFAULT
+ * level (usually "Retail") on almost every product, because a product whose
+ * shelf price has never been overridden has no row for it — the price lives in
+ * the unit's own `price` column. 727 products carried a Whosale row while only
+ * 33 carried a Retail one, so the column read as if Retail did not exist.
+ *
+ * The fallback matches lib/pricing.ts: a level with no override row for a unit
+ * resolves to that unit's OWN price, never another unit's and never a computed
+ * multiple. A level is listed only when it has a real price to show.
+ */
+function priceLevelsForUnit(
+  unit: { price?: number | null; priceLevels?: { levelId: string; price: number }[] } | undefined,
+  allLevels: { id: string; name: string; isDefault?: boolean }[] | undefined,
+): { levelId: string; name: string; price: number }[] {
+  if (!unit) return [];
+  const rows = unit.priceLevels || [];
+  const byId = new Map(rows.map((r) => [r.levelId, r.price]));
+
+  // Configured levels first, in their configured order, so the column reads
+  // the same way on every row.
+  const out: { levelId: string; name: string; price: number }[] = [];
+  for (const level of allLevels || []) {
+    const override = byId.get(level.id);
+    const price = override ?? (level.isDefault ? unit.price ?? undefined : undefined);
+    if (typeof price === 'number') out.push({ levelId: level.id, name: level.name, price });
+  }
+
+  // Any row whose level is no longer configured still shows, labelled by id,
+  // rather than vanishing — a price someone set should not disappear silently.
+  for (const row of rows) {
+    if (!(allLevels || []).some((l) => l.id === row.levelId)) {
+      out.push({ levelId: row.levelId, name: row.levelId, price: row.price });
+    }
+  }
+  return out;
+}
+
 function ProductRow({ product, onProductDeleted, onProductUpdated, products, productOptions, onOptionsRefresh, lowStockThreshold }: {
   product: Product;
   onProductDeleted?: () => void;
@@ -69,7 +110,13 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
   const [unitsExpanded, setUnitsExpanded] = useState(false);
 
   const extraSellingUnits = (product.sellingUnits || []).filter((u) => !u.isBase);
-  const baseUnitPriceLevels = product.sellingUnits?.find((u) => u.isBase)?.priceLevels || [];
+  const baseUnit = product.sellingUnits?.find((u) => u.isBase);
+  // Falls back to the product's own price when the row predates selling units,
+  // so the default level still shows rather than the cell reading as empty.
+  const baseUnitDisplayLevels = priceLevelsForUnit(
+    baseUnit ?? { price: product.price, priceLevels: [] },
+    productOptions?.priceLevels,
+  );
 
   const { toast } = useToast();
   // Services carry no stock, so the stock ladder does not apply — flagging one
@@ -156,16 +203,13 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
           {product.cost && typeof product.cost === 'number' ? `₱${product.cost.toFixed(2)}` : '—'}
         </TableCell>
         <TableCell className="hidden md:table-cell text-right">
-          {baseUnitPriceLevels.length > 0 ? (
+          {baseUnitDisplayLevels.length > 0 ? (
             <div className="flex flex-wrap justify-end gap-x-2 gap-y-0.5">
-              {baseUnitPriceLevels.map((pl) => {
-                const levelName = productOptions?.priceLevels?.find((l: any) => l.id === pl.levelId)?.name || pl.levelId;
-                return (
-                  <span key={pl.levelId} className="text-xs whitespace-nowrap">
-                    <span className="text-muted-foreground">{levelName}:</span> ₱{pl.price.toFixed(2)}
-                  </span>
-                );
-              })}
+              {baseUnitDisplayLevels.map((pl) => (
+                <span key={pl.levelId} className="text-xs whitespace-nowrap">
+                  <span className="text-muted-foreground">{pl.name}:</span> ₱{pl.price.toFixed(2)}
+                </span>
+              ))}
             </div>
           ) : (
             typeof product.price === 'number' ? `₱${product.price.toFixed(2)}` : 'N/A'
@@ -288,16 +332,13 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
             {typeof unit.cost === 'number' ? `₱${unit.cost.toFixed(2)}` : '—'}
           </TableCell>
           <TableCell className="hidden md:table-cell text-right">
-            {unit.priceLevels && unit.priceLevels.length > 0 ? (
+            {priceLevelsForUnit(unit, productOptions?.priceLevels).length > 0 ? (
               <div className="flex flex-wrap justify-end gap-x-2 gap-y-0.5">
-                {unit.priceLevels.map((pl) => {
-                  const levelName = productOptions?.priceLevels?.find((l: any) => l.id === pl.levelId)?.name || pl.levelId;
-                  return (
-                    <span key={pl.levelId} className="text-xs whitespace-nowrap">
-                      <span className="text-muted-foreground">{levelName}:</span> ₱{pl.price.toFixed(2)}
-                    </span>
-                  );
-                })}
+                {priceLevelsForUnit(unit, productOptions?.priceLevels).map((pl) => (
+                  <span key={pl.levelId} className="text-xs whitespace-nowrap">
+                    <span className="text-muted-foreground">{pl.name}:</span> ₱{pl.price.toFixed(2)}
+                  </span>
+                ))}
               </div>
             ) : typeof unit.price === 'number' ? (
               `₱${unit.price.toFixed(2)}`

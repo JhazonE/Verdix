@@ -3,9 +3,9 @@ import { ArrowRight, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { cn, formatQuantity } from '@/lib/utils';
+import { cn, formatCurrency, formatQuantity } from '@/lib/utils';
 
-import { typeConfig, type AdjustmentItem } from './constants';
+import { parseUnitCost, typeConfig, type AdjustmentItem } from './constants';
 
 export function AdjustmentMobileCard({
   adj,
@@ -22,6 +22,7 @@ export function AdjustmentMobileCard({
   const isNegative = newStock < 0;
   const cfg = typeConfig[adj.type];
   const Icon = cfg.icon;
+  const lineCost = parseUnitCost(adj.unitCost);
 
   return (
     <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
@@ -79,6 +80,32 @@ export function AdjustmentMobileCard({
             <span className="text-sm font-mono text-muted-foreground">{formatQuantity(adj.product.stock)}</span>
             <ArrowRight className="h-3 w-3 text-muted-foreground/60" />
             <span className={cn("text-sm font-bold", isNegative ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400")}>{formatQuantity(newStock)}</span>
+          </div>
+        </div>
+
+        {/* Cost per unit + what the line is worth at it. */}
+        <div className="flex items-end gap-3">
+          <div className="flex-1">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">Cost / Unit</p>
+            <div className="relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">₱</span>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                inputMode="decimal"
+                className="h-8 w-full pl-6 pr-2 text-right font-mono text-sm tabular-nums"
+                value={adj.unitCost ?? ''}
+                onChange={e => onUpdate(adj.product.id, { unitCost: e.target.value })}
+              />
+            </div>
+          </div>
+          <div className="shrink-0 text-right pb-1">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Line Total</p>
+            <p className="text-sm font-bold tabular-nums text-foreground">
+              {lineCost === null ? '—' : formatCurrency(lineCost * adj.quantity)}
+            </p>
           </div>
         </div>
 
