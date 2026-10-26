@@ -23,6 +23,63 @@ const CHANNEL_NAME = 'stock-pilot-updates';
 const RECONNECT_DELAY_MS = 5000;
 
 /**
+ * ONE EventSource for the whole tab, shared by every useLiveRefresh caller.
+ *
+ * This hook is mounted by ~20 different data hooks (see hooks/use-api.ts), and
+ * opening an EventSource per caller meant a single back-office page held ~22
+ * SSE streams open at once. Browsers allow only about six concurrent HTTP/1.1
+ * connections per origin and an SSE stream never completes, so the pool was
+ * permanently exhausted: every later request — including Server Action POSTs —
+ * sat queued in the browser and was never put on the wire. That looked exactly
+ * like a hung server (an awaited action that never settles, no request in the
+ * network panel, no entry in the server log), and it is why inline "+ Add
+ * Brand"/"Add Category" could spin forever without ever writing a row.
+ *
+ * The stream is reference-counted: opened on the first subscriber, closed when
+ * the last one unmounts.
+ */
+let sharedSource: EventSource | null = null;
+let sharedRefCount = 0;
+let sharedReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+const listeners = new Set<() => void>();
+
+const notifyListeners = () => {
+  listeners.forEach((listener) => listener());
+};
+
+const openSharedSource = () => {
+  if (sharedSource || sharedRefCount === 0) return;
+  try {
+    const source = new EventSource(getApiUrl('/live-events'));
+    sharedSource = source;
+    source.addEventListener('stock-updated', notifyListeners);
+    source.onerror = () => {
+      // EventSource retries on its own for a dropped connection, but not for
+      // one that errored before opening (server restarted, terminal asleep).
+      // Closing and re-opening on a timer covers both without stacking two
+      // retry loops.
+      source.close();
+      if (sharedSource === source) sharedSource = null;
+      if (sharedRefCount === 0) return;
+      if (sharedReconnectTimer) clearTimeout(sharedReconnectTimer);
+      sharedReconnectTimer = setTimeout(openSharedSource, RECONNECT_DELAY_MS);
+    };
+  } catch {
+    // No EventSource (or a blocked URL) — polling remains the fallback.
+  }
+};
+
+const releaseSharedSource = () => {
+  if (sharedRefCount > 0) return;
+  if (sharedReconnectTimer) {
+    clearTimeout(sharedReconnectTimer);
+    sharedReconnectTimer = null;
+  }
+  sharedSource?.close();
+  sharedSource = null;
+};
+
+/**
  * Subscribes to 'stock-updated' events via Window Events (same-tab),
  * BroadcastChannel (cross-tab) and SSE (cross-machine) to call refetch
  * automatically.
@@ -53,39 +110,18 @@ export function useLiveRefresh(refetch: () => void) {
       // Not supported — the other two transports still apply.
     }
 
-    // 3. Cross-machine listener (SSE)
-    let source: EventSource | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    let disposed = false;
-
-    const connect = () => {
-      if (disposed) return;
-      try {
-        source = new EventSource(getApiUrl('/live-events'));
-        source.addEventListener('stock-updated', run);
-        source.onerror = () => {
-          // EventSource retries on its own for a dropped connection, but not
-          // for one that errored before opening (server restarted, terminal
-          // asleep). Closing and re-opening on a timer covers both without
-          // stacking two retry loops.
-          source?.close();
-          source = null;
-          if (disposed) return;
-          reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS);
-        };
-      } catch {
-        // No EventSource (or a blocked URL) — polling remains the fallback.
-      }
-    };
-
-    connect();
+    // 3. Cross-machine listener (SSE) — joins the tab's single shared stream
+    // rather than opening one per caller. See the comment on sharedSource.
+    listeners.add(run);
+    sharedRefCount += 1;
+    openSharedSource();
 
     return () => {
-      disposed = true;
       window.removeEventListener('stock-updated', run);
       channel?.close();
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      source?.close();
+      listeners.delete(run);
+      sharedRefCount -= 1;
+      releaseSharedSource();
     };
   }, []);
 }
