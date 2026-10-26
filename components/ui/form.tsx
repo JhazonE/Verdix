@@ -86,10 +86,19 @@ const FormItem = React.forwardRef<
 })
 FormItem.displayName = "FormItem"
 
+/**
+ * `required` renders the conventional red asterisk after the label text. It is
+ * only an indicator — validation still comes from the zod schema — so a field
+ * marked here must also be required there, and vice versa, or the form tells
+ * the user one thing and enforces another.
+ *
+ * The asterisk is aria-hidden and paired with a visually hidden "(required)"
+ * so a screen reader announces the word instead of reading out punctuation.
+ */
 const FormLabel = React.forwardRef<
   React.ElementRef<typeof LabelPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root>
->(({ className, ...props }, ref) => {
+  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root> & { required?: boolean }
+>(({ className, required, children, ...props }, ref) => {
   const { error, formItemId } = useFormField()
 
   return (
@@ -98,7 +107,15 @@ const FormLabel = React.forwardRef<
       className={cn(error && "text-destructive", className)}
       htmlFor={formItemId}
       {...props}
-    />
+    >
+      {children}
+      {required && (
+        <>
+          <span aria-hidden="true" className="ml-0.5 text-destructive">*</span>
+          <span className="sr-only"> (required)</span>
+        </>
+      )}
+    </Label>
   )
 })
 FormLabel.displayName = "FormLabel"

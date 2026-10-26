@@ -46,7 +46,7 @@ export function useAddOrderForm({ paymentMethods, salesPersons, customers, initi
       paymentMethod: '',
       paymentReference: '',
       items: [],
-      shipping: 0,
+      shipping: undefined,
       salesPersonId: '',
       note: '',
     },

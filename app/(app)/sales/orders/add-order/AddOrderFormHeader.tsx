@@ -202,7 +202,14 @@ export function AddOrderFormHeader({
                   <FormLabel className="text-xs font-semibold text-muted-foreground">Shipping</FormLabel>
                 </div>
                 <FormControl>
-                  <Input type="number" step="0.01" className="h-8 bg-background text-xs" {...field} />
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    className="h-8 bg-background text-xs"
+                    {...field}
+                    value={field.value ?? ''}
+                  />
                 </FormControl>
               </FormItem>
             )}
