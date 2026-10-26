@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { useLiveRefresh } from '@/hooks/use-live-refresh';
+import { resolveDefaultWarehouseId, shouldSeedWarehouseFilter } from '@/lib/default-warehouse';
 import { matchesNormalizedSearch, normalizeSearchTerm } from '@/lib/product-search';
 import type { Product } from '@/lib/types';
 
@@ -29,6 +30,26 @@ export function useInventoryPage() {
     queryKey: ['inventoryWarehouses'],
     queryFn: () => getWarehouses(),
   });
+
+  // Open on the main warehouse rather than on every one of them. A product row
+  // is warehouse-specific, so "All Warehouses" lists the same item once per
+  // location — see lib/default-warehouse.ts for why that reads as duplicate
+  // data. The warehouse list arrives after first render, so the default is
+  // seeded here instead of in useState.
+  //
+  // Seeded exactly ONCE: picking "All Warehouses" is a deliberate choice, and
+  // re-applying the default on a later refetch of the warehouse list would
+  // snap the filter back under the user mid-browse.
+  const hasSeededWarehouseFilter = useRef(false);
+  useEffect(() => {
+    if (!shouldSeedWarehouseFilter(hasSeededWarehouseFilter.current, warehouses)) return;
+    hasSeededWarehouseFilter.current = true;
+    const defaultWarehouseId = resolveDefaultWarehouseId(warehouses);
+    // No default resolvable (none configured, or all retired) leaves the filter
+    // on 'all' — filtering to a warehouse that does not exist would empty the
+    // table instead of defaulting it.
+    if (defaultWarehouseId) setWarehouseFilter(defaultWarehouseId);
+  }, [warehouses]);
 
   const { data: posSettings } = useQuery({
     queryKey: ['posSettings'],
@@ -78,6 +99,20 @@ export function useInventoryPage() {
     return visible;
   }, [allLoadedProducts, searchTerm, sortBy, typeFilter, warehouseFilter]);
 
+  // Counted from the rows already in memory rather than fetched: this page
+  // loads every product client-side anyway, so a separate count query would be
+  // a round trip for an answer we are holding. Counts ignore the search and
+  // type filters on purpose — the scope control answers "how much is in that
+  // warehouse", not "how much of my current search is".
+  const warehouseCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const product of allLoadedProducts) {
+      const id = product.warehouseId ?? product.warehouse;
+      if (id) counts[String(id)] = (counts[String(id)] ?? 0) + 1;
+    }
+    return counts;
+  }, [allLoadedProducts]);
+
   const totalProducts = products.length;
   const pagedProducts = useMemo(() =>
     products.slice((currentPage - 1) * pageSize, currentPage * pageSize),
@@ -100,6 +135,10 @@ export function useInventoryPage() {
   };
 
   const handleWarehouseFilterChange = (value: string) => {
+    // Marked here as well as in the effect: a user who picks a warehouse
+    // before the list finishes loading must not have it overwritten by the
+    // seed that follows.
+    hasSeededWarehouseFilter.current = true;
     setWarehouseFilter(value);
     setCurrentPage(1);
   };
@@ -107,6 +146,8 @@ export function useInventoryPage() {
   return {
     warehouses,
     warehouseFilter,
+    warehouseCounts,
+    warehouseTotal: allLoadedProducts.length,
     handleWarehouseFilterChange,
     searchTerm,
     handleSearch,

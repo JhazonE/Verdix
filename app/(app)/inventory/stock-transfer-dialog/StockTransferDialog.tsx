@@ -24,7 +24,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ArrowRight, Loader2, Send, Warehouse as WarehouseIcon } from 'lucide-react';
-import { formatQuantity } from '@/lib/utils';
+import { formatCurrency, formatQuantity } from '@/lib/utils';
 import type { Product } from '@/lib/types';
 
 import { useStockTransfer } from './use-stock-transfer';
@@ -58,6 +58,14 @@ export function StockTransferDialog({ product, children, onSuccess, requireConfi
     targetWhName,
   } = useStockTransfer({ product, onSuccess, requireConfirmation, open, onOpenChange });
 
+  // Cost is per BASE unit, the same basis as `product.stock` and the transfer
+  // quantity, so quantity x cost is the value leaving the source warehouse.
+  // The base selling unit's own cost wins over the product-level column when it
+  // carries one; `undefined` means uncosted and shows as N/A rather than as a
+  // misleading ₱0.00.
+  const baseUnitCost = product.sellingUnits?.find((su) => su.isBase)?.cost;
+  const unitCost = baseUnitCost ?? product.cost;
+
   return (
     <>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -78,6 +86,10 @@ export function StockTransferDialog({ product, children, onSuccess, requireConfi
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Current Stock:</span>
                 <span className="font-semibold">{formatQuantity(product.stock)} {product.unitOfMeasure}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Unit Cost:</span>
+                <span className="font-semibold">{unitCost === undefined ? 'N/A' : formatCurrency(unitCost)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Barcode:</span>
@@ -130,6 +142,9 @@ export function StockTransferDialog({ product, children, onSuccess, requireConfi
                 <div className="ml-auto text-right">
                   <div className="text-[10px] uppercase text-primary font-bold">Moving</div>
                   <div className="text-sm font-bold text-primary">{formatQuantity(quantity)}</div>
+                  {unitCost !== undefined && (
+                    <div className="text-[10px] text-muted-foreground">{formatCurrency(unitCost * quantity)}</div>
+                  )}
                 </div>
               </div>
             )}

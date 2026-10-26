@@ -23,6 +23,7 @@ import { SetExpirationDialog } from './set-expiration-dialog/SetExpirationDialog
 import { StockAdjustmentDialog } from './stock-adjustment-dialog/StockAdjustmentDialog';
 import { StockTransferDialog } from './stock-transfer-dialog/StockTransferDialog';
 import { useStockStatus } from './use-stock-status';
+import { WarehouseLabel } from './WarehouseLabel';
 
 export function ProductCard({ product, hasChildren = false, onSuccess, requireAdjustmentConfirmation, requireTransferConfirmation, lowStockThreshold }: { product: Product, hasChildren?: boolean, onSuccess?: () => void, requireAdjustmentConfirmation?: boolean, requireTransferConfirmation?: boolean, lowStockThreshold?: number }) {
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
@@ -63,6 +64,11 @@ export function ProductCard({ product, hasChildren = false, onSuccess, requireAd
                 Barcode: {product.sellingUnits?.find((su) => su.isBase)?.barcode || product.barcode}
               </p>
             )}
+            {/* Two warehouses holding the same item are two product rows with
+                the same name, so the card has to say which one this is. */}
+            <div className="mt-1.5">
+              <WarehouseLabel product={product} />
+            </div>
           </div>
           <div className={cn("flex items-center gap-2", hasChildren && "mr-10")}>
             <DropdownMenu modal={false}>

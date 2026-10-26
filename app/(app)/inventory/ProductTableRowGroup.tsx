@@ -14,6 +14,7 @@ import { formatUnitBreakdown } from '@/lib/unit-quantity';
 
 import type { ProductWithChildren } from './product-list-types';
 import { ProductRowActions } from './ProductRowActions';
+import { WarehouseLabel } from './WarehouseLabel';
 import { getStockStatus, useStockStatus } from './use-stock-status';
 
 export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmentConfirmation, requireTransferConfirmation, lowStockThreshold }: { productGroup: ProductWithChildren, onSuccess?: () => void, requireAdjustmentConfirmation?: boolean, requireTransferConfirmation?: boolean, lowStockThreshold?: number }) {
@@ -66,6 +67,9 @@ export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmen
           {productGroup.sellingUnits?.find((su) => su.isBase)?.barcode || productGroup.barcode || '-'}
         </TableCell>
         <TableCell>
+          <WarehouseLabel product={productGroup} />
+        </TableCell>
+        <TableCell>
           {hasUnitBreakdown ? (
             <span className="font-medium">{formatUnitBreakdown(displayStock, sellingUnits)}</span>
           ) : (
@@ -104,6 +108,9 @@ export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmen
             </div>
           </TableCell>
           <TableCell className="font-mono text-xs">{unit.barcode || '-'}</TableCell>
+          {/* A selling unit is a way to sell the SAME warehouse row's stock, so
+              repeating the parent's warehouse on every unit would just be noise. */}
+          <TableCell />
           <TableCell className="text-sm">
             <span className="font-medium">{parseFloat((displayStock / unit.factor).toFixed(2))}</span>{' '}
             <span className="text-muted-foreground text-xs">{unit.name} equiv.</span>
@@ -133,6 +140,9 @@ export function ProductTableRowGroup({ productGroup, onSuccess, requireAdjustmen
               </TableCell>
               <TableCell className="text-sm font-mono text-xs">
                 {child.sellingUnits?.find((su) => su.isBase)?.barcode || child.barcode || '-'}
+              </TableCell>
+              <TableCell>
+                <WarehouseLabel product={child} />
               </TableCell>
               <TableCell className="text-sm">
                  <span className="font-medium">{formatStockQuantity(child.stock, child.unitOfMeasure)}</span> <span className="text-muted-foreground text-xs">{child.unitOfMeasure}</span>

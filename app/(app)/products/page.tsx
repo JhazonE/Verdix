@@ -32,7 +32,7 @@ import { ManageWarehousesDialog } from '../sales/manage-warehouses/ManageWarehou
 
 import { Search, Trash2, PlusCircle, Settings, ShoppingCart, MoreVertical, Edit, Eye, Copy, AlertTriangle, Printer, ChevronRight, ChevronDown } from 'lucide-react';
 import { PrintBarcodeDialog } from './print-barcode/print-barcode-dialog';
-import { useState, useMemo, useEffect, useCallback, Suspense } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
@@ -40,9 +40,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn, formatQuantity, formatStockQuantity } from '@/lib/utils';
+import { resolveDefaultWarehouseId, shouldSeedWarehouseFilter } from '@/lib/default-warehouse';
+import { WarehouseScope } from '@/components/warehouse-scope';
 import { formatUnitStockText } from '@/components/unit-stock-view';
 import { ViewProductDialog } from './view-product/view-product-dialog';
-import { getProducts, getProductsCount, deleteProduct, getDepartments } from './actions';
+import { getProducts, getProductsCount, deleteProduct, getDepartments, getWarehouseProductCounts } from './actions';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -416,7 +418,6 @@ function ProductsContent() {
   const [tempBrand, setTempBrand] = useState('all');
   const [tempCategory, setTempCategory] = useState('all');
   const [tempSupplier, setTempSupplier] = useState('all');
-  const [tempWarehouse, setTempWarehouse] = useState('all');
   const [tempShelfLocation, setTempShelfLocation] = useState('all');
   const [tempStatus, setTempStatus] = useState(filter === 'low-stock' ? 'low-stock' : 'all');
   const [tempDepartment, setTempDepartment] = useState('all');
@@ -490,6 +491,36 @@ function ProductsContent() {
   });
   const lowStockThreshold = posSettings?.data?.lowStockThreshold;
 
+  // Per-warehouse row counts for the scope control. Fetched rather than
+  // derived: this page is server-paged, so it only ever holds one page of
+  // products and cannot count the rest. One cheap GROUP BY, refreshed on the
+  // same cadence as the table.
+  const { data: warehouseCounts } = useQuery({
+    queryKey: ['warehouseProductCounts'],
+    queryFn: () => getWarehouseProductCounts(),
+    refetchInterval: 60 * 1000,
+  });
+
+  // Open the table on the main warehouse rather than on all of them. A
+  // `products` row is warehouse-specific, so an unfiltered table lists the same
+  // item once per location, which reads as duplicate rows — see
+  // lib/default-warehouse.ts. The warehouse list arrives with productOptions,
+  // after first render, so this cannot be the useState initial value.
+  //
+  // Seeded exactly ONCE. Choosing "All Warehouses" (or Reset) is deliberate,
+  // and productOptions refetches on a 5-minute interval — without the guard
+  // each refetch would snap the filter back to the default mid-browse.
+  const hasSeededWarehouseFilter = useRef(false);
+  useEffect(() => {
+    const warehouses = productOptions?.warehouses;
+    if (!shouldSeedWarehouseFilter(hasSeededWarehouseFilter.current, warehouses)) return;
+    hasSeededWarehouseFilter.current = true;
+    const defaultWarehouseId = resolveDefaultWarehouseId(warehouses);
+    // Nothing resolvable (none configured, or all retired) leaves the filter on
+    // 'all': filtering to an id that does not exist would empty the table.
+    if (defaultWarehouseId) setSelectedWarehouse(defaultWarehouseId);
+  }, [productOptions?.warehouses]);
+
   const loadProducts = useCallback((page?: number, size?: number) => {
     refetch();
   }, [refetch]);
@@ -521,6 +552,19 @@ function ProductsContent() {
   const filteredProducts = useMemo(() => {
     return productTree;
   }, [productTree]);
+
+  // The refinements the Filter dialog owns. The WAREHOUSE is deliberately NOT
+  // among them: it is a scope on its own control, so counting it here would
+  // make the badge claim a refinement the dialog cannot clear, and Reset would
+  // silently move the user to another warehouse.
+  const activeRefinements = [
+    selectedBrand,
+    selectedCategory,
+    selectedSupplier,
+    selectedShelfLocation,
+    selectedStatus,
+    selectedDepartment,
+  ].filter((v) => v !== 'all');
 
   return (
     <div className="flex flex-col h-full gap-6 pt-2 overflow-hidden">
@@ -638,7 +682,6 @@ function ProductsContent() {
                    setTempBrand(selectedBrand);
                    setTempCategory(selectedCategory);
                    setTempSupplier(selectedSupplier);
-                   setTempWarehouse(selectedWarehouse);
                    setTempShelfLocation(selectedShelfLocation);
                    setTempStatus(selectedStatus);
                    setTempDepartment(selectedDepartment);
@@ -646,11 +689,9 @@ function ProductsContent() {
                    <span className="sr-only">Open filters</span>
                    <Settings className="h-4 w-4 mr-2" />
                    Filter Products
-                   {(selectedBrand !== 'all' || selectedCategory !== 'all' || selectedSupplier !== 'all' || selectedWarehouse !== 'all' || selectedShelfLocation !== 'all' || selectedStatus !== 'all' || selectedDepartment !== 'all') && (
+                   {activeRefinements.length > 0 && (
                        <Badge variant="secondary" className="ml-1 h-5 w-5 rounded-full p-0 flex items-center justify-center">
-                           {
-                               [selectedBrand, selectedCategory, selectedSupplier, selectedWarehouse, selectedShelfLocation, selectedStatus, selectedDepartment].filter(v => v !== 'all').length
-                           }
+                           {activeRefinements.length}
                        </Badge>
                    )}
                 </Button>
@@ -714,22 +755,10 @@ function ProductsContent() {
                     </Select>
                   </div>
 
-                  <div className="grid gap-2">
-                    <Label htmlFor="warehouse-filter">Warehouse</Label>
-                    <Select value={tempWarehouse} onValueChange={setTempWarehouse}>
-                      <SelectTrigger id="warehouse-filter">
-                        <SelectValue placeholder="All Warehouses" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Warehouses</SelectItem>
-                        {productOptions?.warehouses?.map((warehouse: any) => (
-                          <SelectItem key={warehouse.id} value={warehouse.id}>
-                            {warehouse.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {/* Warehouse is NOT offered here: it lives on the scope
+                      control above the toolbar. Two controls for one value
+                      can disagree, and the dialog is where it used to be
+                      hidden — which is the thing this design undoes. */}
 
                   <div className="grid gap-2">
                     <Label htmlFor="shelf-filter">Shelf Location</Label>
@@ -784,16 +813,17 @@ function ProductsContent() {
                        setTempBrand('all');
                        setTempCategory('all');
                        setTempSupplier('all');
-                       setTempWarehouse('all');
                        setTempShelfLocation('all');
                        setTempStatus('all');
                        setTempDepartment('all');
                    }}>Reset</Button>
                    <Button onClick={() => {
+                       // Warehouse is not applied from here — Reset above would
+                       // otherwise move the user to another warehouse, which is
+                       // not what resetting a set of filters should mean.
                        setSelectedBrand(tempBrand);
                        setSelectedCategory(tempCategory);
                        setSelectedSupplier(tempSupplier);
-                       setSelectedWarehouse(tempWarehouse);
                        setSelectedShelfLocation(tempShelfLocation);
                        setSelectedStatus(tempStatus);
                        setSelectedDepartment(tempDepartment);
@@ -809,11 +839,31 @@ function ProductsContent() {
             />
       </div>
 
+      {/* Below the toolbar: search comes first because it is what people reach
+          for, and the scope reads as a band over the table it qualifies. Still
+          in the open rather than inside Refine — the warehouse decides what the
+          Stock column MEANS, so it is not one of the filters. */}
+      <WarehouseScope
+        warehouses={productOptions?.warehouses ?? []}
+        value={selectedWarehouse}
+        onChange={(value) => {
+          // A direct pick here is the user's own choice, so the one-shot
+          // default must not be seeded over it afterwards.
+          hasSeededWarehouseFilter.current = true;
+          setSelectedWarehouse(value);
+        }}
+        counts={warehouseCounts?.byWarehouse}
+        total={warehouseCounts?.total}
+        className="flex-shrink-0"
+      />
+
       <div className="flex flex-wrap items-center gap-3 flex-shrink-0">
 
         
-        {/* Active Filters Badges */}
-        {(selectedBrand !== 'all' || selectedCategory !== 'all' || selectedSupplier !== 'all' || selectedWarehouse !== 'all' || selectedShelfLocation !== 'all' || selectedStatus !== 'all' || selectedDepartment !== 'all') && (
+        {/* Active Filters Badges — warehouse is absent on purpose: the scope
+            control shows it, and a chip with an × would offer a second, weaker
+            way to change it. */}
+        {activeRefinements.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
                  {selectedBrand !== 'all' && (
                      <Badge variant="secondary" className="gap-1 pl-2">
@@ -837,15 +887,6 @@ function ProductsContent() {
                      <Badge variant="secondary" className="gap-1 pl-2">
                          Supplier: {productOptions?.suppliers?.find((s:any) => s.id === selectedSupplier)?.name || 'Unknown'}
                          <Button variant="ghost" size="icon" className="h-4 w-4 ml-1 hover:bg-transparent" onClick={() => setSelectedSupplier('all')}>
-                             <span className="sr-only">Remove</span>
-                             <span className="text-xs">×</span>
-                         </Button>
-                     </Badge>
-                 )}
-                 {selectedWarehouse !== 'all' && (
-                     <Badge variant="secondary" className="gap-1 pl-2">
-                         Warehouse: {productOptions?.warehouses?.find((w:any) => w.id === selectedWarehouse)?.name || 'Unknown'}
-                         <Button variant="ghost" size="icon" className="h-4 w-4 ml-1 hover:bg-transparent" onClick={() => setSelectedWarehouse('all')}>
                              <span className="sr-only">Remove</span>
                              <span className="text-xs">×</span>
                          </Button>
@@ -883,10 +924,12 @@ function ProductsContent() {
                     variant="ghost" 
                     size="sm" 
                     onClick={() => {
+                        // Clears the refinements only. The warehouse scope is
+                        // where you are standing, not a filter to be cleared —
+                        // dropping it here would move the user without asking.
                         setSelectedBrand('all');
                         setSelectedCategory('all');
                         setSelectedSupplier('all');
-                        setSelectedWarehouse('all');
                         setSelectedShelfLocation('all');
                         setSelectedStatus('all');
                         setSelectedDepartment('all');

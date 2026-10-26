@@ -86,6 +86,13 @@ import './exchange-tender.test';
 import './unit-quantity.test';
 import './batch-expiration-edit.test';
 import './batch-expiration-write.test';
+import './warehouse-stocking.test';
+import './default-warehouse.test';
+import './warehouse-scope-options.test';
+import './additional-warehouses-selection.test';
+import './form-context-free-field-array.test';
+import './cart-quantity-counts-selling-unit.test';
+import './sync-permanent-error.test';
 
 // Each test file above is a side-effecting async IIFE: it starts running during
 // import but settles only after every import has completed. The DB-backed ones
