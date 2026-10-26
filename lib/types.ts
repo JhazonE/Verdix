@@ -311,6 +311,8 @@ export interface Warehouse {
   name: string;
   location?: string;
   isActive?: boolean;
+  /** The store's main warehouse — what the product lists default to showing. */
+  isMain?: boolean;
   createdAt?: string;
 }
 

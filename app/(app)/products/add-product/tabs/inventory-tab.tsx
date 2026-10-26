@@ -4,6 +4,8 @@ import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessa
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { HelpCircle } from 'lucide-react';
 import { UnitOfMeasure } from '@/lib/types';
 import type { Supplier } from '@/lib/types';
 
@@ -38,6 +40,68 @@ export function InventoryTab() {
     hideInitialStock,
   } = useAddProductFormContext();
 
+  /**
+   * The Warehouses chip list is ONE control over TWO form fields: `warehouse`
+   * (the primary row, which owns the scannable barcode, because
+   * `product_selling_units.barcode` is UNIQUE globally) and
+   * `additionalWarehouses` (a sibling `products` row each, with its own
+   * opening stock). Keeping that split means the submitted payload — and so
+   * every line of the write path — is exactly what it was before this control
+   * became a multi-select.
+   *
+   * Order is therefore load-bearing: the head of the list is the primary.
+   */
+  const primaryWarehouse = form.watch('warehouse');
+  const extraWarehouses = form.watch('additionalWarehouses') ?? [];
+
+  const warehouseSelection = [
+    ...(primaryWarehouse ? [primaryWarehouse] : []),
+    ...extraWarehouses.map((r: any) => r?.warehouseId).filter(Boolean),
+  ] as string[];
+
+  /**
+   * Opening stock is typed on the warehouse's own row inside the picker, so
+   * the quantity sits with the warehouse it belongs to instead of in a
+   * separate block. It still lands in two different form fields: the primary's
+   * figure is `stock` (the product row's own column) and each extra's is its
+   * `additionalWarehouses` row.
+   */
+  const stockFor = (id: string): number | undefined => {
+    if (id === primaryWarehouse) return form.watch('stock') as number | undefined;
+    return extraWarehouses.find((r: any) => r?.warehouseId === id)?.stock;
+  };
+
+  const setStockFor = (id: string, raw: string) => {
+    // Blank stays undefined rather than becoming 0: the schema defaults it on
+    // submit, and this is what lets the field be cleared and retyped.
+    const parsed = raw === '' ? undefined : parseInt(raw, 10) || 0;
+    if (id === primaryWarehouse) {
+      form.setValue('stock', parsed as any, { shouldValidate: true, shouldDirty: true });
+      return;
+    }
+    const index = extraWarehouses.findIndex((r: any) => r?.warehouseId === id);
+    if (index < 0) return;
+    form.setValue(`additionalWarehouses.${index}.stock`, parsed as any, {
+      shouldValidate: true,
+      shouldDirty: true,
+    });
+  };
+
+  const setWarehouseSelection = (ids: string[]) => {
+    const [first, ...rest] = ids;
+    form.setValue('warehouse', first ?? '', { shouldValidate: true, shouldDirty: true });
+    // Each surviving id keeps the row it already had, so an opening quantity
+    // already typed is not discarded when another warehouse is ticked.
+    form.setValue(
+      'additionalWarehouses',
+      rest.map(
+        (id) =>
+          extraWarehouses.find((r: any) => r?.warehouseId === id) ?? { warehouseId: id, stock: 0 },
+      ),
+      { shouldValidate: true, shouldDirty: true },
+    );
+  };
+
   if (itemType === 'service') {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -46,7 +110,7 @@ export function InventoryTab() {
           name="vatStatus"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>VAT Status</FormLabel>
+              <FormLabel className="flex h-4 items-center">VAT Status</FormLabel>
               <Select onValueChange={field.onChange} value={field.value}>
                 <FormControl>
                   <SelectTrigger>
@@ -71,7 +135,7 @@ export function InventoryTab() {
           name="availability"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Availability</FormLabel>
+              <FormLabel className="flex h-4 items-center">Availability</FormLabel>
               <Select onValueChange={field.onChange} value={field.value} defaultValue="Available">
                 <FormControl>
                   <SelectTrigger>
@@ -93,7 +157,7 @@ export function InventoryTab() {
           name="unitOfMeasure"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Base Unit of Measure</FormLabel>
+              <FormLabel className="flex h-4 items-center" required>Base Unit of Measure</FormLabel>
               <InlineEditableSelect
                 items={unitsOfMeasure}
                 isLoading={isLoadingUnits}
@@ -130,7 +194,11 @@ export function InventoryTab() {
           name="cost"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Cost (required)</FormLabel>
+              {/* Cost is OPTIONAL on a service (see serviceProductSchema — a
+                  pure-margin service with no input cost is a real case), so
+                  this carries no required marker. The label used to read
+                  "Cost (required)", which the schema never enforced. */}
+              <FormLabel className="flex h-4 items-center">Cost</FormLabel>
               <FormControl>
                 <Input type="number" step="0.01" placeholder="e.g., 50.00" value={field.value || ''} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
               </FormControl>
@@ -151,7 +219,7 @@ export function InventoryTab() {
           name="department"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Department</FormLabel>
+              <FormLabel className="flex h-4 items-center">Department</FormLabel>
               <InlineEditableSelect
                 items={departments}
                 isLoading={isLoadingDepartments}
@@ -189,7 +257,7 @@ export function InventoryTab() {
           name="vatStatus"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>VAT Status</FormLabel>
+              <FormLabel className="flex h-4 items-center">VAT Status</FormLabel>
               <Select onValueChange={field.onChange} value={field.value}>
                 <FormControl>
                   <SelectTrigger>
@@ -214,7 +282,7 @@ export function InventoryTab() {
           name="availability"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Availability</FormLabel>
+              <FormLabel className="flex h-4 items-center">Availability</FormLabel>
               <Select onValueChange={field.onChange} value={field.value} defaultValue="Available">
                 <FormControl>
                   <SelectTrigger>
@@ -233,62 +301,92 @@ export function InventoryTab() {
 
         {/* Reorder Point is set per supplier mapping on the Suppliers tab
             (rop) — there's no field for it here, so there's exactly one
-            place to look. */}
-        {itemType === 'standard' && (
-          hideInitialStock ? (
-            // A product created from Purchase Order's inline "Add New
-            // Product" gets its stock from that PO's own receiving flow, not
-            // from this form — shown here read-only so it's still visible
-            // (not just silently missing), rather than editable.
-            <div className="space-y-2">
-              <Label>Initial Stock</Label>
-              <div>
-                <Input type="text" value="0" disabled />
-              </div>
-              <p className="text-sm text-muted-foreground">Set when this purchase order is received.</p>
-            </div>
-          ) : (
-            <FormField
-              control={form.control}
-              name="stock"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Initial Stock</FormLabel>
-                  <FormControl>
-                    <Input type="number" placeholder="0" value={field.value} onChange={(e) => field.onChange(parseInt(e.target.value) || 0)} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          )
-        )}
-      </div>
+            place to look.
 
-      {/* Warehouse and Shelf are stock-only — a service skips both. Unit of
-          Measure moved to the Selling Units tab for standard items (it has
-          no equivalent for a service, which has no selling units at all). */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            Initial Stock has no field of its own either: it is typed on each
+            warehouse's row inside the Warehouses picker below, where the
+            quantity sits with the warehouse it belongs to. A standalone field
+            here would be a second place to set the SAME primary-warehouse
+            figure. */}
+        {itemType === 'standard' && hideInitialStock && (
+          // A product created from Purchase Order's inline "Add New Product"
+          // gets its stock from that PO's own receiving flow, not from this
+          // form — shown read-only so it's still visible (not just silently
+          // missing). The picker's own stock inputs are hidden in this mode,
+          // so this stays the one place that explains where stock comes from.
+          <div className="space-y-2">
+            <Label>Initial Stock</Label>
+            <div>
+              <Input type="text" value="0" disabled />
+            </div>
+            <p className="text-sm text-muted-foreground">Set when this purchase order is received.</p>
+          </div>
+        )}
+
+        {/* Warehouse and Shelf are stock-only — a service skips both. Unit of
+            Measure moved to the Selling Units tab for standard items (it has
+            no equivalent for a service, which has no selling units at all).
+
+            In the SAME grid as the fields above rather than a second one of
+            its own: a grid that ends on an odd field left Availability alone
+            on its row with a hole beside it, and the next grid started a
+            fresh row underneath. One grid lets the fields simply flow. */}
         {itemType === 'standard' && (
           <FormField
             control={form.control}
             name="warehouse"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Warehouse</FormLabel>
-                <InlineEditableSelect
-                  items={warehouses}
-                  isLoading={isLoadingWarehouses}
-                  value={field.value ?? ""}
-                  onChange={field.onChange}
-                  open={selects.warehouses}
-                  onOpenChange={(o) => setSelects((p) => ({ ...p, warehouses: o }))}
-                  placeholder="Select a warehouse"
+                {/* A bare FormLabel is a 14px line (leading-none), but the
+                    tooltip's icon sits in a button that line-height does not
+                    govern, so making the label a flex row grew it and pushed
+                    this whole field out of line with the plain-label field
+                    beside it. Pinning both to that same 14px puts the two
+                    columns back on one baseline. */}
+                <FormLabel className="flex h-4 items-center gap-1.5">
+                  Warehouses
+                  {/* Initial Stock has no field of its own any more, so say
+                      where it went — otherwise it reads as simply missing. */}
+                  {!hideInitialStock && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            aria-label="How initial stock is set"
+                            className="flex h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground"
+                            // A label click would focus the field and open the
+                            // popover over the tooltip.
+                            onClick={(e) => e.preventDefault()}
+                          >
+                            <HelpCircle className="h-3.5 w-3.5" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-[260px]">
+                          Pick every warehouse this item is stocked in, then
+                          type its initial stock on each warehouse&apos;s own
+                          row. The first one picked is the primary — it owns
+                          the scannable barcode.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </FormLabel>
+                {/* One chip multi-select, the same control Shelf Locations
+                    uses, rather than a single select plus a separate "also
+                    stock in..." block. The FIRST pick stays `warehouse` — the
+                    primary row, which owns the scannable barcode — and the
+                    rest become `additionalWarehouses`, so the submitted shape
+                    and the whole write path are unchanged. */}
+                <InlineEditableMultiSelect
+                  items={(warehouses || []).filter((w: any) => w.isActive !== false)}
+                  value={warehouseSelection}
+                  onChange={setWarehouseSelection}
+                  placeholder={isLoadingWarehouses ? 'Loading...' : 'Select warehouses...'}
+                  searchPlaceholder="Search warehouse..."
                   addLabel="Add Warehouse"
-                  emptyLabel="No warehouses found"
+                  emptyLabel="No warehouses found."
                   getId={(w: any) => w.id}
-                  getValue={(w: any) => w.id}
-                  getOptionLabel={(w: any) => w.name}
                   getName={(w: any) => w.name}
                   onAdd={async (name) => {
                     const r = await addWarehouse(name);
@@ -306,6 +404,23 @@ export function InventoryTab() {
                     if (r.success) { await refreshWarehouses(); return id; }
                     return { error: r.message };
                   }}
+                  renderRowAccessory={
+                    hideInitialStock
+                      ? undefined
+                      : (id) => (
+                          <Input
+                            type="number"
+                            min={0}
+                            placeholder="0"
+                            aria-label={`Initial stock for ${
+                              (warehouses || []).find((w: any) => w.id === id)?.name ?? 'warehouse'
+                            }`}
+                            className="h-7 w-20 text-right"
+                            value={stockFor(id) ?? ''}
+                            onChange={(e) => setStockFor(id, e.target.value)}
+                          />
+                        )
+                  }
                 />
                 <FormMessage />
               </FormItem>
@@ -319,7 +434,7 @@ export function InventoryTab() {
             name="shelfLocationIds"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Shelf Locations (Optional)</FormLabel>
+                <FormLabel className="flex h-4 items-center">Shelf Locations (Optional)</FormLabel>
                 <InlineEditableMultiSelect
                   items={shelfLocations || []}
                   value={field.value || []}
@@ -355,13 +470,17 @@ export function InventoryTab() {
 
       </div>
 
+      {/* Opening stock per warehouse is typed on each warehouse's own row
+          inside the Warehouses picker above, so there is no separate block
+          for it here. */}
+
       {itemType === 'standard' && productType === 'child' && (
         <FormField
           control={form.control}
           name="conversionFactor"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Conversion Factor</FormLabel>
+              <FormLabel className="flex h-4 items-center">Conversion Factor</FormLabel>
               <FormControl>
                 <Input type="number" placeholder="e.g., 12" value={field.value} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
               </FormControl>

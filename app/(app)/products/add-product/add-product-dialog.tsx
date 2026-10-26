@@ -148,7 +148,13 @@ export function AddProductDialog(props: UseAddProductFormProps) {
               <DialogDescription>
                 {itemType === 'service'
                   ? 'No stock tracking — always available for sale.'
-                  : 'Fill in the details below to add a new product.'}
+                  : 'Fill in the details below to add a new product.'}{' '}
+                {/* Required fields are spread over Basic Info and Selling
+                    Units, so the legend has to live in the header — it is the
+                    only part of the dialog visible from every tab. */}
+                Fields marked{' '}
+                <span aria-hidden="true" className="text-destructive font-medium">*</span>
+                {' '}are required.
               </DialogDescription>
             </div>
             <div

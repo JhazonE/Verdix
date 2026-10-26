@@ -27,6 +27,17 @@ export interface InlineEditableMultiSelectProps<T> {
   onAdd: (name: string) => Promise<InlineEditResult>;
   /** Returns the renamed id on success, { error } on failure. */
   onRename: (id: string, name: string) => Promise<InlineEditResult>;
+  /**
+   * Optional control rendered at the end of a SELECTED row, in place of the
+   * rename pencil — for a per-item value the list itself cannot hold, such as
+   * an opening stock quantity per warehouse.
+   *
+   * Omitted by every other caller, so shelf locations and categories render
+   * exactly as before. Anything returned here sits inside a CommandItem, whose
+   * own keyboard handling would otherwise swallow typing and toggle the row on
+   * every click, so the wrapper stops those events — see below.
+   */
+  renderRowAccessory?: (id: string) => React.ReactNode;
 }
 
 export function InlineEditableMultiSelect<T>({
@@ -41,6 +52,7 @@ export function InlineEditableMultiSelect<T>({
   getName,
   onAdd,
   onRename,
+  renderRowAccessory,
 }: InlineEditableMultiSelectProps<T>) {
   const [adding, setAdding] = useState(false);
   const [addDraft, setAddDraft] = useState('');
@@ -115,16 +127,23 @@ export function InlineEditableMultiSelect<T>({
             variant="outline"
             role="combobox"
             className={cn(
-              'flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 h-auto min-h-10 text-left font-normal',
+              // min-h-10, not h-10: the box grows when chips wrap onto a
+              // second line. py-1.5 (not py-2) keeps a SINGLE row at exactly
+              // h-10, so this lines up with the plain h-10 selects beside it —
+              // a chip is shorter than a line of text, so matching padding
+              // alone would leave this control visibly short.
+              'flex min-h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-1.5 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 text-left font-normal',
               !value?.length && 'text-muted-foreground'
             )}
           >
-            <div className="flex flex-wrap gap-1 pointer-events-none">
+            {/* gap, not per-badge margins: a trailing mb-1 on every chip
+                pushed the content off-centre within the box. */}
+            <div className="flex flex-wrap items-center gap-1 pointer-events-none">
               {value && value.length > 0 ? (
                 value.map((id) => {
                   const item = items.find((i) => getId(i) === id);
                   return (
-                    <Badge variant="secondary" key={id} className="mr-1 mb-1">
+                    <Badge variant="secondary" key={id}>
                       {item ? getName(item) : id}
                     </Badge>
                   );
@@ -190,29 +209,50 @@ export function InlineEditableMultiSelect<T>({
                     </div>
                   );
                 }
+                const accessory = value?.includes(id)
+                  ? renderRowAccessory?.(id)
+                  : undefined;
+
                 return (
                   <CommandItem
                     key={id}
                     value={getName(item)}
-                    className="relative pr-9"
+                    className={cn('relative', accessory ? 'pr-2' : 'pr-9')}
                     onSelect={() => toggle(id)}
                   >
                     <Check
                       className={cn(
-                        'mr-2 h-4 w-4',
+                        'mr-2 h-4 w-4 shrink-0',
                         value?.includes(id) ? 'opacity-100' : 'opacity-0'
                       )}
                     />
-                    {getName(item)}
-                    <button
-                      type="button"
-                      aria-label={`Rename ${getName(item)}`}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); startRename(item); }}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
+                    <span className="flex-1 truncate">{getName(item)}</span>
+                    {accessory ? (
+                      // The accessory takes the pencil's place on a selected
+                      // row: both at once would crowd it, and renaming stays
+                      // available by unticking. Every event is stopped here —
+                      // CommandItem toggles the row on click and Command
+                      // itself steals arrow keys and typing for its search.
+                      <span
+                        className="ml-2 flex shrink-0 items-center"
+                        onPointerDown={stop}
+                        onMouseDown={stop}
+                        onClick={stop}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
+                        {accessory}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        aria-label={`Rename ${getName(item)}`}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); startRename(item); }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </CommandItem>
                 );
               })}

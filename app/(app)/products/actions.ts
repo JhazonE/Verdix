@@ -9,11 +9,16 @@ import { v4 as uuidv4 } from 'uuid';
 import { isValidMarkupValue, MARKUP_MAX } from '@/lib/markup-validation';
 import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 import { isWarehouseSibling } from '@/lib/product-identity';
+import { resolveAdditionalWarehouses } from '@/lib/warehouse-stocking';
 
 
 export type ProductFormData = {
   name: string;
-  brand: string;
+  // Brand and Category are optional on both product forms: a store that does
+  // not organize its catalogue that way should not be forced to invent one.
+  // The write paths below already coalesce an absent value, so this only
+  // needed to stop being required.
+  brand?: string;
   // Edit Product's own form no longer collects a SKU (retired in favor of
   // the base selling unit's barcode) — updateProduct's `formData.sku ??
   // existing.sku` fallback already handles an absent value by preserving
@@ -23,11 +28,17 @@ export type ProductFormData = {
   barcode: string;
   description: string;
   additionalDescription?: string;
-  category: string;
+  category?: string;
   department?: string;
   subcategory?: string;
   supplier?: string;
   warehouse?: string;
+  /**
+   * Extra warehouses this item is stocked in, each with its own opening stock.
+   * Verdix stores warehouse stock as separate `products` rows, so these become
+   * sibling rows of the primary `warehouse` one (see createWarehouseSiblings).
+   */
+  additionalWarehouses?: { warehouseId: string; stock?: number }[];
   shelfLocationIds?: string[];
   image?: string;
   imageFile?: File;
@@ -610,6 +621,100 @@ export async function getLowStockAlerts() {
   }
 }
 
+/**
+ * Stock the just-created product in additional warehouses.
+ *
+ * Verdix models warehouse stock as SEPARATE `products` rows — the same physical
+ * item in STORE and BODEGA is two rows sharing a name, SKU and
+ * `products.barcode` (this is exactly what TransferStockService does when stock
+ * first moves to a new warehouse). So "add to another warehouse" means creating
+ * sibling rows here, not a column on the primary row.
+ *
+ * Two constraints shape what a sibling may carry:
+ *
+ *  - `product_selling_units.barcode` is UNIQUE across the whole table, so only
+ *    ONE row's base unit can hold the barcode. The sibling's base unit is
+ *    inserted with NULL, the same compromise TransferStockService makes.
+ *    `products.barcode` itself has no unique index and IS copied, so the item
+ *    still carries its real barcode in every warehouse and a scan still finds
+ *    it (POS matches `products.barcode` too — see use-pos.ts).
+ *  - A sibling is never a barcode "conflict" with its primary: `updateProduct`
+ *    routes that through isWarehouseSibling (lib/product-identity.ts), which
+ *    pairs rows by SKU then name — both of which are copied below, so later
+ *    edits to either row keep working.
+ *
+ * Runs on the caller's transaction: a failure here rolls back the primary
+ * product too, rather than leaving a half-stocked item.
+ */
+async function createWarehouseSiblings(
+  connection: any,
+  primary: {
+    productId: string;
+    primaryWarehouseId: string | null;
+    unitOfMeasure: string;
+    price: number;
+    cost: number | null;
+  },
+  entries: { warehouseId: string; stock?: number }[],
+): Promise<string[]> {
+  // Blank rows, repeats and the primary's own warehouse are filtered out by
+  // the shared resolver (lib/warehouse-stocking.ts), which is unit-tested.
+  const targets = resolveAdditionalWarehouses(entries, primary.primaryWarehouseId);
+  const created: string[] = [];
+
+  for (const target of targets) {
+    const { warehouseId, stock: openingStock } = target;
+    const siblingId = `prod_${uuidv4()}`;
+
+    await connection.query(
+      `INSERT INTO products (
+        id, name, description, additional_description, category, brand, department,
+        subcategory, supplier_id, warehouse_id, stock, reorder_point, avg_daily_sales,
+        price, cost, sku, barcode, image_url, image_hint, unit_of_measure, parent_id,
+        conversion_factor, income_account, expense_account, vat_status, availability,
+        earns_points, shelf_location_id, is_perishable, type
+      )
+      SELECT ?, name, description, additional_description, category, brand, department,
+             subcategory, supplier_id, ?, ?, reorder_point, 0,
+             price, cost, sku, barcode, image_url, image_hint, unit_of_measure, parent_id,
+             conversion_factor, income_account, expense_account, vat_status, availability,
+             earns_points, NULL, is_perishable, type
+      FROM products WHERE id = ?`,
+      [siblingId, warehouseId, openingStock, primary.productId],
+    );
+
+    // Unconditional: a product with no base selling unit is unsellable, and
+    // both product read paths report an empty sellingUnits array for it.
+    // Barcode is NULL here by necessity (see the UNIQUE key above).
+    await connection.query(
+      `INSERT INTO product_selling_units (id, product_id, name, barcode, factor, cost, price, is_base)
+       VALUES (?, ?, ?, NULL, 1, ?, ?, 1)`,
+      [
+        `psu_base_${siblingId}`,
+        siblingId,
+        String(primary.unitOfMeasure ?? '').trim() || 'Piece',
+        primary.cost,
+        primary.price,
+      ],
+    );
+
+    // Opening stock needs a FIFO batch or the first sale from this warehouse
+    // has no cost layer to deplete, and batch-costed margin reads as zero.
+    if (openingStock > 0) {
+      await connection.query(
+        `INSERT INTO inventory_batches
+           (id, product_id, received_date, quantity_in, quantity_remaining, unit_cost, selling_price, source_type, notes)
+         VALUES (?, ?, CURDATE(), ?, ?, ?, ?, 'adjustment', 'Initial Stock')`,
+        [generateBatchId(), siblingId, openingStock, openingStock, primary.cost ?? 0, primary.price ?? 0],
+      );
+    }
+
+    created.push(siblingId);
+  }
+
+  return created;
+}
+
 export async function addProduct(
   formData: ProductFormData,
   userId: string = 'system',
@@ -694,8 +799,11 @@ export async function addProduct(
         name: formData.name,
         description: formData.description,
         additional_description: formData.additionalDescription || null,
-        category: formData.category,
-        brand: formData.brand,
+        // Both are optional on the form; `|| null` matches the other nullable
+        // text columns here, since mysql2 does not accept `undefined` as a
+        // bound parameter.
+        category: formData.category || null,
+        brand: formData.brand || null,
         // Department groups stocked goods for markup and reporting; it does not
         // apply to services, so it is never written for one.
         department: isServiceProduct ? null : (formData.department || null),
@@ -814,6 +922,26 @@ export async function addProduct(
         sellingUnits,
         formData.priceLevels,
       );
+
+      // Stock this same item in any extra warehouses the form listed. Services
+      // are never stocked anywhere, so they skip this entirely.
+      if (
+        productData.type === 'standard' &&
+        formData.additionalWarehouses &&
+        formData.additionalWarehouses.length > 0
+      ) {
+        await createWarehouseSiblings(
+          connection,
+          {
+            productId,
+            primaryWarehouseId: resolvedWarehouseId,
+            unitOfMeasure: productData.unit_of_measure,
+            price: productData.price,
+            cost: productData.cost,
+          },
+          formData.additionalWarehouses,
+        );
+      }
 
       if (formData.supplierMappings && formData.supplierMappings.length > 0) {
         for (const mapping of formData.supplierMappings) {
@@ -1997,7 +2125,11 @@ export async function addCategory(name: string, markupPercentage?: number) {
   try {
     const id = `cat_${Date.now()}`;
     await query('INSERT INTO categories (id, name, markup_percentage) VALUES (?, ?, ?)', [id, name, markupPercentage || null]);
-    return { success: true, message: 'Category added successfully.' };
+    return {
+      success: true,
+      message: 'Category added successfully.',
+      category: { id, name, markupPercentage: markupPercentage ?? undefined },
+    };
   } catch (error) {
     console.error('Error adding category:', error);
     return { success: false, message: describeAddError(error, 'category') };
@@ -2076,7 +2208,14 @@ export async function addBrand(name: string, markupPercentage?: number) {
   try {
     const id = `brand_${Date.now()}`;
     await query('INSERT INTO brands (id, name, markup_percentage) VALUES (?, ?, ?)', [id, name, markupPercentage || null]);
-    return { success: true, message: 'Brand added successfully.' };
+    // The created row rides back with the result so the caller can splice it
+    // into its own list instead of refetching the whole table — that second
+    // round trip is what used to stall the dropdown after an inline add.
+    return {
+      success: true,
+      message: 'Brand added successfully.',
+      brand: { id, name, markupPercentage: markupPercentage ?? undefined },
+    };
   } catch (error) {
     console.error('Error adding brand:', error);
     return { success: false, message: describeAddError(error, 'brand') };
@@ -2156,7 +2295,11 @@ export async function addSubcategory(name: string, categoryId: string | null, ma
       'INSERT INTO subcategories (id, name, category_id, markup_percentage) VALUES (?, ?, ?, ?)',
       [id, name, categoryId, markupPercentage || null],
     );
-    return { success: true, message: 'Subcategory added successfully.' };
+    return {
+      success: true,
+      message: 'Subcategory added successfully.',
+      subcategory: { id, name, categoryId, markupPercentage: markupPercentage ?? undefined },
+    };
   } catch (error) {
     console.error('Error adding subcategory:', error);
     return { success: false, message: 'Error adding subcategory.' };
@@ -2391,6 +2534,48 @@ export async function getWarehouses(): Promise<Warehouse[]> {
   } catch (error) {
     console.error('Error fetching warehouses:', error);
     return [];
+  }
+}
+
+/**
+ * How many product rows sit in each warehouse.
+ *
+ * The warehouse scope control shows these beside each name so the count is
+ * readable BEFORE the user switches — a near-empty warehouse then reads as
+ * near-empty instead of looking like a broken table. Keyed by warehouse id,
+ * plus a `total` across all of them for the "All warehouses" option.
+ *
+ * Rows with a NULL `warehouse_id` are counted into `total` but belong to no
+ * warehouse key, so the per-warehouse counts can legitimately sum to less than
+ * `total`. That is deliberate: an unassigned product is still listed by the
+ * unscoped view, and hiding it from the total would make that view's own row
+ * count disagree with the control.
+ */
+export async function getWarehouseProductCounts(): Promise<{
+  byWarehouse: Record<string, number>;
+  total: number;
+}> {
+  try {
+    const rows: any = await query(
+      `SELECT warehouse_id AS wid, COUNT(*) AS n FROM products GROUP BY warehouse_id`,
+    );
+
+    const byWarehouse: Record<string, number> = {};
+    let total = 0;
+
+    for (const row of rows) {
+      const n = Number(row.n) || 0;
+      total += n;
+      // NULL groups into one row with wid === null; it has no warehouse to key.
+      if (row.wid) byWarehouse[String(row.wid)] = n;
+    }
+
+    return { byWarehouse, total };
+  } catch (error) {
+    console.error('Error counting products per warehouse:', error);
+    // An empty map means the control renders without counts rather than
+    // showing a wrong number or failing to render the scope switch at all.
+    return { byWarehouse: {}, total: 0 };
   }
 }
 

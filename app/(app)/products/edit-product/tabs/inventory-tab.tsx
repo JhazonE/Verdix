@@ -95,7 +95,7 @@ export function InventoryTab() {
           name="unitOfMeasure"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Base Unit of Measure</FormLabel>
+              <FormLabel required>Base Unit of Measure</FormLabel>
               <InlineEditableSelect
                 items={units}
                 isLoading={false}
@@ -132,7 +132,7 @@ export function InventoryTab() {
           name="cost"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Cost (required)</FormLabel>
+              <FormLabel>Cost</FormLabel>
               <FormControl>
                 <Input type="number" step="0.01" placeholder="e.g., 50.00" value={field.value || ''} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
               </FormControl>

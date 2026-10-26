@@ -133,7 +133,13 @@ export function EditProductDialog({
           <DialogHeader className="flex-shrink-0">
             <DialogTitle>Edit Product</DialogTitle>
             <DialogDescription>
-              Update the details for {product.name}.
+              Update the details for {product.name}.{' '}
+              {/* Required fields are spread over Basic Info and Selling Units,
+                  so the legend lives in the header — the only part of the
+                  dialog visible from every tab. */}
+              Fields marked{' '}
+              <span aria-hidden="true" className="text-destructive font-medium">*</span>
+              {' '}are required.
             </DialogDescription>
           </DialogHeader>
           <EditProductFormProvider controller={controller}>
