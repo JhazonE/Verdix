@@ -96,6 +96,17 @@ export function startScheduledBackup(schedule: BackupSchedule): void {
 const LEGACY_SYNC_TYPES = ['PURCHASE_ORDER', 'SUPPLIER_PAYMENT', 'SALES_INVOICE', 'ACCOUNTS_PAYABLE'];
 
 /**
+ * How many times the background sweep will re-send one row before parking it
+ * as 'abandoned'. At one sweep every 15 minutes this is roughly a day of
+ * trying — long enough to ride out an outage or an expired credential that
+ * someone fixes the same day, short enough that a genuinely dead destination
+ * stops generating log noise forever. Deliberately not the operator-facing
+ * `retryAttempts` setting: that one governs the immediate in-request retries
+ * inside a single sendToExternalApi() call, which is a different question.
+ */
+const MAX_SWEEP_RETRIES = 96;
+
+/**
  * Shared success/failure bookkeeping for one external_api_logs row, used by
  * the legacy sweep, the Sta Lucia sweep below, and the Sync Logs Retry button
  * (app/api/external-api/logs/[id]/retry/route.ts). Kept as one function so
@@ -126,7 +137,39 @@ export async function applySyncResult(
     `, [syncResult.error || 'Permanently failed', log.id]);
     console.warn(`⛔ Abandoned: ${log.transaction_type} (${log.transaction_id}) — ${syncResult.error || 'permanent failure'}`);
   } else {
-    // Failure: Log but keep in queue (system will retry next sweep)
+    // Failure: keep in queue for the next sweep, but only up to a point. A
+    // row that has failed MAX_SWEEP_RETRIES times is not going to be rescued
+    // by attempt N+1, and without this ceiling nothing ever stops: this dev
+    // DB held a purchase order on retry 21,490, re-sent every 15 minutes
+    // since April against an endpoint that no longer exists. Parking it as
+    // 'abandoned' keeps the row (and its error) visible in the Sync Logs tab,
+    // where the Retry button can still re-queue it deliberately — it just
+    // stops consuming an automatic retry slot, and stops burying real sync
+    // failures under thousands of hopeless ones.
+    const [current] = await query(
+      'SELECT retry_count FROM external_api_logs WHERE id = ?',
+      [log.id],
+    );
+    const retryCount = Number(current?.retry_count ?? 0) + 1;
+
+    if (retryCount >= MAX_SWEEP_RETRIES) {
+      await query(`
+        UPDATE external_api_logs
+        SET status = 'abandoned',
+            error_message = ?,
+            retry_count = ?,
+            last_retry_at = NOW(),
+            next_retry_at = NULL
+        WHERE id = ?
+      `, [
+        `${syncResult.error || 'Sync failed'} (gave up after ${retryCount} retries)`,
+        retryCount,
+        log.id,
+      ]);
+      console.warn(`⛔ Abandoned: ${log.transaction_type} (${log.transaction_id}) — gave up after ${retryCount} retries`);
+      return;
+    }
+
     const nextRetry = new Date();
     nextRetry.setMinutes(nextRetry.getMinutes() + 15); // Wait longer between sweeps
     const nextRetryStr = nextRetry.toISOString().slice(0, 19).replace('T', ' ');
@@ -134,11 +177,12 @@ export async function applySyncResult(
     await query(`
       UPDATE external_api_logs
       SET error_message = ?,
+          retry_count = ?,
           last_retry_at = NOW(),
           next_retry_at = ?
       WHERE id = ?
-    `, [syncResult.error || 'Sync failed', nextRetryStr, log.id]);
-    console.log(`❌ Failed: Could not sync ${log.transaction_type} (${log.transaction_id}). Next retry at ${nextRetryStr}`);
+    `, [syncResult.error || 'Sync failed', retryCount, nextRetryStr, log.id]);
+    console.log(`❌ Failed: Could not sync ${log.transaction_type} (${log.transaction_id}). Next retry at ${nextRetryStr} (attempt ${retryCount}/${MAX_SWEEP_RETRIES})`);
   }
 }
 
@@ -340,7 +384,10 @@ export async function processSyncQueue(): Promise<void> {
 
       for (const log of pendingItems) {
         try {
-          let syncResult: { success: boolean; error?: string };
+          // `permanent` must survive this annotation, or applySyncResult can
+          // never park a row the API rejected outright and every 404 goes
+          // back on the 15-minute retry carousel.
+          let syncResult: { success: boolean; error?: string; permanent?: boolean };
           const payload = JSON.parse(log.payload);
 
           console.log(`Retrying ${log.transaction_type} sync for ID: ${log.transaction_id}`);
