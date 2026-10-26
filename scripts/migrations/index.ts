@@ -143,6 +143,7 @@ import './142_add_pos_price_level_picker';
 import './143_add_price_level_to_sale_items';
 import './144_add_unit_cost_to_stock_adjustments';
 import './145_create_live_events';
+import './146_default_hidden_pages';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';

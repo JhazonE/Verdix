@@ -30,7 +30,7 @@ export const navItems = [
 
 export const inventoryNavItems = [
   { href: '/inventory', label: 'Stock Levels' },
-  { href: '/inventory/stock-counts', label: 'Stock Counts (Snapshots)' },
+  { href: '/inventory/stock-counts', label: 'Stock Counts' },
   { href: '/inventory/repackaging', label: 'Repackaging' },
 ];
 

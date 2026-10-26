@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import {
   PAGE_REGISTRY,
   TOGGLEABLE_PAGES,
+  DEFAULT_HIDDEN_KEYS,
   isProtectedHref,
   pageKeyForHref,
 } from '../../lib/page-registry';
@@ -40,5 +41,22 @@ test.describe('page-registry', () => {
     const key = pageKeyForHref('/sales/orders');
     expect(key).toBeTruthy();
     expect(PAGE_REGISTRY.find(p => p.key === key)?.href).toBe('/sales/orders');
+  });
+
+  test('DEFAULT_HIDDEN_KEYS are all real, toggleable pages', () => {
+    const toggleable = new Set(TOGGLEABLE_PAGES.map(p => p.key));
+    // An unknown or protected key is silently dropped by the disabled-pages
+    // route, so the module would never actually hide.
+    for (const key of DEFAULT_HIDDEN_KEYS) {
+      expect(toggleable.has(key)).toBe(true);
+    }
+  });
+
+  test('DEFAULT_HIDDEN_KEYS hides repackaging, approvals board and workflow settings', () => {
+    expect([...DEFAULT_HIDDEN_KEYS].sort()).toEqual([
+      'approvals',
+      'approvals_settings',
+      'inventory_repackaging',
+    ]);
   });
 });
