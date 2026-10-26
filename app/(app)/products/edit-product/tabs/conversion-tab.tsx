@@ -1,11 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, PlusCircle, Truck, Wand2, X } from 'lucide-react';
+import { PlusCircle, Truck, Wand2, X } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -208,16 +207,11 @@ export function SellingUnitsTab() {
   // supplier_cost has nothing to pick.
   const supplierCostOptions = (supplierMappings || []).filter(m => m.supplierCost != null);
 
-  const [baseExpanded, setBaseExpanded] = useState(false);
-  const [expandedUnits, setExpandedUnits] = useState<Record<number, boolean>>({});
   const [uomSelectOpen, setUomSelectOpen] = useState(false);
 
-  // `cost` is required by the schema now (a genuine number, not optional) —
-  // a freshly-appended row still starts without one, same as it always has,
-  // so it renders blank via the input's `field.value ?? ''` until the user
-  // types something. The `as any` below is that one field's real, expected
-  // "not filled in yet" state, not a type-safety workaround for anything
-  // else in this object.
+  // `cost` is optional on a selling unit, so a freshly-appended row starts
+  // without one and renders blank via the input's `field.value ?? ''`. Left
+  // blank it is stored as NULL rather than blocking the save.
   const newUnit = { name: '', factor: 1, barcode: '', cost: undefined, price: 0, priceLevels: [] } as any;
 
   // The base row's price levels reuse the top-level `priceLevels` field array
@@ -267,20 +261,17 @@ export function SellingUnitsTab() {
       </div>
 
       <div className="space-y-3">
-        {/* Base unit row — always present, never removable. */}
-        <Collapsible open={baseExpanded} onOpenChange={setBaseExpanded}>
+        {/* Base unit row — always present, never removable.
+            Price levels below are NOT collapsible: the default level's price
+            IS the product's price and is required, so hiding it behind a
+            toggle buried the one field a product cannot be saved without. */}
+        <div>
           <div className="bg-card border rounded-md shadow-sm overflow-hidden">
             <div className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/40 border-b">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">Base Unit</span>
                 <Badge variant="secondary">Base</Badge>
               </div>
-              <CollapsibleTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
-                  <ChevronDown className={`h-4 w-4 transition-transform ${baseExpanded ? 'rotate-180' : ''}`} />
-                  <span className="sr-only">Toggle price levels</span>
-                </Button>
-              </CollapsibleTrigger>
             </div>
 
             <div className="p-3 grid grid-cols-2 gap-3">
@@ -290,7 +281,7 @@ export function SellingUnitsTab() {
                   name="unitOfMeasure"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-xs">Unit of Measure</FormLabel>
+                      <FormLabel className="text-xs" required>Unit of Measure</FormLabel>
                       <InlineEditableSelect
                         items={units}
                         isLoading={false}
@@ -336,7 +327,7 @@ export function SellingUnitsTab() {
                   name="barcode"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-xs">Barcode</FormLabel>
+                      <FormLabel className="text-xs" required>Barcode</FormLabel>
                       <div className="relative">
                         <FormControl>
                           <Input
@@ -378,8 +369,8 @@ export function SellingUnitsTab() {
                           <Input
                             type="number"
                             step="0.01"
-                            min="0.01"
-                            placeholder="Required"
+                            min="0"
+                            placeholder="Optional"
                             className={supplierCostOptions.length > 0 ? 'pr-9' : undefined}
                             value={field.value ?? ''}
                             onChange={(e) => {
@@ -433,18 +424,16 @@ export function SellingUnitsTab() {
 
 
             </div>
-            <CollapsibleContent>
-              <div className="border-t px-3 pb-3 pt-2">
-                <p className="text-xs font-medium text-muted-foreground mb-1">Price Levels</p>
-                <PriceLevelOverrides
-                  values={basePriceLevelValues}
-                  onChange={setBasePriceLevels}
-                  requireDefaultLevel
-                />
-              </div>
-            </CollapsibleContent>
+            <div className="border-t px-3 pb-3 pt-2">
+              <p className="text-xs font-medium text-muted-foreground mb-1">Price Levels</p>
+              <PriceLevelOverrides
+                values={basePriceLevelValues}
+                onChange={setBasePriceLevels}
+                requireDefaultLevel
+              />
+            </div>
           </div>
-        </Collapsible>
+        </div>
 
         {sellingUnitFields.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center border-2 border-dashed rounded-lg bg-muted/50">
@@ -464,26 +453,15 @@ export function SellingUnitsTab() {
           </div>
         ) : (
           sellingUnitFields.map((field, index) => {
-            const expanded = !!expandedUnits[index];
             const unitPriceLevels = form.watch(`sellingUnits.${index}.priceLevels`) || [];
             return (
-              <Collapsible
-                key={field.id}
-                open={expanded}
-                onOpenChange={(open) => setExpandedUnits(prev => ({ ...prev, [index]: open }))}
-              >
+              <div key={field.id}>
                 <div className="bg-card border rounded-md shadow-sm overflow-hidden">
                   <div className="flex items-center justify-between gap-2 px-3 py-2 bg-muted/40 border-b">
                     <span className="text-sm font-medium">
                       {form.watch(`sellingUnits.${index}.name`) || 'Selling Unit'}
                     </span>
                     <div className="flex items-center gap-1">
-                      <CollapsibleTrigger asChild>
-                        <Button type="button" variant="ghost" size="icon" className="h-8 w-8">
-                          <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-                          <span className="sr-only">Toggle price levels</span>
-                        </Button>
-                      </CollapsibleTrigger>
                       <Button
                         type="button"
                         variant="ghost"
@@ -503,7 +481,7 @@ export function SellingUnitsTab() {
                         name={`sellingUnits.${index}.name`}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs">Unit Name</FormLabel>
+                            <FormLabel className="text-xs" required>Unit Name</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
                               <FormControl>
                                 <SelectTrigger>
@@ -555,7 +533,7 @@ export function SellingUnitsTab() {
                         name={`sellingUnits.${index}.factor`}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs">
+                            <FormLabel className="text-xs" required>
                               Qty in {selectedUnitOfMeasure || 'base units'}
                             </FormLabel>
                             <FormControl>
@@ -625,8 +603,8 @@ export function SellingUnitsTab() {
                                 <Input
                                   type="number"
                                   step="0.01"
-                                  min="0.01"
-                                  placeholder="Required"
+                                  min="0"
+                                  placeholder="Optional"
                                   className={supplierCostOptions.length > 0 ? 'pr-9' : undefined}
                                   value={field.value ?? ''}
                                   onChange={(e) => {
@@ -674,19 +652,17 @@ export function SellingUnitsTab() {
                     </div>
 
                   </div>
-                  <CollapsibleContent>
-                    <div className="border-t px-3 pb-3 pt-2">
-                      <p className="text-xs font-medium text-muted-foreground mb-1">Price Levels</p>
-                      <PriceLevelOverrides
-                        values={unitPriceLevels}
-                        onChange={(next) => form.setValue(`sellingUnits.${index}.priceLevels`, next, { shouldDirty: true })}
-                        requireDefaultLevel
-                        unitKey={field.id}
-                      />
-                    </div>
-                  </CollapsibleContent>
+                  <div className="border-t px-3 pb-3 pt-2">
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Price Levels</p>
+                    <PriceLevelOverrides
+                      values={unitPriceLevels}
+                      onChange={(next) => form.setValue(`sellingUnits.${index}.priceLevels`, next, { shouldDirty: true })}
+                      requireDefaultLevel
+                      unitKey={field.id}
+                    />
+                  </div>
                 </div>
-              </Collapsible>
+              </div>
             );
           })
         )}

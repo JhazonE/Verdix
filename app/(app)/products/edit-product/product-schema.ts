@@ -1,29 +1,26 @@
 import { z } from 'zod';
 
 /**
- * A service product's cost may legitimately be 0 (a pure-margin service with
- * no input cost) — a standard product's may not (every stocked good has a
- * real acquisition cost). Since this form has no `itemType` field of its own
- * (the product's type is immutable after creation and lives outside the
- * form's values, read straight from the `product` prop), the schema is built
- * per-instance by `buildProductSchema`, called once at `useForm` setup where
- * that type is already known, rather than baked in as a static constant.
+ * Only name, barcode, description, unit of measure and price are required on
+ * this form. Cost, brand, category and warehouse are all optional now, and
+ * none of them differ by item type any more, so `isService` no longer changes
+ * the shape — the parameter and the builder are kept so the many call sites
+ * (and `ProductFormValues`) stay unchanged, and so a future type-dependent
+ * rule has somewhere to go.
  */
-export function buildProductSchema(isService: boolean) {
-  const costField = isService
-    ? z.coerce.number().nonnegative('Cost is required for services (enter 0 if there is no input cost)')
-    : z.coerce.number().positive('Cost is required and must be a positive number');
+export function buildProductSchema(_isService: boolean) {
+  const costField = z.coerce.number().nonnegative('Cost cannot be negative').optional();
 
   return z.object({
     name: z.string().min(1, 'Product name is required'),
-    brand: z.string().min(1, 'Brand is required'),
+    brand: z.string().optional(),
     department: z.string().optional(),
     barcode: z.string().min(1, 'Barcode is required'),
     description: z.string().min(1, 'Description is required'),
     additionalDescription: z.string().optional(),
-    category: z.string().min(1, 'Category is required'),
+    category: z.string().optional(),
     subcategory: z.string().optional(),
-    warehouse: isService ? z.string().optional() : z.string().min(1, 'Warehouse is required'),
+    warehouse: z.string().optional(),
     shelfLocationIds: z.array(z.string()).optional(),
     isSerialized: z.boolean().default(false),
     unitOfMeasure: z.string().min(1, 'Unit of measure is required'),
@@ -48,7 +45,7 @@ export function buildProductSchema(isService: boolean) {
       name: z.string().min(1, 'Unit name is required'),
       factor: z.coerce.number().positive('Quantity must be greater than 0'),
       barcode: z.string().optional(),
-      cost: z.coerce.number().positive('Cost is required and must be a positive number'),
+      cost: z.coerce.number().nonnegative('Cost cannot be negative').optional(),
       price: z.coerce.number().nonnegative('Price must be non-negative'),
       /**
        * This unit's own price-level overrides. A blank price on the form means

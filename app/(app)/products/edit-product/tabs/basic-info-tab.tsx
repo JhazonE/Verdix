@@ -23,6 +23,9 @@ export function BasicInfoTab() {
     refreshBrands,
     refreshCategories,
     refreshSubcategories,
+    insertBrand,
+    insertCategory,
+    insertSubcategory,
   } = useEditProductFormContext();
 
   const watchedCategoryName = form.watch('category');
@@ -44,7 +47,7 @@ export function BasicInfoTab() {
         name="name"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>Product Name</FormLabel>
+            <FormLabel required>Product Name</FormLabel>
             <FormControl>
               <Input {...field} value={field.value ?? ''} />
             </FormControl>
@@ -64,7 +67,7 @@ export function BasicInfoTab() {
               <InlineEditableSelect
                 items={brands}
                 isLoading={false}
-                value={field.value}
+                value={field.value ?? ''}
                 onChange={field.onChange}
                 open={selects.brands}
                 onOpenChange={(o) => setSelects((p) => ({ ...p, brands: o }))}
@@ -78,7 +81,7 @@ export function BasicInfoTab() {
                 getName={(b: Brand) => b.name}
                 onAdd={async (name) => {
                   const r = await addBrand(name, 0);
-                  if (r.success) { await refreshBrands(); return name; }
+                  if (r.success && r.brand) { insertBrand(r.brand); return name; }
                   return { error: r.message };
                 }}
                 onRename={async (id, name) => {
@@ -111,7 +114,7 @@ export function BasicInfoTab() {
                 categories={categories}
                 subcategories={subcategories as any}
                 isLoading={false}
-                categoryValue={watchedCategoryName}
+                categoryValue={watchedCategoryName ?? ''}
                 subcategoryValue={watchedSubcategoryName ?? ''}
                 onChange={(categoryName, subcategoryName) => {
                   form.setValue('category', categoryName, { shouldValidate: true });
@@ -121,7 +124,7 @@ export function BasicInfoTab() {
                 onOpenChange={(o) => setSelects((p) => ({ ...p, categories: o }))}
                 onAddCategory={async (name) => {
                   const r = await addCategory(name, 0);
-                  if (r.success) { await refreshCategories(); return name; }
+                  if (r.success && r.category) { insertCategory(r.category); return name; }
                   return { error: r.message };
                 }}
                 onRenameCategory={async (id, name) => {
@@ -132,7 +135,7 @@ export function BasicInfoTab() {
                 }}
                 onAddSubcategory={async (name, categoryId) => {
                   const r = await addSubcategory(name, categoryId, 0);
-                  if (r.success) { await refreshSubcategories(); return name; }
+                  if (r.success && r.subcategory) { insertSubcategory(r.subcategory); return name; }
                   return { error: r.message };
                 }}
                 onRenameSubcategory={async (id, name) => {
@@ -153,7 +156,7 @@ export function BasicInfoTab() {
           name="description"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Description</FormLabel>
+              <FormLabel required>Description</FormLabel>
               <FormControl>
                 <Textarea
                   placeholder="A short description of the product."
