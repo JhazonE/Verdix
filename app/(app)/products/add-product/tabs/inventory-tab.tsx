@@ -2,7 +2,6 @@
 
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { HelpCircle } from 'lucide-react';
@@ -303,25 +302,19 @@ export function InventoryTab() {
             (rop) — there's no field for it here, so there's exactly one
             place to look.
 
-            Initial Stock has no field of its own either: it is typed on each
-            warehouse's row inside the Warehouses picker below, where the
-            quantity sits with the warehouse it belongs to. A standalone field
-            here would be a second place to set the SAME primary-warehouse
-            figure. */}
-        {itemType === 'standard' && hideInitialStock && (
-          // A product created from Purchase Order's inline "Add New Product"
-          // gets its stock from that PO's own receiving flow, not from this
-          // form — shown read-only so it's still visible (not just silently
-          // missing). The picker's own stock inputs are hidden in this mode,
-          // so this stays the one place that explains where stock comes from.
-          <div className="space-y-2">
-            <Label>Initial Stock</Label>
-            <div>
-              <Input type="text" value="0" disabled />
-            </div>
-            <p className="text-sm text-muted-foreground">Set when this purchase order is received.</p>
-          </div>
-        )}
+            Initial Stock has no field of its own either — in EITHER mode: it
+            belongs on each warehouse's row inside the Warehouses picker below,
+            where the quantity sits with the warehouse it applies to. A
+            standalone field here would be a second place showing the SAME
+            primary-warehouse figure.
+
+            Purchase Order's inline "Add New Product" used to be the exception
+            and rendered a disabled Initial Stock box here, because its picker
+            hid the per-row quantities. The picker now keeps those rows in both
+            modes (disabled at 0 for a PO), so that box became a duplicate of
+            what the rows already say, and the two forms differed for no reason
+            a user could see. Where a PO's stock actually comes from is said on
+            the Warehouses tooltip instead. */}
 
         {/* Warehouse and Shelf are stock-only — a service skips both. Unit of
             Measure moved to the Selling Units tab for standard items (it has
@@ -346,31 +339,33 @@ export function InventoryTab() {
                 <FormLabel className="flex h-4 items-center gap-1.5">
                   Warehouses
                   {/* Initial Stock has no field of its own any more, so say
-                      where it went — otherwise it reads as simply missing. */}
-                  {!hideInitialStock && (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            aria-label="How initial stock is set"
-                            className="flex h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground"
-                            // A label click would focus the field and open the
-                            // popover over the tooltip.
-                            onClick={(e) => e.preventDefault()}
-                          >
-                            <HelpCircle className="h-3.5 w-3.5" />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-[260px]">
-                          Pick every warehouse this item is stocked in, then
-                          type its initial stock on each warehouse&apos;s own
-                          row. The first one picked is the primary — it owns
-                          the scannable barcode.
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  )}
+                      where it went — otherwise it reads as simply missing.
+                      Shown in both modes: on a PO the question is the same
+                      one, only the answer differs. */}
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label="How initial stock is set"
+                          className="flex h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground"
+                          // A label click would focus the field and open the
+                          // popover over the tooltip.
+                          onClick={(e) => e.preventDefault()}
+                        >
+                          <HelpCircle className="h-3.5 w-3.5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[260px]">
+                        {hideInitialStock
+                          ? // Same picker, same multi-warehouse meaning — only
+                            // the quantity is not entered here, so say where it
+                            // comes from instead of dropping the help entirely.
+                            'Pick every warehouse this item is stocked in. The first one picked is the primary — it owns the scannable barcode. Stock arrives when this purchase order is received.'
+                          : 'Pick every warehouse this item is stocked in, then type its initial stock on each warehouse’s own row. The first one picked is the primary — it owns the scannable barcode.'}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </FormLabel>
                 {/* One chip multi-select, the same control Shelf Locations
                     uses, rather than a single select plus a separate "also
@@ -404,23 +399,39 @@ export function InventoryTab() {
                     if (r.success) { await refreshWarehouses(); return id; }
                     return { error: r.message };
                   }}
-                  renderRowAccessory={
-                    hideInitialStock
-                      ? undefined
-                      : (id) => (
-                          <Input
-                            type="number"
-                            min={0}
-                            placeholder="0"
-                            aria-label={`Initial stock for ${
-                              (warehouses || []).find((w: any) => w.id === id)?.name ?? 'warehouse'
-                            }`}
-                            className="h-7 w-20 text-right"
-                            value={stockFor(id) ?? ''}
-                            onChange={(e) => setStockFor(id, e.target.value)}
-                          />
-                        )
-                  }
+                  // The row keeps its quantity slot in BOTH modes so the picker
+                  // reads the same here as on the Products module. In PO mode
+                  // it is disabled at 0 rather than removed: dropping it made
+                  // the control look like a different, simpler one, when the
+                  // only real difference is that a PO's stock is entered on the
+                  // order itself, not here.
+                  renderRowAccessory={(id) => {
+                    const warehouseName =
+                      (warehouses || []).find((w: any) => w.id === id)?.name ?? 'warehouse';
+                    if (hideInitialStock) {
+                      return (
+                        <Input
+                          type="text"
+                          value="0"
+                          disabled
+                          readOnly
+                          aria-label={`Initial stock for ${warehouseName} — set when this purchase order is received`}
+                          className="h-7 w-20 text-right"
+                        />
+                      );
+                    }
+                    return (
+                      <Input
+                        type="number"
+                        min={0}
+                        placeholder="0"
+                        aria-label={`Initial stock for ${warehouseName}`}
+                        className="h-7 w-20 text-right"
+                        value={stockFor(id) ?? ''}
+                        onChange={(e) => setStockFor(id, e.target.value)}
+                      />
+                    );
+                  }}
                 />
                 <FormMessage />
               </FormItem>
