@@ -35,6 +35,8 @@ import {
   Tags,
 } from 'lucide-react';
 
+import { WarehouseScope } from '@/components/warehouse-scope';
+
 import { BatchInventoryDrawer } from './batch-inventory/BatchInventoryDrawer';
 import { useInventoryPage } from './use-inventory-page';
 import { ProductSkeleton } from './ProductSkeleton';
@@ -45,6 +47,8 @@ export default function InventoryPage() {
   const {
     warehouses,
     warehouseFilter,
+    warehouseCounts,
+    warehouseTotal,
     handleWarehouseFilterChange,
     searchTerm,
     handleSearch,
@@ -151,7 +155,7 @@ export default function InventoryPage() {
         onOpenChange={setIsBatchDrawerOpen}
       />
 
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
+      <div className="flex flex-col md:flex-row gap-4 mb-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -181,18 +185,19 @@ export default function InventoryPage() {
             <SelectItem value="service">Service</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={warehouseFilter} onValueChange={handleWarehouseFilterChange}>
-          <SelectTrigger className="w-full md:w-[200px]">
-            <SelectValue placeholder="Warehouse" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Warehouses</SelectItem>
-            {warehouses.map((w) => (
-              <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
+
+      {/* Under the search row, sitting directly over the list it qualifies.
+          Not one of the filters beside it: the warehouse decides what the
+          Stock figures MEAN, not merely which rows survive. */}
+      <WarehouseScope
+        warehouses={warehouses}
+        value={warehouseFilter}
+        onChange={handleWarehouseFilterChange}
+        counts={warehouseCounts}
+        total={warehouseTotal}
+        className="mb-6"
+      />
 
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -227,12 +232,13 @@ export default function InventoryPage() {
           ))}
         </div>
       ) : (
-        <Card>
+        <Card className="overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[300px]">Product</TableHead>
                 <TableHead>Barcode</TableHead>
+                <TableHead>Warehouse</TableHead>
                 <TableHead>Stock</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Reorder Pt</TableHead>

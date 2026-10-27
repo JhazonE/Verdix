@@ -47,7 +47,7 @@ export function useAddInvoiceForm({ paymentMethods, onClose, onSuccess }: Props)
       deliveryAddress: '',
       paymentMethod: '',
       items: [],
-      shipping: 0,
+      shipping: undefined,
       note: '',
     },
   });

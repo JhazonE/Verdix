@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getApiUrl } from '@/lib/api-config';
-import { TOGGLEABLE_PAGES } from '@/lib/page-registry';
+import { TOGGLEABLE_PAGES, DEFAULT_HIDDEN_KEYS } from '@/lib/page-registry';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -101,6 +101,8 @@ export default function DeveloperOptionsPage() {
           <h3 className="text-lg font-semibold">Page Visibility</h3>
           <p className="text-sm text-muted-foreground">
             Disabled pages are hidden from the sidebar and their URLs redirect to the dashboard.
+            Pages marked <span className="font-medium">Hidden by default</span> start off on a new
+            install — switch one on here and it stays on.
           </p>
         </div>
         <Button onClick={save} disabled={saving || loading}>
@@ -122,7 +124,14 @@ export default function DeveloperOptionsPage() {
                 return (
                   <div key={p.key} className="flex items-center justify-between gap-4">
                     <div className="flex flex-col">
-                      <span className="text-sm font-medium">{p.label}</span>
+                      <span className="text-sm font-medium flex items-center gap-2">
+                        {p.label}
+                        {DEFAULT_HIDDEN_KEYS.includes(p.key) && (
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide text-muted-foreground">
+                            Hidden by default
+                          </span>
+                        )}
+                      </span>
                       <span className="text-xs text-muted-foreground font-mono">{p.href}</span>
                     </div>
                     <Switch

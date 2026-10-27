@@ -8,12 +8,12 @@ import { z } from 'zod';
  */
 const baseProductSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
-  brand: z.string().min(1, 'Brand is required'),
+  brand: z.string().optional(),
   barcode: z.string().min(1, 'Barcode is required'),
   department: z.string().optional(),
   description: z.string().min(1, 'Description is required'),
   additionalDescription: z.string().optional(),
-  category: z.string().min(1, 'Category is required'),
+  category: z.string().optional(),
   subcategory: z.string().optional(),
   unitOfMeasure: z.string().min(1, 'Unit of measure is required'),
   price: z.coerce.number().positive('Price must be a positive number'),
@@ -32,11 +32,29 @@ const baseProductSchema = z.object({
 /** Stocked goods — the existing behaviour, unchanged. */
 const standardProductSchema = baseProductSchema.extend({
   itemType: z.literal('standard'),
-  warehouse: z.string().min(1, 'Warehouse is required'),
+  warehouse: z.string().optional(),
+  /**
+   * Extra warehouses to stock this same item in, each with its own opening
+   * quantity. Verdix keeps ONE `products` row per warehouse (see
+   * TransferStockService), so each entry here becomes a sibling product row
+   * rather than a column on this one.
+   *
+   * `warehouse` above stays the primary row: it owns the base selling unit's
+   * barcode, because `product_selling_units.barcode` is UNIQUE globally.
+   */
+  additionalWarehouses: z.array(z.object({
+    warehouseId: z.string().min(1, 'Pick a warehouse'),
+    stock: z.coerce.number().int().nonnegative('Initial stock must be a non-negative integer').optional().default(0),
+  })).optional(),
   shelfLocationIds: z.array(z.string()).optional(),
-  stock: z.coerce.number().int().nonnegative('Initial stock must be a non-negative integer'),
+  /**
+   * Blank means zero, not "missing" — the field shows a `0` placeholder
+   * rather than a pre-filled 0 so the user can type over it without first
+   * clearing it, and leaving it alone creates the product with no stock.
+   */
+  stock: z.coerce.number().int().nonnegative('Initial stock must be a non-negative integer').optional().default(0),
   reorderPoint: z.coerce.number().int().nonnegative().optional().default(0),
-  cost: z.coerce.number().positive('Cost is required and must be a positive number'),
+  cost: z.coerce.number().nonnegative('Cost cannot be negative').optional(),
   parentId: z.string().optional(),
   conversionFactor: z.coerce.number().positive('Conversion factor must be positive').optional(),
   /**
@@ -62,7 +80,7 @@ const standardProductSchema = baseProductSchema.extend({
     name: z.string().min(1, 'Unit name is required'),
     factor: z.coerce.number().positive('Quantity must be greater than 0'),
     barcode: z.string().optional(),
-    cost: z.coerce.number().positive('Cost is required and must be a positive number'),
+    cost: z.coerce.number().nonnegative('Cost cannot be negative').optional(),
     price: z.coerce.number().nonnegative('Price must be non-negative'),
     /**
      * This unit's own price-level overrides. A blank price on the form means
@@ -100,20 +118,20 @@ const standardProductSchema = baseProductSchema.extend({
 /**
  * Services — no stock, no batches, no family.
  *
- * `cost` is required here too (same as standard products), but unlike a
- * standard product's cost it is allowed to be 0 — a pure-margin service with
- * no input cost is a real, valid case, the user just has to say so
- * explicitly rather than leave the field blank.
+ * `cost` is optional here, same as for a standard product: a pure-margin
+ * service with no input cost is a real case, and a blank cost is stored as
+ * NULL rather than being blocked at the form.
  *
  * Stock and family fields are pinned to constants rather than omitted so a
  * service with stock is unrepresentable even if the UI is bypassed.
  */
 const serviceProductSchema = baseProductSchema.extend({
   itemType: z.literal('service'),
-  cost: z.coerce.number().nonnegative('Cost is required for services (enter 0 if there is no input cost)'),
+  cost: z.coerce.number().nonnegative('Cost cannot be negative').optional(),
   stock: z.literal(0).default(0),
   reorderPoint: z.literal(0).default(0),
   warehouse: z.undefined(),
+  additionalWarehouses: z.undefined(),
   shelfLocationIds: z.undefined(),
   parentId: z.undefined(),
   conversionFactor: z.undefined(),

@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
 import { Category, Brand, UnitOfMeasure, Supplier, TaxRate, SystemSettings, Product } from '@/lib/types';
 import type { ProductType } from '@/lib/product-type';
+import { resolveInitialWarehouseSelection } from '@/lib/warehouse-stocking';
 
 import {
   getCategories,
@@ -82,6 +83,14 @@ export interface UseAddProductFormProps {
   // nothing reconciling the two. The field is hidden, not just disabled, so
   // there is nothing to misread as "this is where PO stock goes."
   hideInitialStock?: boolean;
+  // Which warehouse the form's Warehouses picker starts on, for a host that
+  // already knows the answer — Add Purchase Order passes its own "Receive To"
+  // warehouse. Without this the form always preselected the store's MAIN
+  // warehouse, so a product created inline on a PO receiving into BODEGA was
+  // created as a STORE row and then did not appear in that PO's own
+  // warehouse-scoped product search: created, apparently, into nowhere.
+  // Still only a DEFAULT — it fills an empty field and the user can change it.
+  defaultWarehouseId?: string;
 }
 
 export function useAddProductForm({
@@ -92,6 +101,7 @@ export function useAddProductForm({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
   hideInitialStock = false,
+  defaultWarehouseId,
 }: UseAddProductFormProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
@@ -163,9 +173,12 @@ export function useAddProductForm({
       category: '',
       subcategory: '',
       warehouse: '',
+      additionalWarehouses: [],
       shelfLocationIds: [],
       unitOfMeasure: '',
-      stock: 0,
+      // Left undefined so Initial Stock renders its `0` placeholder instead of
+      // a pre-filled zero; the schema defaults it back to 0 on submit.
+      stock: undefined,
       reorderPoint: 0,
       price: 0,
       cost: undefined,
@@ -203,15 +216,18 @@ export function useAddProductForm({
   const selectedUnitOfMeasure = form.watch('unitOfMeasure');
   const watchedPrice = form.watch('price');
   const formErrors = form.formState.errors;
-  // unitOfMeasure and cost are top-level fields the schema requires for every
-  // item type, but which TAB renders them differs by itemType: a Service
-  // shows them on Inventory; a Standard product shows them inside the base
-  // unit card on Selling Units instead (see inventory-tab.tsx / conversion-tab.tsx).
-  // Routing both to 'inventory' unconditionally used to light up (or jump to)
-  // a tab that, for a Standard product, doesn't even contain the field.
+  // unitOfMeasure is required for every item type and cost, while optional,
+  // can still fail its non-negative rule — but which TAB renders them differs
+  // by itemType: a Service shows them on Inventory; a Standard product shows
+  // them inside the base unit card on Selling Units instead (see
+  // inventory-tab.tsx / conversion-tab.tsx). Routing both to 'inventory'
+  // unconditionally used to light up (or jump to) a tab that, for a Standard
+  // product, doesn't even contain the field.
   const unitOrCostError = !!(formErrors.unitOfMeasure || formErrors.cost);
   const tabErrors = {
-    basic: !!(formErrors.name || formErrors.brand || formErrors.description || formErrors.category),
+    // Brand and category are optional now, so they can't error — name and
+    // description are the only required fields this tab holds.
+    basic: !!(formErrors.name || formErrors.description),
     inventory: !!(formErrors.stock) || (itemType === 'service' && unitOrCostError),
     // The base selling unit's price-level overrides bind to the top-level
     // `priceLevels` field (see product-schema.ts), but they render inside
@@ -243,6 +259,24 @@ export function useAddProductForm({
   const lastAutoSuggestedCost = useRef<number | null>(null);
   const costEditedByUser = useRef(false);
 
+  // Clears every dropdown's loading flag in one go. Arriving data is the only
+  // thing that ends a load, so this lives next to applyProductOptions rather
+  // than being spelled out at each call site: the parent-supplied branch used
+  // to apply its data without lowering these flags, so options that arrived
+  // from the parent after the self-fetch below had raised them left the
+  // dropdowns stuck on "Loading...".
+  const clearOptionLoadingFlags = () => {
+    setIsLoadingCategories(false);
+    setIsLoadingSubcategories(false);
+    setIsLoadingBrands(false);
+    setIsLoadingUnits(false);
+    setIsLoadingSuppliers(false);
+    setIsLoadingWarehouses(false);
+    setIsLoadingShelfLocations(false);
+    setIsLoadingDepartments(false);
+    setIsLoadingPriceLevels(false);
+  };
+
   // Applies a getProductOptions()-shaped payload to every dropdown's state,
   // whichever source it came from (parent-supplied or self-fetched below).
   // Does NOT touch the form — ensureDefaultPriceLevel (below) owns that, and
@@ -258,9 +292,13 @@ export function useAddProductForm({
     setDepartments(options.departments || []);
     setPriceLevels(options.priceLevels || []);
     setTaxRates(options.taxRates || []);
+    clearOptionLoadingFlags();
   };
 
-  // Use pre-loaded data from parent when available
+  // Use pre-loaded data from parent when available. applyProductOptions also
+  // lowers the loading flags, so parent data arriving late — after the
+  // self-fetch below has already raised them — still releases the dropdowns
+  // even if that fetch never settles.
   useEffect(() => {
     if (externalProductOptions) {
       applyProductOptions(externalProductOptions);
@@ -290,17 +328,7 @@ export function useAddProductForm({
     getProductOptions()
       .then((options) => applyProductOptions(options))
       .catch((error) => console.error('Error loading product options:', error))
-      .finally(() => {
-        setIsLoadingCategories(false);
-        setIsLoadingSubcategories(false);
-        setIsLoadingBrands(false);
-        setIsLoadingUnits(false);
-        setIsLoadingSuppliers(false);
-        setIsLoadingWarehouses(false);
-        setIsLoadingShelfLocations(false);
-        setIsLoadingDepartments(false);
-        setIsLoadingPriceLevels(false);
-      });
+      .finally(clearOptionLoadingFlags);
   }, [externalProductOptions, isOpen, hasSelfFetchedOptions]);
 
   // Closing the dialog mid-entry (Escape, a click on the backdrop, or Cancel)
@@ -404,24 +432,43 @@ export function useAddProductForm({
     if (currentPriceLevels.length > 0) return;
     const defaultLevel = priceLevels.find((l: any) => l.isDefault) || priceLevels[0];
     if (defaultLevel) {
-      appendPriceLevel({ levelId: defaultLevel.id, price: 0 });
+      // `price: undefined`, not 0 — the row has to exist so the user has a
+      // field to type in, but it must render EMPTY rather than pre-filled
+      // with a zero they have to clear first. Left untouched it fails the
+      // schema's `price: positive()` rule, which is correct: price is
+      // required, so an unfilled Retail row should block the save.
+      appendPriceLevel({ levelId: defaultLevel.id, price: undefined as any });
     }
   }, [isOpen, priceLevels, form, appendPriceLevel]);
 
-  // Warehouse is required, so preselect the store warehouse (is_main, else the
-  // seeded 'wh_main', else the first active one — same order the product
-  // importer uses). Declared after the reset effect so it re-applies on every
-  // open, and only fills an empty field so a user's own pick is never replaced.
+  // Warehouse is optional on the form, but a stocked product with none shows a
+  // blank column in the product list — so preselect EVERY active warehouse.
+  // A new product almost always belongs in all of them, and starting from
+  // "all" means the rare exception is unticking one or two rather than
+  // ticking every one by hand.
+  //
+  // Which one leads still matters and keeps the old precedence (a
+  // host-supplied default, else is_main, else the seeded 'wh_main', else the
+  // first active — the same order the product importer uses): the head of the
+  // list is the PRIMARY row, the one that owns the scannable barcode, so it
+  // cannot be left to whatever the warehouse list happens to return first.
+  // The rest follow as additionalWarehouses at stock 0 — listed, with nothing
+  // in them yet, which is a legitimate setup ahead of a delivery.
+  //
+  // Declared after the reset effect so it re-applies on every open, and it
+  // only fills an EMPTY field, so a user's own picks are never replaced;
+  // clearing them afterwards is allowed and saves NULL.
   useEffect(() => {
     if (!isOpen || itemType !== 'standard' || warehouses.length === 0) return;
     if (form.getValues('warehouse')) return;
-    const active = warehouses.filter((w: any) => w.isActive !== false);
-    const store =
-      active.find((w: any) => w.isMain) ||
-      active.find((w: any) => w.id === 'wh_main') ||
-      active[0];
-    if (store) form.setValue('warehouse', store.id);
-  }, [isOpen, itemType, warehouses, form]);
+    const selection = resolveInitialWarehouseSelection(warehouses, defaultWarehouseId);
+    if (!selection) return;
+    form.setValue('warehouse', selection.primaryId);
+    form.setValue(
+      'additionalWarehouses',
+      selection.additionalIds.map((id) => ({ warehouseId: id, stock: 0 })) as any,
+    );
+  }, [isOpen, itemType, warehouses, form, defaultWarehouseId]);
 
   // "There is no standalone price field — the default (Retail) price-level
   // row IS the product's price" only held at submit time (onSubmit copied
@@ -476,6 +523,9 @@ export function useAddProductForm({
       form.setValue('cost', 0);
       form.setValue('department', undefined);
       form.setValue('warehouse', undefined);
+      // Must be cleared too, or rows entered before the switch would fail
+      // serviceProductSchema's `additionalWarehouses: z.undefined()`.
+      form.setValue('additionalWarehouses', undefined);
       form.setValue('shelfLocationIds', undefined);
       form.setValue('parentId', undefined);
       form.setValue('conversionFactor', undefined);
@@ -761,8 +811,11 @@ export function useAddProductForm({
           id: result.productId!,
           name: values.name,
           description: values.description,
-          category: values.category,
-          brand: values.brand,
+          // Brand and Category are optional on the form but required `string`
+          // on `Product`, so blank becomes '' here rather than undefined —
+          // the same shape the write path stores for an unset one.
+          category: values.category ?? '',
+          brand: values.brand ?? '',
           department: values.department,
           subcategory: values.subcategory,
           stock: values.stock ?? 0,
@@ -831,6 +884,20 @@ export function useAddProductForm({
   const refreshShelfLocations = () => getShelfLocations().then(setShelfLocations);
   const refreshUnits = () => getUnitsOfMeasure().then(setUnitsOfMeasure);
 
+  // Inline "+ Add Brand/Category/Subcategory" inserts the one new row into the
+  // list we already hold, rather than calling the matching refresh*() above.
+  // The add action already returns the row it created, so refetching the whole
+  // table only bought a second server round trip the dropdown had to sit and
+  // wait out — visibly slow against the cloud DB. Sorted on insert to match
+  // the `ORDER BY name` the fetches use, so the new row lands where a refetch
+  // would have put it.
+  const byName = <T extends { name: string }>(list: T[]) =>
+    [...list].sort((a, b) => a.name.localeCompare(b.name));
+  const insertBrand = (brand: Brand) => setBrands((prev) => byName([...prev, brand]));
+  const insertCategory = (category: Category) => setCategories((prev) => byName([...prev, category]));
+  const insertSubcategory = (subcategory: Category) =>
+    setSubcategories((prev) => byName([...prev, subcategory]));
+
   return {
     // dialog + submit state
     isOpen, setIsOpen,
@@ -885,6 +952,9 @@ export function useAddProductForm({
     refreshWarehouses,
     refreshShelfLocations,
     refreshUnits,
+    insertBrand,
+    insertCategory,
+    insertSubcategory,
   };
 }
 

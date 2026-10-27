@@ -15,7 +15,7 @@ export const PAGE_REGISTRY: RegistryPage[] = [
 
   // Inventory
   { key: 'inventory', href: '/inventory', label: 'Stock Levels', section: 'Inventory' },
-  { key: 'inventory_stock_counts', href: '/inventory/stock-counts', label: 'Stock Counts (Snapshots)', section: 'Inventory' },
+  { key: 'inventory_stock_counts', href: '/inventory/stock-counts', label: 'Stock Counts', section: 'Inventory' },
   { key: 'inventory_repackaging', href: '/inventory/repackaging', label: 'Repackaging', section: 'Inventory' },
   { key: 'inventory_history', href: '/inventory/history', label: 'Adjustment History', section: 'Inventory' },
   { key: 'inventory_movement', href: '/inventory/movement', label: 'Stock Movement', section: 'Inventory' },
@@ -59,6 +59,25 @@ export const PAGE_REGISTRY: RegistryPage[] = [
 ];
 
 export const TOGGLEABLE_PAGES: RegistryPage[] = PAGE_REGISTRY.filter(p => !p.protected);
+
+/**
+ * Pages that start life HIDDEN on an install that has never configured page
+ * visibility. These are modules most stores do not run, so showing them by
+ * default puts dead ends in the sidebar; a store that wants them opts in from
+ * Developer Options > Page Visibility.
+ *
+ * This is a seed, NOT a permanent rule. `disabled_pages` is the authoritative
+ * set once it exists, so these keys are inserted exactly once — when the table
+ * is first created (see the disabled-pages route and migration 146) — and never
+ * re-applied. An absent row cannot tell "never configured" apart from "an admin
+ * deliberately switched it on", so re-seeding on every read would silently undo
+ * that admin's choice on the next page load.
+ */
+export const DEFAULT_HIDDEN_KEYS: string[] = [
+  'inventory_repackaging',
+  'approvals',
+  'approvals_settings',
+];
 
 const PROTECTED_HREFS = new Set(
   PAGE_REGISTRY.filter(p => p.protected).map(p => p.href),

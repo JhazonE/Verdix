@@ -200,7 +200,9 @@ export function useEditProductForm({
   // a tab that, for a Standard product, doesn't even contain the field.
   const unitOrCostError = !!(formErrors.unitOfMeasure || formErrors.cost);
   const tabErrors = {
-    basic: !!(formErrors.name || formErrors.brand || formErrors.description || formErrors.category),
+    // Brand and category are optional now, so they can't error — name and
+    // description are the only required fields this tab holds.
+    basic: !!(formErrors.name || formErrors.description),
     inventory: product.type === 'service' && unitOrCostError,
     // The base selling unit's price-level overrides bind to the top-level
     // `priceLevels` field (see product-schema.ts), but they render inside
@@ -286,10 +288,11 @@ export function useEditProductForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product, isOpen, form]);
 
-  // Warehouse is required. A stocked product saved before that was enforced may
-  // have none, so preselect the store warehouse (is_main, else 'wh_main', else
-  // first active) rather than leave the form unsubmittable. Only fills an empty
-  // field; declared after the reset effect so it runs after the reset.
+  // Warehouse is optional on the form, but a stocked product with none shows a
+  // blank column in the product list, so preselect the store warehouse
+  // (is_main, else 'wh_main', else first active) rather than leave it empty.
+  // Only fills an empty field; declared after the reset effect so it runs
+  // after the reset. Clearing it afterwards is allowed and saves NULL.
   useEffect(() => {
     if (!isOpen || product.type === 'service' || warehouses.length === 0) return;
     if (form.getValues('warehouse')) return;
@@ -651,6 +654,20 @@ export function useEditProductForm({
   const refreshShelfLocations = () => getShelfLocations().then(setShelfLocations);
   const refreshUnits = () => getUnitsOfMeasure().then(setUnits);
 
+  // Inline "+ Add Brand/Category/Subcategory" inserts the one new row into the
+  // list we already hold, rather than calling the matching refresh*() above.
+  // The add action already returns the row it created, so refetching the whole
+  // table only bought a second server round trip the dropdown had to sit and
+  // wait out — visibly slow against the cloud DB. Sorted on insert to match
+  // the `ORDER BY name` the fetches use, so the new row lands where a refetch
+  // would have put it.
+  const byName = <T extends { name: string }>(list: T[]) =>
+    [...list].sort((a, b) => a.name.localeCompare(b.name));
+  const insertBrand = (brand: Brand) => setBrands((prev) => byName([...prev, brand]));
+  const insertCategory = (category: Category) => setCategories((prev) => byName([...prev, category]));
+  const insertSubcategory = (subcategory: Category) =>
+    setSubcategories((prev) => byName([...prev, subcategory]));
+
   return {
     // the product being edited (read-only stock display, etc.)
     product,
@@ -701,6 +718,9 @@ export function useEditProductForm({
     refreshWarehouses,
     refreshShelfLocations,
     refreshUnits,
+    insertBrand,
+    insertCategory,
+    insertSubcategory,
   };
 }
 

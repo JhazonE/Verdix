@@ -110,7 +110,11 @@ export async function POST(request: NextRequest) {
                 remainingPayment -= appliedAmount;
 
                 const newAmountPaid = currentAmountPaid + appliedAmount;
-                const newStatus = newAmountPaid >= invoiceTotal ? 'Paid' : 'Pending';
+                // A part-paid invoice is 'Partially Paid', not 'Pending' — 'Pending'
+                // cannot distinguish "nothing paid yet" from "partly settled".
+                const newStatus = newAmountPaid >= invoiceTotal
+                    ? 'Paid'
+                    : newAmountPaid > 0 ? 'Partially Paid' : 'Pending';
 
                 // 2. Update invoice amount_paid and status
                 await connection.query(

@@ -76,6 +76,17 @@ export function EditProductDialog({
     if (isOpen) setActiveTab('basic');
   }, [isOpen]);
 
+  // Opening the form is the one moment its dropdowns must be current. The
+  // page caches productOptions behind a staleTime with no polling, and the
+  // cross-tab BroadcastChannel never leaves the browser it fired in, so a
+  // category or supplier added on another terminal stays invisible here
+  // until something forces a refetch. Nothing else will: once the dialog is
+  // open the user stops leaving the window, which is precisely what
+  // refetchOnWindowFocus depends on.
+  useEffect(() => {
+    if (isOpen) onOptionsRefresh?.();
+  }, [isOpen, onOptionsRefresh]);
+
   const handleInvalid = () => {
     // Reuse tabErrors rather than re-deriving which field lives on which tab
     // here — that mapping depends on product type (a Standard product's
@@ -122,7 +133,13 @@ export function EditProductDialog({
           <DialogHeader className="flex-shrink-0">
             <DialogTitle>Edit Product</DialogTitle>
             <DialogDescription>
-              Update the details for {product.name}.
+              Update the details for {product.name}.{' '}
+              {/* Required fields are spread over Basic Info and Selling Units,
+                  so the legend lives in the header — the only part of the
+                  dialog visible from every tab. */}
+              Fields marked{' '}
+              <span aria-hidden="true" className="text-destructive font-medium">*</span>
+              {' '}are required.
             </DialogDescription>
           </DialogHeader>
           <EditProductFormProvider controller={controller}>

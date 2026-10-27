@@ -301,7 +301,7 @@ export function PosCartTable({
                             onChange={(e) => setQtyDraft(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') { e.preventDefault(); commitQty(item.lineId); inputRef.current?.focus(); }
-                              else if (e.key === 'Escape') { e.preventDefault(); setQtyDraft(String(Number((item.quantity * (item.selectedSellingUnit?.factor || 1)).toFixed(4)))); setEditingQtyItemId(null); inputRef.current?.focus(); }
+                              else if (e.key === 'Escape') { e.preventDefault(); setQtyDraft(String(Number(item.quantity.toFixed(4)))); setEditingQtyItemId(null); inputRef.current?.focus(); }
                             }}
                             onBlur={() => commitQty(item.lineId)}
                           />
@@ -314,9 +314,16 @@ export function PosCartTable({
                             title="Edit quantity (F6)"
                             onClick={(e) => { e.stopPropagation(); focusInlineQuantity(item.lineId); }}
                           >
-                            {formatCartQuantity(item.selectedSellingUnit && !item.selectedSellingUnit.isBase ? item.quantity * item.selectedSellingUnit.factor : item.quantity)}
+                            {/* The headline number counts the unit the line is
+                                SOLD in (2 Box), because that is what the
+                                cashier typed and what the price multiplies.
+                                The base-unit total (24 pieces) is the detail
+                                underneath, not the other way round. */}
+                            {formatCartQuantity(item.quantity)}
                             {item.selectedSellingUnit && !item.selectedSellingUnit.isBase && (
-                              <span className="block text-[10px] font-normal leading-tight text-muted-foreground">= {formatCartQuantity(item.quantity)} {item.selectedSellingUnit.name}</span>
+                              <span className="block text-[10px] font-normal leading-tight text-muted-foreground">
+                                = {formatCartQuantity(item.quantity * item.selectedSellingUnit.factor)} {item.unitOfMeasure || 'pcs'}
+                              </span>
                             )}
                           </button>
                         </div>

@@ -7,6 +7,16 @@ import { DateRange } from 'react-day-picker';
 export const formatAmount = (val: any) =>
   Number(val || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/**
+ * What has actually been settled on an invoice. Reads the stored figure rather than
+ * inferring it from `status`, which cannot express a part-payment. The `Paid` fallback
+ * covers older rows written before amount_paid was carried on this payload.
+ */
+export const getAmountPaid = (sale: Sale) => {
+  if (sale.amountPaid != null) return Number(sale.amountPaid);
+  return sale.status === 'Paid' ? sale.total : 0;
+};
+
 export const isOverDue = (sale: Sale) => {
   if (sale.status === 'Paid' || sale.status === 'Voided' || sale.status === 'Returned') return false;
   const dueDate = sale.dueDate ? new Date(sale.dueDate) : new Date();
@@ -21,12 +31,18 @@ export const getStatusInfo = (sale: Sale): { text: string; variant: 'default' | 
     case 'Returned': return { text: sale.status, variant: 'destructive' };
     case 'Shipped':
     case 'Delivered': return { text: sale.status, variant: 'outline' };
+    // A partly-settled invoice is still owed, so it keeps the due/overdue treatment
+    // rather than reading as closed — the label just says it was part-paid.
+    case 'Partially Paid':
     case 'Pending':
     default: {
+      const partial = sale.status === 'Partially Paid';
       const dueDate = sale.dueDate ? new Date(sale.dueDate) : new Date();
       const diffDays = Math.ceil((new Date().getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-      if (new Date() > dueDate) return { text: `Over Due ${diffDays} days`, variant: 'destructive' };
-      return { text: 'Due', variant: 'secondary' };
+      if (new Date() > dueDate) {
+        return { text: `Over Due ${diffDays} days`, variant: 'destructive' };
+      }
+      return { text: partial ? 'Partially Paid' : 'Due', variant: 'secondary' };
     }
   }
 };
@@ -55,7 +71,7 @@ export function useInvoicesUtils({
 
   const relevantSales = useMemo(
     () => salesInvoices.filter((s: Sale) => {
-      if (!['Paid', 'Shipped', 'Delivered', 'Pending', 'Voided'].includes(s.status)) return false;
+      if (!['Paid', 'Partially Paid', 'Shipped', 'Delivered', 'Pending', 'Voided'].includes(s.status)) return false;
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         const matches =
@@ -95,7 +111,7 @@ export function useInvoicesUtils({
 
   const summaryTotals = useMemo(
     () => relevantSales.reduce((acc, sale) => {
-      const amountPaid = sale.status === 'Paid' ? sale.total : 0;
+      const amountPaid = getAmountPaid(sale);
       const balance = sale.total - amountPaid;
       const overdue = isOverDue(sale);
       return {

@@ -181,10 +181,17 @@ export async function POST(request: NextRequest) {
           WHERE reference = ?
         `, [invoiceApplied, invoiceNo]);
 
-        // Step B: Update status based on total
+        // Step B: Update status based on total. 'Partially Paid' is the enum member
+        // these columns actually declare — writing 'Partial' is truncated, and under
+        // STRICT_TRANS_TABLES that error aborts the whole payment transaction, so a
+        // part-payment of a charge used to fail outright instead of being recorded.
         await connection.query(`
-          UPDATE sales_invoices 
-          SET status = CASE WHEN amount_paid >= total THEN 'Paid' ELSE 'Partial' END,
+          UPDATE sales_invoices
+          SET status = CASE
+                WHEN amount_paid >= total THEN 'Paid'
+                WHEN amount_paid > 0 THEN 'Partially Paid'
+                ELSE 'Pending'
+              END,
               updated_at = NOW()
           WHERE reference = ?
         `, [invoiceNo]);

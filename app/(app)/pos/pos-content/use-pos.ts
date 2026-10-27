@@ -265,7 +265,7 @@ export function usePOS() {
 
   // Sync qty draft and cancel inline edits on row change
   useEffect(() => {
-    setQtyDraft(selectedItem ? String(baseQtyOf(selectedItem)) : '');
+    setQtyDraft(selectedItem ? String(lineQtyOf(selectedItem)) : '');
     const keepIfCurrent = (prev: string | null) => (prev && prev !== selectedItemId ? null : prev);
     setEditingNameItemId(keepIfCurrent);
     setEditingQtyItemId(keepIfCurrent);
@@ -305,16 +305,18 @@ export function usePOS() {
     setEditingNameItemId(null);
   };
 
-  // The inline qty box counts BASE units (pieces), whatever unit the line is in.
-  const baseQtyOf = (item: any) => Number((item.quantity * (item.selectedSellingUnit?.factor || 1)).toFixed(4));
+  // The inline qty box counts the line's OWN selling unit: typing 2 on a Box
+  // line means two boxes, not two pieces. The base-unit total is derived for
+  // display only, so what the cashier types matches what the price multiplies.
+  const lineQtyOf = (item: any) => Number(item.quantity.toFixed(4));
 
   const commitQty = (itemId: string) => {
     setEditingQtyItemId(null);
     const item = items.find(i => i.lineId === itemId);
     if (!item) return;
     const q = parseFloat(qtyDraft);
-    if (isNaN(q) || q <= 0) { setQtyDraft(String(baseQtyOf(item))); return; }
-    if (q !== baseQtyOf(item)) updateQuantity(itemId, q, true);
+    if (isNaN(q) || q <= 0) { setQtyDraft(String(lineQtyOf(item))); return; }
+    if (q !== lineQtyOf(item)) updateQuantity(itemId, q);
   };
 
   // Clicking a line's price goes wherever F7 goes: inline when the price
@@ -956,7 +958,7 @@ export function usePOS() {
     setSelectedItemId(itemId);
     setEditingQtyItemId(itemId);
     const lineToEdit = items.find(i => i.lineId === itemId);
-    if (lineToEdit) setQtyDraft(String(baseQtyOf(lineToEdit)));
+    if (lineToEdit) setQtyDraft(String(lineQtyOf(lineToEdit)));
     setEditingNameItemId(null);
     setEditingPriceItemId(null);
     focusInlineField('pos-qty', itemId);
@@ -969,10 +971,10 @@ export function usePOS() {
     else unlockInlineQty(itemId);
   };
 
-  // +/- always step one BASE unit, expressed in the line's own unit; a Pack
-  // line stepped down becomes fractional and updateQuantity demotes it to pieces.
-  const stepLineQuantity = (item: any, delta: number) =>
-    item.quantity + delta / (item.selectedSellingUnit?.factor || 1);
+  // +/- step one of the line's OWN unit: a Box line goes 1 Box -> 2 Box, not
+  // 1 Box -> 1 Box + 1 piece. This matches the inline qty box, which also
+  // counts in the line's unit, so both routes to a quantity agree.
+  const stepLineQuantity = (item: any, delta: number) => item.quantity + delta;
 
   const requestQuantityDelta = (itemId: string, delta: number) => {
     if (businessSettings?.enableEditQtyAuth) {

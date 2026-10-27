@@ -75,6 +75,18 @@ export function AddProductDialog(props: UseAddProductFormProps) {
     if (isOpen && !hasUnsavedDraft()) setActiveTab('basic');
   }, [isOpen, hasUnsavedDraft]);
 
+  // Opening the form is the one moment its dropdowns must be current. The
+  // page caches productOptions behind a staleTime with no polling, and the
+  // cross-tab BroadcastChannel never leaves the browser it fired in, so a
+  // category or supplier added on another terminal stays invisible here
+  // until something forces a refetch. Nothing else will: once the dialog is
+  // open the user stops leaving the window, which is precisely what
+  // refetchOnWindowFocus depends on.
+  const { onOptionsRefresh } = props;
+  useEffect(() => {
+    if (isOpen) onOptionsRefresh?.();
+  }, [isOpen, onOptionsRefresh]);
+
   const handleInvalid = () => {
     // Reuse tabErrors rather than re-deriving which field lives on which tab
     // here — that mapping depends on itemType (a Standard product's
@@ -136,7 +148,13 @@ export function AddProductDialog(props: UseAddProductFormProps) {
               <DialogDescription>
                 {itemType === 'service'
                   ? 'No stock tracking — always available for sale.'
-                  : 'Fill in the details below to add a new product.'}
+                  : 'Fill in the details below to add a new product.'}{' '}
+                {/* Required fields are spread over Basic Info and Selling
+                    Units, so the legend has to live in the header — it is the
+                    only part of the dialog visible from every tab. */}
+                Fields marked{' '}
+                <span aria-hidden="true" className="text-destructive font-medium">*</span>
+                {' '}are required.
               </DialogDescription>
             </div>
             <div

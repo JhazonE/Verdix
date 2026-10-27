@@ -83,6 +83,27 @@ export type SalesTransactionPayload = {
 };
 
 /**
+ * HTTP statuses where retrying the same request can never succeed: the route
+ * does not exist, the payload is rejected, or we are not allowed to post it.
+ * Retrying those is not resilience, it is a loop — this dev DB accumulated
+ * 21,490 retries of a single purchase order against a decommissioned endpoint
+ * ("HTTP 404: Application not found") because every failure was treated as
+ * temporary. 408/429 and the 5xx range are deliberately NOT here: those are
+ * exactly the cases the retry queue exists for.
+ *
+ * 401/403 are included as permanent because they need a human to fix
+ * credentials; the Sync Logs tab still shows the row and its Retry button
+ * re-queues it once that is done.
+ */
+const PERMANENT_HTTP_STATUSES = new Set([400, 401, 403, 404, 405, 410, 422]);
+
+/** Reads the status back off the `HTTP <status>: …` message we throw below. */
+export function isPermanentSyncError(message: string | undefined): boolean {
+  const match = /^HTTP (\d{3})\b/.exec(message || '');
+  return match ? PERMANENT_HTTP_STATUSES.has(Number(match[1])) : false;
+}
+
+/**
  * Send HTTP request to external API with retry logic
  */
 async function sendToExternalApi(
@@ -91,7 +112,7 @@ async function sendToExternalApi(
   config: ExternalApiConfig,
   transactionType: string,
   transactionId: string
-): Promise<{ success: boolean; error?: string; response?: any }> {
+): Promise<{ success: boolean; error?: string; permanent?: boolean; response?: any }> {
   let lastError: Error | null = null;
   
   // Calculate next retry time (e.g., 5 minutes from now if it fails)
@@ -142,7 +163,12 @@ async function sendToExternalApi(
         }
       } catch (error) {
         lastError = error as Error;
-        
+
+        // A permanent rejection will not become a success on attempt 2 or 3,
+        // so stop burning the remaining attempts (and their retryDelay waits)
+        // on it and let the caller park the row.
+        if (isPermanentSyncError(lastError.message)) break;
+
         // If this isn't the last attempt, wait before retrying
         if (attempt < config.retryAttempts) {
           await new Promise(resolve => setTimeout(resolve, config.retryDelay));
@@ -155,21 +181,25 @@ async function sendToExternalApi(
 
   // All retries failed or network error occurred - log as 'pending' for background worker
   const errorMessage = lastError?.message || 'Unknown error';
-  
+  const permanent = isPermanentSyncError(errorMessage);
+
   await logApiSync({
     transactionType,
     transactionId,
     endpoint,
     payload: JSON.stringify(payload),
     response: null,
-    status: 'pending', // Mark as pending instead of failed for automatic background retry
+    // A permanent rejection goes straight to 'abandoned', which the background
+    // sweep's WHERE clause does not select, so it never enters the retry loop
+    // at all. Anything else stays 'pending' for automatic background retry.
+    status: permanent ? 'abandoned' : 'pending',
     errorMessage,
     retryCount: config.retryAttempts,
-    nextRetryAt: getNextRetryAt(),
+    nextRetryAt: permanent ? undefined : getNextRetryAt(),
     lastRetryAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
   });
 
-  return { success: false, error: errorMessage };
+  return { success: false, error: errorMessage, permanent };
 }
 
 /**
@@ -178,7 +208,7 @@ async function sendToExternalApi(
 export async function syncAccountsPayable(
   supplierId: string,
   config: ExternalApiConfig
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; permanent?: boolean }> {
   if (!config.enabled) {
     return { success: true }; // Skip if disabled
   }
@@ -219,7 +249,7 @@ export async function syncPurchaseTransaction(
   purchaseOrderId: string,
   purchaseOrderData: any,
   config: ExternalApiConfig
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; permanent?: boolean }> {
   if (!config.enabled) {
     return { success: true }; // Skip if disabled
   }
@@ -278,7 +308,7 @@ export async function syncPaymentTransaction(
   paymentId: string,
   paymentData: any,
   config: ExternalApiConfig
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; permanent?: boolean }> {
   if (!config.enabled) {
     return { success: true }; // Skip if disabled
   }
@@ -319,7 +349,7 @@ export async function syncSalesTransaction(
   invoiceId: string,
   salesData: any,
   config: ExternalApiConfig
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; permanent?: boolean }> {
   if (!config.enabled) {
     return { success: true }; // Skip if disabled
   }

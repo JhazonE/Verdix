@@ -9,6 +9,10 @@ export interface StockMovementEntity {
   referenceId?: string;
   referenceType?: string;
   notes?: string;
+  /**
+   * Always undefined from MySQL: `stock_movements` has no user column and the
+   * canonical writer does not record one. See MySqlStockMovementRepository.
+   */
   userName?: string;
   warehouseId?: string;
   createdAt?: string;

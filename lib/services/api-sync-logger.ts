@@ -16,7 +16,8 @@ export type ApiSyncLog = {
    * 'abandoned' is terminal: the sweep in lib/scheduler.ts selects only
    * pending/failed, so a row parked here is never retried again (used when a
    * retry provably cannot ever succeed, e.g. the record it references was
-   * deleted). Nothing writes it through logApiSync — see applySyncResult.
+   * deleted, or the endpoint answered with a permanent HTTP status). Written
+   * both by applySyncResult and by sendToExternalApi's own failure path.
    */
   status: 'success' | 'failed' | 'pending' | 'abandoned';
   errorMessage?: string;
@@ -36,7 +37,12 @@ export async function logApiSync(log: Omit<ApiSyncLog, 'id' | 'createdAt' | 'upd
     // naa nay pending row para niini nga transaction, i-update — ayaw i-insert
     // ug duplicate. Kung wala kini, ang matag retry sweep sa scheduler mo-clone
     // sa row, ug ang table mo-tubo nga walay katapusan.
-    if (log.status === 'pending') {
+    // 'abandoned' resolves that same queue entry rather than opening a second
+    // one: the row being parked IS the pending row, so it is converted in
+    // place. Inserting instead would leave the pending row due forever AND
+    // add a duplicate every sweep — the table grew 20 abandoned rows per pass
+    // that way before this covered it.
+    if (log.status === 'pending' || log.status === 'abandoned') {
       const existing = await query(
         `SELECT id, retry_count FROM external_api_logs
           WHERE transaction_type = ? AND transaction_id = ? AND status = 'pending'
@@ -47,7 +53,8 @@ export async function logApiSync(log: Omit<ApiSyncLog, 'id' | 'createdAt' | 'upd
       if (existing.length > 0) {
         await query(
           `UPDATE external_api_logs
-              SET endpoint = ?,
+              SET status = ?,
+                  endpoint = ?,
                   payload = ?,
                   error_message = ?,
                   retry_count = retry_count + 1,
@@ -55,6 +62,7 @@ export async function logApiSync(log: Omit<ApiSyncLog, 'id' | 'createdAt' | 'upd
                   last_retry_at = ?
             WHERE id = ?`,
           [
+            log.status,
             log.endpoint,
             log.payload,
             log.errorMessage || null,
