@@ -2,9 +2,9 @@
 
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { formatQuantity } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { HelpCircle } from 'lucide-react';
 import { UnitOfMeasure } from '@/lib/types';
 import type { Supplier } from '@/lib/types';
 
@@ -48,7 +48,7 @@ export function InventoryTab() {
           name="vatStatus"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>VAT Status</FormLabel>
+              <FormLabel className="flex h-4 items-center">VAT Status</FormLabel>
               <Select onValueChange={field.onChange} value={field.value} defaultValue="YES (Subject to 12% VAT)">
                 <FormControl>
                   <SelectTrigger>
@@ -73,7 +73,7 @@ export function InventoryTab() {
           name="availability"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Availability</FormLabel>
+              <FormLabel className="flex h-4 items-center">Availability</FormLabel>
               <Select onValueChange={field.onChange} value={field.value} defaultValue="Available">
                 <FormControl>
                   <SelectTrigger>
@@ -95,7 +95,7 @@ export function InventoryTab() {
           name="unitOfMeasure"
           render={({ field }) => (
             <FormItem>
-              <FormLabel required>Base Unit of Measure</FormLabel>
+              <FormLabel className="flex h-4 items-center" required>Base Unit of Measure</FormLabel>
               <InlineEditableSelect
                 items={units}
                 isLoading={false}
@@ -132,7 +132,7 @@ export function InventoryTab() {
           name="cost"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Cost</FormLabel>
+              <FormLabel className="flex h-4 items-center">Cost</FormLabel>
               <FormControl>
                 <Input type="number" step="0.01" placeholder="e.g., 50.00" value={field.value || ''} onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
               </FormControl>
@@ -153,7 +153,7 @@ export function InventoryTab() {
           name="department"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Department</FormLabel>
+              <FormLabel className="flex h-4 items-center">Department</FormLabel>
               <InlineEditableSelect
                 items={departments}
                 isLoading={isLoadingDepartments}
@@ -190,7 +190,7 @@ export function InventoryTab() {
           name="vatStatus"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>VAT Status</FormLabel>
+              <FormLabel className="flex h-4 items-center">VAT Status</FormLabel>
               <Select onValueChange={field.onChange} value={field.value} defaultValue="YES (Subject to 12% VAT)">
                 <FormControl>
                   <SelectTrigger>
@@ -215,7 +215,7 @@ export function InventoryTab() {
           name="availability"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Availability</FormLabel>
+              <FormLabel className="flex h-4 items-center">Availability</FormLabel>
               <Select onValueChange={field.onChange} value={field.value} defaultValue="Available">
                 <FormControl>
                   <SelectTrigger>
@@ -232,38 +232,55 @@ export function InventoryTab() {
           )}
         />
 
-        {/* Stock is standard-only. Reorder Point is set per supplier
-            mapping on the Suppliers tab (supplier_specific_rop) — there's
-            no field for it here, so there's exactly one place to look. */}
-        {!isServiceProduct && (
-        <div className="space-y-2">
-          <Label>Initial Stock</Label>
-          <div>
-            <Input type="text" value={formatQuantity(product.stock || 0)} disabled />
-          </div>
-          <p className="text-sm text-muted-foreground">Stock is updated via transactions.</p>
-        </div>
-        )}
-      </div>
+        {/* Warehouse and Shelf are stock-only — a service skips both. Unit of
+            Measure moved to the Selling Units tab for standard items (it has
+            no equivalent for a service, which has no selling units at all).
 
-      {/* Warehouse and Shelf are stock-only — a service skips both. Unit of
-          Measure moved to the Selling Units tab for standard items (it has
-          no equivalent for a service, which has no selling units at all).
-          Mirrors the Add form. */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            In the SAME grid as the fields above rather than a second one of
+            its own, matching the Add form: a grid that ends on an odd field
+            left Availability alone on its row with a hole beside it, and the
+            next grid started a fresh row underneath. One grid lets the fields
+            simply flow. */}
         {!isServiceProduct && (
         <FormField
           control={form.control}
           name="warehouse"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Warehouse</FormLabel>
-              {/* Read-only: a product row belongs to exactly one warehouse
-                  (one row per warehouse — see per-warehouse product rows), so
-                  re-pointing it here would silently move stock between
-                  locations without a movement record. Moving stock is what a
-                  stock transfer is for. The field is still registered so the
-                  submitted payload keeps the saved warehouse_id. */}
+              {/* Matches the Add form's label: pinned to the same 14px line so
+                  the tooltip button cannot grow it out of line with the plain
+                  label beside it. */}
+              <FormLabel className="flex h-4 items-center gap-1.5">
+                Warehouse
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="Why the warehouse cannot be changed"
+                        className="flex h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground"
+                        // A label click would focus the field.
+                        onClick={(e) => e.preventDefault()}
+                      >
+                        <HelpCircle className="h-3.5 w-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-[260px]">
+                      A product row belongs to exactly one warehouse, and this row holds that
+                      location&rsquo;s own stock. Moving it here would relocate stock with no movement
+                      record, so use a stock transfer instead.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </FormLabel>
+              {/* Read-only, and deliberately NOT the Add form's multi-select: a
+                  product row belongs to exactly one warehouse (one row per
+                  warehouse — see per-warehouse product rows), and updateProduct
+                  DOES write warehouse_id, so re-pointing it here would silently
+                  move stock between locations without a movement record. Moving
+                  stock is what a stock transfer is for. The field stays
+                  registered so the submitted payload keeps the saved
+                  warehouse_id. */}
               <Input
                 type="text"
                 value={
@@ -274,7 +291,7 @@ export function InventoryTab() {
                 disabled
               />
               <p className="text-sm text-muted-foreground">
-                Warehouse is fixed after creation. Use a stock transfer to move this item.
+                Fixed after creation. Use a stock transfer to move this item.
               </p>
               <FormMessage />
             </FormItem>
@@ -288,7 +305,7 @@ export function InventoryTab() {
           name="shelfLocationIds"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Shelf Locations (Optional)</FormLabel>
+              <FormLabel className="flex h-4 items-center">Shelf Locations (Optional)</FormLabel>
               <InlineEditableMultiSelect
                 items={shelfLocations || []}
                 value={field.value || []}
