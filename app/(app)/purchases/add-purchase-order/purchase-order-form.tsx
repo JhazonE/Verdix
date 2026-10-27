@@ -384,9 +384,13 @@ export function PurchaseOrderForm({ controller, isEdit, onCancel }: PurchaseOrde
               <div className="flex-1 flex flex-col overflow-hidden bg-muted/5 p-4 relative">
                 <div className="max-w-2xl mb-4 z-10 flex items-start gap-2">
                   <div className="flex-1">
+                    {/* Scoped to the "Receive To" warehouse: a products row is
+                        warehouse-specific, so an unscoped search listed the
+                        same item once per warehouse. */}
                     <ProductSelector
                       onSelectProduct={handleAddProduct}
                       supplierId={form.watch('supplierId')}
+                      warehouseId={form.watch('receiveToWarehouse')}
                     />
                   </div>
                   <Button
@@ -411,6 +415,11 @@ export function PurchaseOrderForm({ controller, isEdit, onCancel }: PurchaseOrde
                   open={isAddProductOpen}
                   onOpenChange={setIsAddProductOpen}
                   hideInitialStock
+                  // Create it in the warehouse this order is received into,
+                  // not the store's main one — otherwise a product added here
+                  // is a row in a warehouse the search above isn't looking at,
+                  // and it reads as "I just created it and it's not there".
+                  defaultWarehouseId={form.watch('receiveToWarehouse')}
                 />
 
                 <div className="flex-1 rounded-lg border bg-background shadow-sm overflow-hidden flex flex-col relative">

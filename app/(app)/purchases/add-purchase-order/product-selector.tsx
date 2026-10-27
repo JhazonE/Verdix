@@ -58,9 +58,24 @@ function findExactUnitMatch(products: Product[], code: string): { product: Produ
 export function ProductSelector({
   onSelectProduct,
   supplierId,
+  warehouseId,
 }: {
   onSelectProduct: (product: Product, unit?: SellingUnit) => void;
   supplierId?: string;
+  /**
+   * The PO's "Receive To" warehouse. A `products` row is warehouse-specific —
+   * the same item in STORE and BODEGA is two rows — so an unscoped search
+   * listed the same product once per warehouse with different stock, which
+   * reads as duplicate data rather than as two locations. The Products and
+   * Stock Levels pages already open scoped to one warehouse
+   * (resolveDefaultWarehouseId); this makes the PO's product search agree with
+   * them, and scopes it to the warehouse the order is actually received into,
+   * so the row picked is the row whose stock that PO will move.
+   *
+   * Left undefined until a warehouse is chosen, which keeps the search usable
+   * (unscoped, as before) rather than empty on a fresh form.
+   */
+  warehouseId?: string;
 }) {
   const [inputValue, setInputValue] = useState('');
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -72,7 +87,12 @@ export function ProductSelector({
   // instead of ever fetching them, which is why suggestions only appear
   // once there's a query.
   const debouncedSearch = useDebounce(inputValue, 300);
-  const { products: suggestedProducts, loading, error } = useProducts(debouncedSearch, undefined, supplierId);
+  const { products: suggestedProducts, loading, error } = useProducts(
+    debouncedSearch,
+    undefined,
+    supplierId,
+    warehouseId || undefined,
+  );
   // Services are excluded: they have no stock, so they can't be ordered from a
   // supplier. useProducts() is shared with POS/sales, so filter here rather
   // than in the hook or API route.
@@ -88,6 +108,10 @@ export function ProductSelector({
     try {
       const params = new URLSearchParams({ search: code, limit: '25' });
       if (supplierId) params.append('supplierId', supplierId);
+      // Same scope as the autocomplete above. Without this a scan would
+      // resolve to a different warehouse's row than typing the same product's
+      // name would find.
+      if (warehouseId) params.append('warehouseId', warehouseId);
       const res = await fetch(getApiUrl(`/products?${params.toString()}`), { cache: 'no-store' });
       const result = await res.json();
       if (!result.success) return;

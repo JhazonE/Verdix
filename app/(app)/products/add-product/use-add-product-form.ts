@@ -82,6 +82,14 @@ export interface UseAddProductFormProps {
   // nothing reconciling the two. The field is hidden, not just disabled, so
   // there is nothing to misread as "this is where PO stock goes."
   hideInitialStock?: boolean;
+  // Which warehouse the form's Warehouses picker starts on, for a host that
+  // already knows the answer — Add Purchase Order passes its own "Receive To"
+  // warehouse. Without this the form always preselected the store's MAIN
+  // warehouse, so a product created inline on a PO receiving into BODEGA was
+  // created as a STORE row and then did not appear in that PO's own
+  // warehouse-scoped product search: created, apparently, into nowhere.
+  // Still only a DEFAULT — it fills an empty field and the user can change it.
+  defaultWarehouseId?: string;
 }
 
 export function useAddProductForm({
@@ -92,6 +100,7 @@ export function useAddProductForm({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
   hideInitialStock = false,
+  defaultWarehouseId,
 }: UseAddProductFormProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
@@ -437,16 +446,24 @@ export function useAddProductForm({
   // the product importer uses). Declared after the reset effect so it
   // re-applies on every open, and only fills an empty field so a user's own
   // pick is never replaced; clearing it afterwards is allowed and saves NULL.
+  //
+  // A host-supplied default wins over that chain when it names a warehouse
+  // that is actually selectable here: it is a stronger signal than "the main
+  // one", because the host knows where this product is being created FOR.
   useEffect(() => {
     if (!isOpen || itemType !== 'standard' || warehouses.length === 0) return;
     if (form.getValues('warehouse')) return;
     const active = warehouses.filter((w: any) => w.isActive !== false);
+    const requested = defaultWarehouseId
+      ? active.find((w: any) => String(w.id) === String(defaultWarehouseId))
+      : undefined;
     const store =
+      requested ||
       active.find((w: any) => w.isMain) ||
       active.find((w: any) => w.id === 'wh_main') ||
       active[0];
     if (store) form.setValue('warehouse', store.id);
-  }, [isOpen, itemType, warehouses, form]);
+  }, [isOpen, itemType, warehouses, form, defaultWarehouseId]);
 
   // "There is no standalone price field — the default (Retail) price-level
   // row IS the product's price" only held at submit time (onSubmit copied

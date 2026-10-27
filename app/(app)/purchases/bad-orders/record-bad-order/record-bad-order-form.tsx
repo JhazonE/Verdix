@@ -288,9 +288,13 @@ export function RecordBadOrderForm({ onClose, onSuccess }: RecordBadOrderFormPro
             {/* ITEMS TABLE */}
             <div className="flex-1 flex flex-col overflow-hidden bg-muted/5 p-4 relative">
               <div className="max-w-2xl mb-4 z-10">
+                {/* Scoped to the selected warehouse: a products row is
+                    warehouse-specific, and a bad order deducts stock, so the
+                    row picked must be the one whose stock is written off. */}
                 <ProductSelector
                   onSelectProduct={handleAddProduct}
                   supplierId={form.watch('supplierId')}
+                  warehouseId={form.watch('warehouseId')}
                 />
               </div>
 

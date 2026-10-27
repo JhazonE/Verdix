@@ -63,9 +63,19 @@ function findExactUnitMatch(products: Product[], code: string): { product: Produ
 export function ProductSelector({
   onSelectProduct,
   supplierId,
+  warehouseId,
 }: {
   onSelectProduct: (product: Product, unit?: SellingUnit) => void;
   supplierId?: string | null;
+  /**
+   * The warehouse the write-off is recorded against. A `products` row is
+   * warehouse-specific, so an unscoped search listed the same item once per
+   * warehouse — and here the choice is not merely cosmetic: a bad order
+   * deducts stock, so picking the wrong warehouse's row writes the loss off
+   * against the wrong location's stock. Undefined (no warehouse chosen yet)
+   * searches unscoped, as before.
+   */
+  warehouseId?: string | null;
 }) {
   // When a supplier is selected, only that supplier's products are searchable.
   // Otherwise, all products are shown.
@@ -80,7 +90,12 @@ export function ProductSelector({
   // instead of ever fetching them, which is why suggestions only appear
   // once there's a query.
   const debouncedSearch = useDebounce(inputValue, 300);
-  const { products: suggestedProducts, loading, error } = useProducts(debouncedSearch, undefined, filterSupplierId);
+  const { products: suggestedProducts, loading, error } = useProducts(
+    debouncedSearch,
+    undefined,
+    filterSupplierId,
+    warehouseId || undefined,
+  );
   // Services are excluded: they have no stock, so they can't be reported as a
   // bad order. useProducts() is shared with POS/sales, so filter here rather
   // than in the hook or API route.
@@ -96,6 +111,9 @@ export function ProductSelector({
     try {
       const params = new URLSearchParams({ search: code, limit: '25' });
       if (filterSupplierId) params.append('supplierId', filterSupplierId);
+      // Same scope as the autocomplete above, or a scan would resolve to a
+      // different warehouse's row than typing the name would find.
+      if (warehouseId) params.append('warehouseId', warehouseId);
       const res = await fetch(getApiUrl(`/products?${params.toString()}`), { cache: 'no-store' });
       const result = await res.json();
       if (!result.success) return;
