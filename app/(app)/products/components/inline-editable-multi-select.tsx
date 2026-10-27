@@ -38,6 +38,15 @@ export interface InlineEditableMultiSelectProps<T> {
    * every click, so the wrapper stops those events — see below.
    */
   renderRowAccessory?: (id: string) => React.ReactNode;
+  /**
+   * Shows a "Select all / Clear all" toggle above the list.
+   *
+   * Opt-in, not default: this control is shared with shelf locations and
+   * categories, where picking every option at once is rarely meaningful. The
+   * Warehouses picker wants it because stocking an item in every location is a
+   * normal setup, and ticking them one by one is the tedious part.
+   */
+  showSelectAll?: boolean;
 }
 
 export function InlineEditableMultiSelect<T>({
@@ -53,6 +62,7 @@ export function InlineEditableMultiSelect<T>({
   onAdd,
   onRename,
   renderRowAccessory,
+  showSelectAll = false,
 }: InlineEditableMultiSelectProps<T>) {
   const [adding, setAdding] = useState(false);
   const [addDraft, setAddDraft] = useState('');
@@ -75,6 +85,23 @@ export function InlineEditableMultiSelect<T>({
   const toggle = (id: string) => {
     const current = value || [];
     onChange(current.includes(id) ? current.filter((v) => v !== id) : [...current, id]);
+  };
+
+  const allIds = items.map(getId);
+  const allSelected = allIds.length > 0 && allIds.every((id) => (value || []).includes(id));
+
+  const toggleAll = () => {
+    if (allSelected) {
+      onChange([]);
+      return;
+    }
+    // Order is load-bearing for the Warehouses picker — the FIRST id is the
+    // primary row, the one that owns the scannable barcode. So the existing
+    // selection keeps its order and its head, and only the unpicked items are
+    // appended. Selecting all must never silently hand the barcode to whatever
+    // happens to sort first.
+    const current = value || [];
+    onChange([...current, ...allIds.filter((id) => !current.includes(id))]);
   };
 
   const commitAdd = async () => {
@@ -159,6 +186,26 @@ export function InlineEditableMultiSelect<T>({
       <PopoverContent className="w-full min-w-[300px] p-0" align="start">
         <Command className="w-full">
           <CommandInput placeholder={searchPlaceholder} />
+          {/* Above the list, not inside it: a row inside CommandList would
+              scroll out of reach on a long list and would be filtered away by
+              the search box. Outside Command's own item handling too, so it
+              never competes with arrow-key navigation. */}
+          {showSelectAll && items.length > 0 && (
+            <div className="flex items-center justify-between border-b px-2 py-1.5">
+              <span className="text-xs text-muted-foreground">
+                {(value || []).length} of {items.length} selected
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-7 px-2 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleAll(); }}
+              >
+                {allSelected ? 'Clear all' : 'Select all'}
+              </Button>
+            </div>
+          )}
           <CommandList className="max-h-[300px] overflow-y-auto">
             <CommandEmpty>{emptyLabel}</CommandEmpty>
             <CommandGroup>

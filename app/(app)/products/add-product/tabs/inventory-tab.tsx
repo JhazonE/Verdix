@@ -377,6 +377,11 @@ export function InventoryTab() {
                   items={(warehouses || []).filter((w: any) => w.isActive !== false)}
                   value={warehouseSelection}
                   onChange={setWarehouseSelection}
+                  // Stocking an item in every location is a normal setup, and
+                  // ticking them one at a time is the tedious part. "All" means
+                  // every ACTIVE warehouse — the same list shown above — so a
+                  // retired location is never silently stocked.
+                  showSelectAll
                   placeholder={isLoadingWarehouses ? 'Loading...' : 'Select warehouses...'}
                   searchPlaceholder="Search warehouse..."
                   addLabel="Add Warehouse"
