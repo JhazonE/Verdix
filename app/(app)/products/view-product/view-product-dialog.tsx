@@ -26,6 +26,7 @@ import { SectionHeader } from './section-header';
 import { GlanceStrip } from './glance-strip';
 import { SellingUnitsTab } from './selling-units-tab';
 import { StockTab } from './stock-tab';
+import { SalesSparkline } from './sales-sparkline';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -82,7 +83,7 @@ export function ViewProductDialog({
                     {trigger}
                 </DialogTrigger>
             )}
-            <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-hidden p-0 gap-0 flex flex-col">
+            <DialogContent className="sm:max-w-5xl overflow-hidden p-0 gap-0 flex flex-col">
                  <DialogHeader className="sr-only">
                     <DialogTitle>{product.name}</DialogTitle>
                     <DialogDescription>{product.description}</DialogDescription>
@@ -90,8 +91,10 @@ export function ViewProductDialog({
 
                  <Tabs defaultValue="overview" className="flex flex-col min-h-0 flex-1">
 
-                    {/* HEADER */}
-                    <div className="border-b bg-background px-6 pt-5 shrink-0">
+                    {/* HEADER — pr-12 keeps the action buttons clear of the
+                        dialog's own absolutely-positioned close X, which would
+                        otherwise sit on top of Edit Product. */}
+                    <div className="border-b bg-background px-6 pr-12 pt-5 shrink-0">
                         <div className="flex flex-wrap items-start justify-between gap-4">
                             <div className="min-w-0 space-y-1">
                                 <div className="flex flex-wrap items-center gap-2.5">
@@ -238,7 +241,10 @@ export function ViewProductDialog({
                     <div className="min-h-0 flex-1 overflow-y-auto bg-muted/20 p-6">
 
                         <TabsContent value="overview" className="mt-0">
-                            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+                            {/* items-start so a tall card (the sparkline) does not stretch
+                                its neighbours to match, which padded the row with empty
+                                space and pushed Tax & Lifecycle out of view. */}
+                            <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-3">
                                 <div className="rounded-xl border bg-card p-4">
                                     <SectionHeader title="Classification" icon={Tags} />
                                     <div className="grid grid-cols-1 gap-1">
@@ -269,8 +275,14 @@ export function ViewProductDialog({
                                 </div>
 
                                 <div className="rounded-xl border bg-card p-4">
+                                    <SalesSparkline product={product} effectiveReorderPoint={effectiveReorderPoint} />
+                                </div>
+                            </div>
+
+                            <div className="mt-5">
+                                <div className="rounded-xl border bg-card p-4">
                                     <SectionHeader title="Tax &amp; Lifecycle" icon={CreditCard} />
-                                    <div className="grid grid-cols-1 gap-1">
+                                    <div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
                                         {product.vatStatus && (
                                             <DetailItem
                                                 label="VAT Status"
@@ -278,7 +290,6 @@ export function ViewProductDialog({
                                                 icon={Info}
                                             />
                                         )}
-                                        <DetailItem label="Avg. Daily Sales" value={product.avgDailySales || '0.00'} icon={BarChart3} />
                                         {product.expirationDate && (
                                             <DetailItem
                                                 label="Expiration Date"
