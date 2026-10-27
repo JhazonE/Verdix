@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
 import { Category, Brand, UnitOfMeasure, Supplier, TaxRate, SystemSettings, Product } from '@/lib/types';
 import type { ProductType } from '@/lib/product-type';
+import { resolveInitialWarehouseSelection } from '@/lib/warehouse-stocking';
 
 import {
   getCategories,
@@ -441,28 +442,32 @@ export function useAddProductForm({
   }, [isOpen, priceLevels, form, appendPriceLevel]);
 
   // Warehouse is optional on the form, but a stocked product with none shows a
-  // blank column in the product list — so preselect the store warehouse
-  // (is_main, else the seeded 'wh_main', else the first active one — same order
-  // the product importer uses). Declared after the reset effect so it
-  // re-applies on every open, and only fills an empty field so a user's own
-  // pick is never replaced; clearing it afterwards is allowed and saves NULL.
+  // blank column in the product list — so preselect EVERY active warehouse.
+  // A new product almost always belongs in all of them, and starting from
+  // "all" means the rare exception is unticking one or two rather than
+  // ticking every one by hand.
   //
-  // A host-supplied default wins over that chain when it names a warehouse
-  // that is actually selectable here: it is a stronger signal than "the main
-  // one", because the host knows where this product is being created FOR.
+  // Which one leads still matters and keeps the old precedence (a
+  // host-supplied default, else is_main, else the seeded 'wh_main', else the
+  // first active — the same order the product importer uses): the head of the
+  // list is the PRIMARY row, the one that owns the scannable barcode, so it
+  // cannot be left to whatever the warehouse list happens to return first.
+  // The rest follow as additionalWarehouses at stock 0 — listed, with nothing
+  // in them yet, which is a legitimate setup ahead of a delivery.
+  //
+  // Declared after the reset effect so it re-applies on every open, and it
+  // only fills an EMPTY field, so a user's own picks are never replaced;
+  // clearing them afterwards is allowed and saves NULL.
   useEffect(() => {
     if (!isOpen || itemType !== 'standard' || warehouses.length === 0) return;
     if (form.getValues('warehouse')) return;
-    const active = warehouses.filter((w: any) => w.isActive !== false);
-    const requested = defaultWarehouseId
-      ? active.find((w: any) => String(w.id) === String(defaultWarehouseId))
-      : undefined;
-    const store =
-      requested ||
-      active.find((w: any) => w.isMain) ||
-      active.find((w: any) => w.id === 'wh_main') ||
-      active[0];
-    if (store) form.setValue('warehouse', store.id);
+    const selection = resolveInitialWarehouseSelection(warehouses, defaultWarehouseId);
+    if (!selection) return;
+    form.setValue('warehouse', selection.primaryId);
+    form.setValue(
+      'additionalWarehouses',
+      selection.additionalIds.map((id) => ({ warehouseId: id, stock: 0 })) as any,
+    );
   }, [isOpen, itemType, warehouses, form, defaultWarehouseId]);
 
   // "There is no standalone price field — the default (Retail) price-level

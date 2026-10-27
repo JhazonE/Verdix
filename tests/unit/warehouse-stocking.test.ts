@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   normalizeOpeningStock,
   resolveAdditionalWarehouses,
+  resolveInitialWarehouseSelection,
 } from '../../lib/warehouse-stocking';
 
 /**
@@ -105,6 +106,111 @@ assert.deepEqual(
   ).map((r) => r.warehouseId),
   [ANNEX, BODEGA],
   'entry order is preserved',
+);
+
+// --- resolveInitialWarehouseSelection --------------------------------------
+
+/**
+ * Add Product opens with every active warehouse already ticked. What these
+ * pin down is which one LEADS, because the head of the selection is the
+ * primary row — the one that owns the scannable barcode.
+ */
+
+const wh = (id: string, extra: { isActive?: boolean; isMain?: boolean } = {}) => ({
+  id,
+  ...extra,
+});
+
+assert.equal(resolveInitialWarehouseSelection([], null), null, 'no warehouses means no selection');
+assert.equal(resolveInitialWarehouseSelection(undefined, null), null, 'undefined is tolerated');
+assert.equal(resolveInitialWarehouseSelection(null, null), null, 'null is tolerated');
+
+// Every active warehouse is selected, not just the lead.
+assert.deepEqual(
+  resolveInitialWarehouseSelection([wh(STORE), wh(BODEGA), wh(ANNEX)], null),
+  { primaryId: STORE, additionalIds: [BODEGA, ANNEX] },
+  'all active warehouses start selected',
+);
+
+// is_main leads even when it is not first in the list.
+assert.deepEqual(
+  resolveInitialWarehouseSelection([wh(ANNEX), wh(BODEGA, { isMain: true }), wh(STORE)], null),
+  { primaryId: BODEGA, additionalIds: [ANNEX, STORE] },
+  'the main warehouse leads regardless of list order',
+);
+
+// The seeded wh_main is the fallback when nothing is flagged is_main.
+assert.deepEqual(
+  resolveInitialWarehouseSelection([wh(ANNEX), wh(STORE)], null),
+  { primaryId: STORE, additionalIds: [ANNEX] },
+  'the seeded wh_main leads when nothing is flagged main',
+);
+
+// With neither, the first active one leads — never a retired one.
+assert.deepEqual(
+  resolveInitialWarehouseSelection([wh(ANNEX), wh(BODEGA)], null),
+  { primaryId: ANNEX, additionalIds: [BODEGA] },
+  'the first active warehouse leads as a last resort',
+);
+
+// A host-supplied default outranks is_main: Add Purchase Order knows which
+// warehouse the product is being created FOR.
+assert.deepEqual(
+  resolveInitialWarehouseSelection([wh(STORE, { isMain: true }), wh(BODEGA)], BODEGA),
+  { primaryId: BODEGA, additionalIds: [STORE] },
+  'a host-supplied default outranks is_main',
+);
+
+// ...but only when it names a warehouse that actually exists and is active,
+// or the barcode would be handed to a row that cannot be selected.
+assert.deepEqual(
+  resolveInitialWarehouseSelection([wh(STORE, { isMain: true }), wh(BODEGA)], 'wh_ghost'),
+  { primaryId: STORE, additionalIds: [BODEGA] },
+  'an unknown preferred id falls back to the normal precedence',
+);
+
+assert.deepEqual(
+  resolveInitialWarehouseSelection(
+    [wh(STORE, { isMain: true }), wh(ANNEX, { isActive: false })],
+    ANNEX,
+  ),
+  { primaryId: STORE, additionalIds: [] },
+  'a retired warehouse is never led with, even when asked for',
+);
+
+// A retired location must never be silently stocked.
+assert.deepEqual(
+  resolveInitialWarehouseSelection([wh(STORE), wh(ANNEX, { isActive: false }), wh(BODEGA)], null),
+  { primaryId: STORE, additionalIds: [BODEGA] },
+  'inactive warehouses are excluded from the selection',
+);
+
+assert.equal(
+  resolveInitialWarehouseSelection([wh(STORE, { isActive: false })], null),
+  null,
+  'all-inactive yields no selection rather than an invented id',
+);
+
+// A lone warehouse leads with nothing following it.
+assert.deepEqual(
+  resolveInitialWarehouseSelection([wh(BODEGA)], null),
+  { primaryId: BODEGA, additionalIds: [] },
+  'a single warehouse leads alone',
+);
+
+// The two resolvers have to agree: everything this one marks as additional
+// must survive into real sibling rows, at stock 0.
+const selection = resolveInitialWarehouseSelection([wh(STORE), wh(BODEGA), wh(ANNEX)], null)!;
+assert.deepEqual(
+  resolveAdditionalWarehouses(
+    selection.additionalIds.map((id) => ({ warehouseId: id, stock: 0 })),
+    selection.primaryId,
+  ),
+  [
+    { warehouseId: BODEGA, stock: 0 },
+    { warehouseId: ANNEX, stock: 0 },
+  ],
+  'the default selection survives into sibling rows at zero stock',
 );
 
 console.log('✅ warehouse-stocking tests passed');
