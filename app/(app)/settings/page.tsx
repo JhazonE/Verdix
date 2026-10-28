@@ -110,21 +110,6 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:bg-accent transition-colors" onClick={() => window.location.href = '/settings/tax-rates'}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tax Rates</CardTitle>
-            <SettingsIcon className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <CardDescription className="mb-4">
-              Manage system-wide tax rates
-            </CardDescription>
-            <div className="text-xs text-muted-foreground">
-              VAT, Sales Tax, and other levies
-            </div>
-          </CardContent>
-        </Card>
-
         <Card className="cursor-pointer hover:bg-accent transition-colors" onClick={() => window.location.href = '/settings/pricing'}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pricing Configuration</CardTitle>
