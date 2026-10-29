@@ -15,8 +15,40 @@ declare global {
 
 // Create connection pool singleton.
 // DB_SSL=true enables TLS for remote/cloud MySQL (e.g. Railway proxy).
-// DB_POOL_LIMIT caps connections per app instance — keep it low when several
-// terminals share one cloud DB so they don't exhaust the server's max_connections.
+// DB_POOL_LIMIT caps connections per app instance, so several terminals sharing
+// one cloud DB don't exhaust the server's max_connections. It is a CEILING per
+// terminal, not a knob to minimise: see MIN_POOL_LIMIT below for the floor it
+// cannot go under, and why.
+// The smallest pool this app can actually run on.
+//
+// One POS checkout issues ~31 queries inside a single transaction, so it holds
+// its connection for the whole sale. A handful of simultaneous users plus the
+// background workers (cron sweeps, sync queue) will exceed a pool of 10, and
+// because mysql2 queues waiters with no timer, exceeding it reads as the app
+// freezing rather than as an error. A deployment that had DB_POOL_LIMIT=10
+// behaved exactly that way.
+//
+// Honouring a value below this floor is never what the operator wants: the
+// setting exists to keep SEVERAL TERMINALS from exhausting a shared cloud DB's
+// max_connections, which is an argument for a ceiling per terminal, not for a
+// number too small to serve one terminal's own users. So a lower value is
+// raised and logged rather than obeyed silently.
+const MIN_POOL_LIMIT = 25;
+
+function resolvePoolLimit(fallback: number): number {
+  const configured = parseInt(process.env.DB_POOL_LIMIT || '');
+  if (!Number.isFinite(configured) || configured <= 0) return fallback;
+  if (configured < MIN_POOL_LIMIT) {
+    console.warn(
+      `[DB] DB_POOL_LIMIT=${configured} is below the ${MIN_POOL_LIMIT}-connection floor and was raised. ` +
+        `A single checkout holds one connection for ~31 queries, so a pool this small makes ` +
+        `concurrent users queue behind each other and the app appear to hang.`
+    );
+    return MIN_POOL_LIMIT;
+  }
+  return configured;
+}
+
 function buildPoolConfig(connectionLimit: number): mysql.PoolOptions {
   return {
     host: process.env.DB_HOST || 'localhost',
@@ -26,7 +58,7 @@ function buildPoolConfig(connectionLimit: number): mysql.PoolOptions {
     database: process.env.DB_NAME || 'verdix',
     ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
     waitForConnections: true,
-    connectionLimit: parseInt(process.env.DB_POOL_LIMIT || '') || connectionLimit,
+    connectionLimit: resolvePoolLimit(connectionLimit),
     queueLimit: 0,
     connectTimeout: 15000,
     enableKeepAlive: true,
@@ -71,8 +103,83 @@ export async function query(sql: string, params?: any[]): Promise<any> {
  * Get a connection from the pool
  * @returns MySQL connection
  */
+/**
+ * How long to wait for a free pool connection before giving up.
+ *
+ * mysql2 has NO acquire timeout of its own: with waitForConnections:true and
+ * queueLimit:0 it pushes the waiter onto an internal queue with no timer
+ * (lib/base/pool.js), so an exhausted pool makes every caller wait FOREVER.
+ * That is why pool exhaustion presents as the app silently hanging with
+ * nothing in the logs, rather than as an error anyone can act on.
+ *
+ * Note for anyone tempted to "just set acquireTimeout" in the pool config:
+ * mysql2 3.x does not read it. PoolConfig only honours connectionLimit,
+ * queueLimit, waitForConnections, maxIdle and idleTimeout — an acquireTimeout
+ * key is accepted and silently ignored, which looks like a fix and is not.
+ * The timeout has to be enforced out here, around getConnection().
+ */
+const ACQUIRE_TIMEOUT_MS = parseInt(process.env.DB_ACQUIRE_TIMEOUT_MS || '') || 20_000;
+
+/** Snapshot of pool saturation, for diagnostics. */
+export function getPoolStats() {
+  // These are mysql2 internals, not public API — read defensively so a version
+  // bump degrades the diagnostics instead of breaking callers.
+  const internal: any = (pool as any).pool ?? pool;
+  const total = internal?._allConnections?.length;
+  const free = internal?._freeConnections?.length;
+  const queued = internal?._connectionQueue?.length;
+  const limit = internal?.config?.connectionLimit;
+  return {
+    limit: typeof limit === 'number' ? limit : null,
+    total: typeof total === 'number' ? total : null,
+    free: typeof free === 'number' ? free : null,
+    inUse: typeof total === 'number' && typeof free === 'number' ? total - free : null,
+    waiting: typeof queued === 'number' ? queued : null,
+  };
+}
+
+/**
+ * Get a connection from the pool
+ * @returns MySQL connection
+ */
 export async function getConnection() {
-  return await pool.getConnection();
+  let timer: NodeJS.Timeout | undefined;
+  let timedOut = false;
+  const pending = pool.getConnection();
+
+  // If the race below is lost to the timeout, this acquisition is still in
+  // flight and will eventually be granted a connection that no caller holds a
+  // reference to. Release it when it lands, or the timeout itself would leak
+  // the very slot it is complaining about and make saturation permanent.
+  pending
+    .then((conn) => {
+      if (timedOut) conn.release();
+    })
+    .catch(() => {
+      // The acquisition failed on its own; the race already rejected or will.
+    });
+
+  try {
+    return await Promise.race([
+      pending,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          timedOut = true;
+          const stats = getPoolStats();
+          reject(
+            new Error(
+              `Timed out after ${ACQUIRE_TIMEOUT_MS}ms waiting for a database connection ` +
+                `(limit=${stats.limit}, inUse=${stats.inUse}, waiting=${stats.waiting}). ` +
+                `The connection pool is saturated: either DB_POOL_LIMIT is too low for the ` +
+                `number of concurrent users, or connections are being held too long or leaked.`
+            )
+          );
+        }, ACQUIRE_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /**
@@ -80,7 +187,11 @@ export async function getConnection() {
  * @param callback - Function that receives a connection and returns a promise
  */
 export async function withTransaction<T>(callback: (connection: mysql.PoolConnection) => Promise<T>): Promise<T> {
-  const connection = await pool.getConnection();
+  // Goes through getConnection() rather than pool.getConnection() so this
+  // path — which POS checkout and every other transaction use — gets the
+  // acquire timeout too. Calling the pool directly here would let the most
+  // important code path hang forever on a saturated pool.
+  const connection = await getConnection();
   // beginTransaction() is inside the try/finally because it can fail on its
   // own — a dropped socket to a remote (cloud) MySQL fails here, and a throw
   // before the try block would return to the caller WITHOUT releasing the
