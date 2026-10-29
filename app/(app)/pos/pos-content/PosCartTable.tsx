@@ -60,14 +60,43 @@ export function PosCartTable({
   // already cleared inputValue; without this guard that Enter falls through
   // to the "empty input" branch and opens the tender dialog unintentionally.
   const justAutoAddedRef = useRef(false);
+  // The code the auto-add effect has already put in the cart.
+  //
+  // Two separate things would otherwise add a single scan TWICE:
+  //
+  //  1. The scanner's trailing Enter. The effect below calls setInputValue(''),
+  //     but React batches that update, and a scanner emits its digits and its
+  //     Enter within a few milliseconds. The keydown can therefore run while
+  //     `inputValue` is still the pre-clear code, so the handler takes the
+  //     `handleAddItemBySKU` branch and adds the same product again.
+  //     justAutoAddedRef cannot catch this: it is only consulted in the
+  //     already-cleared branch, which is exactly the case that is fine.
+  //  2. A products refetch. findExactCodeMatch is a useCallback over
+  //     `products`, and useProducts re-maps a fresh array on each 30s
+  //     refetchInterval, so a refetch landing while the code is still in the
+  //     box gives the effect a new identity and re-runs it on an UNCHANGED
+  //     inputValue.
+  //
+  // A ref (not state) is required: it must be readable and writable within the
+  // same commit that the racing Enter observes.
+  const autoAddedCodeRef = useRef<string | null>(null);
 
   // A scanned barcode (or a typed exact SKU) lands as an exact code match —
   // skip the dropdown entirely and drop it straight into the cart.
   useEffect(() => {
+    const code = inputValue.trim().toLowerCase();
+    if (!code) {
+      // The box is genuinely empty again, so the next scan of the same code is
+      // a deliberate second scan and must be allowed to bump the quantity.
+      autoAddedCodeRef.current = null;
+      return;
+    }
+    if (autoAddedCodeRef.current === code) return;
     const exactMatch = findExactCodeMatch(inputValue);
     if (exactMatch) {
       setIsSuggestOpen(false);
       justAutoAddedRef.current = true;
+      autoAddedCodeRef.current = code;
       handleAddItem(exactMatch, inputValue);
     }
   }, [inputValue, findExactCodeMatch, handleAddItem]);
@@ -120,7 +149,15 @@ export function PosCartTable({
                 e.preventDefault();
                 e.stopPropagation();
                 if (inputValue.trim()) {
-                  if (isSuggestOpen && suggestions.length > 0) selectSuggestion(suggestions[highlightedIndex]);
+                  if (autoAddedCodeRef.current === inputValue.trim().toLowerCase()) {
+                    // The auto-add effect already carted this exact code; this
+                    // is the scanner's trailing Enter arriving before the
+                    // cleared input committed. Swallow it rather than adding a
+                    // second piece.
+                    justAutoAddedRef.current = false;
+                    autoAddedCodeRef.current = null;
+                    setInputValue('');
+                  } else if (isSuggestOpen && suggestions.length > 0) selectSuggestion(suggestions[highlightedIndex]);
                   else handleAddItemBySKU(inputValue);
                 } else if (justAutoAddedRef.current) {
                   // Scanner's trailing Enter landing on an already-cleared box — swallow it.
