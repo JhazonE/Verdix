@@ -345,9 +345,25 @@ export async function updateStockAndRecordMovement(
   expirationDate?: string | null,
   unitCostOverride?: number | null
 ): Promise<StockMovement> {
-  // Get current product info
-  const productSql = 'SELECT name, stock FROM products WHERE id = ?';
-  const productResult = connection 
+  // Get current product info.
+  // The read takes a row lock (FOR UPDATE) when it runs inside a caller's
+  // transaction, because what follows is a read-modify-write: the new stock is
+  // computed in JS from this figure and written back as an ABSOLUTE value. Two
+  // terminals deducting the same product concurrently would otherwise both read
+  // the same starting stock, and the later write would silently discard the
+  // earlier deduction — stock gains back units that were really sold, and both
+  // stock_movements rows claim the same previous_stock, so the audit trail
+  // contradicts itself. Locking serialises the pair: the second reader blocks
+  // until the first commits, then reads the updated figure.
+  //
+  // Without a connection there is no enclosing transaction for the lock to be
+  // held by — FOR UPDATE would release at once and buy nothing — so those
+  // callers stay unprotected by construction. Pass a transaction connection
+  // for any write that must not lose a concurrent update.
+  const productSql = connection
+    ? 'SELECT name, stock FROM products WHERE id = ? FOR UPDATE'
+    : 'SELECT name, stock FROM products WHERE id = ?';
+  const productResult = connection
     ? (await connection.query(productSql, [productId]))[0] as any[]
     : await query(productSql, [productId]);
     

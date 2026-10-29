@@ -996,8 +996,17 @@ export async function updateProduct(id: string, formData: ProductFormData) {
     }
 
     await withTransaction(async (connection) => {
-      // Fetch existing product to preserve fields not in the form
-      const [existingRows]: any = await connection.query('SELECT * FROM products WHERE id = ?', [id]);
+      // Fetch existing product to preserve fields not in the form.
+      // FOR UPDATE because every column below is read from this snapshot and
+      // then written back by one full-row UPDATE: a field absent from the form
+      // is re-written with the value read here. Two users saving this product
+      // concurrently would otherwise each build a 25-column write from their
+      // own stale snapshot, and whoever commits last would silently revert the
+      // other's edit — including fields that user never opened. The lock makes
+      // the second save read the first one's committed values, so it preserves
+      // them instead of overwriting them. It also protects the stock delta
+      // computed from `existing.stock` further down.
+      const [existingRows]: any = await connection.query('SELECT * FROM products WHERE id = ? FOR UPDATE', [id]);
       if (!existingRows || existingRows.length === 0) {
         throw new Error('Product not found');
       }

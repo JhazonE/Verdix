@@ -91,7 +91,7 @@ export const SCREENS: Screen[] = [
   { slug: 'settings-security', route: '/settings/pos-setup', title: 'Security settings', auth: 'admin',
     setup: 'posSetupSecurityTab' },
   { slug: 'settings-pos-terminals', route: '/settings/pos-terminals', title: 'POS terminals', auth: 'admin' },
-  { slug: 'settings-tax-rates', route: '/settings/tax-rates', title: 'Tax rates', auth: 'admin' },
+  { slug: 'settings-tax-rates', route: '/developer/tax-rates', title: 'Tax rates', auth: 'admin' },
   { slug: 'user-management', route: '/user-management', title: 'User management', auth: 'admin' },
 
   // Ch.2 POS — driven by named setup sequences in capture.ts

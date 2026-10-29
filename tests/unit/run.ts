@@ -93,6 +93,7 @@ import './additional-warehouses-selection.test';
 import './form-context-free-field-array.test';
 import './cart-quantity-counts-selling-unit.test';
 import './sync-permanent-error.test';
+import './pos-scan-single-quantity.test';
 
 // Each test file above is a side-effecting async IIFE: it starts running during
 // import but settles only after every import has completed. The DB-backed ones

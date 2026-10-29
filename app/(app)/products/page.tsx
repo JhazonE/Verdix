@@ -495,7 +495,7 @@ function ProductsContent() {
   // derived: this page is server-paged, so it only ever holds one page of
   // products and cannot count the rest. One cheap GROUP BY, refreshed on the
   // same cadence as the table.
-  const { data: warehouseCounts } = useQuery({
+  const { data: warehouseCounts, refetch: refetchWarehouseCounts } = useQuery({
     queryKey: ['warehouseProductCounts'],
     queryFn: () => getWarehouseProductCounts(),
     refetchInterval: 60 * 1000,
@@ -521,9 +521,14 @@ function ProductsContent() {
     if (defaultWarehouseId) setSelectedWarehouse(defaultWarehouseId);
   }, [productOptions?.warehouses]);
 
+  // The scope badges live in their own query, so a table refetch alone left
+  // them showing a pre-edit number until their 60s interval came round —
+  // adding or deleting a product moved the rows but not the count beside the
+  // warehouse it moved in. Anything that changes the row set refreshes both.
   const loadProducts = useCallback((page?: number, size?: number) => {
     refetch();
-  }, [refetch]);
+    refetchWarehouseCounts();
+  }, [refetch, refetchWarehouseCounts]);
 
   const loadProductOptions = useCallback(() => {
     refetchOptions();

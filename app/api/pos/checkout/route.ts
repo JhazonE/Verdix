@@ -247,6 +247,28 @@ export async function POST(request: NextRequest) {
       {
         const uniqueItemIds: string[] = [...new Set(items.map((it: any) => String(it.id)) as string[])];
         if (uniqueItemIds.length > 0) {
+          // Take every product row lock this sale needs UP FRONT, in one
+          // statement ordered by id, before any stock is touched.
+          //
+          // The stock deduction in processSaleLeg -> updateStockAndRecordMovement
+          // locks each product row as it reaches it. The item loop below walks
+          // the cart in the order the cashier scanned, so two terminals selling
+          // the same two products in opposite order would each hold the lock the
+          // other needs next and deadlock — one sale dying with ER_LOCK_DEADLOCK
+          // at the till. Acquiring all of them here in a single id-ordered
+          // statement gives every terminal the same acquisition order, so that
+          // cycle cannot form.
+          //
+          // This is a lock-ordering statement, not a data fetch: the SELECT
+          // below (which LEFT JOINs categories, and so must not carry FOR
+          // UPDATE itself) still reads the columns the sale actually uses, and
+          // reads them inside these locks.
+          const lockPlaceholders = uniqueItemIds.map(() => '?').join(',');
+          await connection.query(
+            `SELECT id FROM products WHERE id IN (${lockPlaceholders}) ORDER BY id FOR UPDATE`,
+            uniqueItemIds
+          );
+
           const placeholders = uniqueItemIds.map(() => '?').join(',');
           const [productRowsForItems]: any = await connection.query(
             `SELECT

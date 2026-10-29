@@ -13,6 +13,18 @@ export function registerMigration(migration: Migration) {
   migrations.push(migration);
 }
 
+/**
+ * The names every registered migration would run under, in run order.
+ *
+ * Importing `scripts/migrations/index` registers them all as a side effect, so
+ * this is the only way to ask "what will the new build try to apply?" without
+ * applying anything. The upgrade pre-flight check diffs it against the
+ * `migrations` table to list what is pending.
+ */
+export function getRegisteredMigrationNames(): string[] {
+  return migrations.map((m) => m.name);
+}
+
 export async function createMigrationsTable(): Promise<void> {
   const sql = `
     CREATE TABLE IF NOT EXISTS migrations (
