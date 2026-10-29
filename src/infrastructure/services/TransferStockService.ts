@@ -190,7 +190,11 @@ export class TransferStockService {
     warehouseId: string | null,
     connection: PoolConnection
   ) {
-    const [status]: any = await connection.query('SELECT stock FROM products WHERE id = ?', [productId]);
+    // FOR UPDATE: the new figure is computed in JS and written back as an
+    // absolute value, so an unlocked read lets a concurrent sale or transfer on
+    // the same product be overwritten and lost. Always called with a live
+    // transaction connection, so the lock is held until that commits.
+    const [status]: any = await connection.query('SELECT stock FROM products WHERE id = ? FOR UPDATE', [productId]);
     const previousStock = Number(status[0]?.stock || 0);
     const newStock = previousStock + Number(quantityChange);
 

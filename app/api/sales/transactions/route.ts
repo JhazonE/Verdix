@@ -469,7 +469,10 @@ export async function POST(request: NextRequest) {
         // Services carry no stock — nothing to deduct or log a movement for.
         if (!itemIsService) {
           // Fetch current stock
-          const [prodResult]: any = await connection.query('SELECT stock FROM products WHERE id = ?', [item.id]);
+          // FOR UPDATE: newStock is derived from this read and written back as
+          // an absolute value, so without the lock a concurrent sale of the
+          // same product reads the same figure and one deduction is lost.
+          const [prodResult]: any = await connection.query('SELECT stock FROM products WHERE id = ? FOR UPDATE', [item.id]);
           if (prodResult && prodResult.length > 0) {
               const currentStock = Number(prodResult[0].stock || 0);
               const newStock = currentStock - item.quantity;

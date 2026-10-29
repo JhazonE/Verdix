@@ -21,10 +21,18 @@ export class InventorySyncService {
     const rootId = soldProd.parent_id || soldProd.id;
 
     // 1. Identify Product Family (Root + all children)
+    // FOR UPDATE: each member's stock below is recomputed from this read and
+    // written back as an absolute value, so an unlocked read lets a concurrent
+    // sale on any family member be silently overwritten. Locking the whole
+    // family in one statement (rather than per member) also keeps two
+    // concurrent sales from grabbing the members in opposite orders and
+    // deadlocking.
     const [familyMembers]: any = await connection.query(`
-          SELECT id, unit_of_measure, name, stock 
-          FROM products 
+          SELECT id, unit_of_measure, name, stock
+          FROM products
           WHERE id = ? OR parent_id = ?
+          ORDER BY id
+          FOR UPDATE
       `, [rootId, rootId]);
 
     // 2. Fetch conversion factors relative to the ROOT product

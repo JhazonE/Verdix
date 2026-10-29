@@ -81,13 +81,27 @@ export async function getConnection() {
  */
 export async function withTransaction<T>(callback: (connection: mysql.PoolConnection) => Promise<T>): Promise<T> {
   const connection = await pool.getConnection();
-  await connection.beginTransaction();
+  // beginTransaction() is inside the try/finally because it can fail on its
+  // own — a dropped socket to a remote (cloud) MySQL fails here, and a throw
+  // before the try block would return to the caller WITHOUT releasing the
+  // connection. Each such leak permanently costs the pool one slot, so a run
+  // of transient cloud errors ends with every slot leaked and the app hanging
+  // on getConnection() forever, with no error to show for it.
   try {
+    await connection.beginTransaction();
     const result = await callback(connection);
     await connection.commit();
     return result;
   } catch (error) {
-    await connection.rollback();
+    // A failed rollback must not replace the error that caused it: the
+    // original is the diagnosis, and rollback failure is usually just the same
+    // dead connection reporting itself a second time. The pool discards a
+    // connection whose rollback failed when we release it below.
+    try {
+      await connection.rollback();
+    } catch (rollbackError) {
+      console.error('Transaction rollback failed:', rollbackError);
+    }
     throw error;
   } finally {
     connection.release();
