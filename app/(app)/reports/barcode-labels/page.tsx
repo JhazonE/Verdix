@@ -25,6 +25,7 @@ import {
 import { Download, Loader2, Printer, Tags } from 'lucide-react';
 
 import { getApiUrl } from '@/lib/api-config';
+import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { useToast } from '@/hooks/use-toast';
 import type { Product } from '@/lib/types';
 
@@ -66,7 +67,7 @@ export default function BarcodeLabelsReportPage() {
     (async () => {
       setLoadingCategories(true);
       try {
-        const res = await fetch(getApiUrl('/products/attributes'));
+        const res = await fetch(getApiUrl('/products/attributes'), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
         const data = await res.json();
         if (data.success) setCategories(data.categories || []);
       } catch {
@@ -83,8 +84,14 @@ export default function BarcodeLabelsReportPage() {
     setSelected(new Set());
     try {
       const params = new URLSearchParams({ category, limit: '10000', offset: '0' });
-      const res = await fetch(getApiUrl(`/products?${params.toString()}`));
+      const res = await fetch(getApiUrl(`/products?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       const data = await res.json();
+      // A 200 carrying success:false is how this API reports its own errors.
+      // Falling through used to leave the page with no rows and no message,
+      // which read as "no data for this range" rather than "the report failed".
+      if (!data.success) {
+        throw new Error(data.details || data.error || 'The report could not be generated.');
+      }
       if (data.success) {
         // GET /api/products passes MySQL DECIMAL columns through as strings;
         // coerce here so `typeof price === 'number'` checks downstream hold.

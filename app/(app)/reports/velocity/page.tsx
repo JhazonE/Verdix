@@ -22,6 +22,7 @@ import { format, subDays } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { ReportHeader } from '@/components/reports/ReportHeader';
 import { getApiUrl } from '@/lib/api-config';
+import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { printReportTable, exportReportExcel } from '@/lib/report-print';
 import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
 import { useToast } from '@/hooks/use-toast';
@@ -71,7 +72,7 @@ export default function FastSlowMovingReportPage() {
 
       let rows: VelocityProduct[] = products;
       try {
-        const res = await fetch(getApiUrl(`/reports/velocity?${params.toString()}`));
+        const res = await fetch(getApiUrl(`/reports/velocity?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
         const data = await res.json();
         if (data.success && Array.isArray(data.data)) rows = data.data;
       } catch {
@@ -121,7 +122,7 @@ export default function FastSlowMovingReportPage() {
 
       let rows: VelocityProduct[] = products;
       try {
-        const res = await fetch(getApiUrl(`/reports/velocity?${params.toString()}`));
+        const res = await fetch(getApiUrl(`/reports/velocity?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
         const data = await res.json();
         if (data.success && Array.isArray(data.data)) rows = data.data;
       } catch {
@@ -179,10 +180,16 @@ export default function FastSlowMovingReportPage() {
       params.append('page', page.toString());
       params.append('limit', pageSize.toString());
 
-      const res = await fetch(getApiUrl(`/reports/velocity?${params.toString()}`));
+      const res = await fetch(getApiUrl(`/reports/velocity?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const data = await res.json();
       
+      // A 200 carrying success:false is how this API reports its own errors.
+      // Falling through used to leave the page with no rows and no message,
+      // which read as "no data for this range" rather than "the report failed".
+      if (!data.success) {
+        throw new Error(data.details || data.error || 'The report could not be generated.');
+      }
       if (data.success) {
         setProducts(data.data);
         if (data.pagination) {

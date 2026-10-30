@@ -15,6 +15,7 @@ import { formatCurrency, formatStockQuantity } from '@/lib/utils';
 import { ReportHeader } from '@/components/reports/ReportHeader';
 import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
 import { getApiUrl } from '@/lib/api-config';
+import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { printReportTable, exportReportExcel } from '@/lib/report-print';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { getCategories, getBrands, getSuppliers } from '@/app/(app)/products/actions';
@@ -138,7 +139,7 @@ export default function StockSalesReportPage() {
     getSuppliers().then(setSuppliers).catch((e) => console.error('Failed to fetch suppliers:', e));
     (async () => {
       try {
-        const res = await fetch(getApiUrl('/pos-settings'));
+        const res = await fetch(getApiUrl('/pos-settings'), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
         if (!res.ok) throw new Error(`API error ${res.status}`);
         const data = await res.json();
         if (data.success) setSettings(data.data);
@@ -166,9 +167,15 @@ export default function StockSalesReportPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await fetch(getApiUrl(`/reports/stock-sales?${buildParams(pageSize, page).toString()}`));
+      const res = await fetch(getApiUrl(`/reports/stock-sales?${buildParams(pageSize, page).toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const data = await res.json();
+      // A 200 carrying success:false is how this API reports its own errors.
+      // Falling through used to leave the page with no rows and no message,
+      // which read as "no data for this range" rather than "the report failed".
+      if (!data.success) {
+        throw new Error(data.details || data.error || 'The report could not be generated.');
+      }
       if (data.success) {
         setRows(data.data);
         setSummary(data.summary || EMPTY_SUMMARY);
@@ -187,7 +194,7 @@ export default function StockSalesReportPage() {
   /** Fetch the whole filtered set for Print/Export, falling back to the page. */
   const fetchAllRows = async (): Promise<{ rows: Row[]; summary: Summary }> => {
     try {
-      const res = await fetch(getApiUrl(`/reports/stock-sales?${buildParams(FULL_EXPORT_LIMIT, 1).toString()}`));
+      const res = await fetch(getApiUrl(`/reports/stock-sales?${buildParams(FULL_EXPORT_LIMIT, 1).toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       const data = await res.json();
       if (data.success && Array.isArray(data.data)) {
         return { rows: data.data, summary: data.summary || summary };

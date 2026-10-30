@@ -38,6 +38,8 @@ import './stock-count-baseline.test';
 import './sta-lucia-payload.test';
 import './sta-lucia-hourly-payload.test';
 import './sta-lucia-client-409.test';
+import './fetch-report.test';
+import './cost-of-sale.test';
 import './price-update-math.test';
 import './price-list-template.test';
 import './price-list-import-match.test';
@@ -92,6 +94,7 @@ import './warehouse-scope-options.test';
 import './additional-warehouses-selection.test';
 import './form-context-free-field-array.test';
 import './cart-quantity-counts-selling-unit.test';
+import './pos-quantity-first-entry.test';
 import './sync-permanent-error.test';
 import './pos-scan-single-quantity.test';
 

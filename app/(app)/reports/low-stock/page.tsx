@@ -16,6 +16,7 @@ import { Loader2, Printer, AlertTriangle, Search, X, FileSpreadsheet } from 'luc
 import { format } from 'date-fns';
 import { ReportHeader } from '@/components/reports/ReportHeader';
 import { getApiUrl } from '@/lib/api-config';
+import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { formatQuantity, formatStockQuantity } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { exportReportExcel } from '@/lib/report-print';
@@ -80,7 +81,7 @@ export default function LowStockReportPage() {
         limit: '10000',
         ...(searchQuery ? { search: searchQuery } : {}),
       });
-      const res = await fetch(getApiUrl(`/reports/inventory?${params.toString()}`));
+      const res = await fetch(getApiUrl(`/reports/inventory?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       const data = await res.json();
       if (data.success && Array.isArray(data.data)) rows = data.data;
     } catch {
@@ -155,7 +156,7 @@ export default function LowStockReportPage() {
           limit: '10000',
           ...(searchQuery ? { search: searchQuery } : {}),
         });
-        const res = await fetch(getApiUrl(`/reports/inventory?${params.toString()}`));
+        const res = await fetch(getApiUrl(`/reports/inventory?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
         const data = await res.json();
         if (data.success && Array.isArray(data.data)) rows = data.data;
       } catch {
@@ -203,10 +204,16 @@ export default function LowStockReportPage() {
         limit: limit.toString(),
         ...(search ? { search } : {})
       });
-      const res = await fetch(getApiUrl(`/reports/inventory?${params.toString()}`));
+      const res = await fetch(getApiUrl(`/reports/inventory?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const data = await res.json();
       
+      // A 200 carrying success:false is how this API reports its own errors.
+      // Falling through used to leave the page with no rows and no message,
+      // which read as "no data for this range" rather than "the report failed".
+      if (!data.success) {
+        throw new Error(data.details || data.error || 'The report could not be generated.');
+      }
       if (data.success) {
         setProducts(data.data);
         if (data.pagination) {
