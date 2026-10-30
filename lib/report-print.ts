@@ -208,6 +208,19 @@ export interface PdfReportOptions<T> {
   totals?: (string | null)[];
   fileName: string;
   orientation?: 'landscape' | 'portrait';
+  /**
+   * Optional detail block drawn indented beneath each row, for reports whose
+   * on-screen table expands (e.g. a product's transaction history). Return
+   * null/empty for a row with no detail and nothing is drawn for it.
+   */
+  detail?: {
+    headers: string[];
+    /** Column widths in mm, aligned 1:1 to `headers`. */
+    widths: number[];
+    /** Which detail columns are right-aligned, by index. */
+    rightAlign?: number[];
+    rows: (row: T, index: number) => string[][] | null;
+  };
 }
 
 /**
@@ -215,7 +228,7 @@ export interface PdfReportOptions<T> {
  * Returns false if there are no rows to export (caller can toast a "No Data" message).
  */
 export function exportReportPdf<T>(opts: PdfReportOptions<T>): boolean {
-  const { title, dateRange, summary, columns, rows, totals, fileName, orientation = 'landscape' } = opts;
+  const { title, dateRange, summary, columns, rows, totals, fileName, orientation = 'landscape', detail } = opts;
   if (rows.length === 0) return false;
 
   const doc = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
@@ -293,6 +306,55 @@ export function exportReportPdf<T>(opts: PdfReportOptions<T>): boolean {
       xPos += c.width;
     });
     yPos += 6;
+
+    const detailRows = detail?.rows(row, rowIndex);
+    if (detailRows && detailRows.length > 0) {
+      const indent = 6;
+      const right = new Set(detail!.rightAlign ?? []);
+      // The detail block starts on a fresh page rather than being split from
+      // the row it belongs to, when there is no room for its header and at
+      // least one line.
+      const drawDetailHeader = () => {
+        doc.setFillColor(226, 232, 240);
+        doc.rect(margin + indent, yPos - 3, detail!.widths.reduce((s, w) => s + w, 0), 5, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(5.5);
+        let dx = margin + indent;
+        detail!.headers.forEach((h, i) => {
+          const w = detail!.widths[i];
+          const tx = right.has(i) ? dx + w - 1 : dx + 1;
+          doc.text(h, tx, yPos, { maxWidth: w - 2, align: right.has(i) ? 'right' : 'left' });
+          dx += w;
+        });
+        yPos += 5;
+        doc.setFont('helvetica', 'normal');
+      };
+
+      if (yPos > pageHeight - 25) { doc.addPage(); yPos = margin; drawHeader(); }
+      drawDetailHeader();
+
+      detailRows.forEach((cellValues) => {
+        if (yPos > pageHeight - 20) {
+          doc.addPage();
+          yPos = margin;
+          drawHeader();
+          drawDetailHeader();
+        }
+        doc.setFontSize(5.5);
+        let dx = margin + indent;
+        cellValues.forEach((v, i) => {
+          const w = detail!.widths[i];
+          const tx = right.has(i) ? dx + w - 1 : dx + 1;
+          doc.text(String(v ?? ''), tx, yPos, { maxWidth: w - 2, align: right.has(i) ? 'right' : 'left' });
+          dx += w;
+        });
+        yPos += 4;
+      });
+
+      // Breathing room before the next product, and back to the row font.
+      yPos += 2;
+      doc.setFontSize(6);
+    }
   });
 
   // Totals row
@@ -340,6 +402,15 @@ export interface ExcelReportOptions<T> {
   /** Totals row, aligned 1:1 to `columns`. Use null for cells with no total. */
   totals?: (string | number | null)[];
   fileName: string;
+  /**
+   * Optional detail block rendered indented beneath each row, for reports whose
+   * on-screen table expands (e.g. a product's transaction history). Return
+   * null/empty for a row with no detail and nothing is emitted for it.
+   */
+  detail?: {
+    headers: string[];
+    rows: (row: T, index: number) => (string | number)[][] | null;
+  };
 }
 
 /**
@@ -348,7 +419,7 @@ export interface ExcelReportOptions<T> {
  * Returns false if there are no rows to export (caller can toast "No Data").
  */
 export function exportReportExcel<T>(opts: ExcelReportOptions<T>): boolean {
-  const { title, subtitle, columns, rows, totals, fileName } = opts;
+  const { title, subtitle, columns, rows, totals, fileName, detail } = opts;
   if (rows.length === 0) return false;
 
   const colCount = columns.length;
@@ -373,7 +444,37 @@ export function exportReportExcel<T>(opts: ExcelReportOptions<T>): boolean {
           return `<td style="border:1px solid #cccccc;padding:3px;text-align:${align};${numFmt}">${escapeReportHtml(value)}</td>`;
         })
         .join('');
-      return `<tr>${cells}</tr>`;
+
+      const detailRows = detail?.rows(row, rowIndex);
+      if (!detailRows || detailRows.length === 0) return `<tr>${cells}</tr>`;
+
+      // Indented one cell so the detail reads as subordinate to its row, and
+      // so a reader sorting the sheet can still see which block is which.
+      const pad = '<td style="border:0"></td>';
+      const detailHead =
+        `<tr>${pad}${detail!.headers
+          .map(
+            (h) =>
+              `<th style="background:#e2e8f0;border:1px solid #cbd5e1;padding:3px;font-weight:bold;font-size:9pt">${escapeReportHtml(
+                h
+              )}</th>`
+          )
+          .join('')}</tr>`;
+      const detailBody = detailRows
+        .map(
+          (cellValues) =>
+            `<tr>${pad}${cellValues
+              .map(
+                (v) =>
+                  `<td style="border:1px solid #e2e8f0;padding:3px;font-size:9pt;${
+                    isNum(v) ? 'mso-number-format:\\#\\,\\#\\#0\\.00;' : ''
+                  }">${escapeReportHtml(v)}</td>`
+              )
+              .join('')}</tr>`
+        )
+        .join('');
+
+      return `<tr>${cells}</tr>${detailHead}${detailBody}`;
     })
     .join('');
 

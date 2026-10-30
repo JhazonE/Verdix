@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import {
   Table,
   TableBody,
@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/card';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, FileDown, FileSpreadsheet, Percent, TrendingUp, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { CalendarIcon, FileDown, FileSpreadsheet, Percent, TrendingUp, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronDown, ChevronRight as ChevronRightIcon, Download } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -32,8 +32,24 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { getApiUrl } from '@/lib/api-config';
+import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
+import { ProductTransactionHistory } from '@/components/reports/ProductTransactionHistory';
+import {
+  fetchProductTransactionDetail,
+  detailCells,
+  DETAIL_HEADERS,
+  type ProductTransactionLine,
+} from '@/lib/product-transaction-export';
 
 interface ProductSale {
   product: {
@@ -61,9 +77,21 @@ export default function ProfitMarginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [includeDetail, setIncludeDetail] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
   const [pageSize, setPageSize] = useState(10);
   const [totalItems, setTotalItems] = useState(0);
   const { toast } = useToast();
+
+  const toggleRow = (productId: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+  };
 
   const totals = {
     unitsSold: records.reduce((sum, r) => sum + r.unitsSold, 0),
@@ -90,9 +118,15 @@ export default function ProfitMarginPage() {
         params.append('search', searchTerm);
       }
 
-      const response = await fetch(getApiUrl(`/sales/by-product?${params.toString()}`));
+      const response = await fetch(getApiUrl(`/sales/by-product?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!response.ok) throw new Error(`API error ${response.status}`);
       const result = await response.json();
+      // A 200 carrying success:false is how this API reports its own errors.
+      // Falling through used to leave the page with no rows and no message,
+      // which read as "no data for this range" rather than "the report failed".
+      if (!result.success) {
+        throw new Error(result.details || result.error || 'The report could not be generated.');
+      }
       if (result.success) {
         setRecords(result.data || []);
         setTotalItems(result.pagination?.totalItems || result.data?.length || 0);
@@ -135,7 +169,38 @@ export default function ProfitMarginPage() {
   const endIndex = startIndex + pageSize;
   const paginatedRecords = filteredRecords.slice(startIndex, endIndex);
 
-  const exportToPDF = () => {
+  const loadDetail = async (): Promise<Map<string, ProductTransactionLine[]> | null> => {
+    if (!includeDetail) return null;
+    setIsExporting(true);
+    try {
+      const { byProduct, truncated } = await fetchProductTransactionDetail({
+        startDate: fromDate ? format(fromDate, 'yyyy-MM-dd') : undefined,
+        endDate: toDate ? format(toDate, 'yyyy-MM-dd') : undefined,
+        search: searchTerm || undefined,
+      });
+      if (truncated) {
+        toast({
+          title: 'Detail truncated',
+          description:
+            'This range has too many transactions to attach in full. Narrow the dates and export again.',
+          variant: 'destructive',
+        });
+      }
+      return byProduct;
+    } catch {
+      toast({
+        title: 'Detail unavailable',
+        description: 'Exporting without transaction history.',
+        variant: 'destructive',
+      });
+      return null;
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const exportToPDF = async () => {
+    const byProduct = await loadDetail();
     const fileName = `Profit_Margin_Report_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.pdf`;
     const ok = exportReportPdf<ProductSale>({
       title: 'Profit Margin Report',
@@ -162,6 +227,12 @@ export default function ProfitMarginPage() {
       ],
       rows: records,
       totals: ['TOTALS', null, null, null, totals.unitsSold.toString(), null, totals.revenue.toFixed(2), totals.cost.toFixed(2), totals.profit.toFixed(2), null, null],
+      detail: byProduct ? {
+        headers: DETAIL_HEADERS,
+        widths: [30, 26, 30, 12, 16, 18, 20, 20, 20],
+        rightAlign: [3, 4, 5, 6, 7, 8],
+        rows: (r: ProductSale) => (byProduct.get(r.product.id) || []).map(detailCells),
+      } : undefined,
       fileName,
     });
     if (!ok) {
@@ -171,7 +242,8 @@ export default function ProfitMarginPage() {
     toast({ title: 'PDF Exported', description: `Report saved as ${fileName}` });
   };
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
+    const byProduct = await loadDetail();
     const unitsSoldSum = filteredRecords.reduce((s, r) => s + Number(r.unitsSold), 0);
     const revenueSum = filteredRecords.reduce((s, r) => s + Number(r.totalRevenue), 0);
     const costSum = filteredRecords.reduce((s, r) => s + Number(r.totalCost), 0);
@@ -195,6 +267,10 @@ export default function ProfitMarginPage() {
       ],
       rows: filteredRecords,
       totals: ['TOTALS', null, null, null, unitsSoldSum, null, revenueSum.toFixed(2), costSum.toFixed(2), profitSum.toFixed(2), null, null],
+      detail: byProduct ? {
+        headers: DETAIL_HEADERS,
+        rows: (r: ProductSale) => (byProduct.get(r.product.id) || []).map(detailCells),
+      } : undefined,
       fileName,
     });
     if (!ok) {
@@ -288,25 +364,48 @@ export default function ProfitMarginPage() {
               {isLoading ? 'Loading...' : 'Show Report'}
             </Button>
 
-            <Button 
-              onClick={exportToPDF} 
-              disabled={isLoading || records.length === 0}
-              variant="outline"
-              className="border-purple-600 text-purple-600 hover:bg-purple-50"
-            >
-              <FileDown className="mr-2 h-4 w-4" />
-              Export to PDF
-            </Button>
-
-            <Button
-              onClick={exportToExcel}
-              disabled={isLoading || records.length === 0}
-              variant="outline"
-              className="border-emerald-700 text-emerald-700 hover:bg-emerald-50"
-            >
-              <FileSpreadsheet className="mr-2 h-4 w-4" />
-              Export to Excel
-            </Button>
+            {/* One Export control: the formats and the setting that governs
+                them live together in its menu, rather than a loose checkbox
+                sitting between Show Report and the export buttons. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  disabled={isLoading || isExporting || records.length === 0}
+                  variant="outline"
+                  className="border-purple-600 text-purple-600 hover:bg-purple-50"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  {isExporting ? 'Preparing...' : 'Export'}
+                  <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuItem onClick={exportToPDF}>
+                  <FileDown className="mr-2 h-4 w-4 text-purple-600" />
+                  Export to PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={exportToExcel}>
+                  <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-700" />
+                  Export to Excel
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {/* Kept open on click: this is a setting for the two items
+                    above, not a third thing to pick. */}
+                <DropdownMenuCheckboxItem
+                  checked={includeDetail}
+                  onCheckedChange={(v) => setIncludeDetail(v === true)}
+                  onSelect={(e) => e.preventDefault()}
+                  className="items-start [&>span:first-child]:top-2"
+                >
+                  <span className="flex flex-col">
+                    <span>Include transaction history</span>
+                    <span className="text-xs text-muted-foreground">
+                      Each product&apos;s sales, with cost and profit per line
+                    </span>
+                  </span>
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </CardContent>
       </Card>
@@ -385,6 +484,7 @@ export default function ProfitMarginPage() {
           <Table className="w-full text-sm">
             <TableHeader>
               <TableRow className="bg-muted/50">
+                <TableHead className="py-2 px-2 w-[40px]"></TableHead>
                 <TableHead className="py-2 px-3">Product Name</TableHead>
                 <TableHead className="py-2 px-2">Barcode</TableHead>
                 <TableHead className="py-2 px-2">Category</TableHead>
@@ -403,10 +503,18 @@ export default function ProfitMarginPage() {
                 paginatedRecords.map((record, index) => {
                   const profitMargin = record.totalRevenue > 0 ? ((record.totalProfit / record.totalRevenue) * 100) : 0;
                   return (
-                    <TableRow 
-                      key={index}
+                    <Fragment key={record.product.id}>
+                    <TableRow
                       className="cursor-pointer hover:bg-muted/50 transition-colors text-xs"
+                      onClick={() => toggleRow(record.product.id)}
                     >
+                      <TableCell className="py-2 px-2">
+                        {expandedRows.has(record.product.id) ? (
+                          <ChevronDown className="h-4 w-4 text-primary" />
+                        ) : (
+                          <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </TableCell>
                       <TableCell className="py-2 px-3 font-medium">{record.product.name}</TableCell>
                       <TableCell className="py-2 px-2 text-muted-foreground">{record.product.baseUnitBarcode || record.product.barcode || '-'}</TableCell>
                       <TableCell className="py-2 px-2">{record.product.category || '-'}</TableCell>
@@ -437,11 +545,20 @@ export default function ProfitMarginPage() {
                         {record.numberOfSales}
                       </TableCell>
                     </TableRow>
+                    {expandedRows.has(record.product.id) && (
+                      <ProductTransactionHistory
+                        productId={record.product.id}
+                        startDate={fromDate ? format(fromDate, 'yyyy-MM-dd') : undefined}
+                        endDate={toDate ? format(toDate, 'yyyy-MM-dd') : undefined}
+                        colSpan={12}
+                      />
+                    )}
+                    </Fragment>
                   );
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={11} className="h-24 text-center">
+                  <TableCell colSpan={12} className="h-24 text-center">
                     {isLoading ? (
                       <div className="flex items-center justify-center gap-2">
                         <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
