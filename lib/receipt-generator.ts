@@ -115,7 +115,7 @@ export class ReceiptGenerator {
             items.forEach(item => {
                 const lineTotal = (item.price * item.quantity) - lineDiscountAmount(item);
                 const baseTaxType = (item as any).taxType || item.taxType || (item as any).product?.taxType || 'VAT';
-                const taxType = resolveEffectiveTaxType(baseTaxType, (item as any).discountType, item.discount);
+                const taxType = resolveEffectiveTaxType(baseTaxType, (item as any).discountType, item.discount, settings?.vatRegistration);
 
                 if (taxType === 'VAT') {
                     const vatable = lineTotal / 1.12;
@@ -126,6 +126,11 @@ export class ReceiptGenerator {
                 } else if (taxType === 'ZERO_RATED') {
                     zeroRatedSales += lineTotal;
                 } else if (taxType === 'NON_VAT') {
+                    nonVatSales += lineTotal;
+                } else if (settings?.vatRegistration === 'NON_VAT') {
+                    // An unknown tax type at a non-VAT-registered store still cannot be
+                    // VAT-able — falling through to the 12% default below would print
+                    // output VAT the store has no authority to charge.
                     nonVatSales += lineTotal;
                 } else {
                     // Default to VAT if unknown

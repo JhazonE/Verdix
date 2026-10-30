@@ -170,60 +170,96 @@ export async function GET(request: NextRequest) {
     const rows = await query(sql, params);
     const shifts = rows as any[];
 
-    // For each shift, we also need breakdown of payments
-    const formattedReadings = await Promise.all(shifts.map(async (shift) => {
-        // Fetch payment breakdown for this shift. pos_transactions.payment_method
-        // collapses split-tender sales (part Cash + part GCash, etc.) to the
-        // literal string 'MULTIPLE' — see use-tender.ts. The real per-method
-        // split lives in payment_details (one row per tender). Prefer that;
-        // fall back to pos_transactions.payment_method only for sales with no
-        // payment_details rows at all, so no sale is silently dropped.
-        //
-        // Voided sales are excluded here too: the money was handed back to the
-        // customer, so it is no longer in the drawer and must not appear as a
-        // payment received. Without this, a voided cash sale would inflate
-        // cashInDrawer and show up as a phantom SHORT at cash count. The status
-        // set matches the sales aggregates above and z-reading's.
-        const payments = await query(`
-            SELECT name, SUM(amount) as amount FROM (
-                SELECT pd.payment_method as name, SUM(pd.amount_tendered - pd.change_given) as amount
+    // Payments and membership fees are fetched for ALL shifts in two grouped
+    // queries, not per shift inside the map below.
+    //
+    // This used to be `Promise.all(shifts.map(...))` issuing two queries per
+    // shift, all in flight at once. The back-office X-Reading page sends no
+    // `limit` (only the POS callers do, with limit=1), so a month of shifts
+    // across a few terminals meant hundreds of simultaneous pool
+    // acquisitions against a pool of 25 — the report saturated the pool, and
+    // because query() queued with no timeout it then hung forever: no rows,
+    // no error, a spinner that never resolved. Grouping by shift_id makes the
+    // cost two queries regardless of how many shifts the range covers.
+    const shiftIds = shifts.map((s: any) => s.id);
+
+    // Payment breakdown per shift. pos_transactions.payment_method collapses
+    // split-tender sales (part Cash + part GCash, etc.) to the literal string
+    // 'MULTIPLE' — see use-tender.ts. The real per-method split lives in
+    // payment_details (one row per tender). Prefer that; fall back to
+    // pos_transactions.payment_method only for sales with no payment_details
+    // rows at all, so no sale is silently dropped.
+    //
+    // Voided sales are excluded here too: the money was handed back to the
+    // customer, so it is no longer in the drawer and must not appear as a
+    // payment received. Without this, a voided cash sale would inflate
+    // cashInDrawer and show up as a phantom SHORT at cash count. The status
+    // set matches the sales aggregates above and z-reading's.
+    const paymentsByShift = new Map<string, any[]>();
+    const membershipByShift = new Map<string, any>();
+
+    if (shiftIds.length > 0) {
+        const placeholders = shiftIds.map(() => '?').join(',');
+
+        const paymentRows = await query(`
+            SELECT shift_id, name, SUM(amount) as amount FROM (
+                SELECT pt.shift_id as shift_id, pd.payment_method as name, SUM(pd.amount_tendered - pd.change_given) as amount
                 FROM pos_transactions pt
                 LEFT JOIN sales_transactions st ON pt.sale_id = st.id
                 JOIN payment_details pd ON pd.transaction_id = pt.id
-                WHERE pt.shift_id = ? AND pt.transaction_type = 'sale' AND pt.is_training = 0
+                WHERE pt.shift_id IN (${placeholders}) AND pt.transaction_type = 'sale' AND pt.is_training = 0
                 AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
-                GROUP BY pd.payment_method
+                GROUP BY pt.shift_id, pd.payment_method
 
                 UNION ALL
 
-                SELECT pt.payment_method as name, SUM(pt.total_amount) as amount
+                SELECT pt.shift_id as shift_id, pt.payment_method as name, SUM(pt.total_amount) as amount
                 FROM pos_transactions pt
                 LEFT JOIN sales_transactions st ON pt.sale_id = st.id
-                WHERE pt.shift_id = ? AND pt.transaction_type = 'sale' AND pt.is_training = 0
+                WHERE pt.shift_id IN (${placeholders}) AND pt.transaction_type = 'sale' AND pt.is_training = 0
                 AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
                 AND NOT EXISTS (SELECT 1 FROM payment_details pd WHERE pd.transaction_id = pt.id)
-                GROUP BY pt.payment_method
+                GROUP BY pt.shift_id, pt.payment_method
             ) combined
-            GROUP BY name
-        `, [shift.id, shift.id]);
+            GROUP BY shift_id, name
+        `, [...shiftIds, ...shiftIds]) as any[];
 
-        // Cash membership fees for this shift. Membership is not a sale (never in
-        // pos_transactions), but its cash sits in the drawer, so it must be counted
-        // toward reconciliation — same as the Z-reading. Cash only; card never
-        // enters the drawer.
+        for (const row of paymentRows) {
+            const list = paymentsByShift.get(row.shift_id) ?? [];
+            list.push(row);
+            paymentsByShift.set(row.shift_id, list);
+        }
+
+        // Cash membership fees per shift. Membership is not a sale (never in
+        // pos_transactions), but its cash sits in the drawer, so it must be
+        // counted toward reconciliation — same as the Z-reading. Cash only;
+        // card never enters the drawer.
         const membershipRows = await query(`
             SELECT
+                shift_id,
                 COALESCE(SUM(amount), 0)          AS membership_cash,
                 COALESCE(SUM(is_new_card = 1), 0) AS activation_count,
                 COALESCE(SUM(is_new_card = 0), 0) AS renewal_count
             FROM membership_payments
-            WHERE shift_id = ? AND payment_method = 'cash'
-        `, [shift.id]) as any[];
-        const membershipCash = parseFloat(membershipRows[0]?.membership_cash || 0);
-        const membershipActivationCount = parseInt(membershipRows[0]?.activation_count || 0, 10) || 0;
-        const membershipRenewalCount = parseInt(membershipRows[0]?.renewal_count || 0, 10) || 0;
+            WHERE shift_id IN (${placeholders}) AND payment_method = 'cash'
+            GROUP BY shift_id
+        `, shiftIds) as any[];
 
-        const pMethods = payments as any[];
+        for (const row of membershipRows) {
+            membershipByShift.set(row.shift_id, row);
+        }
+    }
+
+    const formattedReadings = shifts.map((shift) => {
+        // A shift with no matching rows gets no row back from the grouped
+        // queries above, which is the same "nothing to report" the per-shift
+        // query expressed as SUM(...) = 0 / an empty result set.
+        const membershipRow = membershipByShift.get(shift.id);
+        const membershipCash = parseFloat(membershipRow?.membership_cash || 0);
+        const membershipActivationCount = parseInt(membershipRow?.activation_count || 0, 10) || 0;
+        const membershipRenewalCount = parseInt(membershipRow?.renewal_count || 0, 10) || 0;
+
+        const pMethods = paymentsByShift.get(shift.id) ?? [];
 
         // Derive cash_sales from the corrected per-method breakdown above (which
         // already attributes split-tender sales to their real methods) rather
@@ -284,7 +320,7 @@ export async function GET(request: NextRequest) {
         permitNo: shift.terminal_permit_no || '',
         accreditationNo: shift.terminal_accreditation_no || '',
       };
-    }));
+    });
 
     return NextResponse.json({
       success: true,

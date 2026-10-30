@@ -3,7 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { CalendarIcon, Search, FileText } from 'lucide-react';
+import { CalendarIcon, Search, FileText, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { TerminalSelector } from '@/components/TerminalSelector';
@@ -69,7 +69,21 @@ export default function OverallReadingPage() {
         </div>
 
         <div className="lg:col-span-2 space-y-6">
-          {p.readingData ? (
+          {p.isError ? (
+            /* A failed request used to fall through to the "No Shift Selected"
+               placeholder below, which told the user nothing had gone wrong —
+               the report simply never appeared. */
+            <div className="flex flex-col items-center justify-center h-[400px] bg-card rounded-xl shadow-sm border border-border text-center gap-3">
+              <div className="bg-destructive/10 p-4 rounded-full">
+                <AlertCircle size={40} className="text-destructive" />
+              </div>
+              <p className="text-lg font-medium text-foreground">Could not load the reading</p>
+              <p className="text-sm text-muted-foreground max-w-md px-6">
+                {p.errorMessage || 'The report request failed.'}
+              </p>
+              <Button variant="outline" size="sm" onClick={p.retry}>Try again</Button>
+            </div>
+          ) : p.readingData ? (
             <div className="space-y-6">
               <OverallReadingSummaryCards readingData={p.readingData} />
               <OverallReadingBreakdown

@@ -27,6 +27,9 @@ export default function XReadingPage() {
           isLoading={p.isLoading}
           selectedCashier={p.selectedCashier}
           hasQuery={!!p.queryParams}
+          isError={p.isError}
+          errorMessage={p.errorMessage}
+          onRetry={() => p.refetch()}
         />
       </div>
 

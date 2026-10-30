@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
+import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
 
@@ -55,9 +56,15 @@ export default function MembershipReportPage() {
       const params = new URLSearchParams();
       if (fromDate) params.append('startDate', format(fromDate, 'yyyy-MM-dd'));
       if (toDate) params.append('endDate', format(toDate, 'yyyy-MM-dd'));
-      const res = await fetch(getApiUrl(`/reports/membership?${params.toString()}`));
+      const res = await fetch(getApiUrl(`/reports/membership?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const result = await res.json();
+      // A 200 carrying success:false is how this API reports its own errors.
+      // Falling through used to leave the page with no rows and no message,
+      // which read as "no data for this range" rather than "the report failed".
+      if (!result.success) {
+        throw new Error(result.details || result.error || 'The report could not be generated.');
+      }
       if (result.success) {
         setRows(result.data.rows);
         setSummary(result.data.summary);

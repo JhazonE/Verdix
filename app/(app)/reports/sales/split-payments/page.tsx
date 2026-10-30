@@ -42,6 +42,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { getApiUrl } from '@/lib/api-config';
+import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -107,9 +108,15 @@ export default function SplitPaymentsReportPage() {
         params.append('endDate', format(toDate, 'yyyy-MM-dd'));
       }
 
-      const response = await fetch(getApiUrl(`/sales/split-payments?${params.toString()}`));
+      const response = await fetch(getApiUrl(`/sales/split-payments?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!response.ok) throw new Error(`API error ${response.status}`);
       const result = await response.json();
+      // A 200 carrying success:false is how this API reports its own errors.
+      // Falling through used to leave the page with no rows and no message,
+      // which read as "no data for this range" rather than "the report failed".
+      if (!result.success) {
+        throw new Error(result.details || result.error || 'The report could not be generated.');
+      }
       if (result.success) {
         setRecords(result.data || []);
       }

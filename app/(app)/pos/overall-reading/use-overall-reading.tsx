@@ -14,6 +14,9 @@ type Props = {
   printMode: 'browser' | 'escpos' | 'usb' | 'native';
 };
 
+// A cashier is waiting at the terminal for this one.
+const REPORT_FETCH_TIMEOUT_MS = 20_000;
+
 export function useOverallReading({ isOpen, terminalId, terminalName, printMode }: Props) {
   const [reportData, setReportData] = useState<OverallReadingData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -33,7 +36,11 @@ export function useOverallReading({ isOpen, terminalId, terminalName, printMode 
     if (!terminalId) return;
     setLoading(true);
     try {
-      const res = await fetch(getApiUrl(`/sales/overall-reading?terminalId=${terminalId}`));
+      // fetch() has no timeout of its own; without this a wedged route left
+      // the dialog loading forever instead of reaching the toast below.
+      const res = await fetch(getApiUrl(`/sales/overall-reading?terminalId=${terminalId}`), {
+        signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS),
+      });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const result = await res.json();
       if (result.success) {

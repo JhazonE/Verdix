@@ -105,6 +105,10 @@ function POSContent() {
               items={pos.items}
               selectedItemId={pos.selectedItemId}
               setSelectedItemId={pos.setSelectedItemId}
+              bumpedLineId={pos.bumpedLineId}
+              bumpedLineSeq={pos.bumpedLineSeq}
+              pendingQty={pos.pendingQty}
+              setPendingQty={pos.setPendingQty}
               editingNameItemId={pos.editingNameItemId}
               setEditingNameItemId={pos.setEditingNameItemId}
               editingQtyItemId={pos.editingQtyItemId}

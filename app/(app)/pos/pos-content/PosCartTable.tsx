@@ -22,6 +22,15 @@ type Props = {
   items: SaleItem[];
   selectedItemId: string | null;
   setSelectedItemId: (id: string) => void;
+  /** The line whose quantity was just bumped by adding a product already in the
+      cart; flashed so the cashier sees the scan merged instead of adding a row. */
+  bumpedLineId?: string | null;
+  /** Bumps on every merge, including a repeat scan of the same line, so the
+      flash element remounts and the CSS animation replays. */
+  bumpedLineSeq?: number;
+  /** "Quantity first": a count armed with Tab that the next added item takes. */
+  pendingQty?: number | null;
+  setPendingQty?: (v: number | null) => void;
   editingNameItemId: string | null;
   setEditingNameItemId: (id: string | null) => void;
   editingQtyItemId: string | null;
@@ -38,6 +47,9 @@ type Props = {
   commitQty: (id: string) => void;
   isFrontliner?: boolean;
   handleSendToQueue?: () => void;
+  /** Shows each suggestion's stock badge; destructured here but previously
+      missing from Props, which made every call site fail to typecheck. */
+  showQuantityInSearch?: boolean;
   /** Resolves a line's picked level to a display name; undefined for no pick
       or a level that has since been deleted. */
   priceLevelNameFor?: (pickedPriceLevelId?: string) => string | undefined;
@@ -46,6 +58,8 @@ type Props = {
 export function PosCartTable({
   inputRef, inputValue, setInputValue, handleAddItemBySKU, getSearchSuggestions, findExactCodeMatch, handleAddItem, handleDefaultTender,
   setIsProductSearchOpen, items, selectedItemId, setSelectedItemId,
+  bumpedLineId, bumpedLineSeq,
+  pendingQty, setPendingQty,
   editingNameItemId, setEditingNameItemId,
   editingQtyItemId, setEditingQtyItemId,
   editingPriceItemId, setEditingPriceItemId,
@@ -121,17 +135,58 @@ export function PosCartTable({
       {/* Search Bar */}
       <div className="shrink-0 z-30 relative">
         <div className="relative w-full group">
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors">
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-2 text-muted-foreground group-focus-within:text-primary transition-colors">
             <Search className="w-4 h-4" />
+            {/* An armed multiplier MUST be visible: a forgotten count would
+                otherwise silently sell N of whatever is scanned next. */}
+            {!!pendingQty && (
+              <span className="rounded-md bg-amber-400 px-2 py-0.5 text-sm font-bold tabular-nums text-amber-950 shadow-sm">
+                {pendingQty} &times;
+              </span>
+            )}
           </div>
           <Input
             ref={inputRef}
             type="text"
-            placeholder="Scan Barcode or Enter Product SKU (Enter)"
-            className="pl-9 h-12 text-lg bg-background shadow-sm border-muted-foreground/20 focus-visible:ring-primary/20"
+            placeholder={pendingQty ? `Scan item to add ${pendingQty} (Esc to cancel)` : 'Scan Barcode or Enter Product SKU (Enter) · Qty + Tab'}
+            className={`h-12 text-lg bg-background shadow-sm border-muted-foreground/20 focus-visible:ring-primary/20 ${pendingQty ? 'pl-[4.5rem] border-amber-400 ring-1 ring-amber-400/40' : 'pl-9'}`}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={(e) => {
+              // "Quantity first": a bare number + Tab arms that count for the
+              // next item added, instead of adding anything now. Checked before
+              // every other branch because the Enter/Tab branch below would
+              // otherwise treat the number as a SKU to look up.
+              if (e.key === 'Tab' && !e.shiftKey) {
+                const raw = inputValue.trim();
+                if (/^\d*\.?\d+$/.test(raw)) {
+                  const qty = parseFloat(raw);
+                  if (qty > 0) {
+                    e.preventDefault();
+                    setIsSuggestOpen(false);
+                    // The number was never a product, so clear the auto-add
+                    // guard too: it may have matched a barcode of "5".
+                    autoAddedCodeRef.current = null;
+                    justAutoAddedRef.current = false;
+                    setPendingQty?.(qty);
+                    setInputValue('');
+                    return;
+                  }
+                }
+                // Tab on an empty box with a count already armed cancels it,
+                // so the cashier has a way out that is not "scan something".
+                if (!raw && pendingQty) {
+                  e.preventDefault();
+                  setPendingQty?.(null);
+                  return;
+                }
+              }
+              if (e.key === 'Escape' && pendingQty) {
+                e.preventDefault();
+                setPendingQty?.(null);
+                setInputValue('');
+                return;
+              }
               if (isSuggestOpen && suggestions.length > 0 && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
                 e.preventDefault();
                 setHighlightedIndex((prev) => {
@@ -251,11 +306,21 @@ export function PosCartTable({
                   </TableCell>
                 </TableRow>
               ) : (
-                items.map((item) => (
+                items.map((item) => {
+                  // Never flash a line the cashier is editing: the remount that
+                  // replays the animation would discard the open input.
+                  const isEditing = editingNameItemId === item.lineId
+                    || editingQtyItemId === item.lineId
+                    || editingPriceItemId === item.lineId;
+                  const isBumped = bumpedLineId === item.lineId && !isEditing;
+                  return (
                   <TableRow
-                    key={item.lineId}
+                    // The seq suffix remounts only the just-bumped row, which is
+                    // what restarts the flash animation on a repeat scan of the
+                    // same line. Other rows keep a stable key and their state.
+                    key={isBumped ? `${item.lineId}-bump-${bumpedLineSeq}` : item.lineId}
                     id={`pos-item-${item.lineId}`}
-                    className={`group cursor-pointer transition-colors border-b-border/40 last:border-0 ${selectedItemId === item.lineId ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-muted/30'}`}
+                    className={`group cursor-pointer transition-colors border-b-border/40 last:border-0 ${isBumped ? 'animate-cart-line-flash ring-1 ring-inset ring-amber-400' : selectedItemId === item.lineId ? 'bg-primary/5 hover:bg-primary/10' : 'hover:bg-muted/30'}`}
                     onClick={() => { setSelectedItemId(item.lineId); inputRef.current?.focus(); }}
                   >
                     <TableCell className="pl-4">
@@ -370,7 +435,8 @@ export function PosCartTable({
                       ₱{(item.price * item.quantity * (1 - item.discount / 100)).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                     </TableCell>
                   </TableRow>
-                ))
+                  );
+                })
               )}
             </TableBody>
           </table>

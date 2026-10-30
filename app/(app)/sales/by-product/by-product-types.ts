@@ -36,5 +36,23 @@ export type TransactionData = {
   total: number;
   paymentMethod: string;
   cashier: string;
-  items: any[];
+  items: TransactionItem[];
+};
+
+export type TransactionItem = {
+  id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  /** Per selling unit, to sit beside `cost` on the same footing. */
+  price: number;
+  /** Line total for this item — net of any line discount. */
+  total: number;
+  /**
+   * Cost per SELLING unit, NOT per line: the API resolves it through
+   * lib/cost-of-sale so a case is never costed as a bottle. Multiply by
+   * `quantity` before comparing it against `total`.
+   */
+  cost: number;
+  discount: number;
 };

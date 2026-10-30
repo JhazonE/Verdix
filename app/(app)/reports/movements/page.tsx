@@ -23,6 +23,7 @@ import { Loader2, ArrowUpRight, ArrowDownLeft, Minus, RefreshCcw, Printer, FileS
 import { format } from 'date-fns';
 import { ReportHeader } from '@/components/reports/ReportHeader';
 import { getApiUrl } from '@/lib/api-config';
+import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { formatQuantity } from '@/lib/utils';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { printReportTable, exportReportExcel } from '@/lib/report-print';
@@ -127,10 +128,16 @@ export default function StockMovementPage() {
       if (endDate) params.append('endDate', endDate);
       if (movementType && movementType !== 'all') params.append('type', movementType);
 
-      const res = await fetch(getApiUrl(`/reports/movements?${params.toString()}`));
+      const res = await fetch(getApiUrl(`/reports/movements?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const data = await res.json();
       
+      // A 200 carrying success:false is how this API reports its own errors.
+      // Falling through used to leave the page with no rows and no message,
+      // which read as "no data for this range" rather than "the report failed".
+      if (!data.success) {
+        throw new Error(data.details || data.error || 'The report could not be generated.');
+      }
       if (data.success) {
         setMovements(data.data);
       }

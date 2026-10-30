@@ -13,6 +13,11 @@ import type { OverallReadingData, PrinterFormat } from './overall-reading-types'
 
 export type { PrinterFormat };
 
+// fetch() has no timeout of its own, so a route that never answers (a
+// saturated connection pool used to hang one forever) left this page loading
+// indefinitely with nothing to report. Fail at a bound instead.
+const REPORT_FETCH_TIMEOUT_MS = 45_000;
+
 export interface Shift {
   id: string;
   cashier_name: string;
@@ -47,7 +52,13 @@ export function useOverallReadingPage() {
 
   const previewRef = useRef<HTMLDivElement>(null);
 
-  const { data: shifts = [], isLoading: shiftsLoading } = useQuery<Shift[]>({
+  const {
+    data: shifts = [],
+    isLoading: shiftsLoading,
+    isError: shiftsError,
+    error: shiftsErrorObj,
+    refetch: refetchShifts,
+  } = useQuery<Shift[]>({
     queryKey: ['overallReadingShifts', shiftsQueryParams],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -56,7 +67,9 @@ export function useOverallReadingPage() {
       if (shiftsQueryParams.terminalId !== 'all') {
         params.append('terminalId', shiftsQueryParams.terminalId);
       }
-      const res = await fetch(getApiUrl(`/pos/shifts?${params.toString()}`));
+      const res = await fetch(getApiUrl(`/pos/shifts?${params.toString()}`), {
+        signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS),
+      });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const result = await res.json();
       if (!result.success) throw new Error(result.error || 'Failed to fetch shifts');
@@ -67,14 +80,22 @@ export function useOverallReadingPage() {
     },
   });
 
-  const { data: readingData, isLoading: readingLoading } = useQuery<OverallReadingData>({
+  const {
+    data: readingData,
+    isLoading: readingLoading,
+    isError: readingError,
+    error: readingErrorObj,
+    refetch: refetchReading,
+  } = useQuery<OverallReadingData>({
     queryKey: ['shiftReading', selectedShift?.id],
     queryFn: async () => {
       if (!selectedShift) throw new Error('No shift selected');
       const params = new URLSearchParams();
       params.append('terminalId', selectedShift.terminal_id);
       params.append('shiftId', selectedShift.id);
-      const res = await fetch(getApiUrl(`/sales/overall-reading?${params.toString()}`));
+      const res = await fetch(getApiUrl(`/sales/overall-reading?${params.toString()}`), {
+        signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS),
+      });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const result = await res.json();
       if (!result.success) throw new Error(result.error || 'Failed to fetch reading for shift');
@@ -148,6 +169,17 @@ export function useOverallReadingPage() {
     shifts, shiftsLoading,
     readingData, readingLoading,
     isLoading,
+    // Surfaced so the page can distinguish "no shifts in this range" from
+    // "the request failed" — rendering both as an empty screen is what made
+    // users report the reading as simply not displaying.
+    isError: shiftsError || readingError,
+    errorMessage:
+      (shiftsErrorObj instanceof Error ? shiftsErrorObj.message : null) ??
+      (readingErrorObj instanceof Error ? readingErrorObj.message : null),
+    retry: () => {
+      if (shiftsError) refetchShifts();
+      if (readingError) refetchReading();
+    },
     previewRef,
     handleSearchShifts,
     handleReactToPrintFn,

@@ -6,6 +6,7 @@ import { getApiUrl } from '@/lib/api-config';
 import { TERMINAL_LOCKED_MESSAGE } from '@/app/api/pos/checkout/terminal-lock-check';
 import type { SaleItem } from '../pos-content/pos-types';
 import { mapVatStatusToTaxType as mapTax } from '../pos-content/pos-types';
+import { resolveEffectiveTaxType } from '@/lib/tax-utils';
 import type { Customer, SystemSettings } from '@/lib/types';
 import type { ViewType, Payment, CompletedSale } from './tender-types';
 
@@ -162,6 +163,15 @@ export function useTender({
     } catch { }
   }, [amountTenderedNum, totalAddedPayments, change, isOpen, view, isCashPayment, settings?.currencySymbol]);
 
+  // One classification for every bucket below — the receipt's breakdown and the taxAmount
+  // posted to checkout must agree, and a non-VAT-registered store charges no output VAT.
+  const lineTaxType = useCallback((item: SaleItem) => resolveEffectiveTaxType(
+    item.taxType || mapTax(item.vatStatus),
+    item.discountType,
+    item.discount,
+    settings?.vatRegistration,
+  ), [settings?.vatRegistration]);
+
   const handleAddPayment = useCallback(() => {
     if (isReferenceRequired && !referenceInput.trim()) {
       toast({
@@ -243,7 +253,7 @@ export function useTender({
           discountAmount: items.reduce((acc, item) => acc + (item.price * item.quantity * ((item.discount || 0) / 100)), 0),
           taxAmount: items.reduce((acc, item) => {
             const netItemTotal = item.price * item.quantity * (1 - (item.discount || 0) / 100);
-            const taxType = item.taxType || mapTax(item.vatStatus);
+            const taxType = lineTaxType(item);
             if (taxType === 'VAT') {
               return acc + (netItemTotal - (netItemTotal / 1.12));
             }
@@ -299,8 +309,7 @@ export function useTender({
 
       const vatableGross = items.reduce((acc, item) => {
         const netItemTotal = item.price * item.quantity * (1 - (item.discount || 0) / 100);
-        const taxType = item.taxType || mapTax(item.vatStatus);
-        return taxType === 'VAT' ? acc + netItemTotal : acc;
+        return lineTaxType(item) === 'VAT' ? acc + netItemTotal : acc;
       }, 0);
 
       const vatableSales = vatableGross / 1.12;
@@ -308,20 +317,17 @@ export function useTender({
 
       const vatExemptSales = items.reduce((acc, item) => {
         const netItemTotal = item.price * item.quantity * (1 - (item.discount || 0) / 100);
-        const taxType = item.taxType || mapTax(item.vatStatus);
-        return taxType === 'VAT_EXEMPT' ? acc + netItemTotal : acc;
+        return lineTaxType(item) === 'VAT_EXEMPT' ? acc + netItemTotal : acc;
       }, 0);
 
       const zeroRatedSales = items.reduce((acc, item) => {
         const netItemTotal = item.price * item.quantity * (1 - (item.discount || 0) / 100);
-        const taxType = item.taxType || mapTax(item.vatStatus);
-        return taxType === 'ZERO_RATED' ? acc + netItemTotal : acc;
+        return lineTaxType(item) === 'ZERO_RATED' ? acc + netItemTotal : acc;
       }, 0);
 
       const nonVatSales = items.reduce((acc, item) => {
         const netItemTotal = item.price * item.quantity * (1 - (item.discount || 0) / 100);
-        const taxType = item.taxType || mapTax(item.vatStatus);
-        return taxType === 'NON_VAT' ? acc + netItemTotal : acc;
+        return lineTaxType(item) === 'NON_VAT' ? acc + netItemTotal : acc;
       }, 0);
 
       const saleDetails: CompletedSale = {
@@ -396,7 +402,7 @@ export function useTender({
       setIsProcessing(false);
       isSubmittingRef.current = false;
     }
-  }, [pointsToRedeemValue, customer, pointsRate, referenceInput, isReferenceRequired, amountTenderedNum, isChargePayment, payments, selectedMethod, balanceRemaining, totalDue, items, change, pointsToRedeemCount, terminalMin, terminalSerialNumber, terminalPermitNo, terminalAccreditationNo, terminalPermitDateIssued, terminalName, isTrainingMode, settings, currentUser, shiftId, terminalId, toast, onCheckoutComplete]);
+  }, [pointsToRedeemValue, customer, pointsRate, referenceInput, isReferenceRequired, amountTenderedNum, isChargePayment, payments, selectedMethod, balanceRemaining, totalDue, items, change, pointsToRedeemCount, terminalMin, terminalSerialNumber, terminalPermitNo, terminalAccreditationNo, terminalPermitDateIssued, terminalName, isTrainingMode, settings, currentUser, shiftId, terminalId, toast, onCheckoutComplete, lineTaxType]);
 
   const getQuickAmounts = useCallback((total: number) => {
     const amounts = new Set<number>();

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { formatSINumber } from '@/lib/si-number';
+import { lineCostExpr } from '@/lib/cost-of-sale';
 
 // voided_by_name is added lazily by /api/pos/void-transaction — this report can be
 // the first thing to run against a fresh DB, so it can't assume the column exists.
@@ -39,7 +40,9 @@ export async function GET(request: NextRequest) {
         COALESCE(pt.tax_amount, 0) as vat_amount,
         st.notes as note,
         (
-          SELECT COALESCE(SUM(p.cost * si.quantity), 0)
+          -- Cost per SELLING unit, preferring the batch cost captured at sale
+          -- time. See lib/cost-of-sale.ts.
+          SELECT COALESCE(SUM(${lineCostExpr('si', 'p', { hasCostAtSale: true })}), 0)
           FROM sale_items si
           LEFT JOIN products p ON si.product_id = p.id
           WHERE si.sale_id = st.id

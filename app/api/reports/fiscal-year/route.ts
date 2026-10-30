@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { getFiscalYearRange, getCurrentFiscalYear, formatFiscalYear, toLocalYmd } from '@/lib/fiscal-utils';
+import { lineCostExpr } from '@/lib/cost-of-sale';
 
 export async function GET(request: NextRequest) {
   try {
@@ -39,11 +40,10 @@ export async function GET(request: NextRequest) {
       [startStr, endStr]
     ) as any[];
 
-    // cost_at_sale is per selling unit sold. p.cost (the fallback, used when
-    // batch costing hasn't run for a line) is per BASE unit, so it must be
-    // scaled by the line's selling_unit_factor — NULL means base unit (1).
+    // Cost resolution (snapshot first, scaled products.cost as fallback, and a
+    // snapshot of 0 treated as "none recorded") lives in lib/cost-of-sale.ts.
     const [costRow] = await query(
-      `SELECT COALESCE(SUM(si.quantity * COALESCE(si.cost_at_sale, p.cost * COALESCE(si.selling_unit_factor, 1), 0)), 0) AS cost
+      `SELECT COALESCE(SUM(${lineCostExpr('si', 'p', { hasCostAtSale: true })}), 0) AS cost
        FROM sale_items si
        JOIN sales_transactions st ON si.sale_id = st.id
        JOIN products p ON si.product_id = p.id
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
     // Per-calendar-month cost (profit = that month's revenue - cost).
     const monthlyCostRows = await query(
       `SELECT DATE_FORMAT(st.invoice_date, '%Y-%m') AS ym,
-              COALESCE(SUM(si.quantity * COALESCE(si.cost_at_sale, p.cost * COALESCE(si.selling_unit_factor, 1), 0)), 0) AS cost
+              COALESCE(SUM(${lineCostExpr('si', 'p', { hasCostAtSale: true })}), 0) AS cost
        FROM sale_items si
        JOIN sales_transactions st ON si.sale_id = st.id
        JOIN products p ON si.product_id = p.id

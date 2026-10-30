@@ -169,6 +169,17 @@ export default {
   				to: {
   					opacity: '0'
   				}
+  			},
+  			// Flashed on a POS cart row whose quantity was just bumped by adding
+  			// a product already in the cart, so the cashier can see WHICH
+  			// existing line absorbed the scan instead of looking for a new row.
+  			'cart-line-flash': {
+  				'0%, 40%': {
+  					backgroundColor: 'rgb(252 211 77 / 0.8)'
+  				},
+  				'100%': {
+  					backgroundColor: 'rgb(252 211 77 / 0)'
+  				}
   			}
   		},
   		animation: {
@@ -183,7 +194,8 @@ export default {
   			'dialog-content-show': 'dialog-content-show 500ms cubic-bezier(0.16, 1, 0.3, 1)',
   			'dialog-content-hide': 'dialog-content-hide 500ms cubic-bezier(0.16, 1, 0.3, 1)',
   			'dialog-overlay-show': 'dialog-overlay-show 500ms cubic-bezier(0.16, 1, 0.3, 1)',
-  			'dialog-overlay-hide': 'dialog-overlay-hide 500ms cubic-bezier(0.16, 1, 0.3, 1)'
+  			'dialog-overlay-hide': 'dialog-overlay-hide 500ms cubic-bezier(0.16, 1, 0.3, 1)',
+  			'cart-line-flash': 'cart-line-flash 1.2s ease-out'
   		}
   	}
   },

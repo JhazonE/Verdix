@@ -85,17 +85,31 @@ if (process.env.NODE_ENV === 'production') {
  * @returns Query results
  */
 export async function query(sql: string, params?: any[]): Promise<any> {
+  // Acquire through getConnection() rather than calling pool.query(), which
+  // acquires internally with NO timeout. query() is what every API route uses,
+  // so going straight to the pool left the entire read side of the app —
+  // notably the X/Z/overall readings and the back-office reports — waiting
+  // FOREVER on a saturated pool: no data, no error, no log line, just a
+  // spinner that never resolves. The acquire timeout has to cover this path,
+  // not only withTransaction()/getConnection(), or it protects checkout while
+  // leaving every report to hang.
+  const connection = await getConnection();
   try {
     if (params && params.length > 0) {
-      const [rows] = await pool.query(sql, params);
+      const [rows] = await connection.query(sql, params);
       return rows;
     } else {
-      const [rows] = await pool.query(sql);
+      const [rows] = await connection.query(sql);
       return rows;
     }
   } catch (error) {
     console.error('Database query error:', error);
     throw error;
+  } finally {
+    // Always released, including when the query itself throws: a leak here
+    // would permanently cost the pool a slot and march it toward the very
+    // saturation this timeout exists to report.
+    connection.release();
   }
 }
 

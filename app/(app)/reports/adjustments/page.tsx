@@ -16,6 +16,7 @@ import { Loader2, Printer, ClipboardX, FileSpreadsheet } from 'lucide-react';
 import { format } from 'date-fns';
 import { ReportHeader } from '@/components/reports/ReportHeader';
 import { getApiUrl } from '@/lib/api-config';
+import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { formatQuantity } from '@/lib/utils';
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { printReportTable, exportReportExcel } from '@/lib/report-print';
@@ -96,7 +97,7 @@ export default function AdjustmentReportPage() {
 
       let rows: Adjustment[] = adjustments;
       try {
-        const res = await fetch(getApiUrl(`/reports/adjustments?${params.toString()}`));
+        const res = await fetch(getApiUrl(`/reports/adjustments?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
         const data = await res.json();
         if (data.success && Array.isArray(data.data)) rows = data.data;
       } catch {
@@ -146,7 +147,7 @@ export default function AdjustmentReportPage() {
 
       let rows: Adjustment[] = adjustments;
       try {
-        const res = await fetch(getApiUrl(`/reports/adjustments?${params.toString()}`));
+        const res = await fetch(getApiUrl(`/reports/adjustments?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
         const data = await res.json();
         if (data.success && Array.isArray(data.data)) rows = data.data;
       } catch {
@@ -204,10 +205,16 @@ export default function AdjustmentReportPage() {
       params.append('page', page.toString());
       params.append('limit', pageSize.toString());
 
-      const res = await fetch(getApiUrl(`/reports/adjustments?${params.toString()}`));
+      const res = await fetch(getApiUrl(`/reports/adjustments?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const data = await res.json();
       
+      // A 200 carrying success:false is how this API reports its own errors.
+      // Falling through used to leave the page with no rows and no message,
+      // which read as "no data for this range" rather than "the report failed".
+      if (!data.success) {
+        throw new Error(data.details || data.error || 'The report could not be generated.');
+      }
       if (data.success) {
         setAdjustments(data.data);
         if (data.pagination) {

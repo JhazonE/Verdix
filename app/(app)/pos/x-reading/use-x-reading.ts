@@ -6,6 +6,11 @@ import { getApiUrl } from '@/lib/api-config';
 import type { XReadingData } from '../../sales/x-reading/x-reading-preview';
 import type { BusinessSettings } from '../../sales/z-reading/z-reading-preview';
 
+// A cashier is standing at the terminal waiting for this, so the bound is
+// tighter than the back-office reports': this request asks for one shift
+// (limit=1) and should never take long.
+const REPORT_FETCH_TIMEOUT_MS = 20_000;
+
 export function useXReading() {
   const [isAuthDialogOpen, setIsAuthDialogOpen] = useState(false);
   const [showReport, setShowReport] = useState(false);
@@ -35,18 +40,33 @@ export function useXReading() {
       const url = storedShiftId
         ? `/sales/x-reading?shiftId=${storedShiftId}&limit=1`
         : '/sales/x-reading?shiftStatus=active&limit=1';
-      const response = await fetch(getApiUrl(url));
+      // fetch() has no timeout, so a wedged route (a saturated connection
+      // pool used to hang one forever) left the dialog on "Loading…" with no
+      // toast and no way to tell it had failed. Bound the wait so the catch
+      // below can actually report it.
+      const response = await fetch(getApiUrl(url), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!response.ok) throw new Error(`API error ${response.status}`);
       const result = await response.json();
 
-      if (result.success && result.data.length > 0) {
+      // A server-side failure is NOT "no active shift": reporting it that way
+      // told the cashier their shift was missing when the request had in fact
+      // errored. Separate the two so the real cause reaches the screen.
+      if (!result.success) {
+        throw new Error(result.details || result.error || 'The X-reading request failed');
+      }
+
+      if (result.data.length > 0) {
         setXReadingData(result.data[0]);
       } else {
         toast({ title: 'No Active Shift', description: 'There is no active cashier shift to report on.', variant: 'destructive' });
       }
     } catch (error) {
       console.error('Error loading X-reading data:', error);
-      toast({ title: 'Error', description: 'Failed to load X-reading data.', variant: 'destructive' });
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to load X-reading data.',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
