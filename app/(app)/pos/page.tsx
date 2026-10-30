@@ -13,6 +13,7 @@ import { PosDialogs } from './pos-content/PosDialogs';
 import { PosQueuePanel } from './pos-content/PosQueuePanel';
 import { SendToQueueDialog } from './pos-content/SendToQueueDialog';
 import { FrontlinerModePrompt } from './pos-content/FrontlinerModePrompt';
+import { TerminalIdentityPrompt } from './pos-content/TerminalIdentityPrompt';
 import { usePOS } from './pos-content/use-pos';
 
 // Re-export types used by sibling dialog files
@@ -215,6 +216,13 @@ function POSContent() {
         blocked={pos.isFrontlinerBlocked}
         userName={pos.currentUser?.name || pos.currentUser?.username}
         onOpenChange={pos.setIsFrontlinerPromptOpen}
+      />
+
+      <TerminalIdentityPrompt
+        issue={pos.terminalIdentityIssue}
+        terminals={pos.terminals}
+        clientIp={pos.detectedClientIp}
+        onSelect={pos.handleSelectTerminalIdentity}
       />
     </>
   );

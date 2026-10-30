@@ -18,6 +18,7 @@ import './reprint-watermark.test';
 import './z-reading-discount-summary.test';
 import './z-reading-or-range.test';
 import './z-reading-record-before-print.test';
+import './terminal-identity-resolve.test';
 import './discount-line-targeting.test';
 import './receipt-discount-amount.test';
 import './discount-all-scope-amount.test';

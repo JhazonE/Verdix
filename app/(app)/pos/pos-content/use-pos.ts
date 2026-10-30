@@ -11,6 +11,7 @@ import { useLiveRefresh, dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { calculateEffectivePriceForUnit, resolvePriceForLevel } from '@/lib/pricing';
 import { resolveSellingUnitForAdd, baseSellingUnitOf, findCartLineForUnit, promoteToLargestUnit } from '@/lib/pos-cart-units';
 import { resolveEffectiveTaxType } from '@/lib/tax-utils';
+import { resolveTerminalIdentity } from '@/lib/pos/resolve-terminal-identity';
 import { getApiUrl } from '@/lib/api-config';
 import { formatStockQuantity } from '@/lib/utils';
 import { WALK_IN_CUSTOMER } from '../customer-account/customer-account-types';
@@ -37,6 +38,11 @@ export function usePOS() {
 
   const [terminals, setTerminals] = useState<any[]>([]);
   const [selectedTerminalId, setSelectedTerminalId] = useState<string>('');
+  // Non-null while this machine's terminal identity is unknown. The POS must
+  // not trade in that state — a guessed identity misfiles sales, shifts and
+  // Z-readings against another till.
+  const [terminalIdentityIssue, setTerminalIdentityIssue] = useState<'unresolved' | 'no-terminals' | null>(null);
+  const [detectedClientIp, setDetectedClientIp] = useState<string | null>(null);
   const [isEndingShift, setIsEndingShift] = useState(false);
   const { setTheme, resolvedTheme } = useTheme();
 
@@ -479,23 +485,32 @@ export function usePOS() {
           const terminalsData = result.data;
           setTerminals(terminalsData);
           const clientIp = result.clientIp;
-          const autoMatch = terminalsData.find((t: any) => t.ipAddress === clientIp);
-          const storedId = localStorage.getItem('pos_terminal_id');
-          const storedTerminal = terminalsData.find((t: any) => t.id === storedId);
 
-          if (autoMatch) {
-            setSelectedTerminalId(autoMatch.id);
-            localStorage.setItem('pos_terminal_id', autoMatch.id);
-            toast({ title: 'Terminal Connected', description: `Automatically connected to ${autoMatch.terminalDescription} (${clientIp})` });
-          } else if (storedTerminal) {
-            setSelectedTerminalId(storedTerminal.id);
-            toast({ title: 'Manual Terminal Connected', description: `Connected to ${storedTerminal.terminalDescription} (Note: This machine IP is ${clientIp})` });
+          // Identity is resolved stored-choice-first, and is never guessed.
+          // See lib/pos/resolve-terminal-identity.ts: this used to match on IP
+          // first and then silently fall back to terminalsData[0], which on
+          // Electron (always a loopback client IP) meant every terminal adopted
+          // the same identity and filed its Z-readings as one till.
+          const identity = resolveTerminalIdentity({
+            terminals: terminalsData,
+            clientIp,
+            storedId: localStorage.getItem('pos_terminal_id'),
+          });
+
+          if (identity.terminalId) {
+            setSelectedTerminalId(identity.terminalId);
+            if (identity.persist) localStorage.setItem('pos_terminal_id', identity.terminalId);
+            const label = identity.terminal?.terminalDescription || identity.terminal?.name || identity.terminalId;
+            toast(
+              identity.source === 'ip'
+                ? { title: 'Terminal Connected', description: `Automatically connected to ${label} (${clientIp})` }
+                : { title: 'Terminal Connected', description: `Operating as ${label}.` },
+            );
           } else {
-            toast({ variant: 'destructive', title: 'Terminal Not Found', description: `No terminal configured for IP: ${clientIp}. Please register this IP in Terminals page.` });
-            if (terminalsData.length > 0) {
-              setSelectedTerminalId(terminalsData[0].id);
-              localStorage.setItem('pos_terminal_id', terminalsData[0].id);
-            }
+            // Block rather than trade under a guessed identity: every sale,
+            // shift and Z-reading would be filed against the wrong terminal.
+            setTerminalIdentityIssue(identity.source === 'no-terminals' ? 'no-terminals' : 'unresolved');
+            setDetectedClientIp(clientIp || null);
           }
         }
       } catch {}
@@ -512,6 +527,21 @@ export function usePOS() {
     };
     fetchPaymentMethods();
   }, []);
+
+  // Operator resolves the block by naming this machine's terminal. Persisted
+  // so it becomes the authoritative 'stored' answer on every later boot and is
+  // never overridden by an IP guess.
+  const handleSelectTerminalIdentity = useCallback((terminalId: string) => {
+    const chosen = terminals.find((t: any) => t.id === terminalId);
+    if (!chosen) return;
+    localStorage.setItem('pos_terminal_id', chosen.id);
+    setSelectedTerminalId(chosen.id);
+    setTerminalIdentityIssue(null);
+    toast({
+      title: 'Terminal Set',
+      description: `This machine will operate as ${chosen.terminalDescription || chosen.name || chosen.id}.`,
+    });
+  }, [terminals, toast]);
 
   // Terminal heartbeat
   useEffect(() => {
@@ -1704,6 +1734,7 @@ export function usePOS() {
     inputRef,
     // terminal & session
     currentShiftId, selectedTerminalId, currentTerminalName, terminals,
+    terminalIdentityIssue, detectedClientIp, handleSelectTerminalIdentity,
     currentTime, shiftActive, isPosLoggedIn, isCheckingShift, isEndingShift,
     currentUser, businessSettings, isTrainingMode, enableCustomerDisplay,
     openOnSecondScreen, showQuantityInSearch, enablePriceLevelPicker, showOverlay,
