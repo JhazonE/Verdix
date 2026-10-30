@@ -19,6 +19,10 @@ import { ZReadingData, BusinessSettings } from './z-reading-preview';
 
 export type PrinterFormat = '58mm' | '80mm';
 
+// See the X-reading page: long enough for a wide range on a remote DB, short
+// enough that a wedged request reports itself instead of spinning forever.
+const REPORT_FETCH_TIMEOUT_MS = 45_000;
+
 export function useZReadingPage() {
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
@@ -50,7 +54,7 @@ export function useZReadingPage() {
     },
   });
 
-  const { data: zReadings = [], isLoading } = useQuery<ZReadingData[]>({
+  const { data: zReadings = [], isLoading, isError, error, refetch } = useQuery<ZReadingData[]>({
     queryKey: ['zReadings', queryParams],
     queryFn: async () => {
       if (!queryParams) return [];
@@ -58,15 +62,25 @@ export function useZReadingPage() {
       params.append('startDate', queryParams.from);
       params.append('endDate', queryParams.to);
       if (queryParams.terminalId) params.append('terminalId', queryParams.terminalId);
-      const res = await fetch(getApiUrl(`/sales/z-reading?${params.toString()}`));
+      // This page queries on mount over a 30-day default range, so it is the
+      // one users hit first — and fetch() has no timeout, so a route that
+      // never answers left it loading forever with nothing to report.
+      const res = await fetch(getApiUrl(`/sales/z-reading?${params.toString()}`), {
+        signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS),
+      });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const result = await res.json();
-      if (!result.success) return [];
-      if (result.data.length === 1 && queryParams.from === queryParams.to) {
-        setSelectedReading(result.data[0]);
+      // Returning [] on success:false rendered a failure as "no Z-readings",
+      // hiding both the cause and the fact that anything went wrong.
+      if (!result.success) {
+        throw new Error(result.details || result.error || 'Failed to fetch Z-readings');
+      }
+      const rows = result.data ?? [];
+      if (rows.length === 1 && queryParams.from === queryParams.to) {
+        setSelectedReading(rows[0]);
         setIsPreviewOpen(true);
       }
-      return result.data;
+      return rows;
     },
     enabled: !!queryParams,
   });
@@ -234,6 +248,9 @@ export function useZReadingPage() {
     isPreviewOpen, setIsPreviewOpen,
     businessSettings,
     zReadings, isLoading,
+    isError,
+    errorMessage: error instanceof Error ? error.message : null,
+    refetch,
     previewRef,
     table, columns,
     handleShowReport,

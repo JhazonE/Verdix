@@ -18,6 +18,10 @@ type Options = {
   requireAuth?: boolean;
 };
 
+// A cashier is waiting at the terminal and this asks for a single shift
+// (limit=1), so it should never take long.
+const REPORT_FETCH_TIMEOUT_MS = 20_000;
+
 export function useXReadingReport({ isOpen, shiftId, autoShow = false, terminalName, printMode, requireAuth = true }: Options) {
   type ReturnType = {
     isAuthDialogOpen: boolean;
@@ -50,15 +54,28 @@ export function useXReadingReport({ isOpen, shiftId, autoShow = false, terminalN
       } else {
         url = '/sales/x-reading?shiftStatus=active&limit=1';
       }
-      const response = await fetch(getApiUrl(url));
+      // fetch() has no timeout; without this a wedged route left the dialog
+      // on "Loading…" indefinitely with nothing reported.
+      const response = await fetch(getApiUrl(url), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!response.ok) throw new Error(`API error ${response.status}`);
       const result = await response.json();
-      if (result.success && result.data.length > 0) {
+      // success:false used to fall through this condition and set nothing at
+      // all — no data, no toast, a blank dialog with no explanation. Raise it.
+      if (!result.success) {
+        throw new Error(result.details || result.error || 'The X-reading request failed');
+      }
+      if (result.data.length > 0) {
         setReportData(result.data[0]);
+      } else {
+        toast({ title: 'No Active Shift', description: 'There is no shift to report on.', variant: 'destructive' });
       }
     } catch (error) {
       console.error('Error loading X-reading:', error);
-      toast({ title: 'Error', description: 'Failed to load report data', variant: 'destructive' });
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to load report data',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }

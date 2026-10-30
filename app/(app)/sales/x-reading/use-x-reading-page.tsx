@@ -21,6 +21,11 @@ import { BusinessSettings } from '../z-reading/z-reading-preview';
 
 export type PrinterFormat = '58mm' | '80mm';
 
+// Long enough for a wide date range over a remote (cloud) DB, short enough
+// that a wedged request reports itself instead of spinning until the user
+// gives up and calls the report "broken".
+const REPORT_FETCH_TIMEOUT_MS = 45_000;
+
 export function useXReadingPage() {
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
@@ -44,17 +49,30 @@ export function useXReadingPage() {
     },
   });
 
-  const { data: xReadings = [], isLoading } = useQuery<XReadingData[]>({
+  const { data: xReadings = [], isLoading, isError, error, refetch } = useQuery<XReadingData[]>({
     queryKey: ['xReadings', queryParams],
     queryFn: async () => {
       if (!queryParams) return [];
       const params = new URLSearchParams();
       params.append('startDate', queryParams.from);
       params.append('endDate', queryParams.to);
-      const res = await fetch(getApiUrl(`/sales/x-reading?${params.toString()}`));
+      // A request that never answers is the failure users actually hit (a
+      // saturated pool used to hang the route forever), and fetch() has no
+      // timeout of its own — without this the page spins indefinitely with
+      // nothing to report. Fail loudly instead so the UI can say so.
+      const res = await fetch(getApiUrl(`/sales/x-reading?${params.toString()}`), {
+        signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS),
+      });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const result = await res.json();
-      return result.success ? result.data : [];
+      // A 200 carrying success:false is still a failure, and it is the one the
+      // API reports its own `details` through. Returning [] here rendered it
+      // as "no X-readings found" — indistinguishable from an empty date range,
+      // which is why users saw a blank report and no reason for it.
+      if (!result.success) {
+        throw new Error(result.details || result.error || 'Failed to fetch X-readings');
+      }
+      return result.data ?? [];
     },
     enabled: !!queryParams,
   });
@@ -256,6 +274,9 @@ export function useXReadingPage() {
     isPreviewOpen, setIsPreviewOpen,
     businessSettings,
     xReadings, isLoading,
+    isError,
+    errorMessage: error instanceof Error ? error.message : null,
+    refetch,
     uniqueCashiers,
     filteredReadings,
     previewRef,

@@ -25,6 +25,9 @@ export default function ZReadingPage() {
           columns={p.columns}
           isLoading={p.isLoading}
           hasQuery={!!p.queryParams}
+          isError={p.isError}
+          errorMessage={p.errorMessage}
+          onRetry={() => p.refetch()}
         />
       </div>
 
