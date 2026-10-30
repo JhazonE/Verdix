@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 // Force rebuild: Fixed import path
 import { query, withTransaction, getNextReference, getNextReceiptNumber } from '@/lib/mysql';
+import { lineCostExpr, unitCostExpr } from '@/lib/cost-of-sale';
 import { deductFromBatches, getBatchCostingSettings } from '@/lib/batch-deduction';
 import { isService } from '@/lib/product-type';
 
@@ -180,9 +181,19 @@ export async function GET(request: NextRequest) {
       LEFT JOIN sales_transactions st ON pt.sale_id = st.id
       LEFT JOIN customers c ON st.customer_id = c.id
       LEFT JOIN (
-        SELECT pti.pos_transaction_id, SUM(pti.quantity * COALESCE(p.cost, 0)) as item_cost
+        -- Cost per SELLING unit; see lib/cost-of-sale.ts. Prefers the
+        -- sale_items snapshot for the same reason as the per-item query
+        -- below: pos_transaction_items has no cost_at_sale, and falling back
+        -- to products.cost reports today's cost against a filed sale. These
+        -- two must agree or the summary contradicts the rows under it.
+        SELECT pti.pos_transaction_id,
+               SUM(pti.quantity * COALESCE(
+                 ${unitCostExpr('si', 'p', { hasCostAtSale: true })},
+                 ${unitCostExpr('pti', 'p', { hasCostAtSale: false })}
+               )) as item_cost
         FROM pos_transaction_items pti
         LEFT JOIN products p ON pti.product_id = p.id
+        LEFT JOIN sale_items si ON pti.sale_item_id = si.id
         GROUP BY pti.pos_transaction_id
       ) item_costs ON item_costs.pos_transaction_id = pt.id
       WHERE 1=1 ${totalsWhereClause}
@@ -231,11 +242,25 @@ export async function GET(request: NextRequest) {
                 pti.line_total,
                 pti.discount_percentage,
                 pti.discount_amount,
-                COALESCE(p.cost, 0) as product_cost,
+                -- Per SELLING unit, to sit consistently beside unit_price and
+                -- quantity on the same line. See lib/cost-of-sale.ts.
+                --
+                -- Costed from the joined sale_items row, NOT from pti alone:
+                -- pos_transaction_items has no cost_at_sale column, so costing
+                -- pti directly falls back to products.cost — today's cost, not
+                -- the cost on the day of the sale. That made this detail
+                -- disagree with the profit on the report row above it, which is
+                -- built from cost_at_sale. si.quantity is in the same selling
+                -- units as pti.quantity, so the snapshot needs no rescaling.
+                COALESCE(
+                  ${unitCostExpr('si', 'p', { hasCostAtSale: true })},
+                  ${unitCostExpr('pti', 'p', { hasCostAtSale: false })}
+                ) as product_cost,
                 p.description,
                 p.unit_of_measure
             FROM pos_transaction_items pti
             LEFT JOIN products p ON pti.product_id = p.id
+            LEFT JOIN sale_items si ON pti.sale_item_id = si.id
             WHERE pti.pos_transaction_id IN (${placeholders})
         `;
         
@@ -437,11 +462,12 @@ export async function POST(request: NextRequest) {
 
         // --- BATCH COSTING: FIFO Deduction ---
         // Services have no batches; cost comes from the product's fixed cost.
-        let deduction: { weightedAvgCost: number; splits: any[] };
+        let deduction: { weightedAvgCost: number; splits: any[]; costUnknown: boolean };
         if (itemIsService) {
           deduction = {
             weightedAvgCost: prod?.cost != null ? parseFloat(prod.cost) : 0,
             splits: [],
+            costUnknown: prod?.cost == null,
           };
         } else {
           deduction = await deductFromBatches(item.id, item.quantity, oversellBlock, connection);
@@ -454,7 +480,10 @@ export async function POST(request: NextRequest) {
           item.name,
           item.quantity,
           item.price,
-          deduction.weightedAvgCost,
+          // NULL, not 0, when no cost was on record: a 0 snapshot would freeze
+          // this line at 100% margin, since reports only fall back to
+          // products.cost for a NULL. Mirrors lib/pos/process-sale-leg.ts.
+          deduction.costUnknown ? null : deduction.weightedAvgCost,
           // NULL rather than "[]" when no batches were consumed, matching what
           // the POS checkout path writes for services. One logical state, one
           // representation.
