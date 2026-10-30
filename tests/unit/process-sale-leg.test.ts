@@ -75,6 +75,82 @@ import { processSaleLeg } from '../../lib/pos/process-sale-leg';
       /has no base selling unit/
     );
 
+    // --- a product with NO cost must snapshot NULL, never 0 ---------------
+    // Writing 0 would mean "this was free" and freeze the line at 100% margin
+    // forever, because the reports only fall back to products.cost when the
+    // snapshot is NULL. The user hit exactly this: filling in a cost after the
+    // sale changed nothing in the reports.
+    const noCostProductId = 'TEST-SALELEG-PROD-NOCOST';
+    const noCostSaleId = 'TEST-SALELEG-SALE-NOCOST';
+    await connection.query(
+      `INSERT INTO sales_transactions (id, total, created_at, updated_at)
+       VALUES (?, 10, NOW(), NOW())`,
+      [noCostSaleId]
+    );
+    // cost IS NULL, and no inventory_batches row exists to price the sale.
+    await connection.query(
+      `INSERT INTO products (id, name, sku, stock, cost, price, type, unit_of_measure, earns_points, created_at, updated_at)
+       VALUES (?, 'No Cost Gadget', 'TEST-SALELEG-SKU-NOCOST', 10, NULL, 10, 'standard', 'Piece', 1, NOW(), NOW())`,
+      [noCostProductId]
+    );
+    await connection.query(
+      `INSERT INTO product_selling_units (id, product_id, name, factor, cost, price, is_base, created_at, updated_at)
+       VALUES (?, ?, 'Piece', 1, 0, 10, 1, NOW(), NOW())`,
+      ['TEST-SALELEG-UNIT-NOCOST', noCostProductId]
+    );
+
+    const noCostResult = await processSaleLeg(connection, {
+      item: { id: noCostProductId, name: 'No Cost Gadget', quantity: 2, price: 10 },
+      saleId: noCostSaleId,
+      itemIndex: 0,
+      oversellBlock: false,
+    });
+    assert.equal(
+      noCostResult.costAtSale,
+      null,
+      `an unknown cost must snapshot NULL, got ${noCostResult.costAtSale}`
+    );
+    const [noCostRows]: any = await connection.query(
+      'SELECT cost_at_sale FROM sale_items WHERE id = ?',
+      [noCostResult.itemId]
+    );
+    assert.equal(
+      noCostRows[0].cost_at_sale,
+      null,
+      'the stored column must be NULL so a later cost edit can still reach it'
+    );
+
+    // --- a product costed at 0 ON PURPOSE snapshots a real 0 --------------
+    // Unknown and zero must stay distinguishable: this one is frozen at 0.
+    const freeProductId = 'TEST-SALELEG-PROD-FREE';
+    const freeSaleId = 'TEST-SALELEG-SALE-FREE';
+    await connection.query(
+      `INSERT INTO sales_transactions (id, total, created_at, updated_at)
+       VALUES (?, 10, NOW(), NOW())`,
+      [freeSaleId]
+    );
+    await connection.query(
+      `INSERT INTO products (id, name, sku, stock, cost, price, type, unit_of_measure, earns_points, created_at, updated_at)
+       VALUES (?, 'Free Gadget', 'TEST-SALELEG-SKU-FREE', 10, 0, 10, 'standard', 'Piece', 1, NOW(), NOW())`,
+      [freeProductId]
+    );
+    await connection.query(
+      `INSERT INTO product_selling_units (id, product_id, name, factor, cost, price, is_base, created_at, updated_at)
+       VALUES (?, ?, 'Piece', 1, 0, 10, 1, NOW(), NOW())`,
+      ['TEST-SALELEG-UNIT-FREE', freeProductId]
+    );
+    const freeResult = await processSaleLeg(connection, {
+      item: { id: freeProductId, name: 'Free Gadget', quantity: 1, price: 10 },
+      saleId: freeSaleId,
+      itemIndex: 0,
+      oversellBlock: false,
+    });
+    assert.equal(
+      freeResult.costAtSale,
+      0,
+      `a deliberate zero cost is a known cost, got ${freeResult.costAtSale}`
+    );
+
     throw new Error('__TEST_ROLLBACK__');
   }).catch((e: any) => {
     if (e.message !== '__TEST_ROLLBACK__') throw e;

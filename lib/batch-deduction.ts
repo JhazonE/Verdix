@@ -24,6 +24,16 @@ export interface BatchSplit {
 export interface DeductionResult {
   splits: BatchSplit[];
   weightedAvgCost: number;
+  /**
+   * True when NO cost could be established for any part of this deduction —
+   * no batch carried a cost and `products.cost` was NULL/absent.
+   *
+   * This is NOT the same as a weighted average of 0. A product deliberately
+   * costed at 0 is a known cost; an unknown cost is missing data. The caller
+   * must store NULL rather than 0 for the latter, or the sale permanently
+   * snapshots "this was free" and no later correction can ever reach it.
+   */
+  costUnknown: boolean;
 }
 
 /**
@@ -53,6 +63,8 @@ export async function deductFromBatches(
 
   const splits: BatchSplit[] = [];
   let remaining = quantity;
+  // Set when the products.cost fallback had nothing to read. See costUnknown.
+  let fallbackCostUnknown = false;
 
   // 2. FIFO consumption
   for (const batch of batches) {
@@ -93,12 +105,18 @@ export async function deductFromBatches(
       'SELECT cost FROM products WHERE id = ?',
       [productId]
     );
-    const fallbackCost = parseFloat(prodRows?.[0]?.cost || 0);
+    // `cost || 0` would collapse NULL and 0 into the same number, and the
+    // caller could no longer tell "costed at zero" from "no cost on record".
+    // Keep them apart: NULL (or a non-numeric) means unknown.
+    const rawCost = prodRows?.[0]?.cost;
+    const parsed = rawCost == null ? NaN : parseFloat(rawCost);
+    const fallbackKnown = Number.isFinite(parsed);
+    if (!fallbackKnown) fallbackCostUnknown = true;
 
     splits.push({
       batchId: 'fallback',
       qty: remaining,
-      unitCost: fallbackCost,
+      unitCost: fallbackKnown ? parsed : 0,
       type: 'fallback',
     });
   }
@@ -108,7 +126,13 @@ export async function deductFromBatches(
   const totalCostValue = splits.reduce((s, x) => s + x.qty * x.unitCost, 0);
   const weightedAvgCost = totalUnits > 0 ? totalCostValue / totalUnits : 0;
 
-  return { splits, weightedAvgCost };
+  // Unknown only when NOTHING priced this deduction: the products.cost fallback
+  // came back empty and no real batch contributed a cost. If any batch did,
+  // the weighted average is a genuine figure and must be snapshotted as-is.
+  const pricedByBatch = splits.some((s) => s.type === 'batch');
+  const costUnknown = fallbackCostUnknown && !pricedByBatch;
+
+  return { splits, weightedAvgCost, costUnknown };
 }
 
 /**

@@ -121,12 +121,21 @@ export async function processSaleLeg(
   let batchSource: string | null = null;
 
   if (itemIsService) {
-    costAtSale = soldProd?.cost != null ? parseFloat(soldProd.cost) : 0;
+    // Same rule as the batch path: NULL when no cost is on record, never 0.
+    // Services are created with a cost precisely so this snapshot is real,
+    // but a row predating that rule must stay correctable rather than freeze
+    // at 100% margin.
+    costAtSale = soldProd?.cost != null ? parseFloat(soldProd.cost) : null;
     batchSource = null;
   } else {
     try {
       const deduction = await deductFromBatches(item.id, qtyInBase, oversellBlock, connection as any);
-      costAtSale = deduction.weightedAvgCost * factor;
+      // NULL, not 0, when no cost was on record: 0 would snapshot "this was
+      // free" and permanently fix the line at 100% margin, since the reports
+      // only fall back to products.cost for a NULL snapshot. Leaving it NULL
+      // lets a cost entered later apply to these lines — and once a real cost
+      // IS captured here, the snapshot is frozen and later edits cannot move it.
+      costAtSale = deduction.costUnknown ? null : deduction.weightedAvgCost * factor;
       batchSource = JSON.stringify(deduction.splits);
     } catch (batchErr: any) {
       if (batchErr.message && batchErr.message.startsWith('Batch stock exhausted')) {
