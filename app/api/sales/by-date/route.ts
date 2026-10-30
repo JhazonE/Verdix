@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
+import { lineCostExpr } from '@/lib/cost-of-sale';
 
 export async function GET(request: NextRequest) {
   try {
@@ -86,7 +87,10 @@ export async function GET(request: NextRequest) {
             SUM(pt.discount_amount) as total_discount,
             SUM(pt.tax_amount) as total_tax,
             SUM(
-                (SELECT SUM(COALESCE(p.cost, 0) * pti.quantity)
+                -- Cost per SELLING unit: pos_transaction_items has no
+                -- cost_at_sale, so products.cost is scaled by the line's
+                -- selling_unit_factor. See lib/cost-of-sale.ts.
+                (SELECT SUM(${lineCostExpr('pti', 'p', { hasCostAtSale: false })})
                  FROM pos_transaction_items pti
                  LEFT JOIN products p ON pti.product_id = p.id
                  WHERE pti.pos_transaction_id = pt.id)

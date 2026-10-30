@@ -97,15 +97,33 @@ export function ByProductTable({
                                     <TableHead className="font-semibold">Customer</TableHead>
                                     <TableHead className="font-semibold text-right">Qty</TableHead>
                                     <TableHead className="font-semibold text-right">Price</TableHead>
+                                    <TableHead className="font-semibold text-right">Cost Price</TableHead>
                                     <TableHead className="font-semibold text-right">Total</TableHead>
+                                    <TableHead className="font-semibold text-right">Total Cost</TableHead>
+                                    <TableHead className="font-semibold text-right">Profit</TableHead>
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                   {transactions[row.original.product.id]?.length > 0 ? (
                                     transactions[row.original.product.id].map((tx) => {
                                       const productItem = tx.items.find(
-                                        (i: any) => i.productId === row.original.product.id
+                                        (i) => i.productId === row.original.product.id
                                       );
+                                      // Cost arrives per selling unit, which is
+                                      // what Cost Price shows beside Price.
+                                      // Scaling it by quantity gives the Cost
+                                      // column, so Cost and Profit down the
+                                      // table sum to the Cost and Profit on the
+                                      // product row above.
+                                      const lineQty = Number(productItem?.quantity) || 0;
+                                      const lineTotal = Number(productItem?.total) || 0;
+                                      const unitCost = Number(productItem?.cost) || 0;
+                                      const lineCost = unitCost * lineQty;
+                                      // Discount is already deducted from
+                                      // `total`; subtracting it again here would
+                                      // double-count it against the Sales
+                                      // Discount column on the product row.
+                                      const lineProfit = lineTotal - lineCost;
                                       return (
                                         // Keyed by posTransactionId, not id: a
                                         // return carries the sale_id of the sale
@@ -126,20 +144,34 @@ export function ByProductTable({
                                           </TableCell>
                                           <TableCell>{tx.customer?.name}</TableCell>
                                           <TableCell className="text-right">
-                                            {productItem?.quantity || 0}
+                                            {lineQty}
                                           </TableCell>
                                           <TableCell className="text-right">
-                                            {parseFloat(productItem?.price || 0).toFixed(2)}
+                                            {(Number(productItem?.price) || 0).toFixed(2)}
                                           </TableCell>
                                           <TableCell className="text-right">
-                                            {parseFloat(productItem?.total || 0).toFixed(2)}
+                                            {unitCost.toFixed(2)}
+                                          </TableCell>
+                                          <TableCell className="text-right">
+                                            {lineTotal.toFixed(2)}
+                                          </TableCell>
+                                          <TableCell className="text-right">
+                                            {lineCost.toFixed(2)}
+                                          </TableCell>
+                                          <TableCell
+                                            className={cn(
+                                              'text-right font-medium',
+                                              lineProfit < 0 ? 'text-red-600' : 'text-green-600'
+                                            )}
+                                          >
+                                            {lineProfit.toFixed(2)}
                                           </TableCell>
                                         </TableRow>
                                       );
                                     })
                                   ) : (
                                     <TableRow>
-                                      <TableCell colSpan={6} className="text-center text-muted-foreground py-4">
+                                      <TableCell colSpan={9} className="text-center text-muted-foreground py-4">
                                         No transaction details available.
                                       </TableCell>
                                     </TableRow>

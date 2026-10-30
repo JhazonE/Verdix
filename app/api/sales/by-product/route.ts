@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
+import { sumLineCostExpr, unitCostExpr } from '@/lib/cost-of-sale';
 
 export async function GET(request: NextRequest) {
   try {
@@ -35,7 +36,9 @@ export async function GET(request: NextRequest) {
              SUM(si.quantity) as units_sold,
              SUM(si.price * si.quantity) as total_revenue,
              SUM(GREATEST(0, COALESCE(pti.discount_amount, 0))) as total_discount,
-             SUM(si.quantity * COALESCE(p.cost, 0)) as total_cost,
+             -- Cost must be per SELLING unit, matching si.price/si.quantity.
+             -- See lib/cost-of-sale.ts: p.cost alone costs a case as a bottle.
+             ${sumLineCostExpr('si', 'p', { hasCostAtSale: true })} as total_cost,
              COUNT(DISTINCT pt.id) as number_of_sales,
              AVG(si.price) as avg_price_per_unit
            FROM sale_items si
@@ -82,10 +85,13 @@ export async function GET(request: NextRequest) {
         baseQueryStr = `
           WITH all_sale_items AS (
             -- Items from Sales Transactions (POS)
-            SELECT 
-              si.product_id, 
-              si.quantity, 
+            SELECT
+              si.product_id,
+              si.quantity,
               si.price,
+              -- Cost per SELLING unit, resolved per source table because only
+              -- some of them carry cost_at_sale. See lib/cost-of-sale.ts.
+              ${unitCostExpr('si', 'p_cost', { hasCostAtSale: true })} as unit_cost,
               GREATEST(0, COALESCE(pti.discount_amount, 0)) as discount_amount,
               st.id as source_id,
               st.invoice_date as transaction_date,
@@ -93,6 +99,7 @@ export async function GET(request: NextRequest) {
               pt.id as reference_no
             FROM sale_items si
             JOIN sales_transactions st ON si.sale_id = st.id
+            LEFT JOIN products p_cost ON si.product_id = p_cost.id
             LEFT JOIN pos_transactions pt ON st.id = pt.sale_id
             LEFT JOIN users u ON pt.user_id = u.uid
             LEFT JOIN pos_transaction_items pti ON pti.sale_item_id = si.id
@@ -102,9 +109,10 @@ export async function GET(request: NextRequest) {
             
             -- Items from Sales Invoices
             SELECT 
-              sii.product_id, 
-              sii.quantity, 
+              sii.product_id,
+              sii.quantity,
               sii.price,
+              ${unitCostExpr('sii', 'p_cost', { hasCostAtSale: true })} as unit_cost,
               0 as discount_amount,
               sinv.id as source_id,
               sinv.invoice_date as transaction_date,
@@ -112,15 +120,19 @@ export async function GET(request: NextRequest) {
               sinv.id as reference_no
             FROM sales_invoice_items sii
             JOIN sales_invoices sinv ON sii.sales_invoice_id = sinv.id
+            LEFT JOIN products p_cost ON sii.product_id = p_cost.id
             WHERE sinv.status = 'Paid' AND (sinv.notes IS NULL OR sinv.notes NOT LIKE '%POS Sale%')
             
             UNION ALL
             
             -- Items from Sales Orders
             SELECT 
-              soi.product_id, 
-              soi.quantity, 
+              soi.product_id,
+              soi.quantity,
               soi.price,
+              -- sales_order_items has no cost_at_sale column, so this leg can
+              -- only use the scaled products.cost fallback.
+              ${unitCostExpr('soi', 'p_cost', { hasCostAtSale: false })} as unit_cost,
               0 as discount_amount,
               so.id as source_id,
               so.order_date as transaction_date,
@@ -128,6 +140,7 @@ export async function GET(request: NextRequest) {
               so.reference as reference_no
             FROM sales_order_items soi
             JOIN sales_orders so ON soi.sales_order_id = so.id
+            LEFT JOIN products p_cost ON soi.product_id = p_cost.id
             WHERE so.status = 'Paid'
           )
           SELECT
@@ -141,7 +154,7 @@ export async function GET(request: NextRequest) {
             SUM(asi.quantity) as units_sold,
             SUM(asi.price * asi.quantity) as total_revenue,
             SUM(asi.discount_amount) as total_discount,
-            SUM(asi.quantity * COALESCE(p.cost, 0)) as total_cost,
+            SUM(asi.quantity * COALESCE(asi.unit_cost, 0)) as total_cost,
             COUNT(DISTINCT asi.source_id) as number_of_sales,
             AVG(asi.price) as avg_price_per_unit
           FROM all_sale_items asi
