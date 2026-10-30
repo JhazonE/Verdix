@@ -171,6 +171,16 @@ export function usePOS() {
   const [isCashTransferPreAuthOpen, setIsCashTransferPreAuthOpen] = useState(false);
   const [isDiscountDialogOpen, setIsDiscountDialogOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  // The cart line whose quantity was just bumped by adding a product already in
+  // the cart, flashed so the cashier sees the scan landed on an EXISTING line.
+  // `seq` makes a repeat scan of the same line a new signal: without it the
+  // state is unchanged on the second bump and the flash never replays.
+  const [bumpedLine, setBumpedLine] = useState<{ lineId: string; seq: number } | null>(null);
+  // Supermarket-style "quantity first": the cashier types a count and presses
+  // Tab, then scans. The armed count applies to the NEXT item added and is
+  // cleared the moment it is consumed, so it can never silently multiply a
+  // later scan.
+  const [pendingQty, setPendingQty] = useState<number | null>(null);
   const [editingNameItemId, setEditingNameItemId] = useState<string | null>(null);
   const [editingQtyItemId, setEditingQtyItemId] = useState<string | null>(null);
   const [editingPriceItemId, setEditingPriceItemId] = useState<string | null>(null);
@@ -262,6 +272,28 @@ export function usePOS() {
       document.getElementById(`pos-item-${selectedItemId}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }, [selectedItemId]);
+
+  // A cart reset (completed sale, void, suspend, shift end) must not leave a
+  // quantity armed for the next customer. Keyed on the cart EMPTYING rather
+  // than patched into each of the several setItems([]) call sites, so no future
+  // reset path can forget it.
+  //
+  // It must fire on the non-empty -> empty transition only, never on a cart
+  // that is merely still empty: arming a count for the first item of a sale is
+  // the common case, and clearing on `length === 0` would wipe it instantly.
+  const prevItemCountRef = useRef(items.length);
+  useEffect(() => {
+    if (prevItemCountRef.current > 0 && items.length === 0) setPendingQty(null);
+    prevItemCountRef.current = items.length;
+  }, [items.length]);
+
+  // Drop the flash once it has played, so the class is gone before the next
+  // bump re-adds it — a CSS animation does not restart on an unchanged class.
+  useEffect(() => {
+    if (!bumpedLine) return;
+    const timer = setTimeout(() => setBumpedLine(null), 1200);
+    return () => clearTimeout(timer);
+  }, [bumpedLine]);
 
   // Sync qty draft and cancel inline edits on row change
   useEffect(() => {
@@ -692,7 +724,20 @@ export function usePOS() {
   }, [activeLevelId]);
 
   // Handlers
-  const handleAddItem = (product: any | undefined, matchedCode?: string, explicitUnitId?: string) => {
+  //
+  // `quantity` is the count to add, in the resolved line's OWN selling unit
+  // (5 on a Box line means five boxes), and defaults to 1 so a plain scan is
+  // unchanged. It is passed through to priceLineFor rather than multiplied in
+  // afterwards, because a quantity tier ("12+") prices off the line's total
+  // quantity — adding 12 at once must land on the same price as scanning 12
+  // times.
+  const handleAddItem = (product: any | undefined, matchedCode?: string, explicitUnitId?: string, quantity?: number) => {
+    // An armed "quantity first" count is consumed HERE rather than at each call
+    // site, so every route into the cart honours it — exact-code auto-add, the
+    // suggestion dropdown, the F9 product search and the remote SKU lookup —
+    // without each one having to remember to pass it.
+    const requested = quantity ?? pendingQty ?? 1;
+    const addQty = Number.isFinite(requested) && requested > 0 ? requested : 1;
     if (product) {
       const unit = product.type === 'service'
         ? undefined
@@ -718,12 +763,19 @@ export function usePOS() {
           return;
         }
       }
+      // Flag the quantity bump out here, not inside the setItems updater: an
+      // updater runs during render (twice under StrictMode) and must stay pure.
+      // `existing` is resolved from the same items/unit the updater will see.
+      if (existing) {
+        setSelectedItemId(existing.lineId);
+        setBumpedLine(prev => ({ lineId: existing.lineId, seq: (prev?.seq ?? 0) + 1 }));
+      }
       setItems(prevItems => {
         const existingLine = product.type === 'service'
           ? prevItems.find(item => item.id === product.id)
           : findCartLineForUnit(prevItems, product.id, unit?.id);
         if (existingLine) {
-          const newQty = existingLine.quantity + 1;
+          const newQty = existingLine.quantity + addQty;
           const priceUnit = unit ?? baseSellingUnitOf(product);
           // Re-scanning a line the cashier priced by level must not undo that
           // pick — the line keeps its level and its price.
@@ -732,17 +784,21 @@ export function usePOS() {
         } else {
           const priceUnit = unit ?? baseSellingUnitOf(product);
           const newItem: SaleItem = {
-            ...product, quantity: 1, discount: 0, name: product.name,
+            ...product, quantity: addQty, discount: 0, name: product.name,
             selectedSellingUnit: unit,
             lineId: crypto.randomUUID(),
             // A brand-new line carries no pick and follows the cart.
-            price: priceLineFor(priceUnit, 1, undefined),
+            price: priceLineFor(priceUnit, addQty, undefined),
             taxType: mapVatStatusToTaxType(product.vatStatus),
           };
           setSelectedItemId(newItem.lineId);
           return [...prevItems, newItem];
         }
       });
+      // Consumed. Cleared only on a successful add: a mistyped barcode should
+      // leave the armed count standing so the cashier can just scan again
+      // instead of re-entering the quantity.
+      setPendingQty(null);
     } else {
       toast({ title: 'Error', description: 'Product not found', variant: 'destructive' });
     }
@@ -1607,14 +1663,14 @@ export function usePOS() {
       const net = itemTotal - (itemTotal * item.discount) / 100;
       subTotal += net;
       const baseTaxType = item.taxType || mapVatStatusToTaxType(item.vatStatus);
-      const taxType = resolveEffectiveTaxType(baseTaxType, item.discountType, item.discount);
+      const taxType = resolveEffectiveTaxType(baseTaxType, item.discountType, item.discount, businessSettings?.vatRegistration);
       if (taxType === 'VAT') { const vatable = net / 1.12; vatSales += vatable; vatAmount += net - vatable; }
       else if (taxType === 'NON_VAT') nonVatSales += net;
       else if (taxType === 'ZERO_RATED') zeroRatedSales += net;
       else if (taxType === 'VAT_EXEMPT') vatExemptSales += net;
     });
     return { vatSales, vatAmount, nonVatSales, zeroRatedSales, vatExemptSales, subTotal };
-  }, [items]);
+  }, [items, businessSettings?.vatRegistration]);
 
   const totalDue = useMemo(() => items.reduce((acc, item) => {
     const t = item.price * item.quantity;
@@ -1675,6 +1731,9 @@ export function usePOS() {
     // cart
     items, inputValue, setInputValue, inventoryLocation,
     selectedItemId, setSelectedItemId, selectedItem,
+    bumpedLineId: bumpedLine?.lineId ?? null,
+    bumpedLineSeq: bumpedLine?.seq ?? 0,
+    pendingQty, setPendingQty,
     editingNameItemId, setEditingNameItemId,
     editingQtyItemId, setEditingQtyItemId,
     editingPriceItemId, setEditingPriceItemId,

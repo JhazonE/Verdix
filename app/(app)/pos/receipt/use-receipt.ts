@@ -41,7 +41,7 @@ export function useReceipt({ items, totalDue, saleDetails, settings }: Options) 
     const vatableGross = items.reduce((acc, item) => {
       const netItemTotal = item.price * item.quantity * (1 - (item.discount || 0) / 100);
       const baseTaxType = item.taxType || mapVatStatusToTaxType(item.vatStatus);
-      const taxType = resolveEffectiveTaxType(baseTaxType, item.discountType, item.discount);
+      const taxType = resolveEffectiveTaxType(baseTaxType, item.discountType, item.discount, settings?.vatRegistration);
       return taxType === 'VAT' ? acc + netItemTotal : acc;
     }, 0);
 
@@ -51,12 +51,12 @@ export function useReceipt({ items, totalDue, saleDetails, settings }: Options) 
     const vatExemptSales = items.reduce((acc, item) => {
       const netItemTotal = item.price * item.quantity * (1 - (item.discount || 0) / 100);
       const baseTaxType = item.taxType || mapVatStatusToTaxType(item.vatStatus);
-      const taxType = resolveEffectiveTaxType(baseTaxType, item.discountType, item.discount);
+      const taxType = resolveEffectiveTaxType(baseTaxType, item.discountType, item.discount, settings?.vatRegistration);
       return taxType === 'VAT_EXEMPT' ? acc + netItemTotal : acc;
     }, 0);
 
     return { vatableSales, vatAmount, vatExemptSales };
-  }, [items]);
+  }, [items, settings?.vatRegistration]);
 
   const vatAmount = computedTax.vatAmount;
 

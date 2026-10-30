@@ -15,14 +15,37 @@ export function mapVatStatusToTaxType(vatStatus?: string): TaxType {
 }
 
 /**
+ * A non-VAT-registered establishment has no authority to charge output VAT, so no line it
+ * sells can be VAT-able no matter how the product itself is configured. `vat_registration`
+ * in `pos_settings` used to drive only the printed "NON-VAT REG TIN" header label while
+ * every computation still back-computed 12% out of the price; this is the gate that makes
+ * the setting mean what it says. Products set to ZERO_RATED or VAT_EXEMPT keep that
+ * classification — those are distinct BIR buckets and collapsing them into NON_VAT would
+ * misreport the breakdown — only VAT becomes NON_VAT.
+ */
+export function applyRegistrationToTaxType(taxType: TaxType, vatRegistration?: string): TaxType {
+  if (vatRegistration === 'NON_VAT' && taxType === 'VAT') return 'NON_VAT';
+  return taxType;
+}
+
+/**
  * RA 9994 (Senior Citizens), RA 10754 (PWD), RA 10699 (NAAC) and RA 11861 (Solo Parents)
  * exempt the qualifying purchase from VAT, not just discount it — the statutory discount
  * must be computed on the VAT-exclusive price. A line carrying one of these discount types
  * is therefore always VAT_EXEMPT for tax purposes, overriding the product's own tax setup.
+ *
+ * `vatRegistration` is applied last: a statutory discount at a non-VAT store still lands on
+ * VAT_EXEMPT (the discount is what exempts it, and that is the bucket BIR wants it in),
+ * while an ordinary line falls through to NON_VAT.
  */
-export function resolveEffectiveTaxType(baseTaxType: TaxType, discountType?: string, discount?: number): TaxType {
+export function resolveEffectiveTaxType(
+  baseTaxType: TaxType,
+  discountType?: string,
+  discount?: number,
+  vatRegistration?: string,
+): TaxType {
   if (discountType && STATUTORY_VAT_EXEMPT_DISCOUNTS.has(discountType) && (discount || 0) > 0) {
     return 'VAT_EXEMPT';
   }
-  return baseTaxType;
+  return applyRegistrationToTaxType(baseTaxType, vatRegistration);
 }

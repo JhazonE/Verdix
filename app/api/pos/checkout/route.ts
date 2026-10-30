@@ -135,11 +135,15 @@ export async function POST(request: NextRequest) {
         'SELECT * FROM loyalty_points_settings LIMIT 1'
       );
       const [posSettingsRows]: any = await connection.query(
-        'SELECT is_training_mode FROM pos_settings LIMIT 1'
+        'SELECT is_training_mode, vat_registration FROM pos_settings LIMIT 1'
       );
-      
+
       const loyaltySettings = loyaltyRows || [];
       const isTrainingMode = posSettingsRows?.[0]?.is_training_mode || false;
+      // A non-VAT-registered store cannot charge output VAT. This is the figure that gets
+      // persisted and later read back by Z-readings and BIR reports, so the gate has to be
+      // applied here and not only in the POS display.
+      const vatRegistration = posSettingsRows?.[0]?.vat_registration || 'VAT';
       let eligiblePointsAmount = 0;
 
       // Log payment initiation
@@ -473,7 +477,7 @@ export async function POST(request: NextRequest) {
         const discAmount = (originalPrice * item.quantity) * (discountPercent / 100);
         const lTotal = (originalPrice * item.quantity) - discAmount;
 
-        const effectiveTaxType = resolveEffectiveTaxType(item.taxType || 'VAT', item.discountType, discountPercent);
+        const effectiveTaxType = resolveEffectiveTaxType(item.taxType || 'VAT', item.discountType, discountPercent, vatRegistration);
 
         posItemRows.push([
           posItemId, posTransId, itemId, item.id, item.name,
