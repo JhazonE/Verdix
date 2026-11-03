@@ -183,14 +183,22 @@ export class ZReadingGenerator {
             enc.line(row(`${method.name.toUpperCase()}:`, fmt(method.amount || 0)));
         });
         enc.line(row('Opening Fund:',    fmt(data.startingCash || 0)));
-        enc.line(row('Less Withdrawal:', '0.00'));
+        // Both halves of cash_transfers. A deposit raises the expected cash the
+        // cashiers are measured against just as a withdrawal lowers it, so
+        // showing only the withdrawal left the summary's arithmetic unreadable.
+        enc.line(row('Add Deposit:',     fmt(data.cashDeposit || 0)));
+        enc.line(row('Less Withdrawal:', fmt(data.cashPickup || 0)));
         const totalPayments = (data.paymentMethods || [])
             .reduce((acc: number, m: any) => acc + (m.amount || 0), 0);
         enc.bold(true).line(row('Payments Received:', fmt(totalPayments))).bold(false);
 
         // ── SHORT/OVER ───────────────────────────────────────────────────────
         enc.line(dash);
-        enc.line(row('SHORT/OVER:', '0.00'));
+        // shifts.cash_difference (counted cash minus expected), already summed
+        // over this reading's window by the route. This was a hardcoded '0.00'
+        // while the route had been supplying `variance` all along, so a real
+        // cash discrepancy never reached the filed report.
+        enc.line(row('SHORT/OVER:', fmt(data.variance || 0)));
         enc.line(dash);
 
         // ── FOOTER ───────────────────────────────────────────────────────────

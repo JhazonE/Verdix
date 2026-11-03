@@ -29,6 +29,7 @@ export class XReadingGenerator {
             membershipActivationCount,
             membershipRenewalCount,
             cashPickup,
+            cashDeposit,
             overShort,
             minSaleId,
             maxSaleId,
@@ -191,13 +192,20 @@ export class XReadingGenerator {
             // rather than inform them. The refund_amount column and its POST
             // write path are kept, so this is reversible if refunds are built.
 
-            // WITHDRAWAL
+            // DEPOSIT / WITHDRAWAL — cash moved in and out of the drawer
+            // mid-shift. Both belong here: each one shifts the expected cash
+            // the cashier is measured against, so showing only the withdrawal
+            // left a deposit silently raising expected cash with no line on
+            // the report accounting for where that money came from.
              .table(
                  [
                     { width: 20, align: 'left' },
                     { width: 12, align: 'right' }
                 ],
-                [['WITHDRAWAL', formatCurrency(cashPickup || 0)]]
+                [
+                    ['DEPOSIT', formatCurrency(cashDeposit || 0)],
+                    ['WITHDRAWAL', formatCurrency(cashPickup || 0)]
+                ]
             )
             .line('--------------------------------')
 
@@ -216,6 +224,7 @@ export class XReadingGenerator {
                         [`  ${membershipActivationCount || 0}a / ${membershipRenewalCount || 0}r`, '']
                     ] : []),
                     ['Opening Fund:', formatCurrency(startingCash)],
+                    ['Add Deposit:', formatCurrency(cashDeposit || 0)],
                     ['Less Withdrawal:', formatCurrency(cashPickup || 0)],
                     ['Payments Received:', formatCurrency(paymentMethods.reduce((acc, m) => acc + m.amount, 0))]
                 ]

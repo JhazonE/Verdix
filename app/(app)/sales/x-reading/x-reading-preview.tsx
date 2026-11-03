@@ -235,7 +235,15 @@ export function XReadingPreview({ data, printerFormat = '58mm', businessSettings
 
       <DashedLine />
 
+       {/* Cash moved in and out of the drawer mid-shift. Both belong here:
+           each one shifts the expected cash the cashier is measured against,
+           so showing only the withdrawal left a deposit silently raising
+           expected cash with no line accounting for where it came from. */}
        <div style={styles.section}>
+         <div style={styles.row}>
+          <span>DEPOSIT</span>
+          <span>{formatCurrency(data.cashDeposit || 0)}</span>
+        </div>
          <div style={styles.row}>
           <span>WITHDRAWAL</span>
           <span>{formatCurrency(data.cashPickup || 0)}</span>
@@ -277,6 +285,11 @@ export function XReadingPreview({ data, printerFormat = '58mm', businessSettings
          <div style={styles.row}>
            <span>Opening Fund:</span>
            <span>{formatCurrency(data.startingCash)}</span>
+         </div>
+
+         <div style={styles.row}>
+           <span>Add Deposit:</span>
+           <span>{formatCurrency(data.cashDeposit || 0)}</span>
          </div>
 
          <div style={styles.row}>

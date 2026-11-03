@@ -56,7 +56,15 @@ async function ensureZReadingsSchema() {
             { name: 'max_return_or_id', type: 'VARCHAR(50)' },
             { name: 'actual_cash', type: 'DECIMAL(15,2) DEFAULT 0.00' },
             { name: 'cash_difference', type: 'DECIMAL(15,2) DEFAULT 0.00' },
-            { name: 'cashier_breakdown', type: 'JSON' }
+            { name: 'cashier_breakdown', type: 'JSON' },
+            // Cash physically moved in/out of the drawer during the period
+            // (cash_transfers). These are PERSISTED rather than recomputed on
+            // read: a Z-reading is a filed BIR report, so re-printing one must
+            // show the figure it was filed with, even if a transfer row is
+            // later corrected. Rows filed before these columns existed keep
+            // the DEFAULT 0.00, which is the figure those reports printed.
+            { name: 'cash_deposit', type: 'DECIMAL(15,2) DEFAULT 0.00' },
+            { name: 'cash_pickup', type: 'DECIMAL(15,2) DEFAULT 0.00' }
         ];
 
         for (const col of columnsToAdd) {
@@ -377,7 +385,34 @@ export async function GET(request: NextRequest) {
         const membershipActivationCount = safeInt(membershipCashRows[0]?.activation_count);
         const membershipRenewalCount = safeInt(membershipCashRows[0]?.renewal_count);
 
-        const cashInDrawer = startingCash + cashSales + membershipCash;
+        // Cash moved in/out of the drawer over this Z-reading's window. The
+        // "Less Withdrawal:" line used to be a hardcoded '0.00' in both
+        // renderers and this route never read cash_transfers at all, so the
+        // report asserted no cash had ever been withdrawn from the drawer.
+        // The End Shift dialog (app/api/pos/shifts) always read it correctly.
+        //
+        // Scoped like every other figure here: half-open on time
+        // (> startDate, <= endDate) so a transfer on the boundary falls into
+        // exactly one reading, never two.
+        let transferWhere = 'WHERE 1=1';
+        const transferParams: any[] = [];
+        if (startDate) { transferWhere += ' AND transaction_time > ?'; transferParams.push(startDate); }
+        transferWhere += ' AND transaction_time <= ?'; transferParams.push(endDate);
+        if (terminalId && terminalId !== 'all') { transferWhere += ' AND terminal_id = ?'; transferParams.push(terminalId); }
+        const cashTransferRows: any[] = await query(
+            `SELECT
+                COALESCE(SUM(CASE WHEN type = 'deposit' THEN amount ELSE 0 END), 0) AS total_deposits,
+                COALESCE(SUM(CASE WHEN type = 'pickup'  THEN amount ELSE 0 END), 0) AS total_pickups
+             FROM cash_transfers ${transferWhere}`,
+            transferParams
+        );
+        const cashDeposit = parseFloat(cashTransferRows[0]?.total_deposits || 0);
+        const cashPickup = parseFloat(cashTransferRows[0]?.total_pickups || 0);
+
+        // A pickup takes cash OUT of the drawer, so expected cash falls by it;
+        // a deposit puts cash in. Omitting them made every period containing a
+        // pickup report a phantom SHORT for exactly the amount picked up.
+        const cashInDrawer = startingCash + cashSales + membershipCash + cashDeposit - cashPickup;
         const runningTotal = previousReading + finalNetSales;
 
         const paymentMethods = paymentResults.map((p: any) => ({
@@ -438,6 +473,8 @@ export async function GET(request: NextRequest) {
             membershipActivationCount: membershipActivationCount,
             membershipRenewalCount: membershipRenewalCount,
             cashInDrawer: safeParseFloat(cashInDrawer),
+            cashDeposit: safeParseFloat(cashDeposit),
+            cashPickup: safeParseFloat(cashPickup),
             cashierName: 'Admin',
             terminalId: terminalId,
             terminalMin: terminalMin || '',
@@ -564,6 +601,12 @@ export async function GET(request: NextRequest) {
                 startingCash: safeParseFloat(row.starting_cash),
                 cashSales: safeParseFloat(row.cash_sales),
                 cashInDrawer: safeParseFloat(row.cash_in_drawer),
+                // The PERSISTED figures from the filed row, never a fresh
+                // recomputation: re-printing a filed Z-reading must show what
+                // it reported when filed, even if a transfer row was later
+                // corrected. Rows filed before these columns existed read 0.00.
+                cashDeposit: safeParseFloat(row.cash_deposit),
+                cashPickup: safeParseFloat(row.cash_pickup),
                 cashierName: row.cashier_name,
                 terminalId: row.terminal_id,
                 terminalMin: row.terminal_min || '',
@@ -803,7 +846,30 @@ export async function POST(request: NextRequest) {
         const cashVariance = parseFloat(shiftResult?.total_cash_difference || 0);
         const cashSalesObj = paymentResults.find((p: any) => p.payment_method?.toUpperCase() === 'CASH');
         const cashSales = parseFloat(cashSalesObj?.amount || 0);
-        const cashInDrawer = startingCash + cashSales; 
+
+        // Cash moved in/out of the drawer over this Z-reading's window, on the
+        // same half-open (> startDate, <= endDate) + terminal scope as every
+        // other figure on the filed row. Computed here and persisted by the
+        // INSERT below so a re-print of this filed report shows what was filed.
+        // This path is always single-terminal (terminalId is required for a
+        // commit), unlike the GET preview which allows 'all'.
+        const commitTransferParams: any[] = startDate
+            ? [startDate, endDate, terminalId]
+            : [endDate, terminalId];
+        const commitTransferRows: any[] = await query(
+            `SELECT
+                COALESCE(SUM(CASE WHEN type = 'deposit' THEN amount ELSE 0 END), 0) AS total_deposits,
+                COALESCE(SUM(CASE WHEN type = 'pickup'  THEN amount ELSE 0 END), 0) AS total_pickups
+             FROM cash_transfers
+             WHERE 1=1 ${startDate ? ' AND transaction_time > ?' : ''} AND transaction_time <= ? AND terminal_id = ?`,
+            commitTransferParams
+        );
+        const cashDeposit = parseFloat(commitTransferRows[0]?.total_deposits || 0);
+        const cashPickup = parseFloat(commitTransferRows[0]?.total_pickups || 0);
+
+        // A pickup takes cash OUT of the drawer; a deposit puts cash in.
+        // Omitting them made every period with a pickup report a phantom SHORT.
+        const cashInDrawer = startingCash + cashSales + cashDeposit - cashPickup;
 
         const paymentMethods = paymentResults.map((p: any) => ({ name: p.payment_method || 'Unknown', amount: parseFloat(p.amount) }));
         const [termResult] = await query(`SELECT min_number, serial_number, permit_no, accreditation_no, permit_date_issued, z_counter, reset_counter FROM pos_terminals WHERE id = ?`, [terminalId]) as any[];
@@ -840,8 +906,8 @@ export async function POST(request: NextRequest) {
                 discount_summary, sales_adjustment, vat_adjustment, void_amount,
                 actual_cash, cash_difference,
                 min_sale_or_id, max_sale_or_id, min_void_or_id, max_void_or_id, min_return_or_id, max_return_or_id,
-                cashier_breakdown
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                cashier_breakdown, cash_deposit, cash_pickup
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
 
         await query(insertSql, [
@@ -856,7 +922,7 @@ export async function POST(request: NextRequest) {
             salesResult?.min_sale_or_id || 'OR-000000', salesResult?.max_sale_or_id || 'OR-000000',
             voidSeqResult?.min_void_or_id || 'OR-000000', voidSeqResult?.max_void_or_id || 'OR-000000',
             returnSeqResult?.min_return_or_id || 'OR-000000', returnSeqResult?.max_return_or_id || 'OR-000000',
-            JSON.stringify(cashierBreakdown)
+            JSON.stringify(cashierBreakdown), cashDeposit, cashPickup
         ]);
 
         // BIR Annex F checklist item #29: a Z-reading closes out this
@@ -878,7 +944,7 @@ export async function POST(request: NextRequest) {
             grossSales: rawNetSales + parseFloat(salesResult?.total_discounts || 0) + parseFloat(returnsResult?.total_returns || 0) + voidAmount,
             returns: parseFloat(returnsResult?.total_returns || 0), discounts: parseFloat(salesResult?.total_discounts || 0),
             netSales: finalNetSales, vatSales: vatableSales, vatAmount, paymentMethods,
-            transactionCount: parseInt(salesResult?.transaction_count || 0), startingCash, cashSales, cashInDrawer, cashierName, terminalId,
+            transactionCount: parseInt(salesResult?.transaction_count || 0), startingCash, cashSales, cashInDrawer, cashDeposit, cashPickup, cashierName, terminalId,
             terminalMin: termResult?.min_number || '', terminalSerialNumber: termResult?.serial_number || '',
             terminalPermitNo: termResult?.permit_no || '', terminalAccreditationNo: termResult?.accreditation_no || '',
             terminalPermitDateIssued: termResult?.permit_date_issued || '',

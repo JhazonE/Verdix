@@ -197,6 +197,7 @@ export async function GET(request: NextRequest) {
     // set matches the sales aggregates above and z-reading's.
     const paymentsByShift = new Map<string, any[]>();
     const membershipByShift = new Map<string, any>();
+    const cashTransfersByShift = new Map<string, any>();
 
     if (shiftIds.length > 0) {
         const placeholders = shiftIds.map(() => '?').join(',');
@@ -248,6 +249,32 @@ export async function GET(request: NextRequest) {
         for (const row of membershipRows) {
             membershipByShift.set(row.shift_id, row);
         }
+
+        // Cash deposits/pickups per shift. These used to be returned as the
+        // hardcoded literals `cashDeposit: 0, cashPickup: 0`, so X-reading's
+        // WITHDRAWAL and "Less Withdrawal:" lines were structurally always
+        // 0.00 no matter how much cash the cashier had actually pulled from
+        // the drawer. The End Shift dialog (app/api/pos/shifts) had always
+        // read this table correctly, which is why it showed the pickup while
+        // the X-reading of the same shift did not.
+        //
+        // Grouped by shift_id like the two queries above, NOT issued per
+        // shift inside the map below: the back-office page sends no `limit`,
+        // so a per-shift fan-out over a month of shifts is what previously
+        // saturated the connection pool and hung this route forever.
+        const cashTransferRows = await query(`
+            SELECT
+                shift_id,
+                COALESCE(SUM(CASE WHEN type = 'deposit' THEN amount ELSE 0 END), 0) AS total_deposits,
+                COALESCE(SUM(CASE WHEN type = 'pickup'  THEN amount ELSE 0 END), 0) AS total_pickups
+            FROM cash_transfers
+            WHERE shift_id IN (${placeholders})
+            GROUP BY shift_id
+        `, shiftIds) as any[];
+
+        for (const row of cashTransferRows) {
+            cashTransfersByShift.set(row.shift_id, row);
+        }
     }
 
     const formattedReadings = shifts.map((shift) => {
@@ -270,8 +297,20 @@ export async function GET(request: NextRequest) {
             .filter((p: any) => p.name?.toUpperCase() === 'CASH')
             .reduce((acc: number, p: any) => acc + parseFloat(p.amount || 0), 0);
 
-        // Calculate Cash In Drawer (System) — includes cash membership fees.
-        const cashInDrawer = parseFloat(shift.starting_cash) + cashSales + membershipCash;
+        const cashTransferRow = cashTransfersByShift.get(shift.id);
+        const cashDeposit = parseFloat(cashTransferRow?.total_deposits || 0);
+        const cashPickup = parseFloat(cashTransferRow?.total_pickups || 0);
+
+        // Calculate Cash In Drawer (System) — includes cash membership fees,
+        // and the cash physically added to or removed from the drawer mid-shift.
+        // A pickup takes money OUT of the drawer, so expected cash must fall by
+        // that amount; a deposit puts money in. Omitting them (as this did while
+        // cashPickup was hardcoded to 0) made every shift with a pickup report a
+        // phantom SHORT for exactly the amount picked up — the cashier was
+        // blamed for cash that had been removed on purpose and recorded.
+        // Matches the End Shift dialog's expectedCash, which has always been
+        // startingCash + cashSales + membershipCash + deposits - pickups.
+        const cashInDrawer = parseFloat(shift.starting_cash) + cashSales + membershipCash + cashDeposit - cashPickup;
         const overShort = parseFloat(shift.actual_cash) - cashInDrawer;
 
       return {
@@ -301,8 +340,8 @@ export async function GET(request: NextRequest) {
         // Cash Count Fields for Layout
         cashCountId: shift.id.substring(0, 8).toUpperCase(),
         cashCountTotal: parseFloat(shift.actual_cash || 0),
-        cashDeposit: 0,
-        cashPickup: 0,
+        cashDeposit: cashDeposit,
+        cashPickup: cashPickup,
         overShort: overShort,
         cashDenominations: typeof shift.cash_denominations === 'string' 
             ? JSON.parse(shift.cash_denominations) 

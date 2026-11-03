@@ -19,6 +19,12 @@ export type ZReadingData = {
   startingCash: number;
   cashSales: number;
   cashInDrawer: number;
+  /** Cash moved out of the drawer during the period (cash_transfers pickups). */
+  cashPickup?: number;
+  /** Cash added to the drawer during the period (cash_transfers deposits). */
+  cashDeposit?: number;
+  /** Counted cash minus expected (shifts.cash_difference): the SHORT/OVER figure. */
+  variance?: number;
   membershipCash?: number;
   membershipActivationCount?: number;
   membershipRenewalCount?: number;
@@ -486,8 +492,12 @@ export const ZReadingPreview = React.forwardRef<HTMLDivElement, ZReadingPreviewP
             <span>{formatCurrency(data.startingCash)}</span>
          </div>
           <div style={styles.row}>
+            <span>Add Deposit:</span>
+            <span>{formatCurrency(data.cashDeposit || 0)}</span>
+         </div>
+          <div style={styles.row}>
             <span>Less Withdrawal:</span>
-            <span>0.00</span>
+            <span>{formatCurrency(data.cashPickup || 0)}</span>
          </div>
           <div style={{ ...styles.row, ...styles.bold, marginTop: '4px' }}>
              <span>Payments Received:</span>
@@ -501,7 +511,7 @@ export const ZReadingPreview = React.forwardRef<HTMLDivElement, ZReadingPreviewP
        <div style={styles.section}>
          <div style={styles.row}>
           <span>SHORT/OVER:</span>
-          <span>0.00</span>
+          <span>{formatCurrency(data.variance || 0)}</span>
         </div>
       </div>
 
