@@ -90,6 +90,17 @@ export function useEditProductForm({
   const [isLoadingDepartments, setIsLoadingDepartments] = useState(false);
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
 
+  // The `product` PROP is a fresh object on every refetch of the products
+  // page's react-query list (60s interval, plus a useLiveRefresh refetch on
+  // any sale or stock event from this or another terminal). Effects below
+  // need the latest product DATA, but must not re-run on a change that is
+  // only object identity — form.reset() keyed on the prop itself threw away
+  // whatever the user had typed, which is how newly added selling units
+  // vanished mid-edit. Keep the data reachable through a ref and key those
+  // effects on product.id instead.
+  const productRef = useRef(product);
+  productRef.current = product;
+
   const [selects, setSelects] = useState({
     categories: false,
     brands: false,
@@ -232,6 +243,7 @@ export function useEditProductForm({
   const costEditedByUser = useRef(false);
 
   useEffect(() => {
+    const product = productRef.current;
     if (product && isOpen) {
       lastAutoRetailPrice.current = null;
       // A saved product already HAS a price somebody chose and filed. Whether
@@ -274,9 +286,14 @@ export function useEditProductForm({
           description: product.description ?? '',
           department: product.department ?? '',
       };
-      console.log('Resetting form with:', sanitizedProduct);
       form.reset(sanitizedProduct);
     }
+    // Keyed on product.id, NOT the `product` object: the products page
+    // refetches its list every 60s and on every live-refresh event, handing
+    // this dialog a brand-new (identically-valued) object each time. Keyed on
+    // the object, this effect re-ran form.reset() mid-edit and discarded
+    // everything the user had typed — most visibly any selling unit row they
+    // had just added, since that row exists only in form state until save.
     // priceLevels (level definitions) is deliberately NOT a dependency here —
     // this effect's job is resetting the form for a newly opened product; if
     // level definitions arrive after that reset already ran, this session
@@ -286,7 +303,7 @@ export function useEditProductForm({
     // while this dialog is open — a materially worse failure than a missed
     // seed on the rare cold-load race.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product, isOpen, form]);
+  }, [product.id, isOpen, form]);
 
   // Warehouse is optional on the form, but a stocked product with none shows a
   // blank column in the product list, so preselect the store warehouse
@@ -302,7 +319,10 @@ export function useEditProductForm({
       active.find((w: any) => w.id === 'wh_main') ||
       active[0];
     if (store) form.setValue('warehouse', store.id);
-  }, [isOpen, product, warehouses, form]);
+    // product.id, not product — see the reset effect above on why the prop's
+    // identity churns while this dialog is open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, product.id, product.type, warehouses, form]);
 
   const refreshSupplierMappings = async () => {
     setIsLoadingSupplierMappings(true);
