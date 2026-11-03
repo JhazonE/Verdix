@@ -492,6 +492,10 @@ export const ZReadingPreview = React.forwardRef<HTMLDivElement, ZReadingPreviewP
             <span>{formatCurrency(data.startingCash)}</span>
          </div>
           <div style={styles.row}>
+            <span>Add Deposit:</span>
+            <span>{formatCurrency(data.cashDeposit || 0)}</span>
+         </div>
+          <div style={styles.row}>
             <span>Less Withdrawal:</span>
             <span>{formatCurrency(data.cashPickup || 0)}</span>
          </div>
