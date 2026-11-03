@@ -54,6 +54,8 @@ import './mixed-cart-validation.test';
 import './checkout-si-or-routing.test';
 import './x-reading-or-range.test';
 import './x-reading-void-source.test';
+import './x-reading-cash-transfers.test';
+import './z-reading-cash-transfers.test';
 import './x-reading-returns-shift.test';
 import './product-search.test';
 import './board-product-loading.test';

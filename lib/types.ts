@@ -630,6 +630,14 @@ export interface ZReadingData {
   startingCash: number;
   cashSales: number;
   cashInDrawer: number;
+  /** Cash moved out of the drawer during the period (cash_transfers pickups). */
+  cashPickup?: number;
+  /** Cash added to the drawer during the period (cash_transfers deposits). */
+  cashDeposit?: number;
+  /** Counted cash at close (shifts.actual_cash), summed over the period. */
+  actualCash?: number;
+  /** Counted cash minus expected (shifts.cash_difference): the SHORT/OVER figure. */
+  variance?: number;
   cashierName?: string;
   terminalId?: string;
   terminalMin?: string;
