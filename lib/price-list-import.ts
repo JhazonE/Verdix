@@ -4,6 +4,19 @@ import { ensureCategoryExists, ensureBrandExists, ensureUnitOfMeasureExists } fr
 
 export interface PriceUpdateItem {
   productId: string;
+  /**
+   * The selling unit this change targets. Omitted means the product's BASE
+   * unit, which is what the Excel price-list path always means (it matches
+   * rows on the base unit's barcode) and what every caller meant before
+   * selling units became selectable here.
+   *
+   * A non-base unit has no `products.price`/`products.cost` of its own to
+   * write to — those columns are per product, in base units — so a targeted
+   * unit writes to its own `product_selling_units` row instead.
+   */
+  sellingUnitId?: string;
+  /** Display label for the targeted unit (e.g. "Case"); base unit when absent. */
+  sellingUnitName?: string;
   baseUnitBarcode: string;
   barcode: string;
   productName: string;
@@ -238,11 +251,57 @@ export async function applyMatchedItems(
             continue;
           }
 
+          // Resolve which selling unit this item writes to. An item with no
+          // sellingUnitId means the base unit (the Excel path, and every
+          // caller that predates per-unit targeting).
+          const [targetUnitRows]: any = item.sellingUnitId
+            ? await connection.query(
+                'SELECT id, cost, is_base FROM product_selling_units WHERE id = ? AND product_id = ? LIMIT 1',
+                [item.sellingUnitId, item.productId],
+              )
+            : await connection.query(
+                'SELECT id, cost, is_base FROM product_selling_units WHERE product_id = ? AND is_base = 1 LIMIT 1',
+                [item.productId],
+              );
+          const targetUnit = targetUnitRows?.[0];
+          if (item.sellingUnitId && !targetUnit) {
+            // The unit was deleted or re-parented between preview and apply.
+            // Falling back to the base unit would silently reprice the WRONG
+            // unit, so skip instead.
+            skipped.push({
+              productId: item.productId,
+              productName: item.productName,
+              reason: 'Selling unit no longer exists',
+            });
+            continue;
+          }
+          const isBaseTarget = !targetUnit || targetUnit.is_base === 1;
+
           // Recompute markup-derived prices at apply time: cost may have drifted
-          // since preview (e.g. a new PO landed).
+          // since preview (e.g. a new PO landed). A non-base unit marks up its
+          // OWN cost (per case), not the product's per-base-unit cost — marking
+          // a case up off the piece cost would price it at a fraction of cost.
           let newValue = item.newValue;
           if (item.adjustmentType === 'markup') {
-            const liveCost = parseFloat(rows[0].cost ?? 0);
+            // A non-base unit with no cost of its own is UNKNOWN, not the
+            // product's cost: products.cost is per base unit, so marking a
+            // 12-piece Case up off it would price the case at a twelfth of
+            // what it cost.
+            //
+            // Skip rather than compute. isValidPriceValue accepts 0 (it means
+            // "sell at cost"), so letting an unknown cost through would
+            // silently mark the unit down to ₱0.00 and report it as applied.
+            if (!isBaseTarget && (targetUnit.cost === null || targetUnit.cost === undefined)) {
+              skipped.push({
+                productId: item.productId,
+                productName: item.productName,
+                reason: `${item.sellingUnitName || 'Selling unit'} has no cost to mark up`,
+              });
+              continue;
+            }
+            const liveCost = isBaseTarget
+              ? parseFloat(rows[0].cost ?? 0)
+              : parseFloat(targetUnit.cost);
             newValue = applyAdjustment('markup', 0, item.adjustmentValue, liveCost);
           }
 
@@ -252,30 +311,58 @@ export async function applyMatchedItems(
           }
 
           if (item.field === 'price') {
-            await connection.query('UPDATE products SET price = ? WHERE id = ?', [newValue, item.productId]);
-            // Keep an existing default-level price-level row in sync with the
-            // base price it mirrors. Never creates one.
-            if (defaultLevelId) {
+            if (isBaseTarget) {
+              await connection.query('UPDATE products SET price = ? WHERE id = ?', [newValue, item.productId]);
+              // The base unit's own row mirrors the shelf price, so keep it in
+              // step with products.price rather than letting the two drift.
+              if (targetUnit) {
+                await connection.query(
+                  'UPDATE product_selling_units SET price = ? WHERE id = ?',
+                  [newValue, targetUnit.id],
+                );
+              }
+            } else {
+              // A non-base unit's price lives only on its own row. products.price
+              // is the BASE unit's price and must not be touched here — writing
+              // a case price into it would reprice every piece on the shelf.
               await connection.query(
-                `UPDATE product_selling_unit_price_levels sulp
-                 JOIN product_selling_units su ON su.id = sulp.selling_unit_id
-                 SET sulp.price = ?
-                 WHERE su.product_id = ? AND su.is_base = 1 AND sulp.price_level_id = ?`,
-                [newValue, item.productId, defaultLevelId],
+                'UPDATE product_selling_units SET price = ? WHERE id = ?',
+                [newValue, targetUnit.id],
+              );
+            }
+            // Keep an existing default-level price-level row in sync with the
+            // price it mirrors, for whichever unit was targeted. Never creates one.
+            if (defaultLevelId && targetUnit) {
+              await connection.query(
+                `UPDATE product_selling_unit_price_levels
+                 SET price = ?
+                 WHERE selling_unit_id = ? AND price_level_id = ? AND min_quantity <= 0`,
+                [newValue, targetUnit.id, defaultLevelId],
               );
             }
           } else if (item.field === 'cost') {
-            await connection.query('UPDATE products SET cost = ? WHERE id = ?', [newValue, item.productId]);
+            if (isBaseTarget) {
+              await connection.query('UPDATE products SET cost = ? WHERE id = ?', [newValue, item.productId]);
+              if (targetUnit) {
+                await connection.query(
+                  'UPDATE product_selling_units SET cost = ? WHERE id = ?',
+                  [newValue, targetUnit.id],
+                );
+              }
+            } else {
+              // products.cost is per base unit and is what FIFO batch costing
+              // feeds on — a per-case cost must stay on the unit's own row.
+              await connection.query(
+                'UPDATE product_selling_units SET cost = ? WHERE id = ?',
+                [newValue, targetUnit.id],
+              );
+            }
           } else if (item.field === 'priceLevel' && item.priceLevelId) {
             // Upsert on the real PK (selling_unit_id, price_level_id). Price
-            // levels are per selling unit now (product_selling_unit_price_levels);
-            // write onto the product's base selling unit, matching every other
-            // write path in this codebase.
-            const [baseUnitRows]: any = await connection.query(
-              'SELECT id FROM product_selling_units WHERE product_id = ? AND is_base = 1 LIMIT 1',
-              [item.productId],
-            );
-            if (baseUnitRows.length > 0) {
+            // levels are per selling unit, so this writes onto whichever unit
+            // the item targeted — the base unit when none was given, which is
+            // what the Excel path and every pre-existing caller mean.
+            if (targetUnit) {
               // min_quantity is deliberately absent from both branches: a new
               // row takes the column's DEFAULT 0 (no tier), and an existing
               // row KEEPS whatever tier it already carries. A price list
@@ -286,7 +373,7 @@ export async function applyMatchedItems(
                 `INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price)
                  VALUES (?, ?, ?)
                  ON DUPLICATE KEY UPDATE price = VALUES(price)`,
-                [baseUnitRows[0].id, item.priceLevelId, newValue],
+                [targetUnit.id, item.priceLevelId, newValue],
               );
             } else {
               skipped.push({ productId: item.productId, productName: item.productName, reason: 'Product has no base selling unit' });

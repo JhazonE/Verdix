@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -18,10 +18,11 @@ import {
 } from '@/components/ui/table';
 import {
   Search, X, Loader2, Package, SlidersHorizontal, Tags, ArrowRight,
+  ChevronRight, ChevronDown, Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-import { useBulkPriceUpdate } from '@/app/(app)/products/bulk-price-update/use-bulk-price-update';
+import { useBulkPriceUpdate, type PricingRow } from '@/app/(app)/products/bulk-price-update/use-bulk-price-update';
 import { downloadPriceListTemplate } from '@/app/(app)/products/bulk-price-update/price-list-template';
 import { UploadPriceListDialog } from '@/app/(app)/products/bulk-price-update/UploadPriceListDialog';
 import { PricingConfigFields } from './pricing-config-fields';
@@ -49,6 +50,7 @@ export default function PricingClient() {
   const [mobileView, setMobileView] = useState<'list' | 'config'>('list');
   const [warehouses, setWarehouses] = useState<Option[]>([]);
   const [priceLevels, setPriceLevels] = useState<Option[]>([]);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -69,7 +71,27 @@ export default function PricingClient() {
     return () => { cancelled = true; };
   }, []);
 
-  const allSelected = bp.products.length > 0 && bp.selectedIds.size === bp.products.length;
+  // Rows are per selling unit; group them back under their product so the list
+  // still reads as a product list, with each product's packs nested beneath it.
+  const groups = useMemo(() => {
+    const byProduct = new Map<string, { productId: string; productName: string; rows: PricingRow[] }>();
+    for (const r of bp.rows as PricingRow[]) {
+      if (!byProduct.has(r.productId)) {
+        byProduct.set(r.productId, { productId: r.productId, productName: r.productName, rows: [] });
+      }
+      byProduct.get(r.productId)!.rows.push(r);
+    }
+    return Array.from(byProduct.values());
+  }, [bp.rows]);
+
+  const allSelected = bp.rows.length > 0 && bp.selectedIds.size === bp.rows.length;
+
+  const toggleExpanded = (productId: string) =>
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId); else next.add(productId);
+      return next;
+    });
 
   const configFieldsProps = {
     warehouses,
@@ -131,42 +153,113 @@ export default function PricingClient() {
             <Checkbox
               checked={allSelected}
               onCheckedChange={c => c
-                ? bp.selectAll(bp.products.map((p: any) => p.id))
+                ? bp.selectAll((bp.rows as PricingRow[]).map(r => r.key))
                 : bp.clearSelection()}
             />
           </TableHead>
-          <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Product</TableHead>
+          <TableHead className="py-3 w-8" />
+          <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Product / Unit</TableHead>
           <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground">Barcode</TableHead>
           <TableHead className="py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground text-right">Price</TableHead>
           <TableHead className="pr-6 py-3 text-xs font-bold uppercase tracking-widest text-muted-foreground text-right">Cost</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {bp.products.map((p: any) => (
-          <TableRow
-            key={p.id}
-            className={cn('cursor-pointer', bp.selectedIds.has(p.id) && 'bg-primary/5')}
-            onClick={() => bp.toggleSelected(p.id)}
-          >
-            {/* The row itself toggles selection, so the checkbox must not also
-                handle the click — both firing would toggle twice and leave the
-                row unchanged. Let the row own the state change. */}
-            <TableCell className="pl-6" onClick={e => e.stopPropagation()}>
-              <Checkbox
-                checked={bp.selectedIds.has(p.id)}
-                onCheckedChange={() => bp.toggleSelected(p.id)}
-              />
-            </TableCell>
-            <TableCell className="font-medium">{p.name}</TableCell>
-            <TableCell className="text-muted-foreground text-sm font-mono">
-              {p.baseUnitBarcode || p.barcode || '—'}
-            </TableCell>
-            <TableCell className="text-right">₱{Number(p.price || 0).toFixed(2)}</TableCell>
-            <TableCell className="pr-6 text-right text-muted-foreground">
-              ₱{Number(p.cost || 0).toFixed(2)}
-            </TableCell>
-          </TableRow>
-        ))}
+        {groups.map(group => {
+          const extraUnits = group.rows.filter(r => !r.isBase);
+          const baseRow = group.rows.find(r => r.isBase) ?? group.rows[0];
+          const isOpen = expanded.has(group.productId);
+          const selectedHere = group.rows.filter(r => bp.selectedIds.has(r.key)).length;
+
+          return (
+            <Fragment key={group.productId}>
+              {/* Product row — selects the BASE unit, since that is the price
+                  this row displays. Its packs are selected individually below. */}
+              <TableRow
+                className={cn('cursor-pointer', bp.selectedIds.has(baseRow.key) && 'bg-primary/5')}
+                onClick={() => bp.toggleSelected(baseRow.key)}
+              >
+                {/* The row itself toggles selection, so the checkbox must not also
+                    handle the click — both firing would toggle twice and leave the
+                    row unchanged. Let the row own the state change. */}
+                <TableCell className="pl-6" onClick={e => e.stopPropagation()}>
+                  <Checkbox
+                    checked={bp.selectedIds.has(baseRow.key)}
+                    onCheckedChange={() => bp.toggleSelected(baseRow.key)}
+                  />
+                </TableCell>
+                <TableCell className="p-0" onClick={e => e.stopPropagation()}>
+                  {extraUnits.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleExpanded(group.productId)}
+                      className="h-7 w-7 flex items-center justify-center rounded hover:bg-muted text-muted-foreground"
+                      aria-label={isOpen ? 'Hide selling units' : 'Show selling units'}
+                      aria-expanded={isOpen}
+                    >
+                      {isOpen
+                        ? <ChevronDown className="h-4 w-4" />
+                        : <ChevronRight className="h-4 w-4" />}
+                    </button>
+                  ) : null}
+                </TableCell>
+                <TableCell className="font-medium">
+                  <span className="flex items-center gap-2">
+                    {group.productName}
+                    {extraUnits.length > 0 && (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] gap-1 font-semibold text-muted-foreground"
+                      >
+                        <Layers className="h-3 w-3" />
+                        {extraUnits.length + 1} units
+                        {selectedHere > 0 && ` · ${selectedHere} selected`}
+                      </Badge>
+                    )}
+                  </span>
+                </TableCell>
+                <TableCell className="text-muted-foreground text-sm font-mono">
+                  {baseRow.barcode || '—'}
+                </TableCell>
+                <TableCell className="text-right">₱{baseRow.price.toFixed(2)}</TableCell>
+                <TableCell className="pr-6 text-right text-muted-foreground">
+                  ₱{baseRow.cost.toFixed(2)}
+                </TableCell>
+              </TableRow>
+
+              {isOpen && extraUnits.map(r => (
+                <TableRow
+                  key={r.key}
+                  className={cn('cursor-pointer bg-muted/20', bp.selectedIds.has(r.key) && 'bg-primary/5')}
+                  onClick={() => bp.toggleSelected(r.key)}
+                >
+                  <TableCell className="pl-6" onClick={e => e.stopPropagation()}>
+                    <Checkbox
+                      checked={bp.selectedIds.has(r.key)}
+                      onCheckedChange={() => bp.toggleSelected(r.key)}
+                    />
+                  </TableCell>
+                  <TableCell />
+                  <TableCell className="text-sm">
+                    <span className="flex items-center gap-2 pl-4 border-l-2 border-border ml-1">
+                      <span className="font-medium">{r.sellingUnitName}</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        ×{r.factor}
+                      </span>
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm font-mono">
+                    {r.barcode || '—'}
+                  </TableCell>
+                  <TableCell className="text-right">₱{r.price.toFixed(2)}</TableCell>
+                  <TableCell className="pr-6 text-right text-muted-foreground">
+                    ₱{r.cost.toFixed(2)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </Fragment>
+          );
+        })}
       </TableBody>
     </Table>
   );
@@ -181,8 +274,10 @@ export default function PricingClient() {
         </TableRow>
       </TableHeader>
       <TableBody>
+        {/* Two selling units of the same product can both be in the preview,
+            so the product id alone is no longer a unique key. */}
         {bp.preview.map(item => (
-          <TableRow key={item.productId}>
+          <TableRow key={`${item.productId}::${item.sellingUnitId ?? 'base'}`}>
             <TableCell className="pl-6 font-medium">{item.productName}</TableCell>
             <TableCell className="text-right text-muted-foreground">₱{item.oldValue.toFixed(2)}</TableCell>
             <TableCell className="pr-6 text-right font-bold text-primary">
@@ -358,7 +453,7 @@ export default function PricingClient() {
             {bp.isSubmitting ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Submitting...</>
             ) : (
-              <>Update {bp.preview.length} Product{bp.preview.length !== 1 ? 's' : ''}</>
+              <>Update {bp.preview.length} Item{bp.preview.length !== 1 ? 's' : ''}</>
             )}
           </Button>
         </div>
