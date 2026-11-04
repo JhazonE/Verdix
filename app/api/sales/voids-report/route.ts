@@ -3,23 +3,28 @@ import { query } from '@/lib/mysql';
 import { formatSINumber } from '@/lib/si-number';
 import { lineCostExpr } from '@/lib/cost-of-sale';
 
-// voided_by_name is added lazily by /api/pos/void-transaction — this report can be
-// the first thing to run against a fresh DB, so it can't assume the column exists.
-let voidedByColumnChecked = false;
+// voided_by_name and void_reason are both added lazily by
+// /api/pos/void-transaction — this report can be the first thing to run against a
+// fresh DB, so it can't assume either column exists.
+let voidColumnsChecked = false;
 let hasVoidedByColumn = false;
-async function checkVoidedByColumn() {
-  if (voidedByColumnChecked) return hasVoidedByColumn;
+let hasVoidReasonColumn = false;
+async function checkVoidColumns() {
+  if (voidColumnsChecked) return { hasVoidedByColumn, hasVoidReasonColumn };
   const cols = await query(
-    "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'sales_transactions' AND COLUMN_NAME = 'voided_by_name' AND TABLE_SCHEMA = DATABASE()"
+    "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'sales_transactions' AND COLUMN_NAME IN ('voided_by_name', 'void_reason') AND TABLE_SCHEMA = DATABASE()"
   ) as any[];
-  hasVoidedByColumn = cols.length > 0;
-  voidedByColumnChecked = true;
-  return hasVoidedByColumn;
+  const names = new Set((cols as any[]).map((c: any) => c.COLUMN_NAME));
+  hasVoidedByColumn = names.has('voided_by_name');
+  hasVoidReasonColumn = names.has('void_reason');
+  voidColumnsChecked = true;
+  return { hasVoidedByColumn, hasVoidReasonColumn };
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const hasVoidedBy = await checkVoidedByColumn();
+    const { hasVoidedByColumn: hasVoidedBy, hasVoidReasonColumn: hasVoidReason } =
+      await checkVoidColumns();
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('startDate'); // yyyy-MM-dd
     const endDate = searchParams.get('endDate');     // yyyy-MM-dd
@@ -38,7 +43,10 @@ export async function GET(request: NextRequest) {
         ${hasVoidedBy ? 'COALESCE(st.voided_by_name, u_cashier.display_name)' : 'u_cashier.display_name'} as override_by,
         st.total as sales_amount,
         COALESCE(pt.tax_amount, 0) as vat_amount,
-        st.notes as note,
+        -- The Note column is the reason typed at the POS when voiding, which
+        -- /api/pos/void-transaction writes to void_reason. st.notes holds the
+        -- ORIGINAL sale's note (e.g. "POS Sale") and is not the void note.
+        ${hasVoidReason ? 'st.void_reason' : 'NULL'} as note,
         (
           -- Cost per SELLING unit, preferring the batch cost captured at sale
           -- time. See lib/cost-of-sale.ts.

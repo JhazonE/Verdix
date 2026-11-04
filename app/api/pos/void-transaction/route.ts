@@ -123,6 +123,15 @@ export async function POST(request: NextRequest) {
             );
             console.log('void-transaction: Transaction marked as voided');
 
+            // Mirror the reason onto the POS transaction row. pos_transactions
+            // has its own void_reason column that the transaction-list endpoints
+            // (/api/pos-transactions, /api/sales/transactions) select and expose;
+            // without this write it is always NULL for a voided sale.
+            await connection.query(
+                'UPDATE pos_transactions SET void_reason = ?, updated_at = NOW() WHERE sale_id = ?',
+                [voidReason.trim(), saleId]
+            );
+
             const [meta]: any = await connection.query(
               `SELECT DATE(st.created_at) AS d, pt.terminal_id AS t
                FROM sales_transactions st JOIN pos_transactions pt ON pt.sale_id = st.id
