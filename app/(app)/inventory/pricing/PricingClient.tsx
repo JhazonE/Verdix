@@ -171,18 +171,28 @@ export default function PricingClient() {
           const isOpen = expanded.has(group.productId);
           const selectedHere = group.rows.filter(r => bp.selectedIds.has(r.key)).length;
 
+          // The rail and tint run down the parent AND its packs so the group
+          // reads as one block that ends where the tint ends. It cannot be a
+          // wrapper element — a div around <tr>s is invalid inside a table — so
+          // each row in the group draws its own slice of the same left border,
+          // which renders identically and keeps every column aligned with the
+          // ungrouped rows above and below.
+          const grouped = isOpen && extraUnits.length > 0;
+          const railCell = grouped ? 'border-l-[3px] border-l-primary pl-[21px]' : 'pl-6';
+          const bandRow = grouped ? 'bg-primary/[0.03]' : '';
+
           return (
             <Fragment key={group.productId}>
               {/* Product row — selects the BASE unit, since that is the price
                   this row displays. Its packs are selected individually below. */}
               <TableRow
-                className={cn('cursor-pointer', bp.selectedIds.has(baseRow.key) && 'bg-primary/5')}
+                className={cn('cursor-pointer', bandRow, bp.selectedIds.has(baseRow.key) && 'bg-primary/5')}
                 onClick={() => bp.toggleSelected(baseRow.key)}
               >
                 {/* The row itself toggles selection, so the checkbox must not also
                     handle the click — both firing would toggle twice and leave the
                     row unchanged. Let the row own the state change. */}
-                <TableCell className="pl-6" onClick={e => e.stopPropagation()}>
+                <TableCell className={railCell} onClick={e => e.stopPropagation()}>
                   <Checkbox
                     checked={bp.selectedIds.has(baseRow.key)}
                     onCheckedChange={() => bp.toggleSelected(baseRow.key)}
@@ -193,7 +203,10 @@ export default function PricingClient() {
                     <button
                       type="button"
                       onClick={() => toggleExpanded(group.productId)}
-                      className="h-7 w-7 flex items-center justify-center rounded hover:bg-muted text-muted-foreground"
+                      className={cn(
+                        'h-7 w-7 flex items-center justify-center rounded hover:bg-muted',
+                        isOpen ? 'text-primary' : 'text-muted-foreground',
+                      )}
                       aria-label={isOpen ? 'Hide selling units' : 'Show selling units'}
                       aria-expanded={isOpen}
                     >
@@ -209,10 +222,18 @@ export default function PricingClient() {
                     {extraUnits.length > 0 && (
                       <Badge
                         variant="outline"
-                        className="text-[10px] gap-1 font-semibold text-muted-foreground"
+                        className={cn(
+                          'text-[10px] gap-1 font-semibold',
+                          // A collapsed group must never hide a pending change,
+                          // so the badge goes solid once anything inside it is
+                          // selected.
+                          selectedHere > 0
+                            ? 'bg-primary/10 text-primary border-primary/30'
+                            : 'text-muted-foreground',
+                        )}
                       >
                         <Layers className="h-3 w-3" />
-                        {extraUnits.length + 1} units
+                        {group.rows.length} units
                         {selectedHere > 0 && ` · ${selectedHere} selected`}
                       </Badge>
                     )}
@@ -230,10 +251,10 @@ export default function PricingClient() {
               {isOpen && extraUnits.map(r => (
                 <TableRow
                   key={r.key}
-                  className={cn('cursor-pointer bg-muted/20', bp.selectedIds.has(r.key) && 'bg-primary/5')}
+                  className={cn('cursor-pointer', bandRow, bp.selectedIds.has(r.key) && 'bg-primary/5')}
                   onClick={() => bp.toggleSelected(r.key)}
                 >
-                  <TableCell className="pl-6" onClick={e => e.stopPropagation()}>
+                  <TableCell className={railCell} onClick={e => e.stopPropagation()}>
                     <Checkbox
                       checked={bp.selectedIds.has(r.key)}
                       onCheckedChange={() => bp.toggleSelected(r.key)}
@@ -241,15 +262,34 @@ export default function PricingClient() {
                   </TableCell>
                   <TableCell />
                   <TableCell className="text-sm">
-                    <span className="flex items-center gap-2 pl-4 border-l-2 border-border ml-1">
+                    <span className="flex items-center gap-2 flex-wrap">
+                      {/* The chip is what survives scrolling: once the parent
+                          row is off screen the band and rail say nothing, but
+                          "Unit · Box · of tes55" still reads correctly. */}
+                      <span className="inline-flex items-center gap-1 rounded border border-primary/25 bg-primary/5 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
+                        <Layers className="h-2.5 w-2.5" />
+                        Unit
+                      </span>
                       <span className="font-medium">{r.sellingUnitName}</span>
+                      {/* A bare "×12" means nothing without the unit it counts. */}
                       <span className="text-[11px] text-muted-foreground">
-                        ×{r.factor}
+                        {r.factor} × {baseRow.sellingUnitName || 'base'}
+                      </span>
+                      {/* Full token, not a faded one: at 11px an opacity-dimmed
+                          muted-foreground drops under 4.5:1 on the band. */}
+                      <span className="text-[11px] text-muted-foreground">
+                        of {group.productName}
                       </span>
                     </span>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm font-mono">
-                    {r.barcode || '—'}
+                    {/* A pack genuinely without a barcode is labelled rather
+                        than left as a dash — blank reads as a loading bug. */}
+                    {r.barcode || (
+                      <span className="inline-flex items-center rounded border border-border px-1.5 py-0.5 font-sans text-[10px] not-italic text-muted-foreground">
+                        no barcode
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">₱{r.price.toFixed(2)}</TableCell>
                   <TableCell className="pr-6 text-right text-muted-foreground">
