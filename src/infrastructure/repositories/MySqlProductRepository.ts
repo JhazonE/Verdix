@@ -66,14 +66,17 @@ export class MySqlProductRepository implements ProductRepository {
       // removing it here breaks real tests. Retire it once those fixtures
       // are updated (tracked as part of the still-open e2e-test cluster of
       // the sku-retirement effort), not before.
+      // The unit NAME is matched as well as its barcode, so typing "case"
+      // finds the products sold by the case — a non-base pack size is
+      // otherwise unreachable by anything but its barcode.
       sql += ` AND (
         products.name LIKE ? OR products.sku LIKE ? OR products.barcode LIKE ?
         OR EXISTS (
           SELECT 1 FROM product_selling_units su
-          WHERE su.product_id = products.id AND su.barcode LIKE ?
+          WHERE su.product_id = products.id AND (su.barcode LIKE ? OR su.name LIKE ?)
         )
       )`;
-      params.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
+      params.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
     }
 
     if (filters.warehouseId) {
@@ -217,17 +220,17 @@ export class MySqlProductRepository implements ProductRepository {
 
     if (filters.search) {
       // Mirrors findAll's search clause, including the selling-unit barcode
-      // check — otherwise a scan that resolves a product via its Pack
-      // barcode would report a total/hasMore that disagrees with the rows
-      // findAll actually returns.
+      // AND name checks — otherwise a scan that resolves a product via its
+      // Pack barcode would report a total/hasMore that disagrees with the
+      // rows findAll actually returns.
       countSql += ` AND (
         name LIKE ? OR sku LIKE ? OR barcode LIKE ?
         OR EXISTS (
           SELECT 1 FROM product_selling_units su
-          WHERE su.product_id = products.id AND su.barcode LIKE ?
+          WHERE su.product_id = products.id AND (su.barcode LIKE ? OR su.name LIKE ?)
         )
       )`;
-      countParams.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
+      countParams.push(`%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`, `%${filters.search}%`);
     }
 
     if (filters.warehouseId) {

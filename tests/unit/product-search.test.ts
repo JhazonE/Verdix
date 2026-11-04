@@ -43,10 +43,12 @@ assert.equal(
   'an unrelated code does not match the base unit barcode either',
 );
 
-// ─── a non-base extra unit's barcode is NOT matched by this function ────
-// matchesNormalizedSearch only checks the BASE unit — an extra unit's own
-// barcode is deliberately out of scope here (callers that need to match
-// extras do so themselves, e.g. use-pos.ts's own unitBarcodeMatch check).
+// ─── EVERY unit's barcode matches, not just the base one ───────────────
+// This helper used to check the BASE unit only, which meant scanning a Case
+// or Pack matched nothing at all on Bulk Adjustment and the stock boards —
+// the product sits on the shelf, the scan resolves to no row, and the page
+// looks broken. Barcodes are UNIQUE across product_selling_units, so a scan
+// still resolves to exactly one product.
 const productWithOnlyExtraUnitBarcode: any = {
   name: 'Extra Unit Only Item',
   sellingUnits: [
@@ -56,8 +58,40 @@ const productWithOnlyExtraUnitBarcode: any = {
 };
 assert.equal(
   matchesProductSearch(productWithOnlyExtraUnitBarcode, '5555555555555'),
+  true,
+  "a non-base selling unit's barcode matches — scanning a Case must find its product",
+);
+assert.equal(
+  matchesProductSearch(productWithOnlyExtraUnitBarcode, '7777777777777'),
   false,
-  'an extra (non-base) selling unit barcode is not matched by this shared helper',
+  'an unrelated code still matches no unit',
+);
+
+// ─── a unit's NAME matches too ──────────────────────────────────────────
+// A non-base pack size is otherwise unreachable by anything a user can type:
+// they have the words "case"/"box", not the barcode.
+const productSoldByCase: any = {
+  name: 'Sardines 155g',
+  barcode: '1111111111111',
+  sellingUnits: [
+    { isBase: true, name: 'Piece', barcode: '1111111111111' },
+    { isBase: false, name: 'Case', barcode: '2222222222222' },
+  ],
+};
+assert.equal(
+  matchesProductSearch(productSoldByCase, 'Case'),
+  true,
+  "a selling unit's name matches, so typing \"case\" finds products sold by the case",
+);
+assert.equal(
+  matchesProductSearch(productSoldByCase, 'case'),
+  true,
+  'unit-name matching is case-insensitive',
+);
+assert.equal(
+  matchesProductSearch(productSoldByCase, 'Pallet'),
+  false,
+  'a unit name the product does not have does not match',
 );
 
 // ─── existing behaviour must survive ─────────────────────────────────────
