@@ -65,6 +65,53 @@ assert.equal(
   'a Sack with no cost is genuinely unknown — inheriting the per-kilo cost would mark it up off a 25x-too-small figure',
 );
 
+// ── A base unit with a NULL barcode falls back to the product's ──────────
+// product_selling_units.barcode is UNIQUE table-wide, but a store keeps one
+// product row per warehouse carrying the SAME barcode. Only one of those rows
+// can own it on its base unit; the rest are left NULL. products.barcode still
+// holds the real value, so the base row must fall back to it.
+const nullBaseBarcode = toPricingRows([
+  {
+    id: 'p-dup',
+    name: 'tes55',
+    price: 200,
+    cost: 100,
+    barcode: '77521422',
+    sellingUnits: [
+      { id: 'u-base', name: 'Piece', barcode: null, factor: 1, price: 200, cost: 100, isBase: true, priceLevels: [] },
+      { id: 'u-box', name: 'Box', barcode: '84944436', factor: 12, price: 400, cost: 960, isBase: false, priceLevels: [] },
+    ],
+  },
+]);
+
+assert.equal(
+  nullBaseBarcode[0].barcode,
+  '77521422',
+  'base unit with a NULL barcode shows the product barcode, not blank',
+);
+assert.equal(nullBaseBarcode[1].barcode, '84944436', 'the Box keeps its own barcode');
+
+// A non-base unit gets NO such fallback — an empty Box barcode is really
+// empty, and borrowing the product's would claim a scan resolves to the Box.
+const nullBoxBarcode = toPricingRows([
+  {
+    id: 'p-nb',
+    name: 'Thing',
+    price: 10,
+    cost: 5,
+    barcode: '999',
+    sellingUnits: [
+      { id: 'nb-base', name: 'Piece', barcode: '999', factor: 1, price: 10, cost: 5, isBase: true, priceLevels: [] },
+      { id: 'nb-box', name: 'Box', barcode: null, factor: 6, price: 55, cost: 30, isBase: false, priceLevels: [] },
+    ],
+  },
+]);
+assert.equal(
+  nullBoxBarcode[1].barcode,
+  '',
+  'a non-base unit with no barcode stays blank rather than borrowing the product barcode',
+);
+
 // ── A product with no selling-unit rows still gets one repriceable row ────
 const legacy = toPricingRows([
   { id: 'p3', name: 'Legacy item', price: 10, cost: 7, barcode: '5555', baseUnitBarcode: '5555', sellingUnits: [] },

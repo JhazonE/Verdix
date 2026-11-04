@@ -76,7 +76,15 @@ export function toPricingRows(products: any[]): PricingRow[] {
         sellingUnitName: u.name,
         isBase: !!u.isBase,
         factor: Number(u.factor) || 1,
-        barcode: u.barcode || '',
+        // The base unit's own barcode is often NULL: product_selling_units.barcode
+        // is UNIQUE table-wide, but a store keeps one product row per warehouse
+        // with the SAME barcode, so only one of those rows can carry it on its
+        // base unit and the rest are left NULL. products.barcode still holds it,
+        // and it is what a scan of that item means, so fall back to it rather
+        // than showing the base unit as having no barcode at all.
+        // A non-base unit has no such fallback — an empty Box barcode is really
+        // empty, and showing the product's barcode there would be a lie.
+        barcode: (u.isBase ? (u.barcode || baseUnitBarcode) : u.barcode) || '',
         baseUnitBarcode,
         // The base unit shows the product's effective (shelf) price, which
         // getProducts already resolved from any default-level override.
