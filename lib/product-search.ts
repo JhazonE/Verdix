@@ -16,13 +16,16 @@ type SearchableProduct = {
     name?: string | null;
     barcode?: string | null;
     /**
-     * The base selling unit's own barcode is the real identifier now (see
+     * A selling unit's own barcode is the real identifier now (see
      * docs/superpowers/specs/2026-09-22-retire-sku-search-pos-inventory-design.md)
      * — `sku` is retired from this matcher's own vocabulary. `barcode` above
      * stays as the legacy `products.barcode` column fallback only; it is
      * never the primary source once a caller supplies `sellingUnits`.
+     *
+     * EVERY unit here is searchable, not just the base one — see
+     * `matchesNormalizedSearch`.
      */
-    sellingUnits?: { isBase?: boolean; barcode?: string | null }[] | null;
+    sellingUnits?: { isBase?: boolean; name?: string | null; barcode?: string | null }[] | null;
 };
 
 /**
@@ -81,19 +84,26 @@ export function matchesNormalizedSearch(
     if (!normalizedTerm) return true;
     if (!product) return false;
 
-    const baseUnitBarcode = product.sellingUnits?.find(su => su.isBase)?.barcode ?? '';
+    if ((product.name?.toLowerCase() ?? '').includes(normalizedTerm)) return true;
+    if ((product.barcode?.toLowerCase() ?? '').includes(normalizedTerm)) return true;
 
-    return (
-        (product.name?.toLowerCase() ?? '').includes(normalizedTerm) ||
-        (product.barcode?.toLowerCase() ?? '').includes(normalizedTerm) ||
-        baseUnitBarcode.toLowerCase().includes(normalizedTerm)
+    // EVERY selling unit is searchable, by its barcode AND by its name — not
+    // just the base one. A Case and the Piece it is packed from carry
+    // different barcodes (the column is UNIQUE across the table), so while
+    // the base-unit-only rule stood, scanning a Case matched nothing: the
+    // product is on the shelf, the scan resolves to no row, and the page
+    // looks broken. Unit NAMES match too, so typing "case" finds the products
+    // sold by the case — a non-base pack size has no barcode a user can type.
+    return (product.sellingUnits ?? []).some(su =>
+        (su?.barcode?.toLowerCase() ?? '').includes(normalizedTerm) ||
+        (su?.name?.toLowerCase() ?? '').includes(normalizedTerm)
     );
 }
 
 /**
  * Match a product against a raw (unnormalized) search term, by name, the
- * base selling unit's barcode, or the legacy barcode column. Case-insensitive;
- * surrounding whitespace is ignored.
+ * legacy barcode column, or ANY selling unit's barcode or name.
+ * Case-insensitive; surrounding whitespace is ignored.
  */
 export function matchesProductSearch(
     product: SearchableProduct | null | undefined,

@@ -10,6 +10,98 @@ import { useDebounce } from '@/hooks/use-debounce';
 
 export type TargetField = 'price' | 'cost' | 'markup' | 'priceLevel';
 
+/**
+ * A selectable row. Selection is per SELLING UNIT, not per product: a Case and
+ * the Piece it is packed from carry independent prices, so repricing one must
+ * not touch the other.
+ *
+ * The key encodes both ids because a selling unit id alone is not enough to
+ * find its product again, and a product id alone cannot distinguish its units.
+ */
+export interface PricingRow {
+  key: string;
+  productId: string;
+  productName: string;
+  sellingUnitId?: string;
+  sellingUnitName?: string;
+  isBase: boolean;
+  factor: number;
+  barcode: string;
+  baseUnitBarcode: string;
+  price: number;
+  cost: number;
+  priceLevels: { levelId: string; price: number; minQuantity?: number }[];
+}
+
+/**
+ * Flattens products into one row per selling unit.
+ *
+ * A product with no selling-unit rows at all still yields a single base row so
+ * it stays repriceable — that row carries no sellingUnitId, which the write
+ * layer reads as "the base unit", exactly as it behaved before units were
+ * selectable.
+ */
+export function toPricingRows(products: any[]): PricingRow[] {
+  const rows: PricingRow[] = [];
+  for (const p of products || []) {
+    const units: any[] = Array.isArray(p.sellingUnits) ? p.sellingUnits : [];
+    const productCost = Number(p.cost || 0);
+    const baseUnitBarcode = p.baseUnitBarcode || p.barcode || '';
+
+    if (units.length === 0) {
+      rows.push({
+        key: p.id,
+        productId: p.id,
+        productName: p.name,
+        isBase: true,
+        factor: 1,
+        barcode: baseUnitBarcode,
+        baseUnitBarcode,
+        price: Number(p.price || 0),
+        cost: productCost,
+        priceLevels: p.priceLevels || [],
+      });
+      continue;
+    }
+
+    // Base unit first, then the rest, so a product reads as "the thing" and
+    // its packs beneath it.
+    const ordered = [...units].sort((a, b) => Number(b.isBase) - Number(a.isBase));
+    for (const u of ordered) {
+      rows.push({
+        key: `${p.id}::${u.id}`,
+        productId: p.id,
+        productName: p.name,
+        sellingUnitId: u.id,
+        sellingUnitName: u.name,
+        isBase: !!u.isBase,
+        factor: Number(u.factor) || 1,
+        // The base unit's own barcode is often NULL: product_selling_units.barcode
+        // is UNIQUE table-wide, but a store keeps one product row per warehouse
+        // with the SAME barcode, so only one of those rows can carry it on its
+        // base unit and the rest are left NULL. products.barcode still holds it,
+        // and it is what a scan of that item means, so fall back to it rather
+        // than showing the base unit as having no barcode at all.
+        // A non-base unit has no such fallback — an empty Box barcode is really
+        // empty, and showing the product's barcode there would be a lie.
+        barcode: (u.isBase ? (u.barcode || baseUnitBarcode) : u.barcode) || '',
+        baseUnitBarcode,
+        // The base unit shows the product's effective (shelf) price, which
+        // getProducts already resolved from any default-level override.
+        price: u.isBase ? Number(p.price || 0) : Number(u.price || 0),
+        // A unit with no cost of its own falls back to the product's only for
+        // the base unit; a Case with no cost is genuinely unknown (0), not the
+        // piece cost.
+        cost: u.cost === undefined || u.cost === null
+          ? (u.isBase ? productCost : 0)
+          : Number(u.cost),
+        priceLevels: u.priceLevels || [],
+      });
+    }
+  }
+  return rows;
+}
+
 export function useBulkPriceUpdate(onUpdated?: () => void) {
   const [warehouseId, setWarehouseIdState] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -51,28 +143,37 @@ export function useBulkPriceUpdate(onUpdated?: () => void) {
   const effectiveAdjustmentType: AdjustmentType = targetField === 'markup' ? 'markup' : adjustmentType;
   const effectiveField: 'price' | 'cost' | 'priceLevel' = targetField === 'markup' ? 'price' : targetField;
 
+  const rows: PricingRow[] = useMemo(() => toPricingRows(products || []), [products]);
+
   const preview: PriceUpdateItem[] = useMemo(() => {
-    if (!products) return [];
+    if (rows.length === 0) return [];
     // A priceLevel target with no level chosen has no valid field to write to —
     // the backend would silently skip these rows while still reporting them as
     // "applied", so exclude them here rather than preview/submit garbage values.
     if (effectiveField === 'priceLevel' && !priceLevelId) return [];
-    return products
-      .filter((p: any) => selectedIds.has(p.id))
-      .map((p: any) => {
-        const currentValue = effectiveField === 'price' ? Number(p.price)
-          : effectiveField === 'cost' ? Number(p.cost || 0)
-          : Number((p.priceLevels || []).find((pl: any) => pl.levelId === priceLevelId)?.price ?? 0);
-        const newValue = applyAdjustment(effectiveAdjustmentType, currentValue, adjustmentValue, Number(p.cost || 0));
+    return rows
+      .filter(r => selectedIds.has(r.key))
+      .map(r => {
+        const currentValue = effectiveField === 'price' ? r.price
+          : effectiveField === 'cost' ? r.cost
+          : Number(r.priceLevels.find(pl => pl.levelId === priceLevelId)?.price ?? 0);
+        // Markup is computed off THIS unit's cost, so a Case marks up the case
+        // cost rather than the per-piece cost.
+        const newValue = applyAdjustment(effectiveAdjustmentType, currentValue, adjustmentValue, r.cost);
         return {
-          productId: p.id, baseUnitBarcode: p.baseUnitBarcode || '', barcode: p.barcode || '', productName: p.name,
+          productId: r.productId,
+          sellingUnitId: r.sellingUnitId,
+          sellingUnitName: r.sellingUnitName,
+          baseUnitBarcode: r.baseUnitBarcode, barcode: r.barcode,
+          // Non-base units are labelled so the preview says which unit moved.
+          productName: r.isBase ? r.productName : `${r.productName} — ${r.sellingUnitName}`,
           field: effectiveField, priceLevelId: effectiveField === 'priceLevel' ? priceLevelId : undefined,
           priceLevelName: effectiveField === 'priceLevel' ? priceLevelName : undefined,
           oldValue: currentValue, newValue,
           adjustmentType: effectiveAdjustmentType, adjustmentValue,
         };
       });
-  }, [products, selectedIds, effectiveField, effectiveAdjustmentType, adjustmentValue, priceLevelId, priceLevelName]);
+  }, [rows, selectedIds, effectiveField, effectiveAdjustmentType, adjustmentValue, priceLevelId, priceLevelName]);
 
   const submit = async (userId: string) => {
     if (!warehouseId || preview.length === 0) return null;
@@ -101,7 +202,7 @@ export function useBulkPriceUpdate(onUpdated?: () => void) {
   return {
     warehouseId, setWarehouseId,
     searchTerm, setSearchTerm,
-    products: products || [], isLoading,
+    products: products || [], rows, isLoading,
     selectedIds, toggleSelected, selectAll, clearSelection,
     targetField, setTargetField,
     priceLevelId, setPriceLevelId, priceLevelName, setPriceLevelName,

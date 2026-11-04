@@ -355,12 +355,19 @@ export async function getProducts(limit?: number, offset?: number, filters?: Pro
       if (filters.search) {
         // A selling unit's own barcode (e.g. a Pack of 12) lives only in
         // product_selling_units, never on products.barcode — without this,
-        // searching by it here finds nothing.
+        // searching by it here finds nothing. The unit NAME is matched too,
+        // so typing "case" finds the products sold by the case; a non-base
+        // pack size is otherwise unreachable by anything but its barcode.
+        //
+        // This clause is duplicated in the COUNT query below and the two MUST
+        // stay identical, or a search returns rows whose total disagrees with
+        // them and the last page of results is unreachable.
         whereClauses.push(`(p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ? OR EXISTS (
-          SELECT 1 FROM product_selling_units su WHERE su.product_id = p.id AND su.barcode LIKE ?
+          SELECT 1 FROM product_selling_units su
+          WHERE su.product_id = p.id AND (su.barcode LIKE ? OR su.name LIKE ?)
         ))`);
         const searchParam = `%${filters.search}%`;
-        params.push(searchParam, searchParam, searchParam, searchParam);
+        params.push(searchParam, searchParam, searchParam, searchParam, searchParam);
       }
       if (filters.brand && filters.brand !== 'all') {
         whereClauses.push(`p.brand = ?`);
@@ -541,12 +548,19 @@ export async function getProductsCount(filters?: ProductFilters) {
        if (filters.search) {
         // A selling unit's own barcode (e.g. a Pack of 12) lives only in
         // product_selling_units, never on products.barcode — without this,
-        // searching by it here finds nothing.
+        // searching by it here finds nothing. The unit NAME is matched too,
+        // so typing "case" finds the products sold by the case; a non-base
+        // pack size is otherwise unreachable by anything but its barcode.
+        //
+        // This clause is duplicated in the COUNT query below and the two MUST
+        // stay identical, or a search returns rows whose total disagrees with
+        // them and the last page of results is unreachable.
         whereClauses.push(`(p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ? OR EXISTS (
-          SELECT 1 FROM product_selling_units su WHERE su.product_id = p.id AND su.barcode LIKE ?
+          SELECT 1 FROM product_selling_units su
+          WHERE su.product_id = p.id AND (su.barcode LIKE ? OR su.name LIKE ?)
         ))`);
         const searchParam = `%${filters.search}%`;
-        params.push(searchParam, searchParam, searchParam, searchParam);
+        params.push(searchParam, searchParam, searchParam, searchParam, searchParam);
       }
       if (filters.brand && filters.brand !== 'all') {
         whereClauses.push(`p.brand = ?`);
@@ -3041,12 +3055,13 @@ export async function searchProducts(searchQuery: string) {
               WHERE su.product_id = p.id) as selling_units
       FROM products p
       WHERE (p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ? OR EXISTS (
-        SELECT 1 FROM product_selling_units su WHERE su.product_id = p.id AND su.barcode LIKE ?
+        SELECT 1 FROM product_selling_units su
+        WHERE su.product_id = p.id AND (su.barcode LIKE ? OR su.name LIKE ?)
       )) AND p.type = 'standard'
       ORDER BY p.name ASC
       LIMIT 20
     `;
-    const results = await query(sql, [like, like, like, like]);
+    const results = await query(sql, [like, like, like, like, like]);
     return results.map((r: any) => ({
       id: r.id,
       name: r.name,
