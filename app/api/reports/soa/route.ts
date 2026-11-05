@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
+import { countableInvoiceSql } from '@/lib/customer-balance';
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,11 +19,17 @@ export async function GET(request: NextRequest) {
 
     // 1. Calculate Starting Balance (Transactions before fromDate)
     
-    // Sum of previous invoices
+    // Sum of previous invoices.
+    //
+    // This filtered `status != 'Void'` — a value absent from the
+    // sales_invoices status enum, which declares 'Voided'. The comparison is
+    // therefore TRUE for every genuinely voided invoice, so the filter meant
+    // to drop them excluded nothing and the opening balance overstated the
+    // debt. Verified in MySQL: for status 'Voided', (status != 'Void') = 1.
     const prevInvoicesSql = `
         SELECT SUM(total) as total
         FROM sales_invoices
-        WHERE customer_id = ? AND DATE(invoice_date) < DATE(?) AND status != 'Void'
+        WHERE customer_id = ? AND DATE(invoice_date) < DATE(?) AND ${countableInvoiceSql()}
     `;
     
     const [prevInvResult]: any = await query(prevInvoicesSql, [customerId, fromDate]);
@@ -55,11 +62,23 @@ export async function GET(request: NextRequest) {
             status,
             notes as description
         FROM sales_invoices
-        WHERE customer_id = ? AND DATE(invoice_date) BETWEEN DATE(?) AND DATE(?) AND status != 'Void'
+        WHERE customer_id = ? AND DATE(invoice_date) BETWEEN DATE(?) AND DATE(?) AND ${countableInvoiceSql()}
     `;
     const invoices: any[] = await query(invoicesSql, [customerId, fromDate, toDate]);
 
-    // Payments (one row per payment; allocations are expanded below)
+    // Payments (one row per payment; allocations are expanded below).
+    //
+    // KNOWN GAP, deliberately not changed here: voiding an invoice
+    // (app/api/sales/invoices/[id]/void/route.ts) reverses stock and flips the
+    // status, but does NOT reverse the customer_payments rows or the
+    // payment_allocations that pointed at it. Now that the invoice correctly
+    // drops out of the debit side above, a payment collected against an
+    // invoice later voided would still appear as a credit — a refund that is
+    // real money the customer handed over, so silently hiding it would be
+    // worse than showing it. Verified on the live DB: zero allocations
+    // currently point at a cancelled invoice, so nothing is misreported
+    // today. Fixing it properly means deciding whether a void refunds to
+    // account credit or to cash, which is a product decision, not a query fix.
     const paymentsSql = `
         SELECT
             cp.id,

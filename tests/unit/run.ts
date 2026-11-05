@@ -104,6 +104,7 @@ import './cart-quantity-counts-selling-unit.test';
 import './pos-quantity-first-entry.test';
 import './sync-permanent-error.test';
 import './pos-scan-single-quantity.test';
+import './customer-balance-predicate.test';
 
 // Each test file above is a side-effecting async IIFE: it starts running during
 // import but settles only after every import has completed. The DB-backed ones

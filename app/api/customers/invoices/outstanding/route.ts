@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '../../../../../lib/mysql';
+import { openInvoiceSql } from '@/lib/customer-balance';
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,11 +15,21 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1');
     const offset = (page - 1) * limit;
 
-    // Fetch invoices that are NOT paid (Pending, Failed, Shipped, Delivered, Returned, Partially Paid if applicable)
-    // Assuming 'Pending' is the main status for unpaid, but we should include others if they imply unpaid.
-    // Based on page logic: status === 'Paid' is paid.
-    // So we fetch everything NOT 'Paid'.
-    
+    // Invoices that still owe money, per lib/customer-balance — the same
+    // definition the balances, customer-detail and SOA routes use.
+    //
+    // This previously fetched everything NOT 'Paid', so voided and returned
+    // invoices appeared here as collectable. That mattered twice over: this
+    // list is the Outstanding Invoices tab AND the source of the Add Payment
+    // dialog's allocation rows, so a cashier could allocate a real payment
+    // against a cancelled invoice.
+    //
+    // The bare `si.amount_paid < si.total` was also NULL-unsafe: verified in
+    // MySQL, (NULL < 1000) is NULL, not TRUE, so a row with a NULL amount_paid
+    // would be dropped from this list even though it is wholly unpaid. No live
+    // row has a NULL amount_paid today, so this was latent rather than biting;
+    // openInvoiceSql wraps the comparison in COALESCE either way. The sibling
+    // balances route already had the COALESCE — only this one lacked it.
     let sql = `
       SELECT
         si.id,
@@ -36,7 +47,7 @@ export async function GET(request: NextRequest) {
         si.created_at
       FROM sales_invoices si
       LEFT JOIN customers c ON si.customer_id = c.id
-      WHERE si.status != 'Paid' AND si.amount_paid < si.total
+      WHERE ${openInvoiceSql('si')}
     `;
 
     const params: any[] = [];

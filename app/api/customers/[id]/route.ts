@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '../../../../lib/mysql';
 import { ensureCustomerCreditColumn } from '@/lib/ensure-customer-credit';
+import { countableInvoiceSql, openInvoiceSql } from '@/lib/customer-balance';
 
 // GET endpoint to fetch a single customer
 export async function GET(
@@ -13,6 +14,14 @@ export async function GET(
     const resolvedParams = await params;
     const customerId = resolvedParams.id;
 
+    // All three money figures below take their definition of a real invoice
+    // from lib/customer-balance. They used to disagree inside this one query:
+    // credit_sales and total_payment excluded voided+returned via
+    // LOWER(status) NOT IN (...), while balance filtered only on status not
+    // being 'Paid'. So a voided invoice was dropped from the sales total yet
+    // still counted as debt. Measured on a two-invoice fixture (1000 Voided +
+    // 500 Pending): credit_sales = 500 against a balance basis of 1500 — the
+    // same screen could not reconcile with itself.
     const sql = `
       SELECT
         c.id,
@@ -33,9 +42,9 @@ export async function GET(
         c.price_level_id,
         c.created_at,
         c.updated_at,
-        (SELECT COALESCE(SUM(total), 0) FROM sales_invoices WHERE customer_id = c.id AND LOWER(status) NOT IN ('voided', 'returned')) AS credit_sales,
-        (SELECT COALESCE(SUM(amount_paid), 0) FROM sales_invoices WHERE customer_id = c.id AND LOWER(status) NOT IN ('voided', 'returned')) AS total_payment,
-        (SELECT COALESCE(SUM(total - COALESCE(amount_paid, 0)), 0) FROM sales_invoices WHERE customer_id = c.id AND status != 'Paid') - COALESCE(c.credit_balance, 0) AS balance
+        (SELECT COALESCE(SUM(total), 0) FROM sales_invoices WHERE customer_id = c.id AND ${countableInvoiceSql()}) AS credit_sales,
+        (SELECT COALESCE(SUM(amount_paid), 0) FROM sales_invoices WHERE customer_id = c.id AND ${countableInvoiceSql()}) AS total_payment,
+        (SELECT COALESCE(SUM(total - COALESCE(amount_paid, 0)), 0) FROM sales_invoices WHERE customer_id = c.id AND ${openInvoiceSql()}) - COALESCE(c.credit_balance, 0) AS balance
       FROM customers c
       LEFT JOIN customer_loyalty cl ON c.id = cl.customer_id
       WHERE c.id = ?
