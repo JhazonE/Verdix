@@ -192,9 +192,14 @@ export default function AdjustmentReportPage() {
     }
   };
 
+  // Every input the request is built from belongs here. Listing only page and
+  // pageSize meant paging refetched with whatever dates the state happened to
+  // hold, so page 2 could cover a different range than page 1, and it forced
+  // "Filter Report" to call fetchData() by hand alongside setPage(1) -- two
+  // requests for one click, with the later response winning.
   useEffect(() => {
     fetchData();
-  }, [page, pageSize]);
+  }, [page, pageSize, startDate, endDate]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -281,7 +286,7 @@ export default function AdjustmentReportPage() {
                    className="w-[180px]"
                 />
              </div>
-             <Button onClick={() => { setPage(1); fetchData(); }}>Filter Report</Button>
+             <Button onClick={() => setPage(1)}>Filter Report</Button>
            </div>
         </CardHeader>
       </Card>

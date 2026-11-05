@@ -25,7 +25,6 @@ import { ReportHeader } from '@/components/reports/ReportHeader';
 import { getApiUrl } from '@/lib/api-config';
 import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { formatQuantity } from '@/lib/utils';
-import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { printReportTable, exportReportExcel } from '@/lib/report-print';
 import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
 import { useToast } from '@/hooks/use-toast';
@@ -57,11 +56,11 @@ export default function StockMovementPage() {
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [movementType, setMovementType] = useState('all');
 
-  // Pagination State
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalItems, setTotalItems] = useState(0);
+  // No pagination state: this page fetches the whole range and renders every
+  // row. It used to carry page/pageSize/totalPages/totalItems and a pager, but
+  // setTotalPages and setTotalItems were never called and the fetch never sent
+  // a page, so the control sat at "Page 1 of 1, 0 items" over a full table and
+  // its buttons did nothing.
 
   const handlePrint = () => {
     printReportTable<StockMovement>({
@@ -232,7 +231,7 @@ export default function StockMovementPage() {
                     </SelectContent>
                 </Select>
              </div>
-             <Button onClick={() => { setPage(1); fetchData(); }}>Filter Report</Button>
+             <Button onClick={() => fetchData()}>Filter Report</Button>
            </div>
         </CardHeader>
       </Card>
@@ -299,15 +298,6 @@ export default function StockMovementPage() {
             </TableBody>
           </Table>
         </div>
-
-        <DataTablePagination 
-            currentPage={page}
-            totalPages={totalPages}
-            pageSize={pageSize}
-            totalItems={totalItems}
-            setPage={setPage}
-            setPageSize={setPageSize}
-          />
 
       </div>
     </div>
