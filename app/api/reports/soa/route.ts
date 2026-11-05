@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { countableInvoiceSql } from '@/lib/customer-balance';
 import { buildSoaLines } from '@/lib/soa-lines';
+import { realPaymentSql } from '@/lib/void-refund';
 
 export async function GET(request: NextRequest) {
   try {
@@ -60,11 +61,11 @@ export async function GET(request: NextRequest) {
                 JOIN sales_invoices si ON si.id = pa.invoice_id
                 WHERE cp2.customer_id = ?
                   AND DATE(cp2.payment_date) < DATE(?)
-                  AND UPPER(cp2.payment_type) != 'CHARGE'
+                  AND ${realPaymentSql('cp2')}
                   AND NOT (${countableInvoiceSql('si')})
             ), 0) AS allocatedToVoided
         FROM customer_payments cp
-        WHERE cp.customer_id = ? AND DATE(cp.payment_date) < DATE(?) AND UPPER(cp.payment_type) != 'CHARGE'
+        WHERE cp.customer_id = ? AND DATE(cp.payment_date) < DATE(?) AND ${realPaymentSql('cp')}
     `;
     let prevPaymentsTotal = 0;
     try {
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
       // table there is nothing allocated to a voided invoice anyway.
       const [fallback]: any = await query(
         `SELECT COALESCE(SUM(amount), 0) AS total FROM customer_payments
-         WHERE customer_id = ? AND DATE(payment_date) < DATE(?) AND UPPER(payment_type) != 'CHARGE'`,
+         WHERE customer_id = ? AND DATE(payment_date) < DATE(?) AND ${realPaymentSql()}`,
         [customerId, fromDate]
       );
       prevPaymentsTotal = parseFloat(fallback?.total || 0);
@@ -129,11 +130,15 @@ export async function GET(request: NextRequest) {
             cp.reference,
             cp.payment_date as date,
             cp.payment_type as type,
-            CASE WHEN UPPER(cp.payment_type) = 'CHARGE' THEN 0 ELSE cp.amount END as credit,
+            -- Plain cp.amount: the WHERE below already excludes the
+            -- non-payment types (CHARGE, REFUND), so the CASE that used to
+            -- zero a CHARGE row here could never match and only suggested
+            -- such rows might arrive.
+            cp.amount as credit,
             cp.note
         FROM customer_payments cp
         WHERE cp.customer_id = ? AND DATE(cp.payment_date) BETWEEN DATE(?) AND DATE(?)
-          AND UPPER(cp.payment_type) != 'CHARGE'
+          AND ${realPaymentSql('cp')}
     `;
     const payments: any[] = await query(paymentsSql, [customerId, fromDate, toDate]);
 

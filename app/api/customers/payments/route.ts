@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, withTransaction } from '@/lib/mysql';
 import { ensureCustomerCreditColumn } from '@/lib/ensure-customer-credit';
+import { realPaymentSql } from '@/lib/void-refund';
 import { v4 as uuidv4 } from 'uuid';
 
 // Ensure the allocation junction table exists so JOINs below never fail on a fresh DB.
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
         FROM payment_allocations
         GROUP BY payment_id
       ) pa ON pa.payment_id = cp.id
-      WHERE UPPER(cp.payment_type) != 'CHARGE'
+      WHERE ${realPaymentSql('cp')}
     `;
 
     const params: any[] = [];
