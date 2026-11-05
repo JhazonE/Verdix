@@ -651,7 +651,13 @@ export async function POST(request: NextRequest) {
           
           // Verify balance again & get loyalty ID
           const [custRows]: any = await connection.query(
-             'SELECT id, current_points FROM customer_loyalty WHERE customer_id = ? LIMIT 1', 
+             // FOR UPDATE: the insufficiency check below is validated against
+             // this balance, so the read has to be serialised. Without it two
+             // tills both read the same balance, both pass the check and both
+             // deduct — reproduced on this schema: 100 points redeemed twice
+             // for 80 left -60, i.e. 160 redeemed out of 100. current_points
+             // is signed decimal(15,3), so nothing in the column stops it.
+             'SELECT id, current_points FROM customer_loyalty WHERE customer_id = ? LIMIT 1 FOR UPDATE',
              [customer.id]
           );
           
@@ -685,11 +691,26 @@ export async function POST(request: NextRequest) {
               }
           }
           
-          // Deduct
-          await connection.query(
-             'UPDATE customer_loyalty SET current_points = current_points - ? WHERE id = ?',
-             [pointsToDeduct, loyaltyId]
+          // Deduct.
+          //
+          // The `current_points >= ?` guard is deliberate belt-and-braces on
+          // top of the FOR UPDATE above: the database itself refuses to take
+          // the balance negative, so a future caller that forgets to lock
+          // cannot overdraw either. The column is signed decimal(15,3) and
+          // carries no constraint of its own.
+          const [deductResult]: any = await connection.query(
+             'UPDATE customer_loyalty SET current_points = current_points - ?, updated_at = NOW() WHERE id = ? AND current_points >= ?',
+             [pointsToDeduct, loyaltyId, pointsToDeduct]
           );
+
+          // Matching no row means the balance moved under us despite the
+          // lock. Fail the sale rather than discount the customer for points
+          // that were never deducted.
+          if (!deductResult || deductResult.affectedRows === 0) {
+             throw new Error(
+                `Insufficient points. The balance changed while this sale was being processed; please re-check the customer's points and try again.`
+             );
+          }
           
           // Log History (Redemption)
           const historyId = `PH-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;

@@ -110,6 +110,7 @@ import './payment-reference.test';
 import './outstanding-invoices-summary.test';
 import './credit-limit.test';
 import './soa-voided-invoices.test';
+import './loyalty-points-redemption-lock.test';
 
 // Each test file above is a side-effecting async IIFE: it starts running during
 // import but settles only after every import has completed. The DB-backed ones
