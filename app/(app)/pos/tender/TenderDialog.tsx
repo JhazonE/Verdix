@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/select';
 import { Loader2, Printer, User, Star, Info, AlertCircle, CheckCircle2, Wallet, CreditCard, Banknote, FileText } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { AdminAuthDialog } from '../admin-auth/AdminAuthDialog';
 import type { SaleItem } from '../pos-content/pos-types';
 import type { SystemSettings } from '@/lib/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -118,6 +119,8 @@ export function TenderDialog(props: TenderDialogProps) {
         handleConfirmPayment,
         getQuickAmounts,
         pointsRate,
+        creditLimitBlock,
+        setCreditLimitBlock,
     } = useTender(props);
 
 
@@ -827,7 +830,12 @@ export function TenderDialog(props: TenderDialogProps) {
                                     Cancel
                                 </Button>
                                 <Button
-                                    onClick={handleConfirmPayment}
+                                    // Wrapped, NOT passed directly: the first
+                                    // argument is now creditLimitOverride, and
+                                    // a React click event is truthy — handing
+                                    // it over would approve every over-limit
+                                    // charge automatically.
+                                    onClick={() => handleConfirmPayment()}
                                     ref={confirmButtonRef}
                                     disabled={
                                         isProcessing ||
@@ -910,6 +918,21 @@ export function TenderDialog(props: TenderDialogProps) {
                 </div>
             </DialogContent>
         </Dialog>
+
+        {/* The customer's credit limit refused this charge. Nothing was
+            written — the checkout route rolled back and did not consume an SI
+            number — so approving here re-submits cleanly with the override. */}
+        <AdminAuthDialog
+            isOpen={!!creditLimitBlock}
+            onOpenChange={(open) => { if (!open) setCreditLimitBlock(null); }}
+            onSuccess={() => {
+                setCreditLimitBlock(null);
+                handleConfirmPayment(true);
+            }}
+            title="Credit Limit Exceeded"
+            description={creditLimitBlock?.message || 'A supervisor must approve this charge.'}
+            preventCloseAutoFocus
+        />
         </>
     );
 };
