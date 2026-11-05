@@ -15,7 +15,23 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit;
 
     const params: any[] = [];
-    let whereClause = "WHERE pt.transaction_type = 'sale' AND pt.payment_status = 'completed'";
+    // Voided and training sales are NOT revenue and must be excluded here, the
+    // same way X-reading, Z-reading and bir-summary exclude them.
+    //
+    // Voiding a sale never retypes or removes its pos_transactions row —
+    // app/api/pos/void-transaction only flips sales_transactions.status to
+    // 'Voided' — so a voided sale keeps transaction_type = 'sale' and used to
+    // sail straight through this filter. On the live database that made
+    // 2026-11-04 report PHP 145.00 of revenue for a day whose only transaction
+    // was a void, while the X-reading and Z-reading for that day correctly
+    // reported 0.00. That is why this report disagreed with the readings.
+    //
+    // is_training = 0 for the same reason checkout issues training sales no BIR
+    // number at all: they are rehearsals, not sales.
+    let whereClause =
+      "WHERE pt.transaction_type = 'sale' AND pt.payment_status = 'completed'" +
+      " AND pt.is_training = 0" +
+      " AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')";
 
     if (terminalId && terminalId !== 'all') {
         whereClause += " AND pt.terminal_id = ?";
@@ -53,9 +69,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Get total count of groups for pagination
+    // sales_transactions is joined in BOTH queries below because whereClause
+    // now references st.status. A LEFT JOIN with COALESCE, not an inner join:
+    // a sale whose sales_transactions row is somehow missing should still be
+    // reported rather than silently vanishing from the totals.
     const countQuery = `
         SELECT COUNT(DISTINCT ${selectDate}) as total
         FROM pos_transactions pt
+        LEFT JOIN sales_transactions st ON pt.sale_id = st.id
         ${whereClause}
     `;
     const countResult = await query(countQuery, params);
@@ -96,6 +117,7 @@ export async function GET(request: NextRequest) {
                  WHERE pti.pos_transaction_id = pt.id)
             ) as total_cost
         FROM pos_transactions pt
+        LEFT JOIN sales_transactions st ON pt.sale_id = st.id
         ${whereClause}
         GROUP BY 1
         ORDER BY date DESC
@@ -105,7 +127,28 @@ export async function GET(request: NextRequest) {
     const result = await query(queryStr, [...params, limit, offset]);
 
     const formattedData = result.map((row: any) => {
-        const date = row.date instanceof Date ? row.date.toISOString() : row.date;
+        // toISOString() reported every daily/monthly bucket one day EARLY.
+        // DATE(...) and DATE_FORMAT(..., '%Y-%m-01') come back as a Date at
+        // LOCAL midnight, and toISOString() converts that to UTC — at
+        // Philippine time (UTC+8) 2026-11-03 00:00 local becomes
+        // 2026-11-02T16:00Z, so the row was labelled 2026-11-02. The money was
+        // right and the label was wrong, which is a large part of why this
+        // report appeared not to match the X-reading and Z-reading.
+        //
+        // Hourly buckets keep their time-of-day, so they are formatted in full;
+        // daily and monthly buckets are calendar days and emit 'YYYY-MM-DD'.
+        const date = (() => {
+            const v = row.date;
+            if (!(v instanceof Date)) return v;
+            const y = v.getFullYear();
+            const mo = String(v.getMonth() + 1).padStart(2, '0');
+            const d = String(v.getDate()).padStart(2, '0');
+            if (interval !== 'hourly') return `${y}-${mo}-${d}`;
+            const h = String(v.getHours()).padStart(2, '0');
+            const mi = String(v.getMinutes()).padStart(2, '0');
+            const s = String(v.getSeconds()).padStart(2, '0');
+            return `${y}-${mo}-${d}T${h}:${mi}:${s}`;
+        })();
         const totalRevenue = parseFloat(row.total_revenue) || 0;
         const totalTax = parseFloat(row.total_tax) || 0;
         const totalCost = parseFloat(row.total_cost) || 0;
