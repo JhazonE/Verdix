@@ -127,6 +127,11 @@ export default function StockMovementPage() {
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);
       if (movementType && movementType !== 'all') params.append('type', movementType);
+      // This page renders and searches the whole result set client-side and has
+      // no pager, so it needs the whole matching range. The endpoint defaults to
+      // 10 rows, which looked like "only 10 movements happened" with nothing on
+      // screen to suggest the rest had been cut off.
+      params.append('limit', '100000');
 
       const res = await fetch(getApiUrl(`/reports/movements?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!res.ok) throw new Error(`API error ${res.status}`);

@@ -112,6 +112,11 @@ export default function ReturnedSalesPage() {
         params.append('endDate', format(toDate, 'yyyy-MM-dd'));
       }
       params.append('status', 'Returned');
+      // This report filters, paginates and totals client-side, so it needs the
+      // whole matching range, not the API's default page. Without an explicit
+      // limit the endpoint caps the result and the summary cards, page count
+      // and exports all silently describe that first page only.
+      params.append('limit', '100000');
 
       const response = await fetch(getApiUrl(`/sales/transactions?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!response.ok) throw new Error(`API error ${response.status}`);
