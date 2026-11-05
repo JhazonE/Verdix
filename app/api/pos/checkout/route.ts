@@ -9,6 +9,8 @@ import { validateSingleDocumentType } from './mixed-cart-validation';
 import { isTerminalLocked, TERMINAL_LOCKED_MESSAGE } from './terminal-lock-check';
 import { startCheckoutTimer } from '@/lib/pos/checkout-timing';
 import { getBaseUnitsForProducts, type SellingUnit } from '@/lib/selling-units';
+import { checkCreditLimit, creditLimitMessage } from '@/lib/credit-limit';
+import { openInvoiceSql } from '@/lib/customer-balance';
 
 // Cached per process — the columns can't disappear once ensured, so don't pay
 // an INFORMATION_SCHEMA round trip on every checkout.
@@ -65,7 +67,11 @@ export async function POST(request: NextRequest) {
       // Payment-specific data
       paymentDetails,
       amountTendered,
-      change
+      change,
+      // Set by the till when a supervisor has approved a charge that would
+      // breach the customer's credit limit. Absent means no approval was
+      // given, so an over-limit charge is refused.
+      creditLimitOverride
     } = body;
     
     console.log('[POS Checkout] Processing sale:', { itemsCount: items.length, totalDue, paymentMethod });
@@ -173,6 +179,60 @@ export async function POST(request: NextRequest) {
       const isCharge = typeof paymentMethod === 'string' && paymentMethod.toUpperCase() === 'CHARGE';
       const invoiceStatus = isCharge ? 'Pending' : 'Paid';
       const posPaymentStatus = isCharge ? 'pending' : 'completed';
+
+      // 0. Enforce the customer's credit limit before writing anything.
+      //
+      // credit_limit was stored, imported, exported and displayed but never
+      // checked anywhere, so a customer could charge indefinitely past it.
+      // Scoped to charges: a cash or card sale creates no receivable and must
+      // never be refused for a credit limit.
+      //
+      // A limit of 0 or NULL means UNLIMITED — see lib/credit-limit. Every
+      // customer in the live database currently has 0, so reading it strictly
+      // would have blocked every charge sale the moment this shipped.
+      //
+      // Done inside the transaction, with the customer row locked, so a
+      // second till cannot slip a charge through against the same headroom
+      // between this read and the invoice insert. The balance uses the shared
+      // open-invoice predicate, so "what they owe" here means the same thing
+      // as it does on the Customer Balances page.
+      if (isCharge && customer && customer.id !== 'walk-in') {
+        const [limitRows]: any = await connection.query(
+          'SELECT name, COALESCE(credit_limit, 0) AS credit_limit, COALESCE(credit_balance, 0) AS credit_balance FROM customers WHERE id = ? FOR UPDATE',
+          [customer.id]
+        );
+
+        if (limitRows && limitRows.length > 0) {
+          const row = limitRows[0];
+          const [balRows]: any = await connection.query(
+            `SELECT COALESCE(SUM(si.total - COALESCE(si.amount_paid, 0)), 0) AS balance
+             FROM sales_invoices si
+             WHERE si.customer_id = ? AND ${openInvoiceSql('si')}`,
+            [customer.id]
+          );
+          const currentBalance = parseFloat(balRows?.[0]?.balance || 0);
+
+          // Account credit will be applied to this charge further down, so it
+          // is not new exposure and must not count against the limit.
+          const availableCredit = parseFloat(row.credit_balance) || 0;
+
+          const decision = checkCreditLimit({
+            creditLimit: row.credit_limit,
+            currentBalance,
+            chargeAmount: totalDue,
+            creditApplied: Math.min(availableCredit, Number(totalDue) || 0),
+          });
+
+          if (!decision.allowed && !creditLimitOverride) {
+            // Thrown so withTransaction rolls back: nothing of this sale is
+            // written, and the SI number taken above is not consumed.
+            const error: any = new Error(creditLimitMessage(decision, row.name));
+            error.creditLimitExceeded = true;
+            error.creditLimit = decision;
+            throw error;
+          }
+        }
+      }
 
       // 1. Insert into sales_transactions
       const insertSaleSql = `
@@ -591,7 +651,13 @@ export async function POST(request: NextRequest) {
           
           // Verify balance again & get loyalty ID
           const [custRows]: any = await connection.query(
-             'SELECT id, current_points FROM customer_loyalty WHERE customer_id = ? LIMIT 1', 
+             // FOR UPDATE: the insufficiency check below is validated against
+             // this balance, so the read has to be serialised. Without it two
+             // tills both read the same balance, both pass the check and both
+             // deduct — reproduced on this schema: 100 points redeemed twice
+             // for 80 left -60, i.e. 160 redeemed out of 100. current_points
+             // is signed decimal(15,3), so nothing in the column stops it.
+             'SELECT id, current_points FROM customer_loyalty WHERE customer_id = ? LIMIT 1 FOR UPDATE',
              [customer.id]
           );
           
@@ -625,11 +691,26 @@ export async function POST(request: NextRequest) {
               }
           }
           
-          // Deduct
-          await connection.query(
-             'UPDATE customer_loyalty SET current_points = current_points - ? WHERE id = ?',
-             [pointsToDeduct, loyaltyId]
+          // Deduct.
+          //
+          // The `current_points >= ?` guard is deliberate belt-and-braces on
+          // top of the FOR UPDATE above: the database itself refuses to take
+          // the balance negative, so a future caller that forgets to lock
+          // cannot overdraw either. The column is signed decimal(15,3) and
+          // carries no constraint of its own.
+          const [deductResult]: any = await connection.query(
+             'UPDATE customer_loyalty SET current_points = current_points - ?, updated_at = NOW() WHERE id = ? AND current_points >= ?',
+             [pointsToDeduct, loyaltyId, pointsToDeduct]
           );
+
+          // Matching no row means the balance moved under us despite the
+          // lock. Fail the sale rather than discount the customer for points
+          // that were never deducted.
+          if (!deductResult || deductResult.affectedRows === 0) {
+             throw new Error(
+                `Insufficient points. The balance changed while this sale was being processed; please re-check the customer's points and try again.`
+             );
+          }
           
           // Log History (Redemption)
           const historyId = `PH-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
@@ -761,7 +842,9 @@ export async function POST(request: NextRequest) {
     timer.done({ outcome: 'error' });
     console.error('Error during checkout:', error);
 
-    // Log failed payment attempt
+    // Log failed payment attempt. A credit-limit refusal is logged too: the
+    // attempt genuinely happened and a supervisor may be asked to approve it,
+    // so it belongs in the audit trail rather than being swallowed.
     try {
       const { query } = await import('@/lib/mysql');
       await query(`
@@ -781,6 +864,22 @@ export async function POST(request: NextRequest) {
       console.error('Failed to log payment error:', logError);
     }
     
+    // A credit-limit refusal is a business rule, not a server fault: answer
+    // 403 with a machine-readable code so the till can offer the supervisor
+    // override instead of showing a generic "checkout failed".
+    if (error?.creditLimitExceeded) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+          code: 'CREDIT_LIMIT_EXCEEDED',
+          creditLimit: error.creditLimit,
+          canOverride: true,
+        },
+        { status: 403 }
+      );
+    }
+
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

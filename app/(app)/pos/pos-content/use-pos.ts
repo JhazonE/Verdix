@@ -1377,7 +1377,11 @@ export function usePOS() {
           if (xReadingResult.success && xReadingResult.data.length > 0) {
             const xData = xReadingResult.data[0];
             const timestampSuffix = new Date().toISOString().replace(/\D/g, '').slice(-6);
-            const readingNo = `X-${(xData.id || currentShiftId).substring(0, 10).toUpperCase()}-${timestampSuffix}`;
+            // shiftId, not id: id is now a per-sales-day row key
+            // ("<shift>|YYYY-MM-DD"), because a shift that sold across more
+            // than one day returns one row per day. Slicing that would yield
+            // the same leading characters for every shift.
+            const readingNo = `X-${(xData.shiftId || xData.id || currentShiftId).substring(0, 10).toUpperCase()}-${timestampSuffix}`;
             await fetch(getApiUrl('/sales/x-reading'), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

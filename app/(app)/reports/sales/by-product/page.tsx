@@ -113,7 +113,11 @@ export default function SalesByProductPage() {
         params.append('endDate', format(toDate, 'yyyy-MM-dd'));
       }
       params.append('page', currentPage.toString());
-      params.append('limit', '1000'); // Get all for now
+      // Paginated client-side from the full result set below, so fetch the whole
+      // range: 'page' is sent for the API's benefit but totalPages is recomputed
+      // from the rows actually held, and a 1000-row cap silently truncated both
+      // the table and the summary cards on any sizeable date range.
+      params.append('limit', '100000');
       if (searchTerm) {
         params.append('search', searchTerm);
       }

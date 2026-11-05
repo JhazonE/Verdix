@@ -58,6 +58,9 @@ import './x-reading-cash-transfers.test';
 import './z-reading-cash-transfers.test';
 import './reading-cash-deposit-display.test';
 import './x-reading-returns-shift.test';
+import './sales-by-date-excludes-voids.test';
+import './z-reading-returns-source.test';
+import './x-reading-date-attribution.test';
 import './product-search.test';
 import './board-product-loading.test';
 import './board-search-no-remount.test';
@@ -101,6 +104,14 @@ import './cart-quantity-counts-selling-unit.test';
 import './pos-quantity-first-entry.test';
 import './sync-permanent-error.test';
 import './pos-scan-single-quantity.test';
+import './customer-balance-predicate.test';
+import './payment-allocation.test';
+import './payment-reference.test';
+import './outstanding-invoices-summary.test';
+import './credit-limit.test';
+import './soa-voided-invoices.test';
+import './loyalty-points-redemption-lock.test';
+import './void-invoice-refund.test';
 
 // Each test file above is a side-effecting async IIFE: it starts running during
 // import but settles only after every import has completed. The DB-backed ones

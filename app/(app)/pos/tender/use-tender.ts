@@ -72,6 +72,15 @@ export function useTender({
   const [view, setView] = useState<ViewType>('tender');
   const [completedSale, setCompletedSale] = useState<CompletedSale | null>(null);
   const [pointsToRedeemInput, setPointsToRedeemInput] = useState<string>('');
+  /**
+   * Set when the checkout route refused a charge against the customer's
+   * credit limit. Nothing was written, so clearing this and re-confirming
+   * with a supervisor override is a clean retry.
+   */
+  const [creditLimitBlock, setCreditLimitBlock] = useState<{
+    message: string;
+    detail: any;
+  } | null>(null);
   const { toast } = useToast();
   const pointsInputRef = useRef<HTMLInputElement>(null);
 
@@ -194,7 +203,14 @@ export function useTender({
     setSelectedMethod('');
   }, [isReferenceRequired, referenceInput, amountTenderedNum, isChargePayment, payments, selectedMethod, balanceRemaining, toast]);
 
-  const handleConfirmPayment = useCallback(async () => {
+  /**
+   * `creditLimitOverride` is passed only after a supervisor has approved a
+   * charge the customer's credit limit would otherwise refuse. The checkout
+   * route answers such a refusal with 403 + code CREDIT_LIMIT_EXCEEDED and
+   * writes nothing, so re-submitting with the override is safe: no partial
+   * sale was left behind and no SI number was consumed.
+   */
+  const handleConfirmPayment = useCallback(async (creditLimitOverride?: boolean) => {
     const availablePoints = (customer as any)?.current_points || (customer as any)?.loyaltyPoints || 0;
 
     if (pointsToRedeemValue > (Number(availablePoints) * pointsRate)) {
@@ -291,15 +307,30 @@ export function useTender({
           currentUser: { ...currentUser, id: currentUser?.id || 'admin' },
           userId: currentUser?.id || currentUser?.uid || 'admin',
           shiftId,
-          terminalId
+          terminalId,
+          creditLimitOverride: creditLimitOverride || undefined
         }),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
+        // A credit-limit refusal is a business rule, not a failure: the route
+        // rolled everything back, so the cashier can get a supervisor and
+        // retry. Surface it as its own state rather than a generic error
+        // toast, which would leave no way through at the till.
+        if (response.status === 403 && result?.code === 'CREDIT_LIMIT_EXCEEDED') {
+          setCreditLimitBlock({
+            message: result.error || 'Credit limit exceeded.',
+            detail: result.creditLimit || null,
+          });
+          return;
+        }
         throw new Error(result.error || 'Failed to save transaction');
       }
+
+      // Cleared on success so a later charge is not refused by a stale block.
+      setCreditLimitBlock(null);
 
       toast({
         title: "Payment Successful",
@@ -464,5 +495,10 @@ export function useTender({
     handleConfirmPayment,
     getQuickAmounts,
     pointsRate,
+    // Non-null while a charge is refused by the customer's credit limit; the
+    // till shows the reason and offers a supervisor override, which re-calls
+    // handleConfirmPayment(true).
+    creditLimitBlock,
+    setCreditLimitBlock,
   };
 }

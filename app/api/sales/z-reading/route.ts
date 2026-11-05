@@ -157,13 +157,39 @@ export async function GET(request: NextRequest) {
         `;
         const [salesResult] = await query(salesSql, dateParams) as any[];
 
+        // The refund comes from the RETURN's own row, not from the original
+        // sale. A return (app/api/sales/returns) inserts a new pos_transactions
+        // row typed 'return' carrying total_amount = -refundedAmount, reusing
+        // the original sale's sale_id; it writes no sales_transactions row of
+        // its own and leaves the original sale's st.total untouched.
+        //
+        // This used to be `SUM(st.total) ... WHERE st.status = 'Returned'`
+        // filtered on st.created_at, which was wrong three ways at once:
+        //
+        //   1. st.total is the WHOLE original sale, not the amount refunded.
+        //      Live: SI 000010 was a PHP 1,025.00 sale with a PHP 165.00
+        //      partial return, reported as PHP 1,025.00 returned.
+        //   2. st.created_at is the ORIGINAL SALE's date, so a refund given the
+        //      day after the sale landed in the wrong Z-reading period. Live:
+        //      sale 2026-11-03, refund 2026-11-04.
+        //   3. A partial return leaves status = 'Paid', so `status = 'Returned'`
+        //      skipped it entirely and reported 0.00.
+        //
+        // Joining the return row back to its original sales_transactions row
+        // was also what made a day's figures not add up: it pulled that sale's
+        // full total into the sale's own bucket a second time (live: PHP 8,810
+        // reported where real sales were PHP 7,785 — the PHP 1,025 sale counted
+        // twice).
+        //
+        // ABS() because total_amount is stored negative (money out). This now
+        // matches X-reading's returns_amount exactly, so the two reports cannot
+        // disagree about what was refunded.
         const returnsSql = `
-            SELECT SUM(st.total) as total_returns
-            FROM sales_transactions st
-            JOIN pos_transactions pt ON st.id = pt.sale_id
-            WHERE st.status = 'Returned'
+            SELECT ABS(COALESCE(SUM(pt.total_amount), 0)) as total_returns
+            FROM pos_transactions pt
+            WHERE pt.transaction_type = 'return'
             AND pt.is_training = 0
-            ${dateCondition}
+            ${dateCondition.replace(/st\.created_at/g, 'pt.created_at')}
             ${terminalCondition}
         `;
         const [returnsResult] = await query(returnsSql, dateParams) as any[];

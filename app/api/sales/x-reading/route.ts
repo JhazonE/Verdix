@@ -46,11 +46,25 @@ export async function GET(request: NextRequest) {
     const limit = searchParams.get('limit');
     const shiftId = searchParams.get('shiftId');
     
-    // Base query to fetch shifts
+    // Base query to fetch shifts.
+    //
+    // A shift is reported per SALES DAY, not solely by the date it opened.
+    // report_date used to be s.start_time, and the startDate/endDate bounds
+    // used to filter DATE(s.start_time), so a shift left open across midnight
+    // attributed every later sale to its opening date. Live: a shift opened
+    // 2026-10-21 and closed 2026-10-30 took six sales totalling PHP 5,790.00,
+    // and X-reading filed all of it as 2026-10-21 while the back-office
+    // reports split the same money across 2026-10-22 and 2026-10-30. No money
+    // was lost, but no day agreed and the revenue sat on the wrong BIR dates.
+    //
+    // sales.sale_date is the day the sales in this row were actually rung up
+    // (DATE(pt.transaction_time), the basis every back-office report uses).
+    // It is NULL for a shift that took no sales at all, and such a shift still
+    // belongs to the day it opened — hence the COALESCE.
     let sql = `
       SELECT
         s.id,
-        s.start_time as report_date,
+        COALESCE(sales.sale_date, DATE(s.start_time)) as report_date,
         s.start_time as shift_start,
         s.end_time as shift_end,
         s.terminal_id,
@@ -88,6 +102,11 @@ export async function GET(request: NextRequest) {
       LEFT JOIN (
           SELECT
               pt.shift_id,
+              -- The day these sales were rung up. Grouping by shift_id ALONE
+              -- collapsed a multi-day shift into a single row, which is what
+              -- made per-day figures unobtainable no matter how the outer
+              -- query was filtered.
+              DATE(pt.transaction_time) as sale_date,
               -- Voiding a sale never creates or retypes a pos_transactions row —
               -- app/api/pos/void-transaction only flips
               -- sales_transactions.status to 'Voided' — so the voided sale keeps
@@ -128,20 +147,28 @@ export async function GET(request: NextRequest) {
           FROM pos_transactions pt
           LEFT JOIN sales_transactions st ON pt.sale_id = st.id
           WHERE pt.is_training = 0
-          GROUP BY pt.shift_id
+          GROUP BY pt.shift_id, DATE(pt.transaction_time)
       ) sales ON s.id = sales.shift_id
       WHERE 1=1
     `;
 
     const params: any[] = [];
 
+    // A date range selects the rows whose SALES fall in it, not the shifts that
+    // happened to open in it. Filtering DATE(s.start_time) meant a range
+    // covering 2026-10-30 missed that day's PHP 4,990.00 entirely, because the
+    // shift those sales belonged to had opened on 2026-10-21.
+    //
+    // COALESCE to the shift's opening date so a shift that took no sales is
+    // still reachable by the day it was opened, rather than dropping out of
+    // every dated query (sales.sale_date is NULL for such a shift).
     if (startDate) {
-      sql += ' AND DATE(s.start_time) >= ?';
+      sql += ' AND COALESCE(DATE(sales.sale_date), DATE(s.start_time)) >= ?';
       params.push(startDate);
     }
 
     if (endDate) {
-      sql += ' AND DATE(s.start_time) <= ?';
+      sql += ' AND COALESCE(DATE(sales.sale_date), DATE(s.start_time)) <= ?';
       params.push(endDate);
     }
 
@@ -160,7 +187,10 @@ export async function GET(request: NextRequest) {
         params.push(shiftId);
     }
 
-    sql += ' ORDER BY s.start_time DESC';
+    // Newest SALES day first, not newest shift opening. A shift now yields one
+    // row per day it sold on, and the POS callers pass limit=1 expecting the
+    // current reading — which is the latest day's, not the opening day's.
+    sql += ' ORDER BY COALESCE(sales.sale_date, DATE(s.start_time)) DESC, s.start_time DESC';
 
     if (limit) {
         sql += ' LIMIT ?';
@@ -181,7 +211,40 @@ export async function GET(request: NextRequest) {
     // because query() queued with no timeout it then hung forever: no rows,
     // no error, a spinner that never resolved. Grouping by shift_id makes the
     // cost two queries regardless of how many shifts the range covers.
-    const shiftIds = shifts.map((s: any) => s.id);
+    // De-duplicated: a shift that sold across more than one day now yields one
+    // ROW PER DAY, so shifts[] can contain the same id several times. Passing
+    // the raw list would repeat each id in the IN (...) clause.
+    const shiftIds = [...new Set(shifts.map((s: any) => s.id))];
+
+    // Rows are now identified by shift AND sales day, so the per-shift
+    // aggregates below must be keyed the same way — keying them by shift_id
+    // alone would attach a multi-day shift's whole cash total to each of its
+    // days, reporting the same money two or three times over.
+    // The separator is '__' rather than a punctuation character because this
+    // key is returned as the row's `id`, and the back-office page interpolates
+    // that id straight into a download filename (X-Reading-<id>.pdf / .png).
+    // '|' and ':' are illegal in Windows filenames and would break those
+    // exports.
+    // The calendar day as 'YYYY-MM-DD'.
+    //
+    // A value from a MySQL DATE column arrives as a Date at LOCAL midnight, so
+    // toISOString() would convert it to UTC and report the PREVIOUS day at any
+    // positive offset (Philippine time is UTC+8). Read the local parts instead.
+    const calendarDay = (value: any): string => {
+        if (!value) return '';
+        if (value instanceof Date) {
+            const y = value.getFullYear();
+            const m = String(value.getMonth() + 1).padStart(2, '0');
+            const d = String(value.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+        return String(value).slice(0, 10);
+    };
+
+    const dayKey = (shiftId: string, saleDate: any) => {
+        const day = calendarDay(saleDate);
+        return day ? `${shiftId}__${day}` : `${shiftId}__nodate`;
+    };
 
     // Payment breakdown per shift. pos_transactions.payment_method collapses
     // split-tender sales (part Cash + part GCash, etc.) to the literal string
@@ -202,52 +265,60 @@ export async function GET(request: NextRequest) {
     if (shiftIds.length > 0) {
         const placeholders = shiftIds.map(() => '?').join(',');
 
+        // Carries sale_date alongside shift_id so a multi-day shift's tenders
+        // are attributed to the day they were taken, matching the per-day rows
+        // the main query now returns.
         const paymentRows = await query(`
-            SELECT shift_id, name, SUM(amount) as amount FROM (
-                SELECT pt.shift_id as shift_id, pd.payment_method as name, SUM(pd.amount_tendered - pd.change_given) as amount
+            SELECT shift_id, sale_date, name, SUM(amount) as amount FROM (
+                SELECT pt.shift_id as shift_id, DATE(pt.transaction_time) as sale_date, pd.payment_method as name, SUM(pd.amount_tendered - pd.change_given) as amount
                 FROM pos_transactions pt
                 LEFT JOIN sales_transactions st ON pt.sale_id = st.id
                 JOIN payment_details pd ON pd.transaction_id = pt.id
                 WHERE pt.shift_id IN (${placeholders}) AND pt.transaction_type = 'sale' AND pt.is_training = 0
                 AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
-                GROUP BY pt.shift_id, pd.payment_method
+                GROUP BY pt.shift_id, DATE(pt.transaction_time), pd.payment_method
 
                 UNION ALL
 
-                SELECT pt.shift_id as shift_id, pt.payment_method as name, SUM(pt.total_amount) as amount
+                SELECT pt.shift_id as shift_id, DATE(pt.transaction_time) as sale_date, pt.payment_method as name, SUM(pt.total_amount) as amount
                 FROM pos_transactions pt
                 LEFT JOIN sales_transactions st ON pt.sale_id = st.id
                 WHERE pt.shift_id IN (${placeholders}) AND pt.transaction_type = 'sale' AND pt.is_training = 0
                 AND COALESCE(st.status, '') NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
                 AND NOT EXISTS (SELECT 1 FROM payment_details pd WHERE pd.transaction_id = pt.id)
-                GROUP BY pt.shift_id, pt.payment_method
+                GROUP BY pt.shift_id, DATE(pt.transaction_time), pt.payment_method
             ) combined
-            GROUP BY shift_id, name
+            GROUP BY shift_id, sale_date, name
         `, [...shiftIds, ...shiftIds]) as any[];
 
         for (const row of paymentRows) {
-            const list = paymentsByShift.get(row.shift_id) ?? [];
+            const key = dayKey(row.shift_id, row.sale_date);
+            const list = paymentsByShift.get(key) ?? [];
             list.push(row);
-            paymentsByShift.set(row.shift_id, list);
+            paymentsByShift.set(key, list);
         }
 
         // Cash membership fees per shift. Membership is not a sale (never in
         // pos_transactions), but its cash sits in the drawer, so it must be
         // counted toward reconciliation — same as the Z-reading. Cash only;
         // card never enters the drawer.
+        // Grouped by day as well, for the same reason as the payments above: a
+        // shift spanning two days must not report the same membership cash on
+        // both of them.
         const membershipRows = await query(`
             SELECT
                 shift_id,
+                DATE(created_at)                  AS sale_date,
                 COALESCE(SUM(amount), 0)          AS membership_cash,
                 COALESCE(SUM(is_new_card = 1), 0) AS activation_count,
                 COALESCE(SUM(is_new_card = 0), 0) AS renewal_count
             FROM membership_payments
             WHERE shift_id IN (${placeholders}) AND payment_method = 'cash'
-            GROUP BY shift_id
+            GROUP BY shift_id, DATE(created_at)
         `, shiftIds) as any[];
 
         for (const row of membershipRows) {
-            membershipByShift.set(row.shift_id, row);
+            membershipByShift.set(dayKey(row.shift_id, row.sale_date), row);
         }
 
         // Cash deposits/pickups per shift. These used to be returned as the
@@ -262,18 +333,23 @@ export async function GET(request: NextRequest) {
         // shift inside the map below: the back-office page sends no `limit`,
         // so a per-shift fan-out over a month of shifts is what previously
         // saturated the connection pool and hung this route forever.
+        // Also grouped by day, so a deposit made on the shift's second day is
+        // reported against that day rather than against every day of the
+        // shift. Dated by transaction_time, the same basis pos_transactions
+        // uses, so the drawer figures line up with the sales figures.
         const cashTransferRows = await query(`
             SELECT
                 shift_id,
+                DATE(transaction_time) AS sale_date,
                 COALESCE(SUM(CASE WHEN type = 'deposit' THEN amount ELSE 0 END), 0) AS total_deposits,
                 COALESCE(SUM(CASE WHEN type = 'pickup'  THEN amount ELSE 0 END), 0) AS total_pickups
             FROM cash_transfers
             WHERE shift_id IN (${placeholders})
-            GROUP BY shift_id
+            GROUP BY shift_id, DATE(transaction_time)
         `, shiftIds) as any[];
 
         for (const row of cashTransferRows) {
-            cashTransfersByShift.set(row.shift_id, row);
+            cashTransfersByShift.set(dayKey(row.shift_id, row.sale_date), row);
         }
     }
 
@@ -281,12 +357,16 @@ export async function GET(request: NextRequest) {
         // A shift with no matching rows gets no row back from the grouped
         // queries above, which is the same "nothing to report" the per-shift
         // query expressed as SUM(...) = 0 / an empty result set.
-        const membershipRow = membershipByShift.get(shift.id);
+        // Keyed by shift AND sales day: this row represents one day of this
+        // shift, not the whole shift.
+        const reportDay = calendarDay(shift.report_date);
+        const rowKey = dayKey(shift.id, shift.report_date);
+        const membershipRow = membershipByShift.get(rowKey);
         const membershipCash = parseFloat(membershipRow?.membership_cash || 0);
         const membershipActivationCount = parseInt(membershipRow?.activation_count || 0, 10) || 0;
         const membershipRenewalCount = parseInt(membershipRow?.renewal_count || 0, 10) || 0;
 
-        const pMethods = paymentsByShift.get(shift.id) ?? [];
+        const pMethods = paymentsByShift.get(rowKey) ?? [];
 
         // Derive cash_sales from the corrected per-method breakdown above (which
         // already attributes split-tender sales to their real methods) rather
@@ -297,7 +377,7 @@ export async function GET(request: NextRequest) {
             .filter((p: any) => p.name?.toUpperCase() === 'CASH')
             .reduce((acc: number, p: any) => acc + parseFloat(p.amount || 0), 0);
 
-        const cashTransferRow = cashTransfersByShift.get(shift.id);
+        const cashTransferRow = cashTransfersByShift.get(rowKey);
         const cashDeposit = parseFloat(cashTransferRow?.total_deposits || 0);
         const cashPickup = parseFloat(cashTransferRow?.total_pickups || 0);
 
@@ -314,9 +394,25 @@ export async function GET(request: NextRequest) {
         const overShort = parseFloat(shift.actual_cash) - cashInDrawer;
 
       return {
-        id: shift.id,
-        date: shift.report_date,
-        reportDate: shift.report_date,
+        // Unique per reported row. A shift that sold across more than one day
+        // now returns one row per day, so the bare shift id would repeat and
+        // any consumer keying on it would collapse those rows together.
+        // shiftId below keeps the shift's own identity for callers that need
+        // it (the POS passes ?shiftId=, and End Shift reads it back).
+        id: rowKey,
+        shiftId: shift.id,
+        // Emitted as a 'YYYY-MM-DD' STRING, never a Date.
+        //
+        // report_date is now a MySQL DATE (the sales day), which mysql2 hands
+        // back as a Date at LOCAL midnight. JSON.stringify then serialises it
+        // via toISOString(), which converts to UTC and so shifts it back by
+        // this machine's offset — at UTC+8 every reading was reported one day
+        // early (a 2026-11-04 reading printing as 2026-11-03), reintroducing
+        // the very date mismatch this change set out to fix. It did not show
+        // before because report_date used to be s.start_time, a DATETIME whose
+        // time-of-day absorbed the shift.
+        date: reportDay,
+        reportDate: reportDay,
         shiftStart: shift.shift_start,
         shiftEnd: shift.shift_end,
         grossSales: parseFloat(shift.gross_sales) || 0,
@@ -338,7 +434,9 @@ export async function GET(request: NextRequest) {
         shiftStatus: shift.shift_status,
         
         // Cash Count Fields for Layout
-        cashCountId: shift.id.substring(0, 8).toUpperCase(),
+        // From the SHIFT id, not the per-day row key: this labels the cash
+        // count, which belongs to the shift as a whole.
+        cashCountId: String(shift.id).substring(0, 8).toUpperCase(),
         cashCountTotal: parseFloat(shift.actual_cash || 0),
         cashDeposit: cashDeposit,
         cashPickup: cashPickup,

@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { query, withTransaction } from '@/lib/mysql';
+import { nextPaymentReference } from '@/lib/payment-reference';
 
 // Ensure the allocation junction table exists (shared source of truth with /customer-payments).
 async function ensurePaymentAllocationsTable() {
@@ -66,21 +67,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const customerId = invCustomerResult[0].customer_id;
 
         const paymentId = `pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        
-        let finalReference = reference;
-        
-        if (!finalReference) {
-           // Generate sequential reference
-           const [maxRefResult]: any = await connection.query(
-               "SELECT MAX(CAST(reference AS UNSIGNED)) as max_ref FROM customer_payments WHERE reference REGEXP '^[0-9]+$'"
-           );
-           
-           let nextRef = 1;
-           if (maxRefResult && maxRefResult.length > 0 && maxRefResult[0].max_ref !== null) {
-               nextRef = parseInt(maxRefResult[0].max_ref, 10) + 1;
-           }
-           finalReference = nextRef.toString().padStart(6, '0');
-        }
 
         const insertPaymentSql = `
             INSERT INTO customer_payments (
@@ -88,23 +74,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
         `;
 
-        // Note: 'payment_type' in table schema maps to 'paymentMethod' here. 
-        // 'reference' in table schema can store the user provided reference OR the invoice ID.
-        // It's probably better to use the payment reference for external refs and link to invoice via notes or a new joining table if needed.
-        // For this task, we'll store the provided reference.
-        
+        // Note: 'payment_type' in the table schema maps to 'paymentMethod' here.
         // Use the human-readable invoice number (reference) in the note, not the internal id.
         const invoiceNumber = invoice.reference || invoiceId;
 
-        await connection.query(insertPaymentSql, [
-            paymentId,
-            customerId,
-            paymentMethod,
-            new Date(paymentDate || Date.now()),
-            amount,
-            finalReference,
-            `Payment for Invoice #${invoiceNumber}.`,
-        ]);
+        // Allocate the reference as part of the insert and retry on a
+        // duplicate. This used to be `MAX(...) + 1` followed by an
+        // unprotected insert; reference carries a UNIQUE index and this
+        // database runs at REPEATABLE-READ, where that aggregate takes no
+        // lock, so two cashiers paying invoices at the same moment computed
+        // the same number and the loser's payment failed outright. Same bug,
+        // same fix, as app/api/customer-payments.
+        await nextPaymentReference(connection, reference, async (ref) => {
+            await connection.query(insertPaymentSql, [
+                paymentId,
+                customerId,
+                paymentMethod,
+                new Date(paymentDate || Date.now()),
+                amount,
+                ref,
+                `Payment for Invoice #${invoiceNumber}.`,
+            ]);
+        });
 
         // 4. Update Invoice Status
         // A part-paid invoice is 'Partially Paid', not 'Pending' — 'Pending'

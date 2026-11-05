@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '../../../../../lib/mysql';
+import { openInvoiceSql } from '@/lib/customer-balance';
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,11 +15,21 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1');
     const offset = (page - 1) * limit;
 
-    // Fetch invoices that are NOT paid (Pending, Failed, Shipped, Delivered, Returned, Partially Paid if applicable)
-    // Assuming 'Pending' is the main status for unpaid, but we should include others if they imply unpaid.
-    // Based on page logic: status === 'Paid' is paid.
-    // So we fetch everything NOT 'Paid'.
-    
+    // Invoices that still owe money, per lib/customer-balance — the same
+    // definition the balances, customer-detail and SOA routes use.
+    //
+    // This previously fetched everything NOT 'Paid', so voided and returned
+    // invoices appeared here as collectable. That mattered twice over: this
+    // list is the Outstanding Invoices tab AND the source of the Add Payment
+    // dialog's allocation rows, so a cashier could allocate a real payment
+    // against a cancelled invoice.
+    //
+    // The bare `si.amount_paid < si.total` was also NULL-unsafe: verified in
+    // MySQL, (NULL < 1000) is NULL, not TRUE, so a row with a NULL amount_paid
+    // would be dropped from this list even though it is wholly unpaid. No live
+    // row has a NULL amount_paid today, so this was latent rather than biting;
+    // openInvoiceSql wraps the comparison in COALESCE either way. The sibling
+    // balances route already had the COALESCE — only this one lacked it.
     let sql = `
       SELECT
         si.id,
@@ -36,7 +47,7 @@ export async function GET(request: NextRequest) {
         si.created_at
       FROM sales_invoices si
       LEFT JOIN customers c ON si.customer_id = c.id
-      WHERE si.status != 'Paid' AND si.amount_paid < si.total
+      WHERE ${openInvoiceSql('si')}
     `;
 
     const params: any[] = [];
@@ -61,10 +72,39 @@ export async function GET(request: NextRequest) {
         params.push(toDate);
     }
 
-    // Get total count for pagination
-    const countSql = `SELECT COUNT(*) as total FROM (${sql}) as sub`;
-    const countResult = await query(countSql, params);
-    const total = countResult[0]?.total || 0;
+    // Count AND total across every matching row, not just the page being
+    // returned. The page's summary cards used to reduce over the rows in hand,
+    // so "Total Outstanding ... across N invoices" described only the first
+    // 10 rows while claiming to describe the filtered set.
+    //
+    // They also summed `total` rather than the unpaid remainder, so a 1,000
+    // invoice with 900 already paid was reported as 1,000 outstanding. The
+    // balance below is what the customer still owes.
+    //
+    // Overdue is computed here too: `due_date < CURDATE()`, the same test the
+    // row badges apply (isPast on the due date). A NULL due_date is
+    // explicitly NOT overdue, which the badges now also state outright
+    // instead of substituting `new Date()` and letting a clock race decide.
+    // No invoice has a NULL due_date today.
+    const summarySql = `
+      SELECT
+        COUNT(*) AS total,
+        COALESCE(SUM(sub.total - COALESCE(sub.amount_paid, 0)), 0) AS totalOutstanding,
+        COALESCE(SUM(CASE WHEN sub.due_date IS NOT NULL AND sub.due_date < CURDATE()
+                          THEN sub.total - COALESCE(sub.amount_paid, 0) ELSE 0 END), 0) AS overdueAmount,
+        COALESCE(SUM(CASE WHEN sub.due_date IS NOT NULL AND sub.due_date < CURDATE()
+                          THEN 1 ELSE 0 END), 0) AS overdueCount
+      FROM (${sql}) AS sub
+    `;
+    const summaryResult = await query(summarySql, params);
+    const summaryRow = summaryResult[0] || {};
+    const total = summaryRow.total || 0;
+    const summary = {
+      totalCount: Number(total),
+      totalOutstanding: parseFloat(summaryRow.totalOutstanding || 0),
+      overdueAmount: parseFloat(summaryRow.overdueAmount || 0),
+      overdueCount: Number(summaryRow.overdueCount || 0),
+    };
 
     sql += ' ORDER BY si.created_at DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
@@ -94,6 +134,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: formattedInvoices,
+      // Describes every matching invoice, not the page in `data`.
+      summary,
       pagination: {
         total,
         limit,
