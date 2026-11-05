@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { countableInvoiceSql } from '@/lib/customer-balance';
+import { buildSoaLines } from '@/lib/soa-lines';
 
 export async function GET(request: NextRequest) {
   try {
@@ -35,14 +36,55 @@ export async function GET(request: NextRequest) {
     const [prevInvResult]: any = await query(prevInvoicesSql, [customerId, fromDate]);
     const prevInvoicesTotal = parseFloat(prevInvResult?.total || 0);
 
-    // Sum of previous payments
+    // Sum of previous payments, LESS whatever of them was applied to an
+    // invoice that has since been voided.
+    //
+    // The opening balance already excludes cancelled invoices (above), so
+    // crediting the payments that settled them would open the statement with
+    // a phantom credit — a balance reduction for a sale that never happened,
+    // understating the debt by the whole payment. A voided invoice and its
+    // allocated payments have to fall together; lib/soa-lines applies the
+    // same rule to the rows inside the period.
+    //
+    // An UNALLOCATED payment is untouched: it is money on account, not
+    // payment for any particular sale, so a void elsewhere must not swallow
+    // it. That is why this subtracts only the matched allocations rather than
+    // dropping the whole payment.
     const prevPaymentsSql = `
-        SELECT SUM(amount) as total
-        FROM customer_payments
-        WHERE customer_id = ? AND DATE(payment_date) < DATE(?) AND UPPER(payment_type) != 'CHARGE'
+        SELECT
+            COALESCE(SUM(cp.amount), 0) AS total,
+            COALESCE((
+                SELECT SUM(pa.amount_allocated)
+                FROM payment_allocations pa
+                JOIN customer_payments cp2 ON cp2.id = pa.payment_id
+                JOIN sales_invoices si ON si.id = pa.invoice_id
+                WHERE cp2.customer_id = ?
+                  AND DATE(cp2.payment_date) < DATE(?)
+                  AND UPPER(cp2.payment_type) != 'CHARGE'
+                  AND NOT (${countableInvoiceSql('si')})
+            ), 0) AS allocatedToVoided
+        FROM customer_payments cp
+        WHERE cp.customer_id = ? AND DATE(cp.payment_date) < DATE(?) AND UPPER(cp.payment_type) != 'CHARGE'
     `;
-    const [prevPayResult]: any = await query(prevPaymentsSql, [customerId, fromDate]);
-    const prevPaymentsTotal = parseFloat(prevPayResult?.total || 0);
+    let prevPaymentsTotal = 0;
+    try {
+      const [prevPayResult]: any = await query(prevPaymentsSql, [
+        customerId, fromDate, customerId, fromDate,
+      ]);
+      const gross = parseFloat(prevPayResult?.total || 0);
+      const voidedPart = parseFloat(prevPayResult?.allocatedToVoided || 0);
+      prevPaymentsTotal = gross - voidedPart;
+    } catch {
+      // payment_allocations may not exist yet on a fresh DB. Fall back to the
+      // gross figure rather than failing the statement: with no allocation
+      // table there is nothing allocated to a voided invoice anyway.
+      const [fallback]: any = await query(
+        `SELECT COALESCE(SUM(amount), 0) AS total FROM customer_payments
+         WHERE customer_id = ? AND DATE(payment_date) < DATE(?) AND UPPER(payment_type) != 'CHARGE'`,
+        [customerId, fromDate]
+      );
+      prevPaymentsTotal = parseFloat(fallback?.total || 0);
+    }
 
     const startingBalance = prevInvoicesTotal - prevPaymentsTotal;
 
@@ -62,23 +104,25 @@ export async function GET(request: NextRequest) {
             status,
             notes as description
         FROM sales_invoices
-        WHERE customer_id = ? AND DATE(invoice_date) BETWEEN DATE(?) AND DATE(?) AND ${countableInvoiceSql()}
+        WHERE customer_id = ? AND DATE(invoice_date) BETWEEN DATE(?) AND DATE(?)
     `;
+    // No status filter here on purpose: voided invoices are DISPLAYED on the
+    // statement, marked as void, and it is lib/soa-lines that zeroes their
+    // effect on the balance. A customer who was handed an invoice and later
+    // had it cancelled should see that cancellation rather than be left with
+    // a document number that has no counterpart on their statement.
     const invoices: any[] = await query(invoicesSql, [customerId, fromDate, toDate]);
 
-    // Payments (one row per payment; allocations are expanded below).
+    // Payments (one row per payment; lib/soa-lines expands the allocations).
     //
-    // KNOWN GAP, deliberately not changed here: voiding an invoice
-    // (app/api/sales/invoices/[id]/void/route.ts) reverses stock and flips the
-    // status, but does NOT reverse the customer_payments rows or the
-    // payment_allocations that pointed at it. Now that the invoice correctly
-    // drops out of the debit side above, a payment collected against an
-    // invoice later voided would still appear as a credit — a refund that is
-    // real money the customer handed over, so silently hiding it would be
-    // worse than showing it. Verified on the live DB: zero allocations
-    // currently point at a cancelled invoice, so nothing is misreported
-    // today. Fixing it properly means deciding whether a void refunds to
-    // account credit or to cash, which is a product decision, not a query fix.
+    // Voiding an invoice (app/api/sales/invoices/[id]/void/route.ts) reverses
+    // stock and flips the status, but leaves the customer_payments rows and
+    // the payment_allocations that pointed at it in place. The statement
+    // therefore has to pair them itself: a payment allocated to a voided
+    // invoice credits nothing, because crediting it while the invoice counts
+    // zero would reduce the balance for a sale that never happened. An
+    // unallocated payment is untouched — money on account, not payment for
+    // the cancelled sale. buildSoaLines owns that rule.
     const paymentsSql = `
         SELECT
             cp.id,
@@ -117,70 +161,36 @@ export async function GET(request: NextRequest) {
         }
     }
 
-    // Expand each payment into credit lines: one per allocation, plus any unallocated remainder.
-    const paymentLines = payments.flatMap(pay => {
-        const credit = parseFloat(pay.credit);
-        const allocs = allocationsByPayment.get(pay.id) || [];
-
-        if (allocs.length === 0 || credit === 0) {
-            return [{
-                ...pay,
-                type: 'Payment',
-                description: `Payment${pay.reference ? ` (Ref: ${pay.reference})` : ''}`,
-                allocatedInvoiceId: null,
-                invoice_ref: null,
-                debit: 0,
-                credit,
-            }];
-        }
-
-        const lines = allocs.map(a => ({
-            id: `${pay.id}__${a.invoice_id}`,
-            reference: pay.reference,
-            date: pay.date,
-            type: 'Payment',
-            note: pay.note,
-            description: `Payment - Invoice #${a.invoice_ref || a.invoice_id}${pay.reference ? ` (Ref: ${pay.reference})` : ''}`,
-            allocatedInvoiceId: a.invoice_id,
-            invoice_ref: a.invoice_ref,
-            debit: 0,
-            credit: parseFloat(a.amount_allocated),
-        }));
-
-        // Any portion of the payment not allocated to an invoice shows as an unallocated credit.
-        const allocatedTotal = allocs.reduce((sum, a) => sum + parseFloat(a.amount_allocated), 0);
-        const remainder = credit - allocatedTotal;
-        if (remainder > 0.005) {
-            lines.push({
-                id: `${pay.id}__unallocated`,
-                reference: pay.reference,
-                date: pay.date,
-                type: 'Payment',
-                note: pay.note,
-                description: `Payment${pay.reference ? ` (Ref: ${pay.reference})` : ''}`,
-                allocatedInvoiceId: null,
-                invoice_ref: null,
-                debit: 0,
-                credit: remainder,
-            });
-        }
-        return lines;
-    });
-
-    // 3. Combine and Sort
-    const transactions = [
-        ...invoices.map(inv => ({ ...inv, debit: parseFloat(inv.amount), amountPaid: parseFloat(inv.amountPaid || 0), credit: 0 })),
-        ...paymentLines
-    ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    // 4. Calculate Running Balance
-    let currentBalance = startingBalance;
-    const soaData = transactions.map(t => {
-        currentBalance += (t.debit - t.credit);
-        return {
-            ...t,
-            runningBalance: currentBalance
-        };
+    // 3. Build the lines and the running balance.
+    //
+    // All the arithmetic — including what a voided invoice and its payments
+    // count for — lives in lib/soa-lines, so it is unit-testable without a
+    // database (tests/unit/soa-voided-invoices).
+    const built = buildSoaLines({
+      openingBalance: startingBalance,
+      invoices: invoices.map((inv: any) => ({
+        id: inv.id,
+        reference: inv.reference,
+        date: inv.date,
+        dueDate: inv.dueDate,
+        total: inv.amount,
+        amountPaid: inv.amountPaid,
+        status: inv.status,
+        description: inv.description,
+      })),
+      payments: payments.map((pay: any) => ({
+        id: pay.id,
+        reference: pay.reference,
+        date: pay.date,
+        type: pay.type,
+        amount: pay.credit,
+        note: pay.note,
+        allocations: (allocationsByPayment.get(pay.id) || []).map((a: any) => ({
+          invoiceId: a.invoice_id,
+          amount: a.amount_allocated,
+          invoiceRef: a.invoice_ref,
+        })),
+      })),
     });
 
     return NextResponse.json({
@@ -188,9 +198,16 @@ export async function GET(request: NextRequest) {
       data: {
         customerId,
         period: { from: fromDate, to: toDate },
-        startingBalance,
-        endingBalance: currentBalance,
-        transactions: soaData
+        startingBalance: built.openingBalance,
+        endingBalance: built.closingBalance,
+        totalDebit: built.totalDebit,
+        totalCredit: built.totalCredit,
+        // `invoice_ref` is kept as an alias so the page's existing grouping
+        // (which reads it) keeps working.
+        transactions: built.lines.map((line) => ({
+          ...line,
+          invoice_ref: line.invoiceRef ?? null,
+        })),
       }
     });
 

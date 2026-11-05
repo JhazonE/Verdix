@@ -756,8 +756,13 @@ function StatementOfAccount() {
 
     const summary = useMemo(() => {
         if (!soaData) return null;
-        const totalDebit = soaData.transactions.reduce((sum: number, t: any) => sum + Number(t.debit || 0), 0);
-        const totalCredit = soaData.transactions.reduce((sum: number, t: any) => sum + Number(t.credit || 0), 0);
+        // Prefer the endpoint's own totals (lib/soa-lines computes them with
+        // the same centavo rounding as the running balance, so the header and
+        // the line items cannot drift apart). Falling back to a reduce keeps
+        // this working against an older response shape; either way a voided
+        // row contributes 0, because its debit and credit are already 0.
+        const totalDebit = soaData.totalDebit ?? soaData.transactions.reduce((sum: number, t: any) => sum + Number(t.debit || 0), 0);
+        const totalCredit = soaData.totalCredit ?? soaData.transactions.reduce((sum: number, t: any) => sum + Number(t.credit || 0), 0);
         const netChange = totalDebit - totalCredit;
         return { totalDebit, totalCredit, netChange };
     }, [soaData]);
@@ -793,6 +798,9 @@ function StatementOfAccount() {
         
         const customer = customers.find(c => c.id === selectedCustomer);
         const invoiceGroupsP = groupedTransactions.groups.filter((g: any) => g.type === 'Invoice' || g.type === 'Sales');
+        // Voided invoices are LISTED but charge nothing, so they must not be
+        // counted beside the New Charges figure they contribute nothing to.
+        const chargedCountP = invoiceGroupsP.filter((g: any) => !g.voided).length;
         const printWindow = window.open('', '', 'height=800,width=800');
         if (!printWindow) return;
 
@@ -882,7 +890,7 @@ function StatementOfAccount() {
                     </div>
                     <div class="summary-lines">
                         <div class="line"><span class="muted">Previous Balance</span><span>${formatCurrency(Number(soaData.startingBalance))}</span></div>
-                        <div class="line"><span class="muted">New Charges (${invoiceGroupsP.length} ${invoiceGroupsP.length === 1 ? 'invoice' : 'invoices'})</span><span>${formatCurrency(summary?.totalDebit || 0)}</span></div>
+                        <div class="line"><span class="muted">New Charges (${chargedCountP} ${chargedCountP === 1 ? 'invoice' : 'invoices'})</span><span>${formatCurrency(summary?.totalDebit || 0)}</span></div>
                         <div class="line pay"><span>Payments Received</span><span>&minus;${formatCurrency(summary?.totalCredit || 0)}</span></div>
                         <div class="line total"><span>Amount Due</span><span>${formatCurrency(Number(soaData.endingBalance))}</span></div>
                     </div>
@@ -891,32 +899,40 @@ function StatementOfAccount() {
                 <div class="section-title">Invoices in this period</div>
                 ${invoiceGroupsP.length === 0 ? '<p style="font-size:13px;color:#777;">No invoices in this period.</p>' : ''}
                 ${invoiceGroupsP.map((inv: any) => {
-                    const invoiceAmount = Number(inv.debit);
-                    const balance = invoiceAmount - Number(inv.amountPaid || 0);
-                    const isPaid = balance <= 0.005;
+                    // A voided invoice is printed, marked Void, and counts
+                    // nothing: show its original face value struck through so
+                    // the customer can reconcile the document number they
+                    // hold, with a zero balance rather than a peso figure.
+                    const isVoided = !!inv.voided;
+                    const invoiceAmount = Number(isVoided ? inv.amount : inv.debit);
+                    const balance = isVoided ? 0 : invoiceAmount - Number(inv.amountPaid || 0);
+                    const isPaid = !isVoided && balance <= 0.005;
                     const dueDate = inv.dueDate ? new Date(inv.dueDate) : null;
-                    const isOverdue = !isPaid && dueDate && isPast(dueDate);
-                    const badgeClass = isPaid ? 'badge-paid' : isOverdue ? 'badge-over' : 'badge-out';
-                    const badgeText = isPaid ? 'Paid' : isOverdue ? 'Overdue' : 'Outstanding';
+                    const isOverdue = !isVoided && !isPaid && dueDate && isPast(dueDate);
+                    const badgeClass = isVoided ? 'badge-out' : isPaid ? 'badge-paid' : isOverdue ? 'badge-over' : 'badge-out';
+                    const badgeText = isVoided ? 'VOID' : isPaid ? 'Paid' : isOverdue ? 'Overdue' : 'Outstanding';
+                    const strike = isVoided ? 'text-decoration:line-through;color:#999;' : '';
                     return `
-                    <div class="inv-card">
+                    <div class="inv-card"${isVoided ? ' style="opacity:0.75;"' : ''}>
                         <div class="inv-head">
                             <div>
-                                <p class="inv-title">Invoice ${inv.reference || inv.id.substring(0, 8)}</p>
+                                <p class="inv-title" style="${strike}">Invoice ${inv.reference || inv.id.substring(0, 8)}</p>
                                 <p class="inv-sub">Issued ${format(new Date(inv.date), 'PP')}${dueDate ? ` &middot; Due ${format(dueDate, 'PP')}` : ''}</p>
                             </div>
                             <span class="inv-badge ${badgeClass}">${badgeText}</span>
                         </div>
-                        <div class="inv-row"><span style="color:#666;">Invoice amount</span><span>${formatCurrency(invoiceAmount)}</span></div>
+                        <div class="inv-row"><span style="color:#666;">Invoice amount</span><span style="${strike}">${formatCurrency(invoiceAmount)}</span></div>
                         ${inv.payments.map((p: any) => `
                             <div class="inv-row payment">
                                 <span>&#8627; ${format(new Date(p.date), 'PP')} &middot; Payment (${p.type}) <span class="font-mono" style="font-size:11px;">${p.reference || p.id.substring(0, 8)}</span></span>
-                                <span class="pay-amt">&minus;${formatCurrency(Number(p.credit))}</span>
+                                <span class="pay-amt"${p.voided ? ' style="text-decoration:line-through;color:#999;"' : ''}>&minus;${formatCurrency(Number(p.voided ? (p.amount ?? 0) : p.credit))}</span>
                             </div>
                         `).join('')}
                         <div class="inv-balance">
                             <span>Balance on this invoice</span>
-                            <span class="${isPaid ? 'amt-paid' : 'amt-due'}">${formatCurrency(Math.max(0, balance))}</span>
+                            ${isVoided
+                                ? '<span style="color:#999;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Voided &mdash; not collectable</span>'
+                                : `<span class="${isPaid ? 'amt-paid' : 'amt-due'}">${formatCurrency(Math.max(0, balance))}</span>`}
                         </div>
                     </div>`;
                 }).join('')}
@@ -1059,6 +1075,8 @@ function StatementOfAccount() {
             {soaData && (() => {
                 const customerName = customers.find(c => c.id === selectedCustomer)?.name || 'Valued Customer';
                 const invoiceGroups = groupedTransactions.groups.filter((g: any) => g.type === 'Invoice' || g.type === 'Sales');
+                // Listed but not charged: see chargedCountP above.
+                const chargedCount = invoiceGroups.filter((g: any) => !g.voided).length;
                 const amountDue = Number(soaData.endingBalance);
 
                 return (
@@ -1091,7 +1109,7 @@ function StatementOfAccount() {
                                         <span className="font-medium">{formatCurrency(Number(soaData.startingBalance))}</span>
                                     </div>
                                     <div className="flex justify-between gap-6">
-                                        <span className="text-muted-foreground">New Charges ({invoiceGroups.length} {invoiceGroups.length === 1 ? 'invoice' : 'invoices'})</span>
+                                        <span className="text-muted-foreground">New Charges ({chargedCount} {chargedCount === 1 ? 'invoice' : 'invoices'})</span>
                                         <span className="font-medium">{formatCurrency(summary?.totalDebit || 0)}</span>
                                     </div>
                                     <div className="flex justify-between gap-6 text-green-600">
@@ -1114,17 +1132,23 @@ function StatementOfAccount() {
                             <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">No invoices in this period.</CardContent></Card>
                         )}
                         {invoiceGroups.map((inv: any) => {
-                            const invoiceAmount = Number(inv.debit);
-                            const balance = invoiceAmount - Number(inv.amountPaid || 0);
-                            const isPaid = balance <= 0.005;
+                            // A voided invoice is SHOWN but counts nothing, so
+                            // its debit is 0. Display its original face value
+                            // (`amount`) — the statement says what the
+                            // cancelled invoice was for, it just does not add
+                            // it up — and give it a zero balance.
+                            const isVoided = !!inv.voided;
+                            const invoiceAmount = Number(isVoided ? inv.amount : inv.debit);
+                            const balance = isVoided ? 0 : invoiceAmount - Number(inv.amountPaid || 0);
+                            const isPaid = !isVoided && balance <= 0.005;
                             const dueDate = inv.dueDate ? new Date(inv.dueDate) : null;
-                            const isOverdue = !isPaid && dueDate && isPast(dueDate);
+                            const isOverdue = !isVoided && !isPaid && dueDate && isPast(dueDate);
                             return (
-                                <Card key={inv.id} className={cn("overflow-hidden", isPaid ? "border-green-200 dark:border-green-900/40" : isOverdue ? "border-destructive/40" : "")}>
+                                <Card key={inv.id} className={cn("overflow-hidden", isVoided ? "border-muted opacity-70" : isPaid ? "border-green-200 dark:border-green-900/40" : isOverdue ? "border-destructive/40" : "")}>
                                     <CardHeader className="flex flex-row items-start justify-between gap-4 border-b bg-muted/20 py-4">
                                         <div className="space-y-0.5">
                                             <ViewInvoiceDialog invoiceId={inv.id}>
-                                                <Button variant="link" className="h-auto p-0 text-base font-bold text-foreground hover:text-primary">
+                                                <Button variant="link" className={cn("h-auto p-0 text-base font-bold text-foreground hover:text-primary", isVoided && "line-through text-muted-foreground")}>
                                                     Invoice {inv.reference || inv.id.substring(0, 8)}
                                                 </Button>
                                             </ViewInvoiceDialog>
@@ -1133,34 +1157,45 @@ function StatementOfAccount() {
                                                 {dueDate && <> · Due {format(dueDate, 'PP')}</>}
                                             </p>
                                         </div>
-                                        <Badge variant={isPaid ? 'default' : isOverdue ? 'destructive' : 'secondary'} className={isPaid ? 'bg-green-600 hover:bg-green-600' : ''}>
-                                            {isPaid ? 'Paid' : isOverdue ? 'Overdue' : 'Outstanding'}
+                                        <Badge variant={isVoided ? 'outline' : isPaid ? 'default' : isOverdue ? 'destructive' : 'secondary'} className={isPaid && !isVoided ? 'bg-green-600 hover:bg-green-600' : ''}>
+                                            {isVoided ? 'Void' : isPaid ? 'Paid' : isOverdue ? 'Overdue' : 'Outstanding'}
                                         </Badge>
                                     </CardHeader>
                                     <CardContent className="p-0">
                                         <div className="divide-y text-sm">
                                             <div className="flex items-center justify-between px-6 py-2.5">
                                                 <span className="text-muted-foreground">Invoice amount</span>
-                                                <span className="font-medium">{formatCurrency(invoiceAmount)}</span>
+                                                <span className={cn("font-medium", isVoided && "line-through text-muted-foreground")}>{formatCurrency(invoiceAmount)}</span>
                                             </div>
                                             {inv.payments.map((p: any) => (
-                                                <div key={p.id} className="flex items-center justify-between bg-green-50/40 px-6 py-2.5 dark:bg-green-900/10">
+                                                // A payment against a voided invoice credits nothing — it
+                                                // falls with the invoice it paid for — so show its original
+                                                // amount struck through rather than as money off the balance.
+                                                <div key={p.id} className={cn("flex items-center justify-between px-6 py-2.5", p.voided ? "bg-muted/20" : "bg-green-50/40 dark:bg-green-900/10")}>
                                                     <div className="flex items-center gap-2 text-muted-foreground">
-                                                        <span className="text-green-500">↳</span>
+                                                        <span className={p.voided ? "text-muted-foreground" : "text-green-500"}>↳</span>
                                                         <span>{format(new Date(p.date), 'PP')} · Payment</span>
                                                         <Badge variant="outline" className="font-normal">{p.type}</Badge>
-                                                        <ViewPaymentDialog payment={{id: p.id, reference: p.reference, amount: p.credit, paymentDate: p.date, customerName, paymentType: p.type}}>
-                                                            <Button variant="link" className="h-auto p-0 font-mono text-[11px] text-green-600 hover:text-green-800">{p.reference || p.id.substring(0, 8)}</Button>
+                                                        <ViewPaymentDialog payment={{id: p.id, reference: p.reference, amount: p.amount ?? p.credit, paymentDate: p.date, customerName, paymentType: p.type}}>
+                                                            <Button variant="link" className={cn("h-auto p-0 font-mono text-[11px]", p.voided ? "text-muted-foreground" : "text-green-600 hover:text-green-800")}>{p.reference || p.id.substring(0, 8)}</Button>
                                                         </ViewPaymentDialog>
                                                     </div>
-                                                    <span className="font-medium text-green-600">−{formatCurrency(Number(p.credit))}</span>
+                                                    {p.voided ? (
+                                                        <span className="font-medium text-muted-foreground line-through">−{formatCurrency(Number(p.amount ?? 0))}</span>
+                                                    ) : (
+                                                        <span className="font-medium text-green-600">−{formatCurrency(Number(p.credit))}</span>
+                                                    )}
                                                 </div>
                                             ))}
                                             <div className="flex items-center justify-between bg-muted/30 px-6 py-3">
                                                 <span className="font-bold">Balance on this invoice</span>
-                                                <span className={cn("text-lg font-extrabold", isPaid ? "text-green-600" : "text-destructive")}>
-                                                    {formatCurrency(Math.max(0, balance))}
-                                                </span>
+                                                {isVoided ? (
+                                                    <span className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Voided — not collectable</span>
+                                                ) : (
+                                                    <span className={cn("text-lg font-extrabold", isPaid ? "text-green-600" : "text-destructive")}>
+                                                        {formatCurrency(Math.max(0, balance))}
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                     </CardContent>
