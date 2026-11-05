@@ -72,10 +72,39 @@ export async function GET(request: NextRequest) {
         params.push(toDate);
     }
 
-    // Get total count for pagination
-    const countSql = `SELECT COUNT(*) as total FROM (${sql}) as sub`;
-    const countResult = await query(countSql, params);
-    const total = countResult[0]?.total || 0;
+    // Count AND total across every matching row, not just the page being
+    // returned. The page's summary cards used to reduce over the rows in hand,
+    // so "Total Outstanding ... across N invoices" described only the first
+    // 10 rows while claiming to describe the filtered set.
+    //
+    // They also summed `total` rather than the unpaid remainder, so a 1,000
+    // invoice with 900 already paid was reported as 1,000 outstanding. The
+    // balance below is what the customer still owes.
+    //
+    // Overdue is computed here too: `due_date < CURDATE()`, the same test the
+    // row badges apply (isPast on the due date). A NULL due_date is
+    // explicitly NOT overdue, which the badges now also state outright
+    // instead of substituting `new Date()` and letting a clock race decide.
+    // No invoice has a NULL due_date today.
+    const summarySql = `
+      SELECT
+        COUNT(*) AS total,
+        COALESCE(SUM(sub.total - COALESCE(sub.amount_paid, 0)), 0) AS totalOutstanding,
+        COALESCE(SUM(CASE WHEN sub.due_date IS NOT NULL AND sub.due_date < CURDATE()
+                          THEN sub.total - COALESCE(sub.amount_paid, 0) ELSE 0 END), 0) AS overdueAmount,
+        COALESCE(SUM(CASE WHEN sub.due_date IS NOT NULL AND sub.due_date < CURDATE()
+                          THEN 1 ELSE 0 END), 0) AS overdueCount
+      FROM (${sql}) AS sub
+    `;
+    const summaryResult = await query(summarySql, params);
+    const summaryRow = summaryResult[0] || {};
+    const total = summaryRow.total || 0;
+    const summary = {
+      totalCount: Number(total),
+      totalOutstanding: parseFloat(summaryRow.totalOutstanding || 0),
+      overdueAmount: parseFloat(summaryRow.overdueAmount || 0),
+      overdueCount: Number(summaryRow.overdueCount || 0),
+    };
 
     sql += ' ORDER BY si.created_at DESC LIMIT ? OFFSET ?';
     params.push(limit, offset);
@@ -105,6 +134,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: formattedInvoices,
+      // Describes every matching invoice, not the page in `data`.
+      summary,
       pagination: {
         total,
         limit,

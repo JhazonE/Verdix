@@ -82,6 +82,14 @@ function OutstandingInvoices() {
         pageSize: 10,
         totalItems: 0
     });
+    // Totals for the whole filtered set, computed by the endpoint. Reducing
+    // over `invoices` would describe only the page on screen.
+    const [summary, setSummary] = useState({
+        totalCount: 0,
+        totalOutstanding: 0,
+        overdueAmount: 0,
+        overdueCount: 0,
+    });
     const { toast } = useToast();
 
     const fetchOutstandingInvoices = async () => {
@@ -107,6 +115,7 @@ function OutstandingInvoices() {
                         totalItems: result.pagination.totalItems || result.pagination.total // Backend uses total
                     }));
                 }
+                if (result.summary) setSummary(result.summary);
             }
             else throw new Error(result.error);
         } catch (error) {
@@ -117,31 +126,37 @@ function OutstandingInvoices() {
         }
     };
 
+    // Changing a filter must return to page 1. Keeping the old page number
+    // asks the endpoint for e.g. page 5 of a result set the new filter may
+    // have cut to one page, and the response is an empty array — the table
+    // read as "no invoices" while matching rows existed.
+    useEffect(() => {
+        setPagination(prev => (prev.currentPage === 1 ? prev : { ...prev, currentPage: 1 }));
+    }, [searchCustomer, dateRange]);
+
     useEffect(() => {
         const timer = setTimeout(fetchOutstandingInvoices, 500);
         return () => clearTimeout(timer);
     }, [searchCustomer, dateRange, pagination.currentPage, pagination.pageSize]);
 
-    const analytics = useMemo(() => {
-        let totalOutstanding = 0;
-        let overdueAmount = 0;
-        let overdueCount = 0;
-        invoices.forEach(inv => {
-            const amount = Number(inv.total);
-            totalOutstanding += amount;
-            const dueDate = inv.dueDate ? new Date(inv.dueDate) : new Date();
-            if (isPast(dueDate) && inv.status !== 'Paid') {
-                overdueAmount += amount;
-                overdueCount += 1;
-            }
-        });
-        return { totalOutstanding, overdueAmount, overdueCount, totalCount: invoices.length };
-    }, [invoices]);
+    // The summary comes from the endpoint, which aggregates every matching
+    // invoice. This used to reduce over `invoices` — the current page only —
+    // and summed each invoice's `total` rather than its unpaid remainder, so
+    // a 1,000 invoice with 900 paid counted as 1,000 outstanding.
+    const analytics = summary;
 
     function getStatusInfo(sale: Sale) {
         if ((sale.status as string) === 'Paid') return { text: 'Paid', variant: 'default' as const };
-        const dueDate = sale.dueDate ? new Date(sale.dueDate) : new Date();
-        if (isPast(dueDate) && (sale.status as string) !== 'Paid') return { text: 'Overdue', variant: 'destructive' as const };
+        // An invoice with NO due date is not overdue. Stated explicitly
+        // rather than left to a `new Date()` fallback, which decided the
+        // question by a race against the clock: measured, isPast(new Date())
+        // is false, so an undated invoice read as on-time, but only by the
+        // margin between constructing the date and comparing it. The
+        // endpoint's overdue totals apply the same explicit rule (due_date IS
+        // NOT NULL), so these badges and the summary cards agree by
+        // construction. No invoice has a NULL due_date today.
+        if (!sale.dueDate) return { text: sale.status, variant: 'secondary' as const };
+        if (isPast(new Date(sale.dueDate))) return { text: 'Overdue', variant: 'destructive' as const };
         return { text: sale.status , variant: 'secondary' as const };
     }
 
@@ -477,6 +492,14 @@ function PaymentHistory() {
         }
     };
 
+
+    // Changing a filter must return to page 1 — otherwise the endpoint is
+    // asked for a page the narrowed result set no longer has and answers with
+    // an empty array, so the table reads as "No payments found" although
+    // matching rows exist.
+    useEffect(() => {
+        setPagination(prev => (prev.currentPage === 1 ? prev : { ...prev, currentPage: 1 }));
+    }, [search, date, paymentType]);
 
     useEffect(() => {
         const timer = setTimeout(fetchPayments, 500);
