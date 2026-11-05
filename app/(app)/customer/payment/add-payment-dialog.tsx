@@ -220,9 +220,19 @@ export function AddPaymentDialog({ onSuccess }: AddPaymentDialogProps) {
       const result = await response.json();
 
       if (result.success) {
+        // Say so when part of the payment was not applied to any invoice. It
+        // is now kept as account credit (the route adds it to
+        // customers.credit_balance), and the cashier needs to tell the
+        // customer that rather than leaving them to wonder where it went.
+        const creditAdded = Number(result.data?.creditAdded || 0);
         toast({
           title: 'Payment Added',
-          description: `Payment of ${formatCurrency(values.amount)} recorded. Reference: ${result.data?.reference || 'Generated automatically'}.`,
+          description:
+            `Payment of ${formatCurrency(values.amount)} recorded. ` +
+            `Reference: ${result.data?.reference || 'Generated automatically'}.` +
+            (creditAdded > 0
+              ? ` ${formatCurrency(creditAdded)} kept as account credit.`
+              : ''),
         });
         setIsOpen(false);
         form.reset();
@@ -387,10 +397,14 @@ export function AddPaymentDialog({ onSuccess }: AddPaymentDialogProps) {
                             {formatCurrency(totalAllocated)}
                         </span>
                     </div>
+                    {/* Say where the unallocated part actually goes. "Remaining
+                        to Allocate" alone reads as unfinished work; the amount
+                        is in fact kept on the customer's account as credit,
+                        which the next invoice can draw on. */}
                     {remainingToAllocate > 0 && (
-                        <div className="flex justify-between items-center text-xs text-muted-foreground border-t pt-2">
-                            <span>Remaining to Allocate:</span>
-                            <span>{formatCurrency(remainingToAllocate)}</span>
+                        <div className="flex justify-between items-center gap-2 text-xs text-muted-foreground border-t pt-2">
+                            <span>Unallocated — kept as account credit:</span>
+                            <span className="font-medium whitespace-nowrap">{formatCurrency(remainingToAllocate)}</span>
                         </div>
                     )}
                     {totalAllocated > (paymentAmount || 0) && (

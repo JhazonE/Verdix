@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, withTransaction } from '@/lib/mysql';
 import { v4 as uuidv4 } from 'uuid';
+import { ensureCustomerCreditColumn } from '@/lib/ensure-customer-credit';
+import { planAllocations, type InvoiceState } from '@/lib/payment-allocation';
+import { nextPaymentReference } from '@/lib/payment-reference';
 
 // Ensure the junction table that links a payment to the invoice(s) it was applied to.
 // This is the source of truth for allocation tracking (replaces fragile note-string parsing).
@@ -33,6 +36,10 @@ export async function POST(request: NextRequest) {
     }
 
     await ensurePaymentAllocationsTable();
+    // The unallocated remainder becomes account credit, so the column must
+    // exist before the transaction opens. It is created by
+    // lib/ensure-customer-credit, not by a migration.
+    await ensureCustomerCreditColumn();
 
     return await withTransaction(async (connection) => {
         // Check if customer exists
@@ -45,92 +52,99 @@ export async function POST(request: NextRequest) {
           throw new Error('Customer not found');
         }
 
-        let finalReference = reference;
-
-        if (!finalReference) {
-           // Generate sequential reference
-           const [maxRefResult]: any = await connection.query(
-               "SELECT MAX(CAST(reference AS UNSIGNED)) as max_ref FROM customer_payments WHERE reference REGEXP '^[0-9]+$'"
-           );
-           
-           let nextRef = 1;
-           if (maxRefResult && maxRefResult.length > 0 && maxRefResult[0].max_ref !== null) {
-               nextRef = parseInt(maxRefResult[0].max_ref, 10) + 1;
-           }
-           finalReference = nextRef.toString().padStart(6, '0');
-        } else {
-            // Check if user-provided reference is unique
-            const [referenceCheck]: any = await connection.query(
-              'SELECT id FROM customer_payments WHERE reference = ?',
-              [finalReference]
+        // Insert the payment, allocating its reference as part of the insert.
+        //
+        // The reference used to be derived with `MAX(...) + 1` and inserted
+        // without a retry. reference carries a UNIQUE index and this database
+        // runs at REPEATABLE-READ, where that aggregate takes no lock, so two
+        // cashiers recording a payment at the same moment computed the same
+        // number and the loser's insert failed with ER_DUP_ENTRY — the
+        // customer had paid and nothing was recorded. Reproduced against this
+        // schema: both actors computed '000006'; the second insert failed.
+        // nextPaymentReference retries past the taken number instead.
+        const paymentId = uuidv4();
+        const finalReference = await nextPaymentReference(
+          connection,
+          reference,
+          async (ref) => {
+            await connection.query(
+              `INSERT INTO customer_payments (
+                id, customer_id, payment_type, payment_date, amount, reference, note
+              ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              [paymentId, customerId, paymentType, new Date(paymentDate), amount, ref, note]
             );
+          }
+        );
 
-            if (referenceCheck && referenceCheck.length > 0) {
-              throw new Error('Reference already exists');
+        // Work out the split before writing anything, so the arithmetic is
+        // testable without a database (see tests/unit/payment-allocation).
+        const requests = Array.isArray(allocations) ? allocations : [];
+
+        // Lock the named invoices in id order, in ONE statement. Locking them
+        // up front and ordered is the project's established rule for avoiding
+        // deadlocks between concurrent writers (see the checkout route, which
+        // locks products the same way); taking the locks one at a time inside
+        // the loop lets two payments that name the same two invoices in
+        // opposite orders deadlock.
+        const invoiceIds = Array.from(
+            new Set(
+                requests
+                    .filter((a: any) => Number(a?.amountAllocated) > 0)
+                    .map((a: any) => a.invoiceId)
+                    .filter(Boolean)
+            )
+        ).sort();
+
+        const invoiceStates = new Map<string, InvoiceState>();
+        if (invoiceIds.length > 0) {
+            const placeholders = invoiceIds.map(() => '?').join(',');
+            const [rows]: any = await connection.query(
+                `SELECT id, total, amount_paid FROM sales_invoices
+                 WHERE id IN (${placeholders}) ORDER BY id FOR UPDATE`,
+                invoiceIds
+            );
+            for (const row of rows || []) {
+                invoiceStates.set(row.id, {
+                    invoiceId: row.id,
+                    total: Number(row.total),
+                    amountPaid: Number(row.amount_paid || 0),
+                });
             }
         }
 
-        // Insert payment record
-        const paymentId = uuidv4();
-        await connection.query(
-          `INSERT INTO customer_payments (
-            id, customer_id, payment_type, payment_date, amount, reference, note
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [paymentId, customerId, paymentType, new Date(paymentDate), amount, finalReference, note]
-        );
+        const plan = planAllocations(Number(amount), requests, invoiceStates);
 
-        // Process allocations
-        if (allocations && Array.isArray(allocations)) {
-            // Track how much of THIS payment is still available to allocate, so the
-            // sum across invoices can never exceed the recorded payment amount.
-            let remainingPayment = Number(amount);
+        for (const applied of plan.applied) {
+            await connection.query(
+                `UPDATE sales_invoices
+                 SET amount_paid = ?, status = ?, updated_at = NOW()
+                 WHERE id = ?`,
+                [applied.newAmountPaid, applied.newStatus, applied.invoiceId]
+            );
 
-            for (const alloc of allocations) {
-                if (alloc.amountAllocated <= 0) continue;
-                if (remainingPayment <= 0) break;
+            // Record the allocation link (audit trail / source of truth).
+            await connection.query(
+                `INSERT INTO payment_allocations (id, payment_id, invoice_id, amount_allocated)
+                 VALUES (?, ?, ?, ?)`,
+                [uuidv4(), paymentId, applied.invoiceId, applied.appliedAmount]
+            );
+        }
 
-                // 1. Get current invoice details (using FOR UPDATE to lock row during transaction)
-                const [invoiceResult]: any = await connection.query(
-                    'SELECT total, amount_paid FROM sales_invoices WHERE id = ? FOR UPDATE',
-                    [alloc.invoiceId]
-                );
-
-                if (!invoiceResult || invoiceResult.length === 0) continue;
-
-                const invoice = invoiceResult[0];
-                const currentAmountPaid = Number(invoice.amount_paid || 0);
-                const invoiceTotal = Number(invoice.total);
-                const remainingBalance = invoiceTotal - currentAmountPaid;
-
-                // Never allocate more than what the invoice still owes, nor more than
-                // what is left of the payment itself.
-                const appliedAmount = Math.min(Number(alloc.amountAllocated), remainingBalance, remainingPayment);
-                if (appliedAmount <= 0) continue;
-
-                remainingPayment -= appliedAmount;
-
-                const newAmountPaid = currentAmountPaid + appliedAmount;
-                // A part-paid invoice is 'Partially Paid', not 'Pending' — 'Pending'
-                // cannot distinguish "nothing paid yet" from "partly settled".
-                const newStatus = newAmountPaid >= invoiceTotal
-                    ? 'Paid'
-                    : newAmountPaid > 0 ? 'Partially Paid' : 'Pending';
-
-                // 2. Update invoice amount_paid and status
-                await connection.query(
-                    `UPDATE sales_invoices
-                     SET amount_paid = ?, status = ?, updated_at = NOW()
-                     WHERE id = ?`,
-                    [newAmountPaid, newStatus, alloc.invoiceId]
-                );
-
-                // 3. Record the allocation link (audit trail / source of truth)
-                await connection.query(
-                    `INSERT INTO payment_allocations (id, payment_id, invoice_id, amount_allocated)
-                     VALUES (?, ?, ?, ?)`,
-                    [uuidv4(), paymentId, alloc.invoiceId, appliedAmount]
-                );
-            }
+        // Whatever no invoice took becomes available account credit.
+        //
+        // This is the fix for the money that used to disappear: the old loop
+        // tracked the remainder in a local variable and then never read it
+        // after the loop, so an overpayment was recorded in
+        // customer_payments.amount but never added to credit_balance. Customer
+        // Balances nets outstanding invoices against credit_balance, so the
+        // excess was invisible there — the payment showed as "Unallocated" in
+        // Payment History while doing nothing to reduce what the customer
+        // owed. The sibling route app/api/customers/payments already did this.
+        if (plan.unallocated > 0) {
+            await connection.query(
+                'UPDATE customers SET credit_balance = COALESCE(credit_balance, 0) + ?, updated_at = NOW() WHERE id = ?',
+                [plan.unallocated, customerId]
+            );
         }
 
         return NextResponse.json({
@@ -142,9 +156,16 @@ export async function POST(request: NextRequest) {
             paymentType,
             paymentDate,
             amount,
-            reference,
+            // The reference ACTUALLY written, not the caller's input. The
+            // dialog reports this back to the cashier ("Reference: ..."), and
+            // for an auto-generated reference the input is undefined, so
+            // echoing it left the toast with a blank number.
+            reference: finalReference,
             note,
-            allocations
+            allocations: plan.applied,
+            // So the UI can tell the cashier an overpayment was kept on file
+            // rather than silently banked.
+            creditAdded: plan.unallocated,
           },
         });
     });
