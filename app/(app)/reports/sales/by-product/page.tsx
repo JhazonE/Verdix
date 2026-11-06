@@ -41,6 +41,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { getApiUrl } from '@/lib/api-config';
+import { TAX_TYPES, TAX_TYPE_LABELS } from '@/lib/tax-utils';
 import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 import { ProductTransactionHistory } from '@/components/reports/ProductTransactionHistory';
@@ -82,6 +83,12 @@ export default function SalesByProductPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [pageSize, setPageSize] = useState(10);
   const [totalItems, setTotalItems] = useState(0);
+  // BIR tax bucket filter. 'all' means no filter. Because tax_type only exists
+  // on POS line items, filtering by it drops sales invoices and sales orders
+  // from the totals — the API reports that back in taxTypeScopedToPos and the
+  // notice below the filters explains it.
+  const [taxType, setTaxType] = useState<string>('all');
+  const [taxScopedToPos, setTaxScopedToPos] = useState(false);
   const { toast } = useToast();
 
   const toggleRow = (productId: string) => {
@@ -121,6 +128,9 @@ export default function SalesByProductPage() {
       if (searchTerm) {
         params.append('search', searchTerm);
       }
+      if (taxType !== 'all') {
+        params.append('taxType', taxType);
+      }
 
       const response = await fetch(getApiUrl(`/sales/by-product?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!response.ok) throw new Error(`API error ${response.status}`);
@@ -134,6 +144,7 @@ export default function SalesByProductPage() {
       if (result.success) {
         setRecords(result.data || []);
         setTotalItems(result.pagination?.totalItems || result.data?.length || 0);
+        setTaxScopedToPos(result.taxTypeScopedToPos === true);
       }
     } catch (error) {
       console.error("Error fetching sales by product:", error);
@@ -361,8 +372,25 @@ export default function SalesByProductPage() {
               </Popover>
             </div>
 
-            <Button 
-              onClick={fetchReport} 
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">Tax Type</label>
+              <Select value={taxType} onValueChange={setTaxType}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Tax Types</SelectItem>
+                  {TAX_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {TAX_TYPE_LABELS[t]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Button
+              onClick={fetchReport}
               disabled={isLoading}
             >
               {isLoading ? 'Loading...' : 'Show Report'}
@@ -411,6 +439,18 @@ export default function SalesByProductPage() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+
+          {/* Only shown when a tax filter actually narrowed the sources. A tax
+              bucket is recorded per POS line item and nowhere else, so these
+              totals legitimately exclude invoices and orders — saying so beats
+              leaving the user to wonder why the figures dropped. */}
+          {taxScopedToPos && (
+            <p className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+              Showing <strong>POS sales only</strong>. Sales invoices and sales orders
+              do not record a tax type, so they are excluded while a tax type is
+              selected.
+            </p>
+          )}
         </CardContent>
       </Card>
 

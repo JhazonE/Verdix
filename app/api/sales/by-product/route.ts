@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { sumLineCostExpr, unitCostExpr } from '@/lib/cost-of-sale';
+import { parseTaxType, taxTypeFilterSql } from '@/lib/tax-utils';
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,6 +18,17 @@ export async function GET(request: NextRequest) {
     const search = queryParams.get('search') || '';
     const sortBy = queryParams.get('sortBy') || 'sales'; // 'sales' or 'volume'
     const offset = (page - 1) * limit;
+
+    // BIR tax bucket, narrowed to a known value so it can never be arbitrary
+    // SQL even though the predicate binds it as a parameter.
+    //
+    // This filter is POS-ONLY by nature: `tax_type` exists on
+    // `pos_transaction_items` and nowhere else. The all-terminals branch below
+    // UNIONs in sales invoices and sales orders, which have no tax column, so
+    // when this filter is active those two legs are dropped entirely rather
+    // than guessed at. `taxTypeScoped` tells the client that happened, so the
+    // UI can say why the totals shrank instead of leaving it a mystery.
+    const taxType = parseTaxType(queryParams.get('taxType'));
 
     const params: any[] = [];
     let baseQueryStr = '';
@@ -80,7 +92,74 @@ export async function GET(request: NextRequest) {
           whereClause += ` AND (p.name LIKE ? OR su.barcode LIKE ? OR p.barcode LIKE ?)`;
           params.push(`%${search}%`, `%${search}%`, `%${search}%`);
         }
+        // This branch already joins pos_transaction_items, so the bucket is
+        // available directly and no leg has to be dropped.
+        if (taxType) {
+          whereClause += ` AND ${taxTypeFilterSql('pti')}`;
+          params.push(taxType);
+        }
     } else {
+        // When a tax bucket is requested, the invoice and order legs cannot
+        // participate: neither table records a tax type, so there is no honest
+        // way to include or classify them. Build the UNION from the POS leg
+        // alone in that case.
+        const taxScopedToPos = taxType !== null;
+
+        // The POS leg is the only one that can be filtered by tax bucket.
+        const posTaxFilter = taxScopedToPos ? `AND ${taxTypeFilterSql('pti')}` : '';
+
+        // Sales invoices leg — no tax column, so omitted under a tax filter.
+        const invoiceLeg = `
+            UNION ALL
+
+            -- Items from Sales Invoices
+            SELECT
+              sii.product_id,
+              sii.quantity,
+              sii.price,
+              ${unitCostExpr('sii', 'p_cost', { hasCostAtSale: true })} as unit_cost,
+              0 as discount_amount,
+              sinv.id as source_id,
+              sinv.invoice_date as transaction_date,
+              NULL as cashier_name,
+              sinv.id as reference_no
+            FROM sales_invoice_items sii
+            JOIN sales_invoices sinv ON sii.sales_invoice_id = sinv.id
+            LEFT JOIN products p_cost ON sii.product_id = p_cost.id
+            WHERE sinv.status = 'Paid' AND (sinv.notes IS NULL OR sinv.notes NOT LIKE '%POS Sale%')`;
+
+        // Sales orders leg — likewise has no tax column.
+        const orderLeg = `
+            UNION ALL
+
+            -- Items from Sales Orders
+            SELECT
+              soi.product_id,
+              soi.quantity,
+              soi.price,
+              -- sales_order_items has no cost_at_sale column, so this leg can
+              -- only use the scaled products.cost fallback.
+              ${unitCostExpr('soi', 'p_cost', { hasCostAtSale: false })} as unit_cost,
+              0 as discount_amount,
+              so.id as source_id,
+              so.order_date as transaction_date,
+              NULL as cashier_name,
+              so.reference as reference_no
+            FROM sales_order_items soi
+            JOIN sales_orders so ON soi.sales_order_id = so.id
+            LEFT JOIN products p_cost ON soi.product_id = p_cost.id
+            WHERE so.status = 'Paid'`;
+
+        const nonPosLegs = taxScopedToPos ? '' : invoiceLeg + orderLeg;
+
+        // ORDER MATTERS: this placeholder sits inside the CTE in baseQueryStr,
+        // ahead of every filter appended to that string below, so its value
+        // must be bound first. mysql2 binds positionally — pushing it after the
+        // date filters would feed the date into the tax comparison.
+        if (taxType) {
+            params.push(taxType);
+        }
+
         // unified query to aggregate sales from all sources
         baseQueryStr = `
           WITH all_sale_items AS (
@@ -104,44 +183,7 @@ export async function GET(request: NextRequest) {
             LEFT JOIN users u ON pt.user_id = u.uid
             LEFT JOIN pos_transaction_items pti ON pti.sale_item_id = si.id
             WHERE st.status = 'Paid'
-            
-            UNION ALL
-            
-            -- Items from Sales Invoices
-            SELECT 
-              sii.product_id,
-              sii.quantity,
-              sii.price,
-              ${unitCostExpr('sii', 'p_cost', { hasCostAtSale: true })} as unit_cost,
-              0 as discount_amount,
-              sinv.id as source_id,
-              sinv.invoice_date as transaction_date,
-              NULL as cashier_name,
-              sinv.id as reference_no
-            FROM sales_invoice_items sii
-            JOIN sales_invoices sinv ON sii.sales_invoice_id = sinv.id
-            LEFT JOIN products p_cost ON sii.product_id = p_cost.id
-            WHERE sinv.status = 'Paid' AND (sinv.notes IS NULL OR sinv.notes NOT LIKE '%POS Sale%')
-            
-            UNION ALL
-            
-            -- Items from Sales Orders
-            SELECT 
-              soi.product_id,
-              soi.quantity,
-              soi.price,
-              -- sales_order_items has no cost_at_sale column, so this leg can
-              -- only use the scaled products.cost fallback.
-              ${unitCostExpr('soi', 'p_cost', { hasCostAtSale: false })} as unit_cost,
-              0 as discount_amount,
-              so.id as source_id,
-              so.order_date as transaction_date,
-              NULL as cashier_name,
-              so.reference as reference_no
-            FROM sales_order_items soi
-            JOIN sales_orders so ON soi.sales_order_id = so.id
-            LEFT JOIN products p_cost ON soi.product_id = p_cost.id
-            WHERE so.status = 'Paid'
+            ${posTaxFilter}${nonPosLegs}
           )
           SELECT
             p.id as product_id,
@@ -268,6 +310,11 @@ export async function GET(request: NextRequest) {
       success: true,
       data: formattedData,
       totals,
+      // True when a tax filter forced the result to POS lines only, because
+      // sales invoices and sales orders record no tax type. The UI shows this
+      // so a shrunken total is explained rather than mysterious.
+      taxTypeScopedToPos: taxType !== null && (!terminalId || terminalId === 'all'),
+      appliedTaxType: taxType,
       pagination: {
         totalItems,
         totalPages: Math.ceil(totalItems / limit),
