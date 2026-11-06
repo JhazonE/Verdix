@@ -25,7 +25,10 @@ import {
   FileSpreadsheet,
   Download,
   ChevronDown,
-  Receipt,
+  // PhilippinePeso, not Receipt or DollarSign: lucide's Receipt glyph draws a
+  // dollar sign on its face, which is wrong for a Philippine BIR tax report.
+  PhilippinePeso,
+  Landmark,
   Percent,
   Coins,
 } from 'lucide-react';
@@ -223,7 +226,7 @@ export default function SalesByTaxTypePage() {
           <div className="flex items-start justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <Receipt className="h-5 w-5 text-green-600" />
+                <PhilippinePeso className="h-5 w-5 text-green-600" />
                 Sales by Tax Type
               </CardTitle>
               <CardDescription>
@@ -346,7 +349,7 @@ export default function SalesByTaxTypePage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Sales Net of VAT</CardTitle>
-            <Receipt className="h-4 w-4 text-muted-foreground" />
+            <Landmark className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(totals.netOfVat)}</div>

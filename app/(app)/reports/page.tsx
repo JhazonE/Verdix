@@ -406,7 +406,7 @@ export default function ReportsPage() {
             <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full border-blue-200">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Receipt className="h-5 w-5 text-blue-700" />
+                  <PhilippinePeso className="h-5 w-5 text-blue-700" />
                   Sales by Tax Type
                 </CardTitle>
                 <CardDescription>Sales totals per BIR tax classification — VATable, VAT Exempt, Zero-Rated and Non-VAT — with optional daily breakdown.</CardDescription>
