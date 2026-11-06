@@ -54,7 +54,16 @@ export async function GET(request: NextRequest) {
         FROM sale_items si
         JOIN sales_transactions st ON si.sale_id = st.id
         LEFT JOIN products p_cost ON si.product_id = p_cost.id
-        LEFT JOIN pos_transactions pt ON st.id = pt.sale_id
+        -- transaction_type is constrained for the same reason as in
+        -- app/api/sales/by-product/route.ts, whose drill-down this is: a
+        -- partly-returned sale has TWO pos_transactions rows for one sale_id
+        -- ('sale' and 'return'), so an unconstrained join emits every line of
+        -- that sale twice. Here that showed up as duplicate rows in a
+        -- product's transaction history (22 sale_items became 27 rows on live
+        -- data) and double-counted cost/profit in the exported detail.
+        -- pt supplies only si_number, terminal_id and the cashier, none of
+        -- which the return row is needed for.
+        LEFT JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
         LEFT JOIN users u ON pt.user_id = u.uid
         LEFT JOIN customers c ON st.customer_id = c.id
         LEFT JOIN pos_transaction_items pti ON pti.sale_item_id = si.id
