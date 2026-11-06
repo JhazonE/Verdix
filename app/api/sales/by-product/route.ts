@@ -179,7 +179,21 @@ export async function GET(request: NextRequest) {
             FROM sale_items si
             JOIN sales_transactions st ON si.sale_id = st.id
             LEFT JOIN products p_cost ON si.product_id = p_cost.id
-            LEFT JOIN pos_transactions pt ON st.id = pt.sale_id
+            -- The transaction_type predicate below is load-bearing, not a
+            -- filter: a partly-returned sale has TWO pos_transactions rows for
+            -- one sale_id ('sale' and 'return'), and without it this join fans
+            -- out and emits every line of that sale TWICE, double-counting its
+            -- revenue. Measured on live data: 21 sale_items became 26 rows and
+            -- revenue inflated from 13,410.00 to 14,270.00 off a single
+            -- partly-returned transaction.
+            --
+            -- pt only supplies cashier_name (through u) and reference_no, so
+            -- narrowing it costs nothing: returned QUANTITIES are not sourced
+            -- from here, and every sale_id in this schema has a 'sale' row, so
+            -- no line loses its cashier or reference. The terminal-scoped
+            -- branch above has always constrained this the same way; the two
+            -- branches of this endpoint simply disagreed.
+            LEFT JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
             LEFT JOIN users u ON pt.user_id = u.uid
             LEFT JOIN pos_transaction_items pti ON pti.sale_item_id = si.id
             WHERE st.status = 'Paid'
