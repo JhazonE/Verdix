@@ -30,7 +30,11 @@ import { ManageShelfLocationsDialog } from './shelf-locations/ManageShelfLocatio
 import { ManageUnitOfMeasureDialog } from './units-of-measure/ManageUnitOfMeasureDialog';
 import { ManageWarehousesDialog } from '../sales/manage-warehouses/ManageWarehousesDialog';
 
-import { Search, Trash2, PlusCircle, Settings, ShoppingCart, MoreVertical, Edit, Eye, Copy, AlertTriangle, Printer, ChevronRight, ChevronDown } from 'lucide-react';
+import { Search, Trash2, PlusCircle, Settings, ShoppingCart, MoreVertical, Edit, Eye, Copy, AlertTriangle, Printer, ChevronRight, ChevronDown, Pencil, ClipboardCheck, MoveHorizontal, CalendarClock } from 'lucide-react';
+import { SetExpirationDialog } from '../inventory/set-expiration-dialog/SetExpirationDialog';
+import { StockAdjustmentDialog } from '../inventory/stock-adjustment-dialog/StockAdjustmentDialog';
+import { StockTransferDialog } from '../inventory/stock-transfer-dialog/StockTransferDialog';
+import { isService } from '@/lib/product-type';
 import { PrintBarcodeDialog } from './print-barcode/print-barcode-dialog';
 import { useState, useMemo, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -95,7 +99,7 @@ function priceLevelsForUnit(
   return out;
 }
 
-function ProductRow({ product, onProductDeleted, onProductUpdated, products, productOptions, onOptionsRefresh, lowStockThreshold }: {
+function ProductRow({ product, onProductDeleted, onProductUpdated, products, productOptions, onOptionsRefresh, lowStockThreshold, requireAdjustmentConfirmation, requireTransferConfirmation }: {
   product: Product;
   onProductDeleted?: () => void;
   onProductUpdated?: () => void;
@@ -103,6 +107,8 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
   productOptions?: any;
   onOptionsRefresh?: () => void;
   lowStockThreshold?: number;
+  requireAdjustmentConfirmation?: boolean;
+  requireTransferConfirmation?: boolean;
 }) {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -110,6 +116,12 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
   const [restockDialogOpen, setRestockDialogOpen] = useState(false);
   const [printBarcodeOpen, setPrintBarcodeOpen] = useState(false);
   const [unitsExpanded, setUnitsExpanded] = useState(false);
+  // Stock actions, mirroring the Inventory page's row menu so a product can be
+  // adjusted/counted/transferred without leaving Products.
+  const [isAdjustOpen, setIsAdjustOpen] = useState(false);
+  const [isCountOpen, setIsCountOpen] = useState(false);
+  const [isTransferOpen, setIsTransferOpen] = useState(false);
+  const [isExpirationOpen, setIsExpirationOpen] = useState(false);
 
   const extraSellingUnits = (product.sellingUnits || []).filter((u) => !u.isBase);
   const baseUnit = product.sellingUnits?.find((u) => u.isBase);
@@ -247,6 +259,30 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
                 <span>Print Barcode</span>
               </DropdownMenuItem>
 
+              {/* Stock actions — same set as the Inventory row menu. Hidden for
+                  services, which carry no stock (the API rejects these too). */}
+              {!isService(product) && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setIsAdjustOpen(true)}>
+                    <Pencil className="mr-2 h-4 w-4 text-muted-foreground" />
+                    <span>Adjust Stock</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setIsCountOpen(true)}>
+                    <ClipboardCheck className="mr-2 h-4 w-4 text-muted-foreground" />
+                    <span>Physical Count</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setIsTransferOpen(true)}>
+                    <MoveHorizontal className="mr-2 h-4 w-4 text-muted-foreground" />
+                    <span>Transfer Stock</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setIsExpirationOpen(true)}>
+                    <CalendarClock className="mr-2 h-4 w-4 text-muted-foreground" />
+                    <span>Set Expiration</span>
+                  </DropdownMenuItem>
+                </>
+              )}
+
               {/* Restock Option */}
               {stockStatus !== 'in-stock' && (
                   <DropdownMenuItem onClick={() => setRestockDialogOpen(true)} className="text-orange-600 focus:text-orange-600">
@@ -298,6 +334,39 @@ function ProductRow({ product, onProductDeleted, onProductUpdated, products, pro
                   if (onProductUpdated) onProductUpdated();
                 }}
             />
+            {!isService(product) && (
+              <>
+                <StockAdjustmentDialog
+                  product={product}
+                  onSuccess={onProductUpdated}
+                  requireConfirmation={requireAdjustmentConfirmation}
+                  open={isAdjustOpen}
+                  onOpenChange={setIsAdjustOpen}
+                />
+                <StockAdjustmentDialog
+                  product={product}
+                  defaultReason="Physical Count"
+                  onSuccess={onProductUpdated}
+                  requireConfirmation={requireAdjustmentConfirmation}
+                  open={isCountOpen}
+                  onOpenChange={setIsCountOpen}
+                />
+                <StockTransferDialog
+                  product={product}
+                  onSuccess={onProductUpdated}
+                  requireConfirmation={requireTransferConfirmation}
+                  open={isTransferOpen}
+                  onOpenChange={setIsTransferOpen}
+                />
+                {/* No requireConfirmation: a date edit moves no stock. */}
+                <SetExpirationDialog
+                  product={product}
+                  onSuccess={onProductUpdated}
+                  open={isExpirationOpen}
+                  onOpenChange={setIsExpirationOpen}
+                />
+              </>
+            )}
           </div>
         </TableCell>
       </TableRow>
@@ -986,6 +1055,8 @@ function ProductsContent() {
                     productOptions={productOptions}
                     onOptionsRefresh={loadProductOptions}
                     lowStockThreshold={lowStockThreshold}
+                    requireAdjustmentConfirmation={posSettings?.data?.requireAdjustmentConfirmation}
+                    requireTransferConfirmation={posSettings?.data?.requireTransferConfirmation}
                   />
                 ))
               )}
