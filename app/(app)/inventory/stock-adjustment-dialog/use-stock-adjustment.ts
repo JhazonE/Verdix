@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { dispatchStockUpdate } from '@/hooks/use-live-refresh';
 import { logActivity } from '@/lib/client-activity-logger';
@@ -48,6 +48,12 @@ export function useStockAdjustment({
 
   const [physicalCount, setPhysicalCount] = useState<number | null>(null);
 
+  // The reference identifies this adjustment on its printed slip and in
+  // Adjustment History. It is suggested from the same endpoint the Bulk
+  // Adjustment screen uses so both screens share one daily sequence, and stays
+  // editable — it is an operational convenience, not a BIR document number.
+  const [referenceNo, setReferenceNo] = useState('');
+  const suggestedRef = useRef('');
 
   const isPhysicalCountMode = defaultReason === 'Physical Count';
 
@@ -99,6 +105,32 @@ export function useStockAdjustment({
       setExpirationDate('');
     }
   }, [isOpen, defaultReason, product.stock]);
+
+  // Suggest a reference each time the dialog opens. A failure here must never
+  // block an adjustment, so the field is simply left as-is and the row is
+  // filed without one — exactly how this path behaved before.
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch('/api/inventory/adjust/next-reference');
+        const payload = await res.json();
+        if (cancelled || !payload?.success || !payload.reference) return;
+        // Only overwrite a blank field or a previous untouched suggestion, so
+        // a reference the user typed themselves survives.
+        setReferenceNo(prev =>
+          prev === '' || prev === suggestedRef.current ? payload.reference : prev
+        );
+        suggestedRef.current = payload.reference;
+      } catch {
+        // Suggestion unavailable; the field stays editable and may be blank.
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [isOpen]);
 
   const handleQuantityChange = (value: string) => {
     const num = parseFloat(value);
@@ -173,7 +205,9 @@ export function useStockAdjustment({
         finalReason,
         userId,
         false,
-        showExpirationField && expirationDate ? expirationDate : null
+        showExpirationField && expirationDate ? expirationDate : null,
+        null,
+        { referenceNo: referenceNo.trim() || null }
       );
       const res = parentResult as any;
 
@@ -248,6 +282,8 @@ export function useStockAdjustment({
     dialogTitle,
     variance,
     projectedStock,
+    referenceNo,
+    setReferenceNo,
     expirationDate,
     setExpirationDate,
     showExpirationField,

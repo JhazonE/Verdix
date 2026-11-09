@@ -125,7 +125,27 @@ export async function POST(request: NextRequest) {
             if (txData.adjustmentType === 'remove' && adjQty > 0) {
               adjQty = -adjQty;
             }
-            const adjResult = await adjustStock(txData.productId, adjQty, txData.reason, item.created_by, true, txData.expirationDate || null, txData.unitCost ?? null);
+            // The reference/warehouse/supplier/note captured when the
+            // adjustment was raised are replayed here, so approving it files
+            // the same transaction the operator submitted rather than a bare
+            // one with "Not specified" in Adjustment History. `reference` is
+            // read as a fallback because the bulk path stores it under that
+            // name in the queue payload.
+            const adjResult = await adjustStock(
+              txData.productId,
+              adjQty,
+              txData.reason,
+              item.created_by,
+              true,
+              txData.expirationDate || null,
+              txData.unitCost ?? null,
+              {
+                referenceNo: txData.referenceNo ?? txData.reference ?? null,
+                warehouseId: txData.warehouseId ?? null,
+                supplierId: txData.supplierId ?? null,
+                note: txData.note ?? null,
+              }
+            );
             result = { success: adjResult.success, error: (adjResult as any).error || '' };
           }
         } else if (item.transaction_type === 'PURCHASE_ORDER') {
