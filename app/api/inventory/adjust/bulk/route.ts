@@ -165,7 +165,15 @@ export async function POST(request: NextRequest) {
           throw new Error(`Invalid adjustment details for product ${productId}`);
         }
 
-        if (quantity === 0) continue;
+        // Fractional quantities are valid (stock is DECIMAL(15,4)), but a
+        // non-numeric one is not: left unchecked it reached the arithmetic
+        // below as NaN and was written to the row as NULL.
+        const numericQuantity = Number(quantity);
+        if (!Number.isFinite(numericQuantity)) {
+          throw new Error(`Invalid adjustment quantity for product ${productId}: ${quantity}`);
+        }
+
+        if (numericQuantity === 0) continue;
 
         // What this line cost per base unit. Absent/blank/negative means the
         // caller captured no cost, and everything downstream falls back to
@@ -195,11 +203,15 @@ export async function POST(request: NextRequest) {
         }
 
         const product = productResult[0];
-        const currentStock = parseInt(product.stock);
+        // Number, not parseInt: products.stock is DECIMAL(15,4) and a product
+        // sold by weight legitimately sits at 12.5. Truncating here made the
+        // recorded new_stock and the stock_adjustments row disagree with the
+        // product's actual stock by the fraction that was thrown away.
+        const currentStock = Number(product.stock);
         const finalReason = reason || batchNotes || (adjustmentType === 'transfer' ? 'Bulk Transfer' : 'Bulk Adjustment');
 
         const isTransfer = adjustmentType === 'transfer';
-        const finalQuantity = (adjustmentType === 'remove' || isTransfer) ? -Math.abs(quantity) : Math.abs(quantity);
+        const finalQuantity = (adjustmentType === 'remove' || isTransfer) ? -Math.abs(numericQuantity) : Math.abs(numericQuantity);
         const approvalType = isTransfer ? 'STOCK_TRANSFER' : 'STOCK_ADJUSTMENT';
         const isApprovalRequiredForItem = await checkApprovalRequired(approvalType);
 
@@ -240,7 +252,7 @@ export async function POST(request: NextRequest) {
             approvalData.items = [{
               productId,
               productName: product.name,
-              quantity: Math.abs(quantity), // Transfers use positive quantities for the item list
+              quantity: Math.abs(numericQuantity), // Transfers use positive quantities for the item list
               unitOfMeasure: product.unit_of_measure
             }];
 
@@ -323,7 +335,7 @@ export async function POST(request: NextRequest) {
         if (isTransfer && destId) {
           await connection.query(
             'UPDATE products SET stock = stock + ? WHERE id = ?',
-            [Math.abs(quantity), destId]
+            [Math.abs(numericQuantity), destId]
           );
         }
 

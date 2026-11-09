@@ -11,7 +11,9 @@ import {
   FROZEN_EDGE,
   FROZEN_QTY_LEFT,
   FROZEN_TYPE_LEFT,
+  parseQuantity,
   parseUnitCost,
+  stepQuantity,
   typeConfig,
   type AdjustmentItem,
 } from './constants';
@@ -27,7 +29,8 @@ export function AdjustmentTableRow({
   onRemove: (productId: string) => void;
   showExpirationColumn?: boolean;
 }) {
-  const newStock = adj.type === 'remove' ? adj.product.stock - adj.quantity : adj.product.stock + adj.quantity;
+  const qty = parseQuantity(adj.quantity);
+  const newStock = adj.type === 'remove' ? adj.product.stock - qty : adj.product.stock + qty;
   const isNegative = newStock < 0;
   const cfg = typeConfig[adj.type];
   const Icon = cfg.icon;
@@ -74,18 +77,23 @@ export function AdjustmentTableRow({
         <div className="flex items-center gap-1.5">
           <button
             className="w-7 h-7 rounded-md bg-muted hover:bg-muted/70 flex items-center justify-center text-foreground font-bold transition-colors"
-            onClick={() => onUpdate(adj.product.id, { quantity: Math.max(1, adj.quantity - 1) })}
+            onClick={() => onUpdate(adj.product.id, { quantity: stepQuantity(adj.quantity, -1) })}
           >−</button>
+          {/* The typed text is stored verbatim: re-parsing on each keystroke
+              would erase the "." the moment it is typed, which is exactly what
+              stopped 1.5 from being enterable. Validation happens on submit. */}
           <Input
             type="number"
-            min="1"
+            min="0"
+            step="any"
+            inputMode="decimal"
             className="h-8 w-14 text-center font-bold text-sm px-1"
             value={adj.quantity}
-            onChange={e => onUpdate(adj.product.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
+            onChange={e => onUpdate(adj.product.id, { quantity: e.target.value })}
           />
           <button
             className="w-7 h-7 rounded-md bg-muted hover:bg-muted/70 flex items-center justify-center text-foreground font-bold transition-colors"
-            onClick={() => onUpdate(adj.product.id, { quantity: adj.quantity + 1 })}
+            onClick={() => onUpdate(adj.product.id, { quantity: stepQuantity(adj.quantity, 1) })}
           >+</button>
         </div>
         <p className="text-[10px] text-muted-foreground uppercase mt-1 pl-1">{adj.product.unitOfMeasure}</p>
@@ -106,7 +114,7 @@ export function AdjustmentTableRow({
         {/* The line's worth, so an entry error shows up as an implausible
             total rather than only as a per-unit figure. */}
         <p className="text-[10px] text-muted-foreground mt-1 pl-1 tabular-nums">
-          {lineCost === null ? '—' : formatCurrency(lineCost * adj.quantity)}
+          {lineCost === null ? '—' : formatCurrency(lineCost * qty)}
         </p>
       </TableCell>
       <TableCell className="py-4">

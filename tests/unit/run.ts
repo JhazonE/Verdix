@@ -81,6 +81,7 @@ import './warehouse-sibling-barcode.test';
 import './pos-cart-units.test';
 import './cart-quantity-format.test';
 import './decimal-quantity-read.test';
+import './bulk-adjustment-decimal-quantity.test';
 import './stock-quantity-format.test';
 import './pricing.test';
 import './price-check-resolution.test';

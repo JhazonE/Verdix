@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn, formatCurrency, formatQuantity } from '@/lib/utils';
 
-import { parseUnitCost, typeConfig, type AdjustmentItem } from './constants';
+import { parseQuantity, parseUnitCost, stepQuantity, typeConfig, type AdjustmentItem } from './constants';
 
 export function AdjustmentMobileCard({
   adj,
@@ -18,7 +18,8 @@ export function AdjustmentMobileCard({
   onRemove: (productId: string) => void;
   showExpirationColumn?: boolean;
 }) {
-  const newStock = adj.type === 'remove' ? adj.product.stock - adj.quantity : adj.product.stock + adj.quantity;
+  const qty = parseQuantity(adj.quantity);
+  const newStock = adj.type === 'remove' ? adj.product.stock - qty : adj.product.stock + qty;
   const isNegative = newStock < 0;
   const cfg = typeConfig[adj.type];
   const Icon = cfg.icon;
@@ -58,18 +59,21 @@ export function AdjustmentMobileCard({
             <div className="flex items-center gap-2">
               <button
                 className="w-8 h-8 rounded-xl bg-muted hover:bg-muted/70 flex items-center justify-center text-foreground font-bold text-lg transition-colors"
-                onClick={() => onUpdate(adj.product.id, { quantity: Math.max(1, adj.quantity - 1) })}
+                onClick={() => onUpdate(adj.product.id, { quantity: stepQuantity(adj.quantity, -1) })}
               >−</button>
+              {/* Raw text, parsed only on submit -- see the desktop row. */}
               <Input
                 type="number"
-                min="1"
+                min="0"
+                step="any"
+                inputMode="decimal"
                 className="h-8 w-16 text-center font-bold text-sm px-1"
                 value={adj.quantity}
-                onChange={e => onUpdate(adj.product.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
+                onChange={e => onUpdate(adj.product.id, { quantity: e.target.value })}
               />
               <button
                 className="w-8 h-8 rounded-xl bg-muted hover:bg-muted/70 flex items-center justify-center text-foreground font-bold text-lg transition-colors"
-                onClick={() => onUpdate(adj.product.id, { quantity: adj.quantity + 1 })}
+                onClick={() => onUpdate(adj.product.id, { quantity: stepQuantity(adj.quantity, 1) })}
               >+</button>
               <span className="text-[10px] text-muted-foreground uppercase font-bold">{adj.product.unitOfMeasure}</span>
             </div>
@@ -104,7 +108,7 @@ export function AdjustmentMobileCard({
           <div className="shrink-0 text-right pb-1">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Line Total</p>
             <p className="text-sm font-bold tabular-nums text-foreground">
-              {lineCost === null ? '—' : formatCurrency(lineCost * adj.quantity)}
+              {lineCost === null ? '—' : formatCurrency(lineCost * qty)}
             </p>
           </div>
         </div>

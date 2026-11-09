@@ -11,7 +11,7 @@ import { printStockAdjustment, type AdjustmentSlipData } from '@/lib/print-stock
 import type { Product, Supplier, Warehouse } from '@/lib/types';
 
 import { getProducts } from '../../products/actions';
-import { parseUnitCost, type AdjustmentItem, type AdjustmentType } from './constants';
+import { parseQuantity, parseUnitCost, type AdjustmentItem, type AdjustmentType } from './constants';
 
 /**
  * Controller for the bulk stock adjustment screen: owns product/metadata
@@ -157,7 +157,7 @@ export function useBulkAdjustment() {
       product.cost === null || product.cost === undefined || !Number.isFinite(Number(product.cost))
         ? ''
         : String(Number(product.cost));
-    setAdjustments(prev => [...prev, { product, quantity: 1, type: adjustmentType, unitCost: seededCost }]);
+    setAdjustments(prev => [...prev, { product, quantity: '1', type: adjustmentType, unitCost: seededCost }]);
     setSearch('');
     setShowResults(false);
     setShowMobileSearch(false);
@@ -191,15 +191,29 @@ export function useBulkAdjustment() {
       toast({ variant: 'destructive', title: 'Invalid Transfer', description: 'Source and destination warehouses must be different.' });
       return;
     }
+
+    // A line left blank or at zero moves no stock, so it is dropped here
+    // rather than sent: the server already skips a zero quantity, but it would
+    // still reach the printed slip as a row claiming an adjustment happened.
+    const submittableAdjustments = adjustments.filter(a => parseQuantity(a.quantity) > 0);
+    if (submittableAdjustments.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Quantity Required',
+        description: 'Enter a quantity greater than zero for at least one item.',
+      });
+      return;
+    }
+
     setIsProcessing(true);
     try {
       const userSession = localStorage.getItem('mock-user-session');
       const session = userSession ? JSON.parse(userSession) : null;
       const userId = session?.uid || 'system';
       const payload = {
-        adjustments: adjustments.map(a => ({
+        adjustments: submittableAdjustments.map(a => ({
           productId: a.product.id,
-          quantity: a.quantity,
+          quantity: parseQuantity(a.quantity),
           // The batch memo is the reason for every line now.
           reason: note || 'Bulk Stock Adjustment',
           expirationDate: a.product.isPerishable && adjustmentType === 'add' ? (a.expirationDate || null) : null,
@@ -242,11 +256,11 @@ export function useBulkAdjustment() {
               : null,
           preparedBy: session?.displayName || null,
           notes: note || null,
-          items: adjustments.map(a => ({
+          items: submittableAdjustments.map(a => ({
             productName: a.product.name,
             barcode: a.product.barcode || null,
             unitOfMeasure: a.product.unitOfMeasure || null,
-            quantity: a.quantity,
+            quantity: parseQuantity(a.quantity),
             previousStock: a.product.stock,
             expirationDate: a.expirationDate || null,
             unitCost: parseUnitCost(a.unitCost),
@@ -294,7 +308,8 @@ export function useBulkAdjustment() {
   };
 
   const hasNegativeStock = adjustments.some(a => {
-    const newStock = a.type === 'remove' ? a.product.stock - a.quantity : a.product.stock + a.quantity;
+    const qty = parseQuantity(a.quantity);
+    const newStock = a.type === 'remove' ? a.product.stock - qty : a.product.stock + qty;
     return newStock < 0;
   });
 
@@ -303,7 +318,7 @@ export function useBulkAdjustment() {
   // standing cost — the total must only ever add up the figures on screen.
   const totalCostValue = adjustments.reduce((sum, a) => {
     const cost = parseUnitCost(a.unitCost);
-    return cost === null ? sum : sum + cost * a.quantity;
+    return cost === null ? sum : sum + cost * parseQuantity(a.quantity);
   }, 0);
 
   const addCount = adjustments.filter(a => a.type === 'add').length;
