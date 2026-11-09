@@ -50,6 +50,8 @@ export function StockAdjustmentDialog({ product, children, defaultReason, onSucc
     dialogTitle,
     variance,
     projectedStock,
+    referenceNo,
+    setReferenceNo,
     expirationDate,
     setExpirationDate,
     showExpirationField,
@@ -61,6 +63,24 @@ export function StockAdjustmentDialog({ product, children, defaultReason, onSucc
     processAdjustment,
     confirmationMessage,
   } = useStockAdjustment({ product, defaultReason, onSuccess, requireConfirmation, open, onOpenChange });
+
+  // Shown in both modes: the reference is what identifies this adjustment on
+  // its slip and in Adjustment History, and a physical count needs it just as
+  // much as an add/remove does.
+  const referenceField = (
+    <div className="space-y-2">
+      <Label htmlFor="referenceNo" className="text-sm font-medium">
+        Reference No. <span className="text-muted-foreground font-normal">(Optional)</span>
+      </Label>
+      <Input
+        id="referenceNo"
+        value={referenceNo}
+        onChange={(e) => setReferenceNo(e.target.value)}
+        placeholder="e.g. ADJ-20260101-001"
+        className="h-11 font-mono"
+      />
+    </div>
+  );
 
   const renderPhysicalCountMode = () => (
      <div className="space-y-6 py-4">
@@ -123,6 +143,8 @@ export function StockAdjustmentDialog({ product, children, defaultReason, onSucc
                     </div>
                 </div>
             )}
+
+            {referenceField}
         </div>
 
         <DialogFooter className="pt-2">
@@ -218,6 +240,8 @@ export function StockAdjustmentDialog({ product, children, defaultReason, onSucc
                     />
                 </div>
               )}
+
+              {referenceField}
           </div>
 
           <div className="bg-muted/30 rounded-2xl p-4 border border-muted-foreground/10">

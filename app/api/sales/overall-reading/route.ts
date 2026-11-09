@@ -69,7 +69,14 @@ export async function GET(request: NextRequest) {
             SUM(CASE WHEN st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned') THEN pt.discount_amount ELSE 0 END) as completed_discounts,
             SUM(pt.discount_amount) as total_discounts_all
         FROM sales_transactions st
-        JOIN pos_transactions pt ON st.id = pt.sale_id
+        -- transaction_type is constrained because a partly-returned sale has
+        -- TWO pos_transactions rows for one sale_id ('sale' and 'return').
+        -- Without it this join emits that sale twice, and since st.total is the
+        -- whole original sale it was ADDED twice: live data reported 14,600.00
+        -- where real sales were 13,575.00, and transaction_count was 11 for 10
+        -- sales. The refund is accounted for separately by returnsSql below,
+        -- from the return row's own total_amount.
+        JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
         WHERE pt.is_training = 0
         ${terminalCondition}
         ${dateCondition}
@@ -91,7 +98,11 @@ export async function GET(request: NextRequest) {
             SUM(st.total) as net_sales,
             COUNT(*) as transaction_count
         FROM sales_transactions st
-        JOIN pos_transactions pt ON st.id = pt.sale_id
+        -- Constrained for the same reason as the totals query above. Here the
+        -- fan-out would also MISATTRIBUTE: the return row carries its own
+        -- terminal_id, so a refund processed at another till would credit that
+        -- till with the original sale's full total.
+        JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
         LEFT JOIN pos_terminals t ON pt.terminal_id = t.id
         WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
         AND pt.is_training = 0
@@ -110,7 +121,10 @@ export async function GET(request: NextRequest) {
             SUM(st.total) as net_sales,
             COUNT(*) as transaction_count
         FROM sales_transactions st
-        JOIN pos_transactions pt ON st.id = pt.sale_id
+        -- Same constraint, same two reasons: without it a partly-returned sale
+        -- is counted twice, and credited to whoever processed the REFUND as
+        -- well as to the cashier who made the sale.
+        JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
         LEFT JOIN users u ON pt.user_id = u.uid
         WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
         AND pt.is_training = 0
@@ -143,7 +157,11 @@ export async function GET(request: NextRequest) {
 
             SELECT st.payment_method as payment_method, SUM(st.total) as amount
             FROM sales_transactions st
-            JOIN pos_transactions pt ON st.id = pt.sale_id
+            -- Constrained like the queries above: this leg sums st.total, so a
+            -- partly-returned sale would be added twice. (The payment_details
+            -- leg above is already safe — it joins pd on pt.id, so each row
+            -- brings only its own tender lines.)
+            JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
             WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
             AND pt.is_training = 0
             AND NOT EXISTS (SELECT 1 FROM payment_details pd WHERE pd.transaction_id = pt.id)
@@ -206,14 +224,34 @@ export async function GET(request: NextRequest) {
         returnsParams = [shiftId];
     }
 
+    // The refund comes from the RETURN's own row, not from the original sale.
+    // app/api/sales/returns inserts a new pos_transactions row typed 'return'
+    // carrying total_amount = -refundedAmount, reusing the original sale's
+    // sale_id; it writes no sales_transactions row of its own and leaves the
+    // original sale's st.total untouched.
+    //
+    // This mirrors the fix already made in app/api/sales/z-reading/route.ts
+    // (see its returnsSql), which this report had never picked up. The previous
+    // `SUM(st.total) ... WHERE st.status = 'Returned'` was wrong three ways:
+    //
+    //   1. st.total is the WHOLE original sale, not the amount refunded.
+    //   2. A partial return leaves status = 'Paid', so `status = 'Returned'`
+    //      matched nothing and reported 0.00. Live data carries only 'Paid' and
+    //      'Voided' statuses, so this query returned 0 for every range.
+    //   3. Joining back to sales_transactions pulled the original sale's full
+    //      total into the sales bucket a second time.
+    //
+    // ABS() because total_amount is stored negative (money out). Dating is on
+    // pt.created_at — the REFUND's date — so a refund given the day after the
+    // sale lands in the period it actually happened in.
     const returnsSql = `
-        SELECT SUM(st.total) as total_returns, COUNT(*) as return_count
-        FROM sales_transactions st
-        JOIN pos_transactions pt ON st.id = pt.sale_id
-        WHERE st.status = 'Returned'
+        SELECT ABS(COALESCE(SUM(pt.total_amount), 0)) as total_returns,
+               COUNT(*) as return_count
+        FROM pos_transactions pt
+        WHERE pt.transaction_type = 'return'
         AND pt.is_training = 0
         ${terminalCondition}
-        ${returnsDateCondition}
+        ${returnsDateCondition.replace(/st\.updated_at/g, 'pt.created_at')}
     `;
     const [returnsResult] = await query(returnsSql, [...terminalParams, ...returnsParams]) as any[];
 

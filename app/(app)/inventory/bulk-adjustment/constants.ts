@@ -6,7 +6,18 @@ export type AdjustmentType = 'add' | 'remove' | 'transfer';
 
 export interface AdjustmentItem {
   product: Product;
-  quantity: number;
+  /**
+   * How much to adjust, as a raw input string for the same reason as
+   * `unitCost`: a fractional quantity is typed one character at a time, and
+   * the intermediate states ("1.", "0.") are not yet valid numbers. Holding a
+   * number here meant every keystroke was re-parsed and written straight back
+   * into the input, so typing "1.5" collapsed to "1" at the decimal point and
+   * the field looked like it refused decimals outright.
+   *
+   * Stock is DECIMAL(15,4) end to end, so 1.5 kg is real data. Read it with
+   * `parseQuantity`; never with `parseInt`.
+   */
+  quantity: string;
   type: AdjustmentType;
   expirationDate?: string;
   /**
@@ -31,6 +42,38 @@ export function parseUnitCost(value: string | undefined): number | null {
   if (value === undefined || value.trim() === '') return null;
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Parses a quantity field into the number the API expects.
+ *
+ * Returns 0 for blank, partially-typed ("1.", "-") or invalid input, which
+ * every caller treats as "this line contributes nothing": the previews show no
+ * movement and the submit path skips the row. Deliberately not `parseInt` --
+ * truncating here is what made the field appear to reject decimals.
+ *
+ * Non-positive input also collapses to 0: direction comes from the batch's
+ * add/remove/transfer type, never from the sign of what was typed.
+ */
+export function parseQuantity(value: string | undefined): number {
+  if (value === undefined || value.trim() === '') return 0;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  // Match the DECIMAL(15,4) columns this lands in, so the preview on screen
+  // and the figure the server stores cannot disagree in the 5th decimal.
+  return Number(n.toFixed(4));
+}
+
+/**
+ * Steps a quantity by the +/- buttons without ever producing a partial string.
+ *
+ * Stepping from a fractional value keeps the fraction (1.5 -> 2.5), and the
+ * floor is one step rather than 0, since a zero-quantity line is not something
+ * the buttons should be able to create.
+ */
+export function stepQuantity(value: string | undefined, delta: number): string {
+  const next = parseQuantity(value) + delta;
+  return String(Number(Math.max(delta > 0 ? 0 : 0.0001, next).toFixed(4)));
 }
 
 /**

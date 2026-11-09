@@ -49,3 +49,44 @@ export function resolveEffectiveTaxType(
   }
   return applyRegistrationToTaxType(baseTaxType, vatRegistration);
 }
+
+/** The four BIR tax buckets, in the order reports should present them. */
+export const TAX_TYPES: TaxType[] = ['VAT', 'VAT_EXEMPT', 'ZERO_RATED', 'NON_VAT'];
+
+/** Human labels for the buckets, matching the BIR Sales Summary's wording. */
+export const TAX_TYPE_LABELS: Record<TaxType, string> = {
+  VAT: 'VATable',
+  VAT_EXEMPT: 'VAT Exempt',
+  ZERO_RATED: 'Zero-Rated',
+  NON_VAT: 'Non-VAT',
+};
+
+/** Narrows an untrusted query-param string to a TaxType, or null. */
+export function parseTaxType(value?: string | null): TaxType | null {
+  if (!value) return null;
+  const upper = value.toUpperCase();
+  return (TAX_TYPES as string[]).includes(upper) ? (upper as TaxType) : null;
+}
+
+/**
+ * SQL for a line's tax bucket.
+ *
+ * The COALESCE is load-bearing and every reader must keep it. `tax_type` is
+ * only as old as migration 148 (and, before that, the lazy ALTER in the
+ * checkout route), so lines filed before it exists carry NULL. Those sales were
+ * VAT-able — that is the only thing the system could charge at the time — so
+ * NULL reads as 'VAT'. Omitting the COALESCE silently drops every historical
+ * line from a filtered report instead of classifying it.
+ *
+ * @param item alias of a line-item table carrying `tax_type` (e.g. `pti`)
+ */
+export const taxTypeExpr = (item: string): string =>
+  `COALESCE(${item}.tax_type, 'VAT')`;
+
+/**
+ * SQL predicate restricting lines to one tax bucket, for use with a single
+ * bound parameter. Pass the value from `parseTaxType` so the parameter can
+ * never be an arbitrary string.
+ */
+export const taxTypeFilterSql = (item: string): string =>
+  `${taxTypeExpr(item)} = ?`;
