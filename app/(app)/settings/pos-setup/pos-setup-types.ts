@@ -89,6 +89,7 @@ export interface PosSettings {
   membershipFee?: number;
   membershipDurationMonths?: number;
   enableQuickAddCustomer?: boolean;
+  showCostOnSalesInvoice?: boolean;
 }
 
 export const DEFAULT_POS_SETTINGS: PosSettings = {
@@ -182,4 +183,5 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   membershipFee: 0,
   membershipDurationMonths: 12,
   enableQuickAddCustomer: true,
+  showCostOnSalesInvoice: false,
 };

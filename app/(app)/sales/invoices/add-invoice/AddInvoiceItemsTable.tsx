@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Trash2, Search } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { getApiUrl } from '@/lib/api-config';
 import { formatQuantity } from '@/lib/utils';
 import { abbreviateUOM } from '@/lib/receipt-uom';
 import type { Product } from '@/lib/types';
@@ -26,6 +28,26 @@ export function AddInvoiceItemsTable({ form, fields, remove, total, vatAmount, h
   const warehouseId = form.watch('warehouse');
   const shipping = Number(form.watch('shipping') || 0);
 
+  // Same query key as the invoices list, so this is normally already cached.
+  const { data: posSettingsData } = useQuery({
+    queryKey: ['posSettings'],
+    queryFn: async () => (await fetch(getApiUrl('/pos-settings'))).json(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const showCost = !!posSettingsData?.data?.showCostOnSalesInvoice;
+  const colCount = showCost ? 8 : 7;
+
+  // Cost of ONE selling unit of the line. Per-unit cost wins; products.cost is
+  // per BASE unit, so the fallback has to be scaled by the unit's factor.
+  const unitCostOf = (field: (typeof fields)[number]): number => {
+    const product = field.product as Product;
+    const unit = field.sellingUnitId
+      ? product.sellingUnits?.find((u) => u.id === field.sellingUnitId)
+      : product.sellingUnits?.find((u) => u.isBase);
+    if (unit?.cost != null) return Number(unit.cost);
+    return Number(product.cost || 0) * (Number(field.sellingUnitFactor) > 0 ? Number(field.sellingUnitFactor) : 1);
+  };
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0 bg-muted/5 p-3 relative">
       <div className="max-w-2xl mb-3 z-10 shrink-0">
@@ -40,6 +62,7 @@ export function AddInvoiceItemsTable({ form, fields, remove, total, vatAmount, h
                 <TableHead className="w-[4%] pl-3 h-9 text-muted-foreground">#</TableHead>
                 <TableHead className="w-[32%] pl-2 h-9">Product</TableHead>
                 <TableHead className="w-[13%] text-center h-9">Qty</TableHead>
+                {showCost && <TableHead className="w-[12%] text-right h-9">Cost</TableHead>}
                 <TableHead className="w-[17%] text-right h-9">Price</TableHead>
                 <TableHead className="w-[17%] text-right pr-4 h-9">Total</TableHead>
                 <TableHead className="w-[12%] text-center h-9">VAT</TableHead>
@@ -49,7 +72,7 @@ export function AddInvoiceItemsTable({ form, fields, remove, total, vatAmount, h
             <TableBody>
               {fields.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-[calc(100vh-420px)] min-h-[300px] text-center text-muted-foreground">
+                  <TableCell colSpan={colCount} className="h-[calc(100vh-420px)] min-h-[300px] text-center text-muted-foreground">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <div className="bg-muted p-4 rounded-full"><Search className="h-8 w-8 opacity-20" /></div>
                       <p className="font-medium">No items added</p>
@@ -88,6 +111,11 @@ export function AddInvoiceItemsTable({ form, fields, remove, total, vatAmount, h
                         />
                       </div>
                     </TableCell>
+                    {showCost && (
+                      <TableCell className="py-1 text-right font-mono text-muted-foreground tabular-nums">
+                        ₱{unitCostOf(field).toFixed(2)}
+                      </TableCell>
+                    )}
                     <TableCell className="py-1 text-right">
                       <FormField
                         control={form.control}
