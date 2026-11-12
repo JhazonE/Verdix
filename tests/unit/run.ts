@@ -45,6 +45,7 @@ import './price-update-math.test';
 import './price-list-template.test';
 import './price-list-import-match.test';
 import './price-list-import-chunking.test';
+import './price-list-import-apply.test';
 import './low-stock-alerts.test';
 import './seed-default-price-level.test';
 import './price-level-calc.test';

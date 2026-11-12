@@ -71,6 +71,15 @@ export function useUploadPriceList(warehouseId: string, onUpdated?: () => void) 
         final = frame;
       }
     });
+    // The stream can end without a 'done' frame (server restart, proxy cut).
+    // Say so plainly — for an apply, some chunks may already have committed.
+    if (!final) {
+      throw new Error(
+        mode === 'apply'
+          ? 'The connection ended before the server finished. Some prices may already have been updated — re-upload the same file to preview what is left (it is safe to re-run).'
+          : 'The connection ended before the preview finished. Please try again.',
+      );
+    }
     return final;
   };
 

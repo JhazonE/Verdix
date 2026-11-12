@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { parseXlsxBuffer, parseCsvText } from '@/lib/import/parse-file';
-import { mapParsedRowsToPriceListRows } from '@/app/(app)/products/bulk-price-update/price-list-template';
+import { mapParsedRowsToPriceListRows, findPriceListHeaderProblem } from '@/app/(app)/products/bulk-price-update/price-list-template';
 import { checkApprovalRequired } from '@/lib/approvals';
 import {
   loadMatchMaps, matchPriceListRows, applyMatchedItems, insertNewProducts,
@@ -40,6 +40,8 @@ export async function POST(request: NextRequest) {
     const parsed = name.endsWith('.xlsx') || name.endsWith('.xls')
       ? parseXlsxBuffer(await file.arrayBuffer())
       : parseCsvText(await file.text());
+    const headerProblem = findPriceListHeaderProblem(parsed.headers);
+    if (headerProblem) return Response.json({ message: headerProblem }, { status: 400 });
     rows = mapParsedRowsToPriceListRows(parsed);
   } catch (error: any) {
     return Response.json({ message: `Could not read the spreadsheet: ${error.message}` }, { status: 400 });

@@ -85,7 +85,7 @@ export function matchPriceListRows(rows: PriceListRow[], maps: MatchMaps): Price
       continue;
     }
     if (seenBarcodes.has(barcode)) {
-      skipped.push({ row, reason: `Duplicate barcode "${barcode}" (earlier row in this file superseded)` });
+      skipped.push({ row, reason: `Duplicate barcode "${barcode}" — only the first occurrence in the file is used` });
       continue;
     }
 
@@ -220,8 +220,11 @@ export async function loadMatchMaps(warehouseId: string, rows: PriceListRow[]): 
 export async function applyMatchedItems(
   items: PriceUpdateItem[],
   onProgress?: (done: number) => void,
+  // Injectable so a test can script a mid-chunk failure without a real DB write.
+  runTransaction: typeof withTransaction = withTransaction,
 ): Promise<{ applied: number; skipped: { productId: string; productName: string; reason: string }[]; error?: string }> {
-  const skipped: { productId: string; productName: string; reason: string }[] = [];
+  type Skip = { productId: string; productName: string; reason: string };
+  const skipped: Skip[] = [];
   let applied = 0;
   let done = 0;
 
@@ -240,14 +243,19 @@ export async function applyMatchedItems(
   // failure (e.g. lost DB connection) would just repeat on every later chunk.
   let error: string | undefined;
   for (const part of chunk(items, APPLY_CHUNK_SIZE)) {
+    // Tallied per chunk and merged only after the transaction commits: if a
+    // later row throws, the whole chunk rolls back, so rows counted earlier in
+    // it never reached the database and must not appear in the totals.
+    let chunkApplied = 0;
+    const chunkSkipped: Skip[] = [];
     try {
-      await withTransaction(async (connection) => {
+      await runTransaction(async (connection) => {
         for (const item of part) {
           // connection.query() is raw mysql2 and DOES return [rows, fields] —
           // unlike query() above, this destructuring is correct.
           const [rows]: any = await connection.query('SELECT id, cost FROM products WHERE id = ?', [item.productId]);
           if (!rows || rows.length === 0) {
-            skipped.push({ productId: item.productId, productName: item.productName, reason: 'Product no longer exists' });
+            chunkSkipped.push({ productId: item.productId, productName: item.productName, reason: 'Product no longer exists' });
             continue;
           }
 
@@ -268,7 +276,7 @@ export async function applyMatchedItems(
             // The unit was deleted or re-parented between preview and apply.
             // Falling back to the base unit would silently reprice the WRONG
             // unit, so skip instead.
-            skipped.push({
+            chunkSkipped.push({
               productId: item.productId,
               productName: item.productName,
               reason: 'Selling unit no longer exists',
@@ -292,7 +300,7 @@ export async function applyMatchedItems(
             // "sell at cost"), so letting an unknown cost through would
             // silently mark the unit down to ₱0.00 and report it as applied.
             if (!isBaseTarget && (targetUnit.cost === null || targetUnit.cost === undefined)) {
-              skipped.push({
+              chunkSkipped.push({
                 productId: item.productId,
                 productName: item.productName,
                 reason: `${item.sellingUnitName || 'Selling unit'} has no cost to mark up`,
@@ -306,7 +314,7 @@ export async function applyMatchedItems(
           }
 
           if (!isValidPriceValue(newValue)) {
-            skipped.push({ productId: item.productId, productName: item.productName, reason: 'Computed price is invalid' });
+            chunkSkipped.push({ productId: item.productId, productName: item.productName, reason: 'Computed price is invalid' });
             continue;
           }
 
@@ -376,17 +384,19 @@ export async function applyMatchedItems(
                 [targetUnit.id, item.priceLevelId, newValue],
               );
             } else {
-              skipped.push({ productId: item.productId, productName: item.productName, reason: 'Product has no base selling unit' });
+              chunkSkipped.push({ productId: item.productId, productName: item.productName, reason: 'Product has no base selling unit' });
               continue;
             }
           }
-          applied++;
+          chunkApplied++;
         }
       });
     } catch (err: any) {
       error = err?.message || 'Failed to apply price changes.';
       break;
     }
+    applied += chunkApplied;
+    skipped.push(...chunkSkipped);
     done += part.length;
     onProgress?.(done);
   }
