@@ -5,6 +5,9 @@ import { getNextReference, getNextReceiptNumber } from '../../../../lib/mysql';
 import { PoolConnection } from 'mysql2/promise';
 import { deductFromBatches, getBatchCostingSettings } from '../../../../lib/batch-deduction';
 import { baseQuantity } from '../../../../lib/selling-units';
+import { resolveInitialSettlement } from '../../../../lib/invoice-payment';
+import { ensurePaymentAllocationsTable } from '../../../../lib/invoice-payment-db';
+import { nextPaymentReference } from '../../../../lib/payment-reference';
 
 const VAT_RATE = 0.12;
 
@@ -53,18 +56,30 @@ export class CreateSaleUseCase {
 
     const receiptNumber = await getNextReceiptNumber();
 
+    // Cash / GCash / PayPal are paid on the spot, so the invoice is created
+    // Paid (amount_paid = total). Charge is credit and stays Pending. Doing
+    // this HERE, not in the form, means every caller gets it, and the browser
+    // cannot claim a status the payment method does not support.
+    const settlement = resolveInitialSettlement(request.paymentMethod, total, request.status);
+    // Paid on the spot means due on the spot: a stale future due date typed
+    // before the method was changed would otherwise sit on a settled invoice.
+    const dueDate = settlement.paidNow ? request.invoiceDate : request.dueDate;
+    const hasAccount = Boolean(request.customer?.id) && request.customer.id !== 'walk-in';
+    if (settlement.paidNow && hasAccount) await ensurePaymentAllocationsTable();
+
     const saleEntity: SaleEntity = {
       id: saleId,
       customerId: request.customer.id,
       reference: finalReference,
       receiptNumber,
       invoiceDate: request.invoiceDate,
-      dueDate: request.dueDate,
+      dueDate,
       total,
+      amountPaid: settlement.amountPaid,
       vatAmount,
       paymentMethod: request.paymentMethod,
       paymentReference: request.paymentReference,
-      status: request.status || 'Pending',
+      status: settlement.status as SaleEntity['status'],
       transactionSource: 'Backoffice',
       notes: request.notes,
       items: request.items.map((item, index) => ({
@@ -85,6 +100,40 @@ export class CreateSaleUseCase {
     await this.saleRepository.saveWithTransaction(saleEntity, async (connection: PoolConnection) => {
       // Get batch costing settings
       const { oversellBlock } = await getBatchCostingSettings(connection);
+
+      // 0. A sale paid on the spot also records the PAYMENT, the same way
+      // Record Payment does: a customer_payments row plus the allocation that
+      // ties it to this invoice. Marking the invoice Paid without them would
+      // leave the statement of account showing the invoice as a debit with no
+      // payment against it, and a later void could not tell the customer's
+      // real money (refundable) from credit they had merely spent.
+      // Walk-in sales have no account to record against, so only the status
+      // and amount_paid carry the settlement.
+      if (settlement.paidNow && hasAccount) {
+        const paymentId = `pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        // Reference is auto-allocated, never the typed one: that is the
+        // GCash/PayPal transaction number, kept on the invoice itself, and a
+        // duplicate in the UNIQUE payment index must not fail the whole sale.
+        await nextPaymentReference(connection, null, async (ref) => {
+          await connection.query(
+            `INSERT INTO customer_payments (
+               id, customer_id, payment_type, payment_date, amount, reference, note, created_at, updated_at
+             ) VALUES (?, ?, ?, NOW(), ?, ?, ?, NOW(), NOW())`,
+            [
+              paymentId,
+              request.customer.id,
+              request.paymentMethod,
+              total,
+              ref,
+              `Payment for Invoice #${finalReference}. Paid on issue (${request.paymentMethod})${request.paymentReference ? ` — ref ${request.paymentReference}` : ''}.`,
+            ]
+          );
+        });
+        await connection.query(
+          `INSERT INTO payment_allocations (id, payment_id, invoice_id, amount_allocated) VALUES (?, ?, ?, ?)`,
+          [`pa_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, paymentId, saleId, total]
+        );
+      }
 
       // 1. Check and deduct inventory for each item
       for (let i = 0; i < request.items.length; i++) {

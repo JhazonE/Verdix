@@ -9,6 +9,7 @@ import { logActivity } from '@/lib/client-activity-logger';
 import { getApiUrl } from '@/lib/api-config';
 import type { Product, PaymentMethod } from '@/lib/types';
 import { mapVatStatusToTaxType } from '@/lib/tax-utils';
+import { isImmediatePaymentMethod } from '@/lib/invoice-payment';
 import { salesInvoiceSchema, type SalesInvoiceFormValues } from './add-invoice-types';
 
 const VAT_RATE = 0.12;
@@ -98,8 +99,9 @@ export function useAddInvoiceForm({ paymentMethods, onClose, onSuccess }: Props)
   useEffect(() => {
     if (!watchedInvoiceDate) return;
     let calculatedDueDate = watchedInvoiceDate;
-    const immediatePaymentMethods = ['Cash', 'PayPal', 'GCash'];
-    if (watchedPaymentMethod && immediatePaymentMethods.includes(watchedPaymentMethod)) {
+    // Same rule the server uses to create the invoice already Paid (see
+    // lib/invoice-payment.ts): paid on the spot means due on the spot.
+    if (watchedPaymentMethod && isImmediatePaymentMethod(watchedPaymentMethod)) {
       form.setValue('dueDate', calculatedDueDate);
       return;
     }

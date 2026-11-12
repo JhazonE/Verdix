@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { formatSINumber } from '@/lib/si-number';
 import { lineCostExpr } from '@/lib/cost-of-sale';
+import { profitOf } from '@/lib/profit';
 
 // voided_by_name and void_reason are both added lazily by
 // /api/pos/void-transaction — this report can be the first thing to run against a
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest) {
       const salesAmount = parseFloat(row.sales_amount) || 0;
       const totalCost = parseFloat(row.total_cost) || 0;
       const vatAmount = parseFloat(row.vat_amount) || 0;
-      const profit = salesAmount - totalCost;
+      const profit = profitOf(salesAmount, totalCost);
       // Vatable sales: sales amount minus VAT (VAT inclusive calculation)
       const vatableSales = salesAmount - vatAmount;
 

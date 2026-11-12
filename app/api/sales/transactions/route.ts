@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 // Force rebuild: Fixed import path
 import { query, withTransaction, getNextReference, getNextReceiptNumber } from '@/lib/mysql';
 import { lineCostExpr, unitCostExpr } from '@/lib/cost-of-sale';
+import { profitOf } from '@/lib/profit';
 import { deductFromBatches, getBatchCostingSettings } from '@/lib/batch-deduction';
 import { isService } from '@/lib/product-type';
+import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 
 export async function GET(request: NextRequest) {
   try {
@@ -131,6 +133,65 @@ export async function GET(request: NextRequest) {
       params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
 
+    // BACK-OFFICE INVOICES. A sales invoice keyed in on Sales > Invoices writes
+    // sales_invoices only, never pos_transactions, so everything above is blind
+    // to it. It is listed here as a second source, filtered by the same inputs.
+    // See lib/backoffice-sales.ts for what counts as one (and why a Pending
+    // invoice does).
+    //
+    // Filters that can only be satisfied by a till EXCLUDE the back-office
+    // source rather than being ignored, otherwise "Terminal 2" or "cashier Ana"
+    // would still list invoices nobody rang up on a terminal:
+    //   terminal, cashier  -> a back-office invoice has neither
+    //   status = Returned  -> returns are POS events; an invoice is never one
+    const includeBackoffice =
+      !(terminalId && terminalId !== 'all') &&
+      !(cashier && cashier !== 'all') &&
+      status !== 'Returned';
+
+    const boParams: any[] = [];
+    let boWhere = `WHERE ${backofficeInvoiceSql('sinv')}`;
+    if (includeBackoffice) {
+      if (productId) {
+        boWhere += ` AND EXISTS (SELECT 1 FROM sales_invoice_items sii WHERE sii.sales_invoice_id = sinv.id AND sii.product_id = ?)`;
+        boParams.push(productId);
+      }
+      // invoice_date is the accounting date typed on the invoice form, and is
+      // what Sales by Date buckets back-office sales by, so the two agree.
+      if (startDate) {
+        boWhere += ' AND DATE(sinv.invoice_date) >= ?';
+        boParams.push(startDate);
+      }
+      if (endDate) {
+        boWhere += ' AND DATE(sinv.invoice_date) <= ?';
+        boParams.push(endDate);
+      }
+      if (status && status !== 'Paid') {
+        boWhere += ' AND sinv.status = ?';
+        boParams.push(status);
+      } else if (status === 'Paid') {
+        boWhere += " AND sinv.status = 'Paid'";
+      }
+      if (paymentMethod && paymentMethod !== 'all') {
+        boWhere += ' AND sinv.payment_method = ?';
+        boParams.push(paymentMethod);
+      }
+      if (customer) {
+        boWhere += ' AND bc.name LIKE ?';
+        boParams.push(`%${customer}%`);
+      }
+      if (reference) {
+        boWhere += ' AND (sinv.id LIKE ? OR sinv.reference LIKE ? OR sinv.receipt_number LIKE ?)';
+        boParams.push(`%${reference}%`, `%${reference}%`, `%${reference}%`);
+      }
+      if (search) {
+        boWhere += ' AND (sinv.id LIKE ? OR sinv.reference LIKE ? OR sinv.receipt_number LIKE ? OR bc.name LIKE ?)';
+        boParams.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+      }
+    }
+    // When excluded, the invoice leg simply contributes nothing.
+    const BO_TIME = 'TIMESTAMP(sinv.invoice_date, TIME(sinv.created_at))';
+
     // Voided rows are already gone from whereClause above. Returned rows still pass
     // through (Merchandise Credits explicitly requests status=Returned from this same
     // endpoint), so the totals still need their own carve-out: skip the sale-only
@@ -139,7 +200,10 @@ export async function GET(request: NextRequest) {
     let totalsWhereClause = whereClause;
     const totalsParams = [...params];
     if (status !== 'Returned') {
-      totalsWhereClause += " AND pt.transaction_type = 'sale' AND COALESCE(st.status, '') NOT IN ('Returned', 'Cancelled')";
+      // Return rows are INCLUDED (they carry negative amounts and a negative
+      // cost), so the cards are net of returns and agree with By Product, Sales
+      // by Date and Fiscal Year. See lib/profit.ts.
+      totalsWhereClause += " AND pt.transaction_type IN ('sale', 'return') AND COALESCE(st.status, '') NOT IN ('Returned', 'Cancelled')";
     }
 
     // 1. Get total count
@@ -160,7 +224,20 @@ export async function GET(request: NextRequest) {
     `;
 
     const countResult = await query(fullCountSql, params);
-    const totalRecords = countResult[0]?.total || 0;
+    const posRecords = Number(countResult[0]?.total) || 0;
+
+    // Back-office invoices count toward the same pagination, so a page is
+    // sized over BOTH sources and the page count matches what the list shows.
+    const boFrom = `
+      FROM sales_invoices sinv
+      LEFT JOIN customers bc ON sinv.customer_id = bc.id
+      ${boWhere}`;
+    let boRecords = 0;
+    if (includeBackoffice) {
+      const boCount = await query(`SELECT COUNT(*) AS total ${boFrom}`, boParams);
+      boRecords = Number(boCount[0]?.total) || 0;
+    }
+    const totalRecords = posRecords + boRecords;
     const totalPages = Math.ceil(totalRecords / limit);
 
     // 1b. Get aggregate totals across ALL matching rows (not just the current page).
@@ -206,24 +283,88 @@ export async function GET(request: NextRequest) {
     const aggVatableSales = parseFloat(totalsRow.vatableSales) || 0;
     const aggAccountPayments = parseFloat(totalsRow.accountPayments) || 0;
     const aggCost = parseFloat(totalsRow.cost) || 0;
+
+    // Back-office invoices, summed in SQL over every match (not just this
+    // page). Unlike a POS sale they can be unpaid, so they are the only rows
+    // that carry a balance: amount_paid is what has actually been collected.
+    let bo = { revenue: 0, vat: 0, paid: 0, cost: 0, account: 0 };
+    if (includeBackoffice) {
+      const boTotals = await query(
+        `SELECT
+           COALESCE(SUM(sinv.total), 0) AS revenue,
+           COALESCE(SUM(sinv.vat_amount), 0) AS vat,
+           COALESCE(SUM(COALESCE(sinv.amount_paid, 0)), 0) AS paid,
+           COALESCE(SUM(CASE WHEN sinv.payment_method = 'Account' THEN sinv.total ELSE 0 END), 0) AS account,
+           COALESCE(SUM((SELECT SUM(sii.quantity * ${unitCostExpr('sii', 'p', { hasCostAtSale: true })})
+                         FROM sales_invoice_items sii
+                         LEFT JOIN products p ON sii.product_id = p.id
+                         WHERE sii.sales_invoice_id = sinv.id)), 0) AS cost
+         ${boFrom}`,
+        boParams
+      );
+      const r = boTotals[0] || {};
+      bo = {
+        revenue: parseFloat(r.revenue) || 0,
+        vat: parseFloat(r.vat) || 0,
+        paid: parseFloat(r.paid) || 0,
+        cost: parseFloat(r.cost) || 0,
+        account: parseFloat(r.account) || 0,
+      };
+    }
+
+    const totalRevenue = aggRevenue + bo.revenue;
+    const totalCost = aggCost + bo.cost;
     const totals = {
       discounts: aggDiscounts,
-      revenue: aggRevenue,
-      amountPaid: aggRevenue,
-      customerBalance: 0,
-      cost: aggCost,
-      grossProfit: aggRevenue - aggCost - aggVatAmount,
-      vatableSales: aggVatableSales,
-      vatAmount: aggVatAmount,
+      revenue: totalRevenue,
+      // A POS sale is paid in full at the till; a back-office invoice is paid
+      // only to the extent amount_paid says so.
+      amountPaid: aggRevenue + bo.paid,
+      customerBalance: bo.revenue - bo.paid,
+      cost: totalCost,
+      grossProfit: profitOf(totalRevenue, totalCost),
+      vatableSales: aggVatableSales + (bo.revenue - bo.vat),
+      vatAmount: aggVatAmount + bo.vat,
       nonVatSales: 0,
-      accountPayments: aggAccountPayments,
+      accountPayments: aggAccountPayments + bo.account,
     };
 
     // 2. Get paginated data
-    const dataSql = baseSql + whereClause + ' ORDER BY pt.transaction_time DESC LIMIT ? OFFSET ?';
-    params.push(limit, offset);
+    // The page is chosen FIRST, over both sources together, from a light key
+    // query: (sort time, POS id, invoice id). Only then are the full rows for
+    // that page fetched per source. Merging two fully-hydrated, separately
+    // paginated lists would give wrong pages; paginating the union is the only
+    // way "page 2" means the next 50 newest rows regardless of source.
+    //
+    // The two id columns are kept SEPARATE (NULL in the other leg) instead of
+    // being coalesced into one: pos_transactions.id and sales_invoices.id can
+    // differ in collation, and mixing them in one expression fails at runtime.
+    const keyParams = [...params];
+    let keySql = `
+      SELECT pt.transaction_time AS sort_time, pt.id AS pos_id, NULL AS bo_id
+      FROM pos_transactions pt
+      LEFT JOIN users u ON pt.user_id = u.uid
+      LEFT JOIN pos_terminals term ON pt.terminal_id = term.id
+      LEFT JOIN sales_transactions st ON pt.sale_id = st.id
+      LEFT JOIN customers c ON st.customer_id = c.id
+      WHERE 1=1 ${whereClause}`;
+    if (includeBackoffice) {
+      keySql += `
+      UNION ALL
+      SELECT ${BO_TIME} AS sort_time, NULL AS pos_id, sinv.id AS bo_id
+      ${boFrom}`;
+      keyParams.push(...boParams);
+    }
+    keySql += ' ORDER BY sort_time DESC, pos_id, bo_id LIMIT ? OFFSET ?';
+    keyParams.push(limit, offset);
+    const pageKeys: any[] = await query(keySql, keyParams);
 
-    const transactions = await query(dataSql, params);
+    const posIds = pageKeys.map((k) => k.pos_id).filter(Boolean);
+    const boIds = pageKeys.map((k) => k.bo_id).filter(Boolean);
+
+    const transactions: any[] = posIds.length > 0
+      ? await query(`${baseSql} AND pt.id IN (${posIds.map(() => '?').join(',')})`, posIds)
+      : [];
     
     // Fetch items for these transactions
     let transactionItems: any[] = [];
@@ -288,7 +429,7 @@ export async function GET(request: NextRequest) {
     });
     
     // Transform logic if needed
-    const data = transactions.map((row: any) => {
+    const posData = transactions.map((row: any) => {
       const totalAmount = parseFloat(row.total_amount) || 0;
       const taxAmount = parseFloat(row.tax_amount) || 0;
       const discountAmount = parseFloat(row.discount_amount) || 0;
@@ -299,7 +440,7 @@ export async function GET(request: NextRequest) {
       
       // Calculate total cost and profit based on items
       const calculatedCost = items.reduce((sum: number, item: any) => sum + (item.cost * item.quantity), 0);
-      const calculatedProfit = totalAmount - calculatedCost - taxAmount; // Profit = Revenue - Cost - Tax
+      const calculatedProfit = profitOf(totalAmount, calculatedCost); // Profit = Sales - Cost (see lib/profit.ts)
 
       // Calculate vatable sales (total minus VAT)
       const vatableSales = totalAmount - taxAmount;
@@ -357,6 +498,111 @@ export async function GET(request: NextRequest) {
         originalCashierName: row.original_cashier_name || null
       };
     });
+
+    // ---- Back-office invoices on this page -------------------------------
+    // Shaped like a POS row so every consumer (Sales Transactions, Sales
+    // Details, the Sales by Date drill-down, exports) renders it unchanged.
+    // posTransactionId is left undefined: they all key rows by
+    // `posTransactionId || id`, and an invoice has no POS transaction.
+    let boData: any[] = [];
+    if (boIds.length > 0) {
+      const boPh = boIds.map(() => '?').join(',');
+      const boRows: any[] = await query(
+        `SELECT sinv.id, sinv.reference, sinv.receipt_number, sinv.customer_id, sinv.total,
+                sinv.vat_amount, COALESCE(sinv.amount_paid, 0) AS amount_paid, sinv.payment_method,
+                sinv.payment_reference, sinv.status, sinv.notes,
+                ${BO_TIME} AS tx_time,
+                bc.name AS customer_name, bc.contact_number AS customer_contact
+         FROM sales_invoices sinv
+         LEFT JOIN customers bc ON sinv.customer_id = bc.id
+         WHERE sinv.id IN (${boPh})`,
+        boIds
+      );
+      const boItemRows: any[] = await query(
+        `SELECT sii.id, sii.sales_invoice_id, sii.product_id, sii.product_name, sii.quantity, sii.price,
+                ${unitCostExpr('sii', 'p', { hasCostAtSale: true })} AS product_cost,
+                p.description, p.unit_of_measure
+         FROM sales_invoice_items sii
+         LEFT JOIN products p ON sii.product_id = p.id
+         WHERE sii.sales_invoice_id IN (${boPh})
+         ORDER BY sii.created_at ASC`,
+        boIds
+      );
+      const boItemsByInvoice: Record<string, any[]> = {};
+      boItemRows.forEach((it: any) => {
+        const qty = parseFloat(it.quantity) || 0;
+        const price = parseFloat(it.price) || 0;
+        (boItemsByInvoice[it.sales_invoice_id] ||= []).push({
+          id: it.id,
+          productId: it.product_id,
+          productName: it.product_name,
+          description: it.description,
+          quantity: it.quantity,
+          price,
+          total: price * qty,
+          cost: parseFloat(it.product_cost) || 0,
+          discount: 0,
+          unitOfMeasure: it.unit_of_measure,
+        });
+      });
+
+      boData = boRows.map((row: any) => {
+        const total = parseFloat(row.total) || 0;
+        const vat = parseFloat(row.vat_amount) || 0;
+        const amountPaid = parseFloat(row.amount_paid) || 0;
+        const items = boItemsByInvoice[row.id] || [];
+        const cost = items.reduce((sum: number, it: any) => sum + it.cost * it.quantity, 0);
+        // No BIR SI number: those are issued at a terminal. Fall back to the
+        // invoice's own number so the column is never blank.
+        const docNo = row.receipt_number || row.reference || row.id;
+        return {
+          id: row.id,
+          reference: row.reference,
+          transactionSource: 'Backoffice',
+          siNumber: docNo,
+          mcNumber: null,
+          orderNumber: null,
+          receiptNo: row.receipt_number,
+          posTransactionId: undefined,
+          date: row.tx_time,
+          total,
+          subtotal: total - vat,
+          discount: 0,
+          taxAmount: vat,
+          vatableSales: total - vat,
+          nonVatSales: 0,
+          amountPaid,
+          balance: Math.max(0, total - amountPaid),
+          cost,
+          profit: profitOf(total, cost),
+          notes: row.notes || '',
+          paymentStatus: row.status === 'Paid' ? 'completed' : 'pending',
+          status: row.status,
+          transactionType: 'sale',
+          paymentMethod: row.payment_method,
+          paymentReference: row.payment_reference,
+          customer: {
+            id: row.customer_id,
+            name: row.customer_name || 'Walk-in Customer',
+            contactNumber: row.customer_contact,
+          },
+          cashier: 'N/A',
+          terminal: 'N/A',
+          items,
+          originalSINumber: null,
+          originalOrderNumber: null,
+          originalTransactionTime: null,
+          originalCashierName: null,
+        };
+      });
+    }
+
+    // Restore the page's order (newest first) across both sources.
+    const posById = new Map(posData.map((d: any) => [d.posTransactionId, d]));
+    const boById = new Map(boData.map((d: any) => [d.id, d]));
+    const data = pageKeys
+      .map((k) => (k.pos_id ? posById.get(k.pos_id) : boById.get(k.bo_id)))
+      .filter(Boolean);
 
     return NextResponse.json({
       success: true,

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { sumLineCostExpr, unitCostExpr } from '@/lib/cost-of-sale';
+import { profitOf, lineDateExpr } from '@/lib/profit';
 import { parseTaxType, taxTypeFilterSql } from '@/lib/tax-utils';
+import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 
 export async function GET(request: NextRequest) {
   try {
@@ -64,12 +66,14 @@ export async function GET(request: NextRequest) {
          `;
          params.push(terminalId);
 
+        // A return line (negative quantity) is dated by when it was returned,
+        // not by the original sale. See lib/profit.ts.
         if (startDate) {
-          whereClause += ` AND DATE(pt.transaction_time) >= ?`;
+          whereClause += ` AND DATE(${lineDateExpr('si', 'pt.transaction_time')}) >= ?`;
           params.push(startDate);
         }
         if (endDate) {
-          whereClause += ` AND DATE(pt.transaction_time) <= ?`;
+          whereClause += ` AND DATE(${lineDateExpr('si', 'pt.transaction_time')}) <= ?`;
           params.push(endDate);
         }
         if (category && category !== 'all') {
@@ -126,7 +130,11 @@ export async function GET(request: NextRequest) {
             FROM sales_invoice_items sii
             JOIN sales_invoices sinv ON sii.sales_invoice_id = sinv.id
             LEFT JOIN products p_cost ON sii.product_id = p_cost.id
-            WHERE sinv.status = 'Paid' AND (sinv.notes IS NULL OR sinv.notes NOT LIKE '%POS Sale%')`;
+            -- Back-office invoices only (POS mirrors its own sales into
+            -- sales_invoices, which the POS leg already counts), and a Pending
+            -- invoice counts: it is the default state of a back-office sale.
+            -- See lib/backoffice-sales.ts.
+            WHERE ${backofficeInvoiceSql('sinv')}`;
 
         // Sales orders leg — likewise has no tax column.
         const orderLeg = `
@@ -173,7 +181,7 @@ export async function GET(request: NextRequest) {
               ${unitCostExpr('si', 'p_cost', { hasCostAtSale: true })} as unit_cost,
               GREATEST(0, COALESCE(pti.discount_amount, 0)) as discount_amount,
               st.id as source_id,
-              st.invoice_date as transaction_date,
+              ${lineDateExpr('si', 'st.invoice_date')} as transaction_date,
               u.display_name as cashier_name,
               pt.id as reference_no
             FROM sale_items si
@@ -280,7 +288,7 @@ export async function GET(request: NextRequest) {
       totalRevenue: aggRevenue,
       totalDiscount: aggDiscount,
       totalCost: aggCost,
-      totalProfit: aggRevenue - aggCost - aggDiscount,
+      totalProfit: profitOf(aggRevenue - aggDiscount, aggCost),
       unitsSold: parseInt(totalsRow.unitsSold) || 0,
     };
 
@@ -315,7 +323,10 @@ export async function GET(request: NextRequest) {
       totalRevenue: parseFloat(row.total_revenue),
       totalDiscount: parseFloat(row.total_discount || 0),
       totalCost: parseFloat(row.total_cost || 0),
-      totalProfit: parseFloat(row.total_revenue) - parseFloat(row.total_cost || 0) - parseFloat(row.total_discount || 0),
+      totalProfit: profitOf(
+        parseFloat(row.total_revenue) - parseFloat(row.total_discount || 0),
+        parseFloat(row.total_cost || 0),
+      ),
       numberOfSales: parseInt(row.number_of_sales),
       avgPricePerUnit: parseFloat(row.avg_price_per_unit),
     }));

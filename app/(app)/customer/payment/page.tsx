@@ -37,7 +37,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { Sale, Customer } from '@/lib/types';
-import { format, isPast } from 'date-fns';
+import { format } from 'date-fns';
+import { isPastDue } from '@/lib/due-date';
 import RecordPaymentDialog from './record-payment-dialog';
 import ViewInvoiceDialog from './view-invoice-dialog';
 import ViewPaymentDialog from './view-payment-dialog';
@@ -156,7 +157,10 @@ function OutstandingInvoices() {
         // NOT NULL), so these badges and the summary cards agree by
         // construction. No invoice has a NULL due_date today.
         if (!sale.dueDate) return { text: sale.status, variant: 'secondary' as const };
-        if (isPast(new Date(sale.dueDate))) return { text: 'Overdue', variant: 'destructive' as const };
+        // By calendar day (lib/due-date.ts): due today is not overdue until
+        // today is over. isPast() flagged it from 00:00, disagreeing with the
+        // endpoint's `due_date < CURDATE()` totals.
+        if (isPastDue(sale.dueDate)) return { text: 'Overdue', variant: 'destructive' as const };
         return { text: sale.status , variant: 'secondary' as const };
     }
 
@@ -908,7 +912,7 @@ function StatementOfAccount() {
                     const balance = isVoided ? 0 : invoiceAmount - Number(inv.amountPaid || 0);
                     const isPaid = !isVoided && balance <= 0.005;
                     const dueDate = inv.dueDate ? new Date(inv.dueDate) : null;
-                    const isOverdue = !isVoided && !isPaid && dueDate && isPast(dueDate);
+                    const isOverdue = !isVoided && !isPaid && dueDate && isPastDue(dueDate);
                     const badgeClass = isVoided ? 'badge-out' : isPaid ? 'badge-paid' : isOverdue ? 'badge-over' : 'badge-out';
                     const badgeText = isVoided ? 'VOID' : isPaid ? 'Paid' : isOverdue ? 'Overdue' : 'Outstanding';
                     const strike = isVoided ? 'text-decoration:line-through;color:#999;' : '';
@@ -1142,7 +1146,7 @@ function StatementOfAccount() {
                             const balance = isVoided ? 0 : invoiceAmount - Number(inv.amountPaid || 0);
                             const isPaid = !isVoided && balance <= 0.005;
                             const dueDate = inv.dueDate ? new Date(inv.dueDate) : null;
-                            const isOverdue = !isVoided && !isPaid && dueDate && isPast(dueDate);
+                            const isOverdue = !isVoided && !isPaid && dueDate && isPastDue(dueDate);
                             return (
                                 <Card key={inv.id} className={cn("overflow-hidden", isVoided ? "border-muted opacity-70" : isPaid ? "border-green-200 dark:border-green-900/40" : isOverdue ? "border-destructive/40" : "")}>
                                     <CardHeader className="flex flex-row items-start justify-between gap-4 border-b bg-muted/20 py-4">

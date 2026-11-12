@@ -5,6 +5,7 @@ import { MySqlCustomerRepository } from '../../../src/infrastructure/repositorie
 import { InventorySyncService } from '../../../src/infrastructure/services/InventorySyncService';
 import { CreateSaleUseCase } from '../../../src/core/sales/application/CreateSaleUseCase';
 import { GetSalesUseCase } from '../../../src/core/sales/application/GetSalesUseCase';
+import { isImmediatePaymentMethod } from '../../../lib/invoice-payment';
 
 // Initialize dependencies
 const saleRepository = new MySqlSaleRepository();
@@ -31,7 +32,10 @@ export async function POST(request: NextRequest) {
         dueDate: body.dueDate,
         total: body.total, // Total is recalculated in Use Case but here we return input or calculate
         paymentMethod: body.paymentMethod,
-        status: body.status || 'Pending',
+        // Mirror the use case: cash-like methods are created Paid.
+        status: (!body.status || body.status === 'Pending') && isImmediatePaymentMethod(body.paymentMethod)
+          ? 'Paid'
+          : body.status || 'Pending',
         items: body.items,
       },
       timestamp: new Date().toISOString()

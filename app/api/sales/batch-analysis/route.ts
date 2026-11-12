@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '../../../../lib/mysql';
+import { profitOf } from '../../../../lib/profit';
+import { backofficeInvoiceSql } from '../../../../lib/backoffice-sales';
 
 /**
  * GET /api/sales/batch-analysis
@@ -59,7 +61,54 @@ export async function GET(request: NextRequest) {
       ORDER BY p.name ASC, st.created_at ASC
     `;
 
-    const rows: any[] = await query(sql, params);
+    const posRows: any[] = await query(sql, params);
+
+    // BACK-OFFICE INVOICES. They deduct stock through the same FIFO batches and
+    // CreateSaleUseCase writes batch_source onto sales_invoice_items exactly as
+    // checkout does onto sale_items, but they never touch sale_items, so this
+    // report could not see the batches they consumed. A Pending invoice counts
+    // (see lib/backoffice-sales.ts); voided ones do not. Dated by invoice_date,
+    // as in every other report, and returned as a 'YYYY-MM-DD' string so no
+    // timezone conversion can move it a day.
+    const boParams: any[] = [startDate, endDate];
+    let boProductFilter = '';
+    if (productId) {
+      boProductFilter = 'AND sii.product_id = ?';
+      boParams.push(productId);
+    }
+    const boRows: any[] = await query(
+      `SELECT
+         sii.id         AS saleItemId,
+         sii.product_id AS productId,
+         p.name         AS productName,
+         su.barcode     AS baseUnitBarcode,
+         p.barcode,
+         p.category,
+         sii.quantity   AS qtySold,
+         sii.price      AS sellingPrice,
+         sii.selling_unit_factor AS sellingUnitFactor,
+         sii.cost_at_sale AS costAtSale,
+         sii.batch_source AS batchSource,
+         DATE_FORMAT(sinv.invoice_date, '%Y-%m-%d') AS saleDate,
+         sinv.reference AS reference
+       FROM sales_invoice_items sii
+       JOIN sales_invoices sinv ON sii.sales_invoice_id = sinv.id
+       JOIN products p ON sii.product_id = p.id
+       LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
+       WHERE ${backofficeInvoiceSql('sinv')}
+         AND DATE(sinv.invoice_date) BETWEEN ? AND ?
+         AND sii.batch_source IS NOT NULL
+         ${boProductFilter}`,
+      boParams
+    );
+
+    // Same order the single query had: product name, then sale date.
+    const dayOf = (v: any) => (v ? new Date(v).getTime() : 0);
+    const rows: any[] = [...posRows, ...boRows].sort(
+      (a, b) =>
+        String(a.productName).localeCompare(String(b.productName)) ||
+        dayOf(a.saleDate) - dayOf(b.saleDate)
+    );
 
     // Expand batch_source JSON into individual rows for the analysis table
     const analysis: any[] = [];
@@ -85,7 +134,7 @@ export async function GET(request: NextRequest) {
         const unitCost = parseFloat(split.unitCost) || 0;
         const lineRevenue = qty * sellingPrice;
         const lineCost = qty * unitCost;
-        const lineProfit = lineRevenue - lineCost;
+        const lineProfit = profitOf(lineRevenue, lineCost);
         const margin = lineRevenue > 0 ? (lineProfit / lineRevenue) * 100 : 0;
 
         // Try to get batch details (received_date, PO reference)
@@ -109,7 +158,9 @@ export async function GET(request: NextRequest) {
 
         analysis.push({
           saleDate: row.saleDate
-            ? new Date(row.saleDate).toISOString().split('T')[0]
+            ? typeof row.saleDate === 'string'
+              ? row.saleDate
+              : new Date(row.saleDate).toISOString().split('T')[0]
             : null,
           saleReference: row.reference,
           productId: row.productId,

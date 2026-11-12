@@ -118,9 +118,9 @@ export class MySqlSaleRepository implements SaleRepository {
       // 1. Insert into sales_invoices
       const insertInvoiceSql = `
         INSERT INTO sales_invoices (
-          id, customer_id, reference, receipt_number, invoice_date, due_date, total, vat_amount, payment_method,
+          id, customer_id, reference, receipt_number, invoice_date, due_date, total, amount_paid, vat_amount, payment_method,
           payment_reference, status, transaction_source, notes, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
       `;
 
       await connection.query(insertInvoiceSql, [
@@ -131,6 +131,9 @@ export class MySqlSaleRepository implements SaleRepository {
         sale.invoiceDate,
         sale.dueDate || null,
         sale.total,
+        // What has actually been settled: the full total for a sale paid on the
+        // spot (Cash/GCash/PayPal), 0 for credit. Never inferred from status.
+        sale.amountPaid ?? 0,
         sale.vatAmount || 0,
         sale.paymentMethod,
         sale.paymentReference || null,

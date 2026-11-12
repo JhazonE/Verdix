@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import type { Sale } from '@/lib/types';
 import { DateRange } from 'react-day-picker';
+import { isPastDue, daysPastDue } from '@/lib/due-date';
 
 export const formatAmount = (val: any) =>
   Number(val || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -19,8 +20,9 @@ export const getAmountPaid = (sale: Sale) => {
 
 export const isOverDue = (sale: Sale) => {
   if (sale.status === 'Paid' || sale.status === 'Voided' || sale.status === 'Returned') return false;
-  const dueDate = sale.dueDate ? new Date(sale.dueDate) : new Date();
-  return new Date() > dueDate;
+  // By calendar day: an invoice due today is not overdue until today is over.
+  // See lib/due-date.ts.
+  return isPastDue(sale.dueDate);
 };
 
 export const getStatusInfo = (sale: Sale): { text: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' } => {
@@ -37,10 +39,9 @@ export const getStatusInfo = (sale: Sale): { text: string; variant: 'default' | 
     case 'Pending':
     default: {
       const partial = sale.status === 'Partially Paid';
-      const dueDate = sale.dueDate ? new Date(sale.dueDate) : new Date();
-      const diffDays = Math.ceil((new Date().getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-      if (new Date() > dueDate) {
-        return { text: `Over Due ${diffDays} days`, variant: 'destructive' };
+      const diffDays = daysPastDue(sale.dueDate);
+      if (diffDays > 0) {
+        return { text: `Over Due ${diffDays} day${diffDays === 1 ? '' : 's'}`, variant: 'destructive' };
       }
       return { text: partial ? 'Partially Paid' : 'Due', variant: 'secondary' };
     }
