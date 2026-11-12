@@ -71,7 +71,8 @@ export async function GET(request: NextRequest) {
       { name: 'x_reading_auth_password', type: 'VARCHAR(255) NULL' },
       { name: 'enable_z_reading_auth', type: 'BOOLEAN DEFAULT FALSE' },
       { name: 'z_reading_auth_username', type: 'VARCHAR(255) NULL' },
-      { name: 'z_reading_auth_password', type: 'VARCHAR(255) NULL' }
+      { name: 'z_reading_auth_password', type: 'VARCHAR(255) NULL' },
+      { name: 'show_cost_on_sales_invoice', type: 'TINYINT(1) DEFAULT 0' }
     ];
 
     const currentColumnsResult = await query(
@@ -196,7 +197,8 @@ export async function GET(request: NextRequest) {
         membership_fee AS membershipFee,
         membership_duration_months AS membershipDurationMonths,
         enable_quick_add_customer AS enableQuickAddCustomer,
-        enable_browser_pos AS enableBrowserPos
+        enable_browser_pos AS enableBrowserPos,
+        show_cost_on_sales_invoice AS showCostOnSalesInvoice
       FROM pos_settings
       LIMIT 1
     `;
@@ -459,7 +461,8 @@ export async function POST(request: NextRequest) {
         membershipFee: 'membership_fee',
         membershipDurationMonths: 'membership_duration_months',
         enableQuickAddCustomer: 'enable_quick_add_customer',
-        enableBrowserPos: 'enable_browser_pos'
+        enableBrowserPos: 'enable_browser_pos',
+        showCostOnSalesInvoice: 'show_cost_on_sales_invoice'
       };
 
       const updates: string[] = [];

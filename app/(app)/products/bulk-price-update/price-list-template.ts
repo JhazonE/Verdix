@@ -29,6 +29,28 @@ export function downloadPriceListTemplate(products: TemplateProduct[], warehouse
   XLSX.writeFile(wb, `price-list-${safeName}.xlsx`);
 }
 
+/** "New Price", "new-price" and " NEW_PRICE " all mean the template's `new_price`. */
+function normalizeHeader(h: string): string {
+  return h.trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+/**
+ * Returns a user-facing message when the file cannot possibly do anything, or
+ * null when it is usable. Without this, a misspelt header made every row either
+ * "Missing barcode" or silently a no-op ("0 will be updated, 0 skipped").
+ */
+export function findPriceListHeaderProblem(headers: string[]): string | null {
+  const found = new Set(headers.map(normalizeHeader));
+  const shown = headers.filter(h => h.trim()).join(', ') || '(none)';
+  if (!found.has('barcode')) {
+    return `The file has no "barcode" column. Columns found: ${shown}. Use the downloaded template's column names.`;
+  }
+  if (!found.has('new_price') && !found.has('new_cost') && !found.has('new_markup_pct')) {
+    return `The file has none of the new_price, new_cost or new_markup_pct columns, so there is nothing to update. Columns found: ${shown}.`;
+  }
+  return null;
+}
+
 /** Maps parsed sheet rows (raw header/rows from parseFile) into typed PriceListRow entries. */
 export function mapParsedRowsToPriceListRows(parsed: ParsedFile): PriceListRow[] {
   const num = (v: string | undefined): number | undefined => {
@@ -40,7 +62,10 @@ export function mapParsedRowsToPriceListRows(parsed: ParsedFile): PriceListRow[]
     const t = (v || '').trim();
     return t === '' ? undefined : t;
   };
-  return parsed.rows.map(row => ({
+  return parsed.rows.map(rawRow => {
+    const row: Record<string, string> = {};
+    for (const [key, value] of Object.entries(rawRow)) row[normalizeHeader(key)] = value;
+    return {
     barcode: row.barcode || '',
     name: str(row.name),
     brand: str(row.brand),
@@ -49,5 +74,6 @@ export function mapParsedRowsToPriceListRows(parsed: ParsedFile): PriceListRow[]
     newPrice: num(row.new_price),
     newCost: num(row.new_cost),
     newMarkupPct: num(row.new_markup_pct),
-  }));
+    };
+  });
 }

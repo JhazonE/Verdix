@@ -104,7 +104,9 @@ export class CreateSaleUseCase {
           `UPDATE sales_invoice_items
            SET cost_at_sale = ?, batch_source = ?
            WHERE id = ?`,
-          [deduction.weightedAvgCost, JSON.stringify(deduction.splits), saleItemId]
+          // cost_at_sale is per SELLING unit (price is too) — see lib/cost-of-sale.ts.
+          // weightedAvgCost is per base unit, so scale it by the unit's factor.
+          [deduction.weightedAvgCost * factor, JSON.stringify(deduction.splits), saleItemId]
         );
         // --- END BATCH COSTING ---
 

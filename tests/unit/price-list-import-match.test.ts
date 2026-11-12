@@ -53,6 +53,8 @@ function row(over: Partial<PriceListRow> = {}): PriceListRow {
   assert.equal(r.matched[0].newValue, 55, 'the FIRST occurrence wins');
   assert.equal(r.skipped.length, 1);
   assert.match(r.skipped[0].reason, /Duplicate barcode/);
+  assert.match(r.skipped[0].reason, /first occurrence/i, 'the message must say the FIRST row is the one used');
+  assert.doesNotMatch(r.skipped[0].reason, /superseded/, 'must not claim the earlier row was superseded');
 }
 
 // --- Validation, ported verbatim -------------------------------------

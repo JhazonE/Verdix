@@ -11,6 +11,7 @@ interface PosSettings {
   address?: string;
   contactNumber?: string;
   logoPath?: string;
+  showCostOnSalesInvoice?: boolean;
 }
 
 type QueryParams = {

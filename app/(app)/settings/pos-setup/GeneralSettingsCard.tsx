@@ -53,6 +53,13 @@ export function GeneralSettingsCard({ settings, set }: Props) {
           </div>
           <Switch id="enableLargeInvoice" checked={!!settings.enableLargeInvoice} onCheckedChange={v => set('enableLargeInvoice', v)} />
         </div>
+        <div className="flex items-center justify-between pt-4 border-t">
+          <div className="space-y-0.5">
+            <Label htmlFor="showCostOnSalesInvoice">Show Cost on Sales Invoices</Label>
+            <p className="text-sm text-muted-foreground">Display each item&apos;s cost while creating a sales invoice and include it when the invoice is printed. Off by default, since printed copies go to the customer</p>
+          </div>
+          <Switch id="showCostOnSalesInvoice" checked={!!settings.showCostOnSalesInvoice} onCheckedChange={v => set('showCostOnSalesInvoice', v)} />
+        </div>
       </CardContent>
     </Card>
   );

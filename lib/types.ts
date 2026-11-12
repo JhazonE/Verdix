@@ -483,6 +483,7 @@ export interface SystemSettings {
   zReadingAuthPassword?: string | null;
   posMode?: 'default' | 'pharmacy';
   enableQuickAddCustomer?: boolean;
+  showCostOnSalesInvoice?: boolean;
 }
 
 export interface User {

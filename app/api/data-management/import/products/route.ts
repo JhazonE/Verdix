@@ -3,6 +3,7 @@ import { query, withTransaction } from '@/lib/mysql';
 import { v4 as uuidv4 } from 'uuid';
 import { recordStockMovement } from '@/lib/stock-movements';
 import { legacyProductCsvImport } from './legacy';
+import { resolveVatStatus, type ImportTaxRate } from '@/lib/import/vat-status';
 import { ensureCategoryExists, ensureBrandExists, ensureSubcategoryExists, ensureUnitOfMeasureExists } from '@/lib/ensure-lookup-values';
 
 export async function POST(request: NextRequest) {
@@ -34,10 +35,26 @@ export async function POST(request: NextRequest) {
     // answer that cannot change mid-import.
     const validLevelIds = await loadValidPriceLevelIds();
 
+    // Only fetched when some row actually carries a VAT Status, so a sheet
+    // without that column pays no extra round trip.
+    const taxRates = rows.some((r) => r.vat_status !== undefined && r.vat_status !== null && String(r.vat_status).trim() !== '')
+      ? await loadTaxRates()
+      : [];
+
     for (let i = 0; i < rows.length; i++) {
       const p = rows[i];
       if (!p.name || String(p.name).trim() === '') {
         skipped++; errors.push({ row: i, reason: 'Missing product name' }); continue;
+      }
+      // VAT status is free text on products, matched back against tax_rates
+      // names — a typo would silently classify the product as VATable. Resolve
+      // it up front and reject the row rather than guess. Absent/blank means
+      // "leave alone" (update) or "use the column default" (new).
+      let vatStatus: string | null = null;
+      if (p.vat_status !== undefined && p.vat_status !== null && String(p.vat_status).trim() !== '') {
+        const vat = resolveVatStatus(p.vat_status, taxRates);
+        if (!vat.ok) { skipped++; errors.push({ row: i, reason: vat.reason }); continue; }
+        vatStatus = vat.name;
       }
       try {
         const barcode = p.barcode ? String(p.barcode).trim() : null;
@@ -73,15 +90,16 @@ export async function POST(request: NextRequest) {
             // rather than zeroing it.
             await conn.query(
               `UPDATE products SET name=?, barcode=?, description=?, category=?, brand=?, subcategory=?,
-                 unit_of_measure=?,${hasCost ? ' cost=?,' : ''}${hasPrice ? ' price=?,' : ''} reorder_point=?, image_url=?, conversion_factor=?, updated_at=NOW()
+                 unit_of_measure=?,${hasCost ? ' cost=?,' : ''}${hasPrice ? ' price=?,' : ''}${vatStatus ? ' vat_status=?,' : ''} reorder_point=?, updated_at=NOW()
                WHERE id=?`,
               [
                 p.name, barcode, p.description ?? '', p.category ?? 'General', p.brand ?? null, p.subcategory ?? null,
                 p.unit ?? 'pcs',
                 ...(hasCost ? [upCost] : []),
                 ...(hasPrice ? [upPrice] : []),
+                ...(vatStatus ? [vatStatus] : []),
                 num(p.reorder_point),
-                p.image_url ?? null, p.conversion_factor != null ? num(p.conversion_factor) : 1, existing.id,
+                existing.id,
               ],
             );
 
@@ -153,12 +171,12 @@ export async function POST(request: NextRequest) {
           await withTransaction(async (conn) => {
             await conn.query(
               `INSERT INTO products (id, name, sku, barcode, description, category, brand, subcategory,
-                 unit_of_measure, cost, price, stock, reorder_point, image_url, conversion_factor, warehouse_id, type, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+                 unit_of_measure, cost, price, stock, reorder_point, warehouse_id, type${vatStatus ? ', vat_status' : ''}, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${vatStatus ? ', ?' : ''}, NOW(), NOW())`,
               [
                 id, p.name, sku, barcode, p.description ?? '', p.category ?? 'General', p.brand ?? null, p.subcategory ?? null,
-                p.unit ?? 'pcs', cost, price, stock, num(p.reorder_point), p.image_url ?? null,
-                p.conversion_factor != null ? num(p.conversion_factor) : 1, defaultWarehouseId, rowType,
+                p.unit ?? 'pcs', cost, price, stock, num(p.reorder_point), defaultWarehouseId, rowType,
+                ...(vatStatus ? [vatStatus] : []),
               ],
             );
 
@@ -340,6 +358,12 @@ async function ensureLookupsForBatch(rows: Record<string, any>[]): Promise<void>
   for (const { sub, category } of subcategories.values()) {
     await ensureSubcategoryExists(sub, category);
   }
+}
+
+/** Configured tax rates, the only legal values for products.vat_status. */
+async function loadTaxRates(): Promise<ImportTaxRate[]> {
+  const rows = (await query('SELECT name, is_default FROM tax_rates ORDER BY created_at ASC')) as any[];
+  return rows.map((r) => ({ name: String(r.name), isDefault: !!r.is_default }));
 }
 
 /** Prefix the wizard uses for a generated price-level column. */

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mapParsedRowsToPriceListRows } from '../../app/(app)/products/bulk-price-update/price-list-template';
+import { mapParsedRowsToPriceListRows, findPriceListHeaderProblem } from '../../app/(app)/products/bulk-price-update/price-list-template';
 import type { ParsedFile } from '../../lib/import/parse-file';
 
 // mapParsedRowsToPriceListRows is the boundary between "raw Excel/CSV cell
@@ -44,5 +44,25 @@ assert.equal(Number.isNaN(garbage.newMarkupPct), true, 'non-numeric new_markup_p
 
 const markdown = rows.find(r => r.barcode === 'BC-MARKDOWN')!;
 assert.equal(markdown.newMarkupPct, -10, 'a negative markup pct (markdown) parses as a normal finite number, not NaN');
+
+// Header spelling: a user-typed "Barcode" / "New Price" must still be recognised.
+{
+  const r = mapParsedRowsToPriceListRows({
+    headers: ['Barcode', 'New Price', 'New Cost', 'New Markup Pct', 'Unit Of Measure'],
+    rows: [{ Barcode: '123', 'New Price': '5', 'New Cost': '3', 'New Markup Pct': '10', 'Unit Of Measure': 'pc' }],
+  });
+  assert.equal(r[0].barcode, '123');
+  assert.equal(r[0].newPrice, 5);
+  assert.equal(r[0].newCost, 3);
+  assert.equal(r[0].newMarkupPct, 10);
+  assert.equal(r[0].unitOfMeasure, 'pc');
+}
+
+// A file with no recognisable barcode column / no value column must be rejected
+// with a message, not previewed as "0 will be updated, 0 skipped".
+assert.match(findPriceListHeaderProblem(['name', 'new_price']) ?? '', /barcode/i);
+assert.match(findPriceListHeaderProblem(['barcode', 'name']) ?? '', /new_price|new_cost|new_markup_pct/);
+assert.equal(findPriceListHeaderProblem(['Barcode', 'New Price']), null);
+assert.equal(findPriceListHeaderProblem(['barcode', 'new_markup_pct']), null);
 
 console.log('price-list-template: all assertions passed');

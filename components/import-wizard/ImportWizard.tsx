@@ -4,7 +4,8 @@ import { useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Download, Upload, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Download, Upload, RefreshCw, CheckCircle2, AlertTriangle, Check } from 'lucide-react';
 import type { EntityKey } from '@/lib/import/entity-schemas';
 import { useImportWizard } from './use-import-wizard';
 
@@ -21,9 +22,19 @@ export function ImportWizard({ entity, open, onOpenChange, onImported }: Props) 
 
   function close() { w.actions.reset(); onOpenChange(false); }
 
+  const importing = w.step === 'importing';
+  const pr = w.progress;
+  const percent = pr.total > 0 ? Math.min(100, Math.floor((pr.done / pr.total) * 100)) : 0;
+  const fmt = (n: number) => n.toLocaleString('en-US');
+  const eta = pr.etaSeconds == null ? null
+    : pr.etaSeconds >= 60 ? `${Math.ceil(pr.etaSeconds / 60)} min` : `${Math.max(1, pr.etaSeconds)} sec`;
+  // Reading and checking happen before this screen, so those two are always
+  // complete here; "Saving" is the live one.
+  const stages = ['Read file', 'Check rows', `Save ${w.schema.label.toLowerCase()} to database`, 'Finish'];
+
   return (
-    <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(v) : close())}>
-      <DialogContent className="max-w-3xl">
+    <Dialog open={open} onOpenChange={(v) => { if (v) onOpenChange(v); else if (!importing) close(); }}>
+      <DialogContent className="max-w-3xl" onInteractOutside={(e) => { if (importing) e.preventDefault(); }} onEscapeKeyDown={(e) => { if (importing) e.preventDefault(); }}>
         <DialogHeader>
           <DialogTitle>Import {w.schema.label}</DialogTitle>
         </DialogHeader>
@@ -113,6 +124,84 @@ export function ImportWizard({ entity, open, onOpenChange, onImported }: Props) 
               <Button onClick={w.actions.confirm} disabled={w.loading || (w.counts.new + w.counts.update === 0)}>
                 {w.loading ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Import {w.counts.new + w.counts.update} rows
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+
+        {/* STEP 3b: IMPORTING (live) */}
+        {importing && (
+          <div className="space-y-5" aria-live="polite">
+            <div className="rounded-xl border bg-muted/40 p-5 space-y-3">
+              <div className="flex items-end justify-between gap-4">
+                <div className="text-5xl font-bold leading-none tracking-tight tabular-nums">
+                  {percent}<span className="text-2xl text-muted-foreground">%</span>
+                </div>
+                <div className="text-right text-sm text-muted-foreground leading-relaxed">
+                  <div><strong className="text-foreground tabular-nums">{fmt(pr.done)}</strong> of {fmt(pr.total)} rows</div>
+                  <div>{eta ? `About ${eta} left` : 'Estimating time…'}</div>
+                </div>
+              </div>
+              <Progress value={percent} className="h-3" aria-label="Import progress" />
+              <div className="text-xs text-muted-foreground">
+                Batch {pr.batch} of {pr.batches} · rows {fmt(pr.rangeFrom)}–{fmt(pr.rangeTo)}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+                <div className="text-xs font-medium text-green-800">Added</div>
+                <div className="text-2xl font-bold text-green-900 tabular-nums">{fmt(pr.added)}</div>
+              </div>
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+                <div className="text-xs font-medium text-blue-800">Updated</div>
+                <div className="text-2xl font-bold text-blue-900 tabular-nums">{fmt(pr.updated)}</div>
+              </div>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                <div className="text-xs font-medium text-amber-800">Skipped</div>
+                <div className="text-2xl font-bold text-amber-900 tabular-nums">{fmt(pr.skipped)}</div>
+              </div>
+            </div>
+
+            <ol className="space-y-2 text-sm">
+              {stages.map((label, i) => {
+                const active = i === 2 && percent < 100;
+                const done = i < 2 || (i === 2 && percent >= 100);
+                return (
+                  <li key={label} className="flex items-center gap-3">
+                    <span
+                      className={`flex h-5 w-5 items-center justify-center rounded-full border-2 ${
+                        done ? 'bg-green-600 border-green-600 text-white' : active ? 'border-blue-600' : 'border-slate-300'
+                      }`}
+                    >
+                      {done && <Check className="h-3 w-3" strokeWidth={3.5} />}
+                      {active && <RefreshCw className="h-2.5 w-2.5 animate-spin text-blue-600" />}
+                    </span>
+                    <span className={done || active ? (active ? 'font-semibold' : '') : 'text-muted-foreground'}>{label}</span>
+                  </li>
+                );
+              })}
+            </ol>
+
+            <div className="space-y-1.5">
+              <div className="text-xs font-semibold text-slate-700">Latest activity</div>
+              <div className="min-h-[5.5rem] rounded-lg border px-3 py-2 text-xs text-muted-foreground space-y-1">
+                {pr.activity.length === 0 && <div>Waiting for the first batch…</div>}
+                {pr.activity.map((a, i) => (
+                  <div key={i} className="flex gap-3">
+                    <span className={`min-w-[3.5rem] font-semibold ${a.tag === 'Skipped' ? 'text-amber-700' : 'text-green-700'}`}>{a.tag}</span>
+                    <span className="break-words">{a.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <DialogFooter className="items-center sm:justify-between gap-3">
+              <p className="text-xs text-muted-foreground max-w-xs">
+                Keep this window open. Rows already saved stay saved if you stop.
+              </p>
+              <Button variant="outline" onClick={w.actions.stop} disabled={pr.stopping}>
+                {pr.stopping ? 'Stopping after this batch…' : 'Stop after this batch'}
               </Button>
             </DialogFooter>
           </div>
