@@ -6,7 +6,7 @@ const SAMPLE: Record<string, string> = {
   name: 'Milo 24g', barcode: '4800361381130', description: 'Chocolate malt drink',
   category: 'Beverages', brand: 'Nestle', subcategory: 'Powdered', unit: 'pcs',
   cost_price: '8.50', selling_price: '12.00', stock_quantity: '100', reorder_point: '20',
-  image_url: '', conversion_factor: '1', contact_number: '09171234567',
+  vat_status: 'VAT', contact_number: '09171234567',
   address: '123 Rizal St', billing_address: '', sales_person: '', sales_area: '',
   sales_group: '', payment_terms: 'COD', loyalty_points: '0', discount: '0',
   credit_limit: '0', active: 'true', markup_percentage: '15',

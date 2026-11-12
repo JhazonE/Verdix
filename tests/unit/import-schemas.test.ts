@@ -8,6 +8,11 @@ assert.ok(!products.fields.find(f => f.key === 'sku'), 'sku excluded (auto-gener
 assert.ok(!products.fields.find(f => f.key === 'id'), 'id excluded (auto-generated)');
 assert.ok(products.fields.find(f => f.key === 'stock_quantity'), 'stock_quantity present');
 assert.deepEqual(products.matchKeys, ['barcode', 'name'], 'barcode-then-name');
+const vat = products.fields.find(f => f.key === 'vat_status');
+assert.ok(vat, 'vat_status present');
+assert.equal(vat!.default, undefined, 'vat_status has no default: blank must leave an existing product alone');
+assert.ok(!products.fields.find(f => f.key === 'image_url'), 'image_url retired (no UI sets it)');
+assert.ok(!products.fields.find(f => f.key === 'conversion_factor'), 'conversion_factor retired (selling units replace it)');
 
 const customers = ENTITY_SCHEMAS.customers;
 assert.ok(!customers.fields.find(f => f.key === 'id'), 'customer id excluded (auto-generated)');

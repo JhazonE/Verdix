@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getApiUrl } from '@/lib/api-config';
 import {
   ENTITY_SCHEMAS,
@@ -13,7 +13,31 @@ import { autoMapColumns } from '@/lib/import/auto-map';
 import { classifyRows, type ClassifiedRow } from '@/lib/import/classify';
 import { buildTemplateCsv, buildSkippedCsv } from '@/lib/import/csv-out';
 
-type Step = 'upload' | 'map' | 'preview' | 'result';
+type Step = 'upload' | 'map' | 'preview' | 'importing' | 'result';
+
+export interface ImportActivity { tag: 'Saved' | 'Skipped'; text: string }
+
+/** Live numbers the "importing" screen renders while batches are in flight. */
+export interface ImportProgress {
+  done: number;        // valid rows already sent and answered
+  total: number;       // valid rows that will be sent
+  batch: number;       // 1-based batch currently saving
+  batches: number;
+  rangeFrom: number;   // 1-based row range of the current batch
+  rangeTo: number;
+  added: number;
+  updated: number;
+  skipped: number;
+  etaSeconds: number | null;
+  activity: ImportActivity[];  // newest first
+  stopping: boolean;
+}
+
+const EMPTY_PROGRESS: ImportProgress = {
+  done: 0, total: 0, batch: 0, batches: 0, rangeFrom: 0, rangeTo: 0,
+  added: 0, updated: 0, skipped: 0, etaSeconds: null, activity: [], stopping: false,
+};
+const ACTIVITY_KEEP = 4;
 // Each NEW product row costs ~12-17 sequential DB round trips (lookup upserts,
 // match SELECTs, products + selling-unit + batch INSERTs, stock movement).
 // Against a REMOTE MySQL (Railway) each trip is tens of ms, not the ~1ms a
@@ -69,6 +93,10 @@ export function useImportWizard(entity: EntityKey) {
   // validation failures, so a row that passed validation and then failed to
   // insert was counted in `skipped` but appeared in no report at all.
   const [serverRejects, setServerRejects] = useState<ClassifiedRow[]>([]);
+  const [progress, setProgress] = useState<ImportProgress>(EMPTY_PROGRESS);
+  // A ref, not state: confirm()'s loop is one long async closure, so it must
+  // read the CURRENT value between batches rather than the one it captured.
+  const stopRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,8 +142,39 @@ export function useImportWizard(entity: EntityKey) {
     let added = 0, updated = 0, skipped = counts.error;
     const rejects: ClassifiedRow[] = [];
     setServerRejects([]);
+    stopRef.current = false;
+    const batches = Math.max(1, Math.ceil(valid.length / BATCH));
+    const startedAt = Date.now();
+    let activity: ImportActivity[] = [];
+    const pushActivity = (items: ImportActivity[]) => {
+      activity = [...items.reverse(), ...activity].slice(0, ACTIVITY_KEEP);
+    };
+    const publish = (done: number, batch: number, from: number, to: number) => {
+      const elapsed = (Date.now() - startedAt) / 1000;
+      // No estimate until a batch has actually completed: a guess from zero
+      // data would flash a meaningless number.
+      const etaSeconds = done > 0 && valid.length > done
+        ? Math.round((elapsed / done) * (valid.length - done)) : null;
+      setProgress({
+        done, total: valid.length, batch, batches, rangeFrom: from, rangeTo: to,
+        added, updated, skipped, etaSeconds, activity, stopping: stopRef.current,
+      });
+    };
+    setStep('importing');
+    publish(0, 1, 1, Math.min(BATCH, valid.length));
     try {
       for (let i = 0; i < valid.length; i += BATCH) {
+        // Stop is honoured BETWEEN batches only: a batch already sent is
+        // committing server-side and cannot be recalled, so pretending to
+        // cancel it would misreport what is saved.
+        if (stopRef.current) {
+          throw new Error(
+            `Stopped by you before rows ${i + 1}-${valid.length}. ` +
+            `${added} added, ${updated} updated so far — those are saved.`,
+          );
+        }
+        const batchNo = Math.floor(i / BATCH) + 1;
+        publish(i, batchNo, i + 1, Math.min(i + BATCH, valid.length));
         const chunk = valid.slice(i, i + BATCH);
         const res = await fetch(getApiUrl(`/data-management/import/${entity}`), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -144,14 +203,21 @@ export function useImportWizard(entity: EntityKey) {
         added += data.added ?? 0; updated += data.updated ?? 0; skipped += data.skipped ?? 0;
         // `row` is the index inside this chunk; offset it to recover the row the
         // user actually uploaded, then carry the server's reason onto it.
+        const batchActivity: ImportActivity[] = [];
         for (const e of (data.errors ?? []) as Array<{ row: number; reason: string }>) {
           const source = validRows[i + e.row];
-          if (source) rejects.push({ ...source, status: 'error', reason: e.reason });
+          if (source) {
+            rejects.push({ ...source, status: 'error', reason: e.reason });
+            batchActivity.push({ tag: 'Skipped', text: `Row ${source.sourceIndex + 2} · ${e.reason}` });
+          }
         }
+        batchActivity.push({ tag: 'Saved', text: `Batch ${batchNo} · ${chunk.length - (data.skipped ?? 0)} of ${chunk.length} rows committed` });
+        pushActivity(batchActivity);
         // Surface progress as it lands so a long import is visibly advancing
         // and a later failure still shows what already committed.
         setResult({ added, updated, skipped });
         setServerRejects([...rejects]);
+        publish(Math.min(i + BATCH, valid.length), batchNo, i + 1, Math.min(i + BATCH, valid.length));
       }
       setResult({ added, updated, skipped });
       setStep('result');
@@ -164,10 +230,20 @@ export function useImportWizard(entity: EntityKey) {
       if (added > 0 || updated > 0 || skipped > 0) {
         setResult({ added, updated, skipped });
         setStep('result');
+      } else {
+        // Nothing landed: go back to the preview (as before this screen
+        // existed) rather than strand the user on a progress view that will
+        // never advance. The error banner explains why.
+        setStep('preview');
       }
     } finally {
       setLoading(false);
     }
+  }
+
+  function stop() {
+    stopRef.current = true;
+    setProgress((p) => ({ ...p, stopping: true }));
   }
 
   function downloadTemplate() { downloadText(`${entity}-template.csv`, buildTemplateCsv(schema)); }
@@ -180,10 +256,11 @@ export function useImportWizard(entity: EntityKey) {
   function reset() {
     setStep('upload'); setParsed(null); setMapping({}); setExistingKeys(new Set());
     setResult(null); setError(null); setServerRejects([]);
+    setProgress(EMPTY_PROGRESS); stopRef.current = false;
   }
 
   return {
-    step, schema, parsed, mapping, setMapping, classified, counts, result, loading, error, requiredMapped,
-    actions: { pickFile, back, toPreview, confirm, downloadTemplate, downloadSkipped, reset },
+    step, schema, parsed, mapping, setMapping, classified, counts, result, loading, error, requiredMapped, progress,
+    actions: { pickFile, back, toPreview, confirm, stop, downloadTemplate, downloadSkipped, reset },
   };
 }

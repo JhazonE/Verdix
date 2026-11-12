@@ -41,8 +41,10 @@ export const ENTITY_SCHEMAS: Record<EntityKey, EntitySchema> = {
       { key: 'selling_price', label: 'Selling Price', type: 'number', default: 0, aliases: ['selling_price', 'price', 'srp', 'sell price', 'retail price', 'retail'] },
       { key: 'stock_quantity', label: 'Stock Quantity', type: 'number', default: 0, aliases: ['stock_quantity', 'stock', 'qty', 'quantity', 'on hand', 'onhand'] },
       { key: 'reorder_point', label: 'Reorder Point', type: 'number', default: 0, aliases: ['reorder_point', 'reorder', 'rop', 'min stock'] },
-      { key: 'image_url', label: 'Image URL', type: 'text', aliases: ['image_url', 'image', 'photo', 'img'] },
-      { key: 'conversion_factor', label: 'Conversion Factor', type: 'number', default: 1, aliases: ['conversion_factor', 'conversion', 'factor'] },
+      // No default: a blank/unmapped cell must leave an existing product's
+      // VAT status alone (and a new product takes the Add Product default).
+      // Validated against tax_rates by the route — see lib/import/vat-status.ts.
+      { key: 'vat_status', label: 'VAT Status', type: 'text', aliases: ['vat_status', 'vat', 'vat status', 'tax', 'tax type', 'tax status'] },
     ],
   },
   customers: {

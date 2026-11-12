@@ -26,8 +26,7 @@ export async function GET() {
         p.price AS selling_price,
         p.stock AS stock_quantity,
         p.reorder_point,
-        p.image_url,
-        p.conversion_factor
+        p.vat_status
       FROM products p
     `) as any[];
 

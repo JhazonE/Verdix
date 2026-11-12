@@ -53,10 +53,10 @@ export async function legacyProductCsvImport(request: NextRequest) {
         if (existing) {
           await query(
             `UPDATE products SET name=?, barcode=?, description=?, category=?, brand=?, subcategory=?, unit_of_measure=?,
-               cost=?, price=?, stock=?, reorder_point=?, parent_id=?, image_url=?, conversion_factor=?, updated_at=NOW() WHERE id=?`,
+               cost=?, price=?, stock=?, reorder_point=?, parent_id=?, updated_at=NOW() WHERE id=?`,
             [p.name, barcode, p.description || '', p.category || 'General', p.brand || null, p.subcategory || null,
               p.unit || 'pcs', parseFloat(p.cost_price) || 0, parseFloat(p.selling_price) || 0, parseFloat(p.stock_quantity) || 0,
-              parseFloat(p.reorder_point) || 0, p.parent_id || null, p.image_url || null, parseFloat(p.conversion_factor) || 1, existing.id],
+              parseFloat(p.reorder_point) || 0, p.parent_id || null, existing.id],
           );
           updateCount++;
         } else {
@@ -68,12 +68,12 @@ export async function legacyProductCsvImport(request: NextRequest) {
           // still sees a matching value.
           await query(
             `INSERT INTO products (id, name, sku, barcode, description, category, brand, subcategory, unit_of_measure,
-               cost, price, stock, reorder_point, parent_id, image_url, conversion_factor, warehouse_id, type, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+               cost, price, stock, reorder_point, parent_id, warehouse_id, type, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
             [id, p.name, barcode, barcode, p.description || '', p.category || 'General', p.brand || null,
               p.subcategory || null, p.unit || 'pcs', cost, price,
-              parseFloat(p.stock_quantity) || 0, parseFloat(p.reorder_point) || 0, p.parent_id || null, p.image_url || null,
-              parseFloat(p.conversion_factor) || 1, defaultWarehouseId,
+              parseFloat(p.stock_quantity) || 0, parseFloat(p.reorder_point) || 0, p.parent_id || null,
+              defaultWarehouseId,
               // Explicit ternary rather than passing the raw cell through: an
               // unrecognised value would be rejected by MySQL in strict mode.
               // Matches addProduct() and the JSON import path.

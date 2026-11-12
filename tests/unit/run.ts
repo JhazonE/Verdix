@@ -8,6 +8,7 @@ import './import-automap.test';
 import './import-parse.test';
 import './import-classify.test';
 import './import-csvout.test';
+import './import-vat-status.test';
 import './aes-gcm.test';
 import './license-machine-match.test';
 import './si-number.test';
