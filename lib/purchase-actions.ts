@@ -1,3 +1,4 @@
+import { toLocalDateTime, toLocalYmd } from './fiscal-utils';
 import { withTransaction } from './mysql';
 import { generateBatchId } from './batch-utils';
 import { calculatePurchaseCosts } from './purchase-utils';
@@ -58,7 +59,7 @@ export async function processPurchaseOrderCreation(body: any, userId: string = '
   const finalTotal = calculations.grandTotal;
   const finalVatAmount = calculations.vatAmount;
   const orderId = id || `po_${Date.now()}`;
-  const formattedDate = new Date(date || new Date()).toISOString().slice(0, 19).replace('T', ' ');
+  const formattedDate = toLocalDateTime(new Date(date || new Date()));
 
   return await withTransaction(async (connection) => {
     // Look up supplier payment terms to compute due_date
@@ -71,7 +72,7 @@ export async function processPurchaseOrderCreation(body: any, userId: string = '
     const baseDateObj = new Date(date || new Date());
     const dueDateObj = new Date(baseDateObj);
     dueDateObj.setDate(dueDateObj.getDate() + dueDays);
-    const formattedDueDate = dueDateObj.toISOString().slice(0, 10);
+    const formattedDueDate = toLocalYmd(dueDateObj);
 
     // 1. Insert or Update order
     // Using ON DUPLICATE KEY UPDATE to allow the same process to be used for initial (Pending)

@@ -1,3 +1,4 @@
+import { toLocalDateTime } from '@/lib/fiscal-utils';
 import { NextRequest, NextResponse } from 'next/server';
 import { query, withTransaction } from '../../../lib/mysql';
 import { getExternalApiConfig } from '../../../lib/external-api-config';
@@ -216,7 +217,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    const formattedDate = new Date(date || new Date()).toISOString().slice(0, 19).replace('T', ' ');
+    const formattedDate = toLocalDateTime(new Date(date || new Date()));
     const calculations = calculatePurchaseCosts(items, shipping || 0);
     const finalTotal = calculations.grandTotal;
     const finalVatAmount = calculations.vatAmount;

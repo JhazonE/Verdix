@@ -1,3 +1,4 @@
+import { toLocalYmd } from '@/lib/fiscal-utils';
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { withTransaction, query } from '../../../../lib/mysql';
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
       // Create invoice record using sales order reference as invoice reference
       const invoiceId = `INV-${uuidv4()}`;
       const invoiceReference = order.reference || `INV-${uuidv4()}`;
-      const invoiceDate = new Date().toISOString().split('T')[0];
+      const invoiceDate = toLocalYmd(new Date());
       const dueDate = order.delivery_date || invoiceDate;
 
       await conn.execute(

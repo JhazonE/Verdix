@@ -1,3 +1,4 @@
+import { toLocalDateTime } from './fiscal-utils';
 import { query, withTransaction } from './mysql';
 import { v4 as uuidv4 } from 'uuid';
 import { updateStockAndRecordMovement } from './stock-movements';
@@ -37,8 +38,8 @@ export async function processBadOrderCreation(body: any, userId: string) {
 
         // Format date for MySQL
         const formattedDate = reportDate 
-            ? new Date(reportDate).toISOString().slice(0, 19).replace('T', ' ')
-            : new Date().toISOString().slice(0, 19).replace('T', ' ');
+            ? toLocalDateTime(new Date(reportDate))
+            : toLocalDateTime();
 
         // Insert bad order
         const insertOrderQuery = `

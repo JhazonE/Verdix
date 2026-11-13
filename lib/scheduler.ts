@@ -1,3 +1,4 @@
+import { toLocalDateTime } from './fiscal-utils';
 import fs from 'fs';
 import path from 'path';
 import cron from 'node-cron';
@@ -172,7 +173,7 @@ export async function applySyncResult(
 
     const nextRetry = new Date();
     nextRetry.setMinutes(nextRetry.getMinutes() + 15); // Wait longer between sweeps
-    const nextRetryStr = nextRetry.toISOString().slice(0, 19).replace('T', ' ');
+    const nextRetryStr = toLocalDateTime(nextRetry);
 
     await query(`
       UPDATE external_api_logs
