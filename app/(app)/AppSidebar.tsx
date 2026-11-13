@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Logo } from '@/components/logo';
 import { handleSignOut } from '../auth-actions';
+import { clearSession } from '@/lib/idle-session';
 import { buildNavIndex, filterNavIndex, matchSegments } from '@/lib/sidebar-search';
 import { useMemo, useRef, useState, useEffect } from 'react';
 
@@ -38,6 +39,9 @@ import { useMemo, useRef, useState, useEffect } from 'react';
  * a NEXT_REDIRECT digest) and only reload on a genuine failure.
  */
 async function signOut() {
+  // The server action only redirects; the session lives in localStorage and
+  // used to survive "Log out", so Back (or opening "/") walked straight in.
+  clearSession();
   try {
     await handleSignOut();
   } catch (err) {

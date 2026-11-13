@@ -10,13 +10,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle, Loader2, Eye, EyeOff, XCircle } from 'lucide-react';
+import { AlertCircle, Loader2, Eye, EyeOff, XCircle, Clock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Logo } from '@/components/logo';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { getApiUrl } from '@/lib/api-config';
+import { EXPIRED_QUERY, markActivity } from '@/lib/idle-session';
 
 
 const loginSchema = z.object({
@@ -32,6 +33,13 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [licenseChecked, setLicenseChecked] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  // Set by the idle timeout (hooks/use-idle-logout.ts). Read from
+  // window.location rather than useSearchParams to avoid a Suspense boundary.
+  useEffect(() => {
+    setSessionExpired(new URLSearchParams(window.location.search).has(EXPIRED_QUERY));
+  }, []);
 
   // const auth = useAuth();
   const router = useRouter();
@@ -89,6 +97,9 @@ export default function LoginPage() {
         displayName: result.displayName,
         photoURL: result.photoURL
       }));
+      // Start the idle clock fresh; a stale stamp from the expired session
+      // would otherwise sign this new session out on its first tick.
+      markActivity();
 
       // Redirect based on user type (logic adapted from previous mock).
       // `Price Inquiry` is the unattended self-service kiosk account: it owns
@@ -142,6 +153,15 @@ export default function LoginPage() {
           </div>
           
           <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-5">
+            {sessionExpired && !error && (
+              <Alert className="border-amber-500/50 bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200 [&>svg]:text-amber-600">
+                <Clock className="h-4 w-4" />
+                <AlertTitle>Session expired</AlertTitle>
+                <AlertDescription>
+                  You were logged out after being inactive. Please sign in again.
+                </AlertDescription>
+              </Alert>
+            )}
             {error && (
               <Alert variant="destructive" className="animate-in slide-in-from-top-2">
                 <AlertCircle className="h-4 w-4" />

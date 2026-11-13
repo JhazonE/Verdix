@@ -88,6 +88,7 @@ import './selling-unit-autopricing-clear.test';
 import './warehouse-sibling-barcode.test';
 import './pos-cart-units.test';
 import './cart-quantity-format.test';
+import './idle-session.test';
 import './decimal-quantity-read.test';
 import './bulk-adjustment-decimal-quantity.test';
 import './stock-quantity-format.test';

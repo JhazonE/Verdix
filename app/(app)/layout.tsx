@@ -16,6 +16,8 @@ import { useAppLayout } from './use-app-layout';
 import { AppSidebar } from './AppSidebar';
 import { NotificationsBell } from './NotificationsBell';
 import { useLicenseHeartbeat } from './use-license-heartbeat';
+import { useIdleLogout } from '@/hooks/use-idle-logout';
+import { IdleLogoutWarning } from '@/components/idle-logout-warning';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const {
@@ -32,6 +34,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useLicenseHeartbeat();
+
+  // Back-office idle timeout. Completely inactive on POS (own cashier login +
+  // open shift) and the unattended price-check kiosk; see use-idle-logout.ts.
+  const idle = useIdleLogout({ enabled: !isChromelessPage && !!user, onExemptPage: isChromelessPage });
 
   // Seed the sidebar's initial open state from the persisted cookie so a
   // collapsed sidebar stays collapsed across reloads. Read once on mount.
@@ -131,6 +137,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </main>
         </SidebarInset>
       </SidebarProvider>
+      <IdleLogoutWarning
+        remainingMs={idle.warningRemainingMs}
+        onStay={idle.staySignedIn}
+        onLogout={() => { void idle.logoutNow(); }}
+      />
+
     </QueryClientProvider>
   );
 }
