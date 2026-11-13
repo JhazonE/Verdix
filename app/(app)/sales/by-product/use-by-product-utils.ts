@@ -14,12 +14,13 @@ type UtilParams = {
   cashierFilter: string;
   referenceFilter: string;
   searchTerm: string;
+  sourceFilter?: string;
   totals: { totalRevenue: number; totalDiscount: number; totalCost: number; totalProfit: number; unitsSold: number };
 };
 
 export function useByProductUtils({
   productSales, dateRange, terminal,
-  categoryFilter, brandFilter, cashierFilter, referenceFilter, searchTerm, totals,
+  categoryFilter, brandFilter, cashierFilter, referenceFilter, searchTerm, sourceFilter, totals,
 }: UtilParams) {
   // Totals come from the server, aggregated across ALL products matching the active
   // filters/date range — not just the current page of products.
@@ -34,6 +35,7 @@ export function useByProductUtils({
     if (brandFilter && brandFilter !== 'all') params.append('brand', brandFilter);
     if (cashierFilter && cashierFilter !== 'all') params.append('cashier', cashierFilter);
     if (referenceFilter) params.append('reference', referenceFilter);
+    if (sourceFilter && sourceFilter !== 'all') params.append('source', sourceFilter);
     if (searchTerm) params.append('search', searchTerm);
     params.append('limit', '1000000');
     try {

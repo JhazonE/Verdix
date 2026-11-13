@@ -1,3 +1,4 @@
+import { toLocalDateTime } from '@/lib/fiscal-utils';
 import { NextRequest, NextResponse } from 'next/server';
 import { query, withTransaction } from '../../../../lib/mysql';
 import { getExternalApiConfig } from '../../../../lib/external-api-config';
@@ -98,7 +99,7 @@ export async function PATCH(
         paramsUpdate.push(supplierName);
       }
       if (date) {
-        const formattedDate = new Date(date).toISOString().slice(0, 19).replace('T', ' ');
+        const formattedDate = toLocalDateTime(new Date(date));
         updates.push('date = ?');
         paramsUpdate.push(formattedDate);
       }

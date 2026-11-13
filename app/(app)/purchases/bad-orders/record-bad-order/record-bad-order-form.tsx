@@ -36,6 +36,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, Search, Trash2, AlertTriangle, ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { FormTotalsBar, formatPeso } from '@/components/form-totals-bar';
 import { DiscardChangesDialog } from '@/components/discard-changes-dialog';
@@ -45,6 +46,8 @@ import { UnitStockView } from '@/components/unit-stock-view';
 import { useRecordBadOrder } from './use-record-bad-order';
 import { ProductSelector } from './product-selector';
 import { CurrencyInput } from './currency-input';
+
+const BAD_ORDER_FILTER_BY_SUPPLIER_KEY = 'bad-order-filter-products-by-supplier';
 
 interface RecordBadOrderFormProps {
   onClose: () => void;
@@ -81,6 +84,19 @@ export function RecordBadOrderForm({ onClose, onSuccess }: RecordBadOrderFormPro
   } = controller;
 
   const [showDetails, setShowDetails] = useState(true);
+  // Same toggle as the purchase order form: when checked, the product search is
+  // limited to the selected supplier's products. Remembered per browser.
+  const [filterBySupplier, setFilterBySupplier] = useState(true);
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(BAD_ORDER_FILTER_BY_SUPPLIER_KEY);
+      if (stored !== null) setFilterBySupplier(stored === '1');
+    } catch { /* storage unavailable: keep the default */ }
+  }, []);
+  const toggleFilterBySupplier = (checked: boolean) => {
+    setFilterBySupplier(checked);
+    try { localStorage.setItem(BAD_ORDER_FILTER_BY_SUPPLIER_KEY, checked ? '1' : '0'); } catch { /* ignore */ }
+  };
   const isDirty = form.formState.isDirty || fields.length > 0;
   const [isDiscardOpen, setIsDiscardOpen] = useState(false);
 
@@ -198,11 +214,22 @@ export function RecordBadOrderForm({ onClose, onSuccess }: RecordBadOrderFormPro
                   name="supplierId"
                   render={({ field }) => (
                     <FormItem className="space-y-1">
-                      <div className="h-5 flex items-center">
+                      <div className="h-5 flex items-center justify-between">
                         <FormLabel className="text-xs font-semibold text-muted-foreground">Supplier (Optional)</FormLabel>
+                        <label
+                          className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none"
+                          title="Checked: the product search shows only this supplier's products. Unchecked: it shows all products."
+                        >
+                          <Checkbox
+                            className="h-3.5 w-3.5"
+                            checked={filterBySupplier}
+                            onCheckedChange={(checked) => toggleFilterBySupplier(checked === true)}
+                          />
+                          Filter products
+                        </label>
                       </div>
                       <Select
-                        onValueChange={handleSupplierChange}
+                        onValueChange={(value) => handleSupplierChange(value, filterBySupplier)}
                         value={field.value || ''}
                       >
                         <FormControl>
@@ -293,7 +320,7 @@ export function RecordBadOrderForm({ onClose, onSuccess }: RecordBadOrderFormPro
                     row picked must be the one whose stock is written off. */}
                 <ProductSelector
                   onSelectProduct={handleAddProduct}
-                  supplierId={form.watch('supplierId')}
+                  supplierId={filterBySupplier ? form.watch('supplierId') : undefined}
                   warehouseId={form.watch('warehouseId')}
                 />
               </div>

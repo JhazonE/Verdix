@@ -4,19 +4,21 @@ import { format } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 import { useQuery } from '@tanstack/react-query';
 import type { SummaryTotals } from './use-details-utils';
+import type { SalesSourceFilter } from '@/lib/sales-source';
 
 type QueryParams = {
   dateRange: DateRange | undefined;
   terminalId: string;
   paymentTypeFilter: string;
   searchTerm: string;
+  sourceFilter: SalesSourceFilter;
   currentPage: number;
   limit: number;
 };
 
-export function useDetailsQuery({ dateRange, terminalId, paymentTypeFilter, searchTerm, currentPage, limit }: QueryParams) {
+export function useDetailsQuery({ dateRange, terminalId, paymentTypeFilter, searchTerm, sourceFilter, currentPage, limit }: QueryParams) {
   const { data: salesResult, isLoading } = useQuery({
-    queryKey: ['salesDetails', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), terminalId, paymentTypeFilter, searchTerm, currentPage, limit],
+    queryKey: ['salesDetails', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), terminalId, paymentTypeFilter, searchTerm, sourceFilter, currentPage, limit],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (dateRange?.from) params.append('startDate', format(dateRange.from, 'yyyy-MM-dd'));
@@ -24,6 +26,7 @@ export function useDetailsQuery({ dateRange, terminalId, paymentTypeFilter, sear
       if (terminalId && terminalId !== 'all') params.append('terminalId', terminalId);
       if (paymentTypeFilter && paymentTypeFilter !== 'all') params.append('paymentMethod', paymentTypeFilter);
       if (searchTerm) params.append('search', searchTerm);
+      if (sourceFilter !== 'all') params.append('source', sourceFilter);
       params.append('page', currentPage.toString());
       params.append('limit', limit.toString());
       const res = await fetch(`/api/sales/transactions?${params.toString()}`);

@@ -1,4 +1,5 @@
 
+import { toLocalDateTime } from '@/lib/fiscal-utils';
 import { NextRequest, NextResponse } from 'next/server';
 import { query, withTransaction } from '@/lib/mysql';
 import { ensureCustomerCreditColumn } from '@/lib/ensure-customer-credit';
@@ -151,7 +152,7 @@ export async function POST(request: NextRequest) {
 
     const id = uuidv4();
     const finalReference = reference || `PAY-${Date.now()}`;
-    const formattedDate = paymentDate ? new Date(paymentDate).toISOString().slice(0, 19).replace('T', ' ') : new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const formattedDate = paymentDate ? toLocalDateTime(new Date(paymentDate)) : toLocalDateTime();
 
     // The portion of the recorded payment NOT applied to the invoice becomes
     // available account credit (e.g. an overpayment the customer keeps on file).

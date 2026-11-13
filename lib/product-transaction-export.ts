@@ -87,7 +87,7 @@ const money = (n: number) =>
 
 /** Column headers of the detail block, in order. */
 export const DETAIL_HEADERS = [
-  'Date', 'Order # / SI No.', 'Customer', 'Qty', 'Price', 'Cost Price', 'Total', 'Total Cost', 'Profit',
+  'Date', 'OR # / SI No.', 'Customer', 'Qty', 'Price', 'Cost Price', 'Total', 'Total Cost', 'Profit',
 ];
 
 /**

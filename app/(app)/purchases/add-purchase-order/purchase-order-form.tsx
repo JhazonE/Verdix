@@ -53,6 +53,9 @@ import type { AddPurchaseOrderController } from './use-add-purchase-order';
 import { ProductSelector } from './product-selector';
 import { CurrencyInput } from './currency-input';
 import { AddProductDialog } from '../../products/add-product/add-product-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+
+const PO_FILTER_BY_SUPPLIER_KEY = 'po-filter-products-by-supplier';
 
 interface PurchaseOrderFormProps {
   controller: AddPurchaseOrderController;
@@ -91,6 +94,20 @@ export function PurchaseOrderForm({ controller, isEdit, onCancel }: PurchaseOrde
   const { toast } = useToast();
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [showDetails, setShowDetails] = useState(true);
+  // Whether the product search is limited to the selected supplier's
+  // products. Off lets the user order any product from this supplier. The
+  // choice is remembered per browser, since a store tends to work one way.
+  const [filterBySupplier, setFilterBySupplier] = useState(true);
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(PO_FILTER_BY_SUPPLIER_KEY);
+      if (stored !== null) setFilterBySupplier(stored === '1');
+    } catch { /* storage unavailable: keep the default */ }
+  }, []);
+  const toggleFilterBySupplier = (checked: boolean) => {
+    setFilterBySupplier(checked);
+    try { localStorage.setItem(PO_FILTER_BY_SUPPLIER_KEY, checked ? '1' : '0'); } catch { /* ignore */ }
+  };
 
   // An edit/reorder opens pre-filled, so only a user-made change counts as dirty there.
   const isDirty = isEdit ? form.formState.isDirty : form.formState.isDirty || fields.length > 0;
@@ -193,8 +210,19 @@ export function PurchaseOrderForm({ controller, isEdit, onCancel }: PurchaseOrde
                   name="supplierId"
                   render={({ field }) => (
                     <FormItem className="space-y-1">
-                      <div className="flex items-center h-5">
+                      <div className="flex items-center justify-between h-5">
                         <FormLabel className="text-xs font-semibold text-muted-foreground">Supplier</FormLabel>
+                        <label
+                          className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none"
+                          title="Checked: the product search shows only this supplier's products. Unchecked: it shows all products."
+                        >
+                          <Checkbox
+                            className="h-3.5 w-3.5"
+                            checked={filterBySupplier}
+                            onCheckedChange={(checked) => toggleFilterBySupplier(checked === true)}
+                          />
+                          Filter products
+                        </label>
                       </div>
                       <InlineSupplierSelect
                         suppliers={suppliers}
@@ -389,7 +417,7 @@ export function PurchaseOrderForm({ controller, isEdit, onCancel }: PurchaseOrde
                         same item once per warehouse. */}
                     <ProductSelector
                       onSelectProduct={handleAddProduct}
-                      supplierId={form.watch('supplierId')}
+                      supplierId={filterBySupplier ? form.watch('supplierId') : undefined}
                       warehouseId={form.watch('receiveToWarehouse')}
                     />
                   </div>

@@ -9,6 +9,8 @@ import {
   DropdownMenuCheckboxItem, DropdownMenuTrigger, DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
 import { Search, Filter, Columns, Download, X, CalendarRange, CreditCard, Terminal } from 'lucide-react';
+import { SalesSourceFilter as SalesSourceToggle } from '@/components/sales-source';
+import type { SalesSourceFilter } from '@/lib/sales-source';
 
 type Props = {
   searchTerm: string;
@@ -18,6 +20,8 @@ type Props = {
   terminalId: string;
   hasActiveFilters: boolean;
   resetFilters: () => void;
+  sourceFilter: SalesSourceFilter;
+  setSourceFilter: (v: SalesSourceFilter) => void;
   onOpenPaymentType: () => void;
   onOpenTerminal: () => void;
   onOpenDateRange: () => void;
@@ -30,6 +34,7 @@ export function DetailsFilterBar({
   searchTerm, setSearchTerm,
   dateRange, paymentTypeFilter, terminalId,
   hasActiveFilters, resetFilters,
+  sourceFilter, setSourceFilter,
   onOpenPaymentType, onOpenTerminal, onOpenDateRange,
   exportToCSV, exportToPDF,
   table,
@@ -56,6 +61,8 @@ export function DetailsFilterBar({
           className="pl-8"
         />
       </div>
+
+      <SalesSourceToggle value={sourceFilter} onChange={setSourceFilter} />
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

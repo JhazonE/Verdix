@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { format, startOfDay } from 'date-fns';
+import { readingTotals } from '@/lib/reading-totals';
 
 const safeParseFloat = (val: any): number => {
     if (val === null || val === undefined) return 0;
@@ -145,7 +146,7 @@ export async function GET(request: NextRequest) {
         SELECT payment_method, SUM(amount) as amount FROM (
             SELECT pd.payment_method as payment_method, SUM(pd.amount_tendered - pd.change_given) as amount
             FROM sales_transactions st
-            JOIN pos_transactions pt ON st.id = pt.sale_id
+            JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
             JOIN payment_details pd ON pd.transaction_id = pt.id
             WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
             AND pt.is_training = 0
@@ -258,7 +259,7 @@ export async function GET(request: NextRequest) {
     const voidSql = `
         SELECT SUM(st.total) as total_void, COUNT(*) as void_count
         FROM sales_transactions st
-        JOIN pos_transactions pt ON st.id = pt.sale_id
+        JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
         WHERE st.status IN ('Void', 'Voided', 'Cancelled')
         AND pt.is_training = 0
         ${terminalCondition}
@@ -317,15 +318,19 @@ export async function GET(request: NextRequest) {
     }
 
     // ── Computations ──────────────────────────────────────────────────────────
-    const netSales          = safeParseFloat(overallTotals?.net_sales);
     const completedDiscounts = safeParseFloat(overallTotals?.completed_discounts);
     const totalReturns      = safeParseFloat(returnsResult?.total_returns);
     const totalVoid         = safeParseFloat(voidResult?.total_void);
-    
-    // Gross Sales = (Final Net) + (Deductions from that Net)
-    // Actually, Gross should be the value BEFORE any adjustments.
-    // So Gross = Net + Discounts + Returns + Voids
-    const grossSales        = netSales + completedDiscounts + totalReturns + totalVoid;
+
+    // Gross = everything rung up; Net = gross less discounts, voids and
+    // RETURNS. Same rule as the Z-reading (lib/reading-totals.ts). This used to
+    // add returns to gross and leave net = sales, so net ignored refunds.
+    const { gross: grossSales, net: netSales } = readingTotals({
+        sales: safeParseFloat(overallTotals?.net_sales),
+        discounts: completedDiscounts,
+        voids: totalVoid,
+        returns: totalReturns,
+    });
 
     // VAT Breakdown - Use actual sums from items for accuracy
     const vatRow = vatAdjustmentResults.find((v: any) => v.tax_type === 'VAT');

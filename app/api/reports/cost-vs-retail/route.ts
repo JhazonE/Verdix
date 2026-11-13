@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 
-const COST_VALUE_EXPR = `COALESCE(
-  (SELECT SUM(quantity_remaining * unit_cost) FROM inventory_batches WHERE product_id = p.id AND quantity_remaining > 0),
-  (p.stock * COALESCE(p.cost, 0))
-)`;
+import { profitOf, marginPct as marginPctOf } from '@/lib/profit';
+
+// Cost of the stock on hand = stock × cost, for EVERY product. This used to
+// take the remaining-batch value when a product had any batch rows
+// and stock × cost otherwise, so products on the same screen were costed on two
+// different bases (₱2,695 apart on the live data, and a batch's remaining qty
+// can disagree with products.stock, e.g. after a return). Profit here is simply
+// retail − cost.
+const COST_VALUE_EXPR = `(p.stock * COALESCE(p.cost, 0))`;
 
 export async function GET(request: NextRequest) {
   try {
@@ -67,8 +72,8 @@ export async function GET(request: NextRequest) {
 
     const totalCostValue = Number(summaryResult.totalCostValue) || 0;
     const totalRetailValue = Number(summaryResult.totalRetailValue) || 0;
-    const totalProfit = totalRetailValue - totalCostValue;
-    const marginPct = totalRetailValue > 0 ? (totalProfit / totalRetailValue) * 100 : 0;
+    const totalProfit = profitOf(totalRetailValue, totalCostValue);
+    const marginPct = marginPctOf(totalRetailValue, totalCostValue);
 
     return NextResponse.json({
       success: true,

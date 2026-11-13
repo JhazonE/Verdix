@@ -10,7 +10,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
 import { ALL_PERMISSIONS } from '../permissions';
 import { useAddUserType } from './use-add-user-type';
@@ -28,14 +27,14 @@ export function AddUserTypeDialog({ open, onOpenChange, onUserTypeUpdated, editi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden flex flex-col max-h-[90vh]">
+      <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden flex flex-col h-auto max-h-[85vh]">
         <DialogHeader className="p-6 pb-4 bg-muted/30">
           <DialogTitle>{editingType ? 'Edit User Type' : 'Create New User Type'}</DialogTitle>
           <DialogDescription>Define a role and its default permissions.</DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
-            <ScrollArea className="flex-1">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               <div className="p-6 space-y-6">
                 <FormField
                   control={form.control}
@@ -94,7 +93,7 @@ export function AddUserTypeDialog({ open, onOpenChange, onUserTypeUpdated, editi
                   )}
                 />
               </div>
-            </ScrollArea>
+            </div>
             <DialogFooter className="p-6 pt-4 bg-muted/30 border-t">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
               <Button type="submit" disabled={isSubmitting}>

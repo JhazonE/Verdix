@@ -7,19 +7,22 @@ import { addDays } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { logActivity } from '@/lib/client-activity-logger';
 import { getApiUrl } from '@/lib/api-config';
-import type { Product, PaymentMethod } from '@/lib/types';
+import type { Product, PaymentMethod, Warehouse } from '@/lib/types';
+import { resolveDefaultWarehouseId } from '@/lib/default-warehouse';
 import { mapVatStatusToTaxType } from '@/lib/tax-utils';
+import { isImmediatePaymentMethod } from '@/lib/invoice-payment';
 import { salesInvoiceSchema, type SalesInvoiceFormValues } from './add-invoice-types';
 
 const VAT_RATE = 0.12;
 
 type Props = {
   paymentMethods: PaymentMethod[];
+  warehouses: Warehouse[];
   onClose: () => void;
   onSuccess?: () => void;
 };
 
-export function useAddInvoiceForm({ paymentMethods, onClose, onSuccess }: Props) {
+export function useAddInvoiceForm({ paymentMethods, warehouses, onClose, onSuccess }: Props) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [total, setTotal] = useState(0);
@@ -88,6 +91,22 @@ export function useAddInvoiceForm({ paymentMethods, onClose, onSuccess }: Props)
     return () => sub.unsubscribe();
   }, []);
 
+  // Defaults: the main warehouse and Cash. Seeded only while the field is
+  // still empty, so a choice the user made survives the lists refetching.
+  useEffect(() => {
+    if (form.getValues('warehouse')) return;
+    const id = resolveDefaultWarehouseId(
+      warehouses.map(w => ({ ...w, isActive: (w as any).isActive ?? (w as any).active })),
+    );
+    if (id) form.setValue('warehouse', id);
+  }, [warehouses]);
+
+  useEffect(() => {
+    if (form.getValues('paymentMethod')) return;
+    const cash = paymentMethods.find(m => m.name.trim().toLowerCase() === 'cash');
+    if (cash) form.setValue('paymentMethod', cash.name);
+  }, [paymentMethods]);
+
   const watchedCustomer = form.watch('customer');
   const watchedInvoiceDate = form.watch('invoiceDate');
   const watchedPaymentMethod = form.watch('paymentMethod');
@@ -98,8 +117,9 @@ export function useAddInvoiceForm({ paymentMethods, onClose, onSuccess }: Props)
   useEffect(() => {
     if (!watchedInvoiceDate) return;
     let calculatedDueDate = watchedInvoiceDate;
-    const immediatePaymentMethods = ['Cash', 'PayPal', 'GCash'];
-    if (watchedPaymentMethod && immediatePaymentMethods.includes(watchedPaymentMethod)) {
+    // Same rule the server uses to create the invoice already Paid (see
+    // lib/invoice-payment.ts): paid on the spot means due on the spot.
+    if (watchedPaymentMethod && isImmediatePaymentMethod(watchedPaymentMethod)) {
       form.setValue('dueDate', calculatedDueDate);
       return;
     }

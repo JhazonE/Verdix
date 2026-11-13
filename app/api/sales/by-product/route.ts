@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { sumLineCostExpr, unitCostExpr } from '@/lib/cost-of-sale';
+import { profitOf, lineDateExpr } from '@/lib/profit';
 import { parseTaxType, taxTypeFilterSql } from '@/lib/tax-utils';
+import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
+import { parseSalesSource } from '@/lib/sales-source';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,6 +19,9 @@ export async function GET(request: NextRequest) {
     const page = parseInt(queryParams.get('page') || '1');
     const limit = parseInt(queryParams.get('limit') || '10');
     const search = queryParams.get('search') || '';
+    // pos | backoffice | all (default). See lib/sales-source.ts. 'pos' drops the
+    // invoice and order legs; 'backoffice' drops the POS leg.
+    const source = parseSalesSource(queryParams.get('source'));
     const sortBy = queryParams.get('sortBy') || 'sales'; // 'sales' or 'volume'
     const offset = (page - 1) * limit;
 
@@ -55,7 +61,7 @@ export async function GET(request: NextRequest) {
              AVG(si.price) as avg_price_per_unit
            FROM sale_items si
            JOIN pos_transactions pt ON si.sale_id = pt.sale_id
-           JOIN users u ON pt.user_id = u.id
+           LEFT JOIN users u ON pt.user_id = u.uid
            JOIN pos_transaction_items pti ON pti.sale_item_id = si.id
            JOIN products p ON si.product_id = p.id
            LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
@@ -63,13 +69,18 @@ export async function GET(request: NextRequest) {
            AND (pt.transaction_type = 'sale')
          `;
          params.push(terminalId);
+         // A terminal's sales are POS by definition: no back-office sale
+         // belongs to one, so Backoffice-only on a terminal is empty.
+         if (source === 'backoffice') whereClause += ' AND 1=0';
 
+        // A return line (negative quantity) is dated by when it was returned,
+        // not by the original sale. See lib/profit.ts.
         if (startDate) {
-          whereClause += ` AND DATE(pt.transaction_time) >= ?`;
+          whereClause += ` AND DATE(${lineDateExpr('si', 'pt.transaction_time')}) >= ?`;
           params.push(startDate);
         }
         if (endDate) {
-          whereClause += ` AND DATE(pt.transaction_time) <= ?`;
+          whereClause += ` AND DATE(${lineDateExpr('si', 'pt.transaction_time')}) <= ?`;
           params.push(endDate);
         }
         if (category && category !== 'all') {
@@ -122,11 +133,18 @@ export async function GET(request: NextRequest) {
               sinv.id as source_id,
               sinv.invoice_date as transaction_date,
               NULL as cashier_name,
-              sinv.id as reference_no
+              -- The invoice's own reference (INV-001012), not its internal
+              -- id (inv_1794...): that is what staff type into the Reference
+              -- filter and what appears on the invoice.
+              sinv.reference as reference_no
             FROM sales_invoice_items sii
             JOIN sales_invoices sinv ON sii.sales_invoice_id = sinv.id
             LEFT JOIN products p_cost ON sii.product_id = p_cost.id
-            WHERE sinv.status = 'Paid' AND (sinv.notes IS NULL OR sinv.notes NOT LIKE '%POS Sale%')`;
+            -- Back-office invoices only (POS mirrors its own sales into
+            -- sales_invoices, which the POS leg already counts), and a Pending
+            -- invoice counts: it is the default state of a back-office sale.
+            -- See lib/backoffice-sales.ts.
+            WHERE ${backofficeInvoiceSql('sinv')}`;
 
         // Sales orders leg — likewise has no tax column.
         const orderLeg = `
@@ -150,7 +168,7 @@ export async function GET(request: NextRequest) {
             LEFT JOIN products p_cost ON soi.product_id = p_cost.id
             WHERE so.status = 'Paid'`;
 
-        const nonPosLegs = taxScopedToPos ? '' : invoiceLeg + orderLeg;
+        const nonPosLegs = taxScopedToPos || source === 'pos' ? '' : invoiceLeg + orderLeg;
 
         // ORDER MATTERS: this placeholder sits inside the CTE in baseQueryStr,
         // ahead of every filter appended to that string below, so its value
@@ -173,7 +191,7 @@ export async function GET(request: NextRequest) {
               ${unitCostExpr('si', 'p_cost', { hasCostAtSale: true })} as unit_cost,
               GREATEST(0, COALESCE(pti.discount_amount, 0)) as discount_amount,
               st.id as source_id,
-              st.invoice_date as transaction_date,
+              ${lineDateExpr('si', 'st.invoice_date')} as transaction_date,
               u.display_name as cashier_name,
               pt.id as reference_no
             FROM sale_items si
@@ -196,7 +214,7 @@ export async function GET(request: NextRequest) {
             LEFT JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
             LEFT JOIN users u ON pt.user_id = u.uid
             LEFT JOIN pos_transaction_items pti ON pti.sale_item_id = si.id
-            WHERE st.status = 'Paid'
+            WHERE st.status = 'Paid'${source === 'backoffice' ? ' AND 1=0' : ''}
             ${posTaxFilter}${nonPosLegs}
           )
           SELECT
@@ -280,7 +298,7 @@ export async function GET(request: NextRequest) {
       totalRevenue: aggRevenue,
       totalDiscount: aggDiscount,
       totalCost: aggCost,
-      totalProfit: aggRevenue - aggCost - aggDiscount,
+      totalProfit: profitOf(aggRevenue - aggDiscount, aggCost),
       unitsSold: parseInt(totalsRow.unitsSold) || 0,
     };
 
@@ -315,7 +333,10 @@ export async function GET(request: NextRequest) {
       totalRevenue: parseFloat(row.total_revenue),
       totalDiscount: parseFloat(row.total_discount || 0),
       totalCost: parseFloat(row.total_cost || 0),
-      totalProfit: parseFloat(row.total_revenue) - parseFloat(row.total_cost || 0) - parseFloat(row.total_discount || 0),
+      totalProfit: profitOf(
+        parseFloat(row.total_revenue) - parseFloat(row.total_discount || 0),
+        parseFloat(row.total_cost || 0),
+      ),
       numberOfSales: parseInt(row.number_of_sales),
       avgPricePerUnit: parseFloat(row.avg_price_per_unit),
     }));

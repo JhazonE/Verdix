@@ -1,3 +1,4 @@
+import { toLocalDateTime } from '@/lib/fiscal-utils';
 import { NextRequest, NextResponse } from 'next/server';
 import { login, getTransactions, logout } from '@/lib/integrations/sta-lucia/client';
 import { loadStaLuciaConfig } from '@/lib/integrations/sta-lucia/send-z-reading';
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
     // Built for inspection only — deliberately NOT passed to sendSales().
     const payload: StaLuciaSalesPayload = {
       ...SAMPLE_PAYLOAD,
-      date_time: new Date().toISOString().slice(0, 19).replace('T', ' '),
+      date_time: toLocalDateTime(),
     };
 
     const transactions = await getTransactions(cfg);

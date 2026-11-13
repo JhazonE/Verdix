@@ -11,6 +11,7 @@ import {
 import { flexRender, type Table as TanTable } from '@tanstack/react-table';
 import { cn } from '@/lib/utils';
 import type { SalesData } from './by-date-types';
+import { BackofficeBadge } from '@/components/sales-source';
 
 type Props = {
   table: TanTable<SalesData>;
@@ -116,7 +117,12 @@ export function ByDateTable({
                               // sale_id, and a return carries the sale_id of the
                               // sale it reverses, so both rows share it.
                               <TableRow key={tx.posTransactionId ?? tx.id} className="hover:bg-muted/50">
-                                <TableCell className="py-1">{tx.siNumber ? String(tx.siNumber).padStart(6, '0') : (tx.orderNumber ? String(tx.orderNumber).padStart(6, '0') : '-')}</TableCell>
+                                <TableCell className="py-1">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    {tx.siNumber ? String(tx.siNumber).padStart(6, '0') : (tx.orderNumber ? String(tx.orderNumber).padStart(6, '0') : '-')}
+                                    <BackofficeBadge source={tx.transactionSource} />
+                                  </span>
+                                </TableCell>
                                 <TableCell className="py-1">{tx.cashier}</TableCell>
                                 <TableCell className="py-1">{tx.paymentMethod}</TableCell>
                                 <TableCell className="py-1 text-right">

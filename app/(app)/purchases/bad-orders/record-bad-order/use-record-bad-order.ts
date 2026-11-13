@@ -175,12 +175,14 @@ export function useRecordBadOrder({ onSuccess, open: openProp, onOpenChange }: U
     form.setValue('supplierName', supplier?.name || null);
   }
 
-  async function handleSupplierChange(value: string) {
+  // `filterBySupplier` false means the product search shows every product, so
+  // items the new supplier doesn't carry are legitimate and must not be pruned.
+  async function handleSupplierChange(value: string, filterBySupplier = true) {
     const newSupplierId = value === 'none' ? null : value;
     const currentItems = form.getValues('items') || [];
 
-    // No supplier, or nothing added yet — apply immediately.
-    if (!newSupplierId || currentItems.length === 0) {
+    // No supplier, nothing added yet, or not filtering — apply immediately.
+    if (!newSupplierId || currentItems.length === 0 || !filterBySupplier) {
       applySupplier(newSupplierId);
       return;
     }

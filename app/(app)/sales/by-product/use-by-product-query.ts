@@ -6,6 +6,7 @@ import { DateRange } from 'react-day-picker';
 import { useQuery } from '@tanstack/react-query';
 import { getApiUrl } from '@/lib/api-config';
 import type { ProductSalesData } from './by-product-types';
+import type { SalesSourceFilter } from '@/lib/sales-source';
 
 type QueryParams = {
   searchTerm: string;
@@ -15,13 +16,14 @@ type QueryParams = {
   brandFilter: string;
   cashierFilter: string;
   referenceFilter: string;
+  sourceFilter: SalesSourceFilter;
   currentPage: number;
   limit: number;
 };
 
 export function useByProductQuery({
   searchTerm, dateRange, terminal,
-  categoryFilter, brandFilter, cashierFilter, referenceFilter,
+  categoryFilter, brandFilter, cashierFilter, referenceFilter, sourceFilter,
   currentPage, limit,
 }: QueryParams) {
   const [totalPages, setTotalPages] = useState(1);
@@ -61,6 +63,7 @@ export function useByProductQuery({
       brandFilter,
       cashierFilter,
       referenceFilter,
+      sourceFilter,
     ],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -71,6 +74,7 @@ export function useByProductQuery({
       if (brandFilter && brandFilter !== 'all') params.append('brand', brandFilter);
       if (cashierFilter && cashierFilter !== 'all') params.append('cashier', cashierFilter);
       if (referenceFilter) params.append('reference', referenceFilter);
+      if (sourceFilter !== 'all') params.append('source', sourceFilter);
       params.append('page', currentPage.toString());
       params.append('limit', limit.toString());
       if (searchTerm) params.append('search', searchTerm);

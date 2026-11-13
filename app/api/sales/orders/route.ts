@@ -1,3 +1,4 @@
+import { toLocalDateTime } from '@/lib/fiscal-utils';
 import { NextRequest, NextResponse } from 'next/server';
 import { withTransaction, query, getNextReference } from '../../../../lib/mysql';
 
@@ -10,7 +11,7 @@ function formatDateForMySQL(dateValue: string | null | undefined): string | null
         const date = new Date(dateValue);
         if (isNaN(date.getTime())) return null;
         // Format as YYYY-MM-DD HH:MM:SS
-        return date.toISOString().slice(0, 19).replace('T', ' ');
+        return toLocalDateTime(date);
     } catch {
         return null;
     }

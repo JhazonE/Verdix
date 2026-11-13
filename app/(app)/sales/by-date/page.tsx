@@ -12,6 +12,7 @@ export default function SalesByDatePage() {
   const {
     dateRange, setDateRange,
     interval, setInterval,
+    sourceFilter, setSourceFilter,
     searchTerm, setSearchTerm,
     currentPage, setCurrentPage,
     limit, setLimit,
@@ -62,6 +63,8 @@ export default function SalesByDatePage() {
           setInterval={setInterval}
           hasActiveFilters={hasActiveFilters}
           resetFilters={resetFilters}
+          sourceFilter={sourceFilter}
+          setSourceFilter={setSourceFilter}
           onOpenAdvancedFilters={() => setFilterDialogOpen(true)}
           exportToCSV={exportToCSV}
           exportToPDF={exportToPDF}

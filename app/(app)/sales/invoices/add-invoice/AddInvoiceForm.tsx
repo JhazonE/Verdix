@@ -24,7 +24,7 @@ export function AddInvoiceForm({ onClose, onSuccess }: AddInvoiceFormProps) {
     form, fields, remove,
     total, vatAmount, isSubmitting, isReferenceRequired,
     handleAddProduct, onSubmit,
-  } = useAddInvoiceForm({ paymentMethods: data.paymentMethods, onClose, onSuccess });
+  } = useAddInvoiceForm({ paymentMethods: data.paymentMethods, warehouses: data.warehouses, onClose, onSuccess });
 
   const [showDetails, setShowDetails] = useState(true);
 

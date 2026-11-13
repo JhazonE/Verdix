@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
+import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 
 // GET /api/sales/by-product/attributes — category/brand filter options for the
 // Sales by Product/Service report. Scoped to products that actually have a
@@ -12,7 +13,7 @@ const SOLD_PRODUCT_IDS = `
   UNION
   SELECT sii.product_id FROM sales_invoice_items sii
   JOIN sales_invoices sinv ON sii.sales_invoice_id = sinv.id
-  WHERE sinv.status = 'Paid' AND (sinv.notes IS NULL OR sinv.notes NOT LIKE '%POS Sale%')
+  WHERE ${backofficeInvoiceSql('sinv')}
   UNION
   SELECT soi.product_id FROM sales_order_items soi
   JOIN sales_orders so ON soi.sales_order_id = so.id

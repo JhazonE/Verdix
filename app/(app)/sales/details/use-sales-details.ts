@@ -12,6 +12,7 @@ export function useSalesDetails() {
     terminalId: filters.terminalId,
     paymentTypeFilter: filters.paymentTypeFilter,
     searchTerm: filters.searchTerm,
+    sourceFilter: filters.sourceFilter,
     currentPage: filters.currentPage,
     limit: filters.limit,
   });
@@ -20,6 +21,7 @@ export function useSalesDetails() {
     dateRange: filters.dateRange,
     terminalId: filters.terminalId,
     paymentTypeFilter: filters.paymentTypeFilter,
+    sourceFilter: filters.sourceFilter,
     totals,
   });
   const { table } = useDetailsTable({ filteredSales, totalPages, expandedRows: filters.expandedRows });

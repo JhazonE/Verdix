@@ -1,6 +1,23 @@
+/** Range-wide totals returned by /api/sales/by-date (every page, not one). */
+export type ByDateTotals = {
+  transactions: number;
+  revenue: number;
+  discount: number;
+  vatable: number;
+  vatAmount: number;
+  vatExempt: number;
+  zeroRated: number;
+  nonVat: number;
+  cost: number;
+  profit: number;
+};
+
 export type SalesData = {
   date: string;
   transactionCount: number;
+  /** Of transactionCount / totalRevenue: back-office sales invoices (no till). */
+  backofficeCount?: number;
+  backofficeRevenue?: number;
   startOR: string;
   endOR: string;
   // BIR OR-series counterpart of startOR/endOR (Task 9, mirroring Tasks 7/8's

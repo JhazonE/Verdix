@@ -13,6 +13,7 @@ import { useProducts, usePaymentMethods } from '@/hooks/use-api';
 import { useUser } from '@/hooks/use-user';
 import { getApiUrl } from '@/lib/api-config';
 import { toSafeNumber } from '@/lib/utils';
+import { resolveDefaultWarehouseId } from '@/lib/default-warehouse';
 
 import {
   getWarehouses,
@@ -227,6 +228,15 @@ export function useAddPurchaseOrder({
     try {
       const warehouseData = await getWarehouses();
       setWarehouses(warehouseData);
+      // A products row is warehouse-specific (STORE and BODEGA are two rows
+      // for the same item), so with no Receive To the product search listed
+      // every item once per warehouse — indistinguishable duplicates. Seed
+      // the main warehouse, as the Products page does; the user can still
+      // change it. Only fills an empty field, never overrides a choice.
+      if (!form.getValues('receiveToWarehouse')) {
+        const defaultId = resolveDefaultWarehouseId(warehouseData);
+        if (defaultId) form.setValue('receiveToWarehouse', defaultId);
+      }
     } catch (error) {
       console.error('Error loading warehouses:', error);
     } finally {

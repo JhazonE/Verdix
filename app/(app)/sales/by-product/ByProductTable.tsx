@@ -12,6 +12,7 @@ import {
 import { flexRender, type Table as TanTable } from '@tanstack/react-table';
 import { cn } from '@/lib/utils';
 import type { ProductSalesData, TransactionData } from './by-product-types';
+import { BackofficeBadge } from '@/components/sales-source';
 
 type Props = {
   table: TanTable<ProductSalesData>;
@@ -93,7 +94,7 @@ export function ByProductTable({
                                 <TableHeader>
                                   <TableRow className="bg-muted hover:bg-muted">
                                     <TableHead className="font-semibold">Date</TableHead>
-                                    <TableHead className="font-semibold">Order # / SI No.</TableHead>
+                                    <TableHead className="font-semibold">OR # / SI No.</TableHead>
                                     <TableHead className="font-semibold">Customer</TableHead>
                                     <TableHead className="font-semibold text-right">Qty</TableHead>
                                     <TableHead className="font-semibold text-right">Price</TableHead>
@@ -137,10 +138,13 @@ export function ByProductTable({
                                               order number is what identifies
                                               the row. */}
                                           <TableCell>
-                                            {tx.orderNumber}
-                                            {tx.siNumber ? (
+                                            {/* A back-office invoice has no order number; its
+                                                number (the invoice reference) is shown alone. */}
+                                            {tx.transactionSource === 'Backoffice' ? tx.siNumber : tx.orderNumber}
+                                            {tx.transactionSource !== 'Backoffice' && tx.siNumber ? (
                                               <span className="text-muted-foreground"> / {tx.siNumber}</span>
                                             ) : null}
+                                            <BackofficeBadge source={tx.transactionSource} className="ml-1.5" />
                                           </TableCell>
                                           <TableCell>{tx.customer?.name}</TableCell>
                                           <TableCell className="text-right">

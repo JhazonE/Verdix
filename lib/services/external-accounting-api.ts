@@ -3,6 +3,7 @@
  * Handles communication with external accounting server
  */
 
+import { toLocalDateTime } from '../fiscal-utils';
 import { ExternalApiConfig } from '../external-api-config';
 import { logApiSync } from './api-sync-logger';
 
@@ -119,7 +120,7 @@ async function sendToExternalApi(
   const getNextRetryAt = () => {
     const now = new Date();
     now.setMinutes(now.getMinutes() + 5);
-    return now.toISOString().slice(0, 19).replace('T', ' ');
+    return toLocalDateTime(now);
   };
 
   try {
@@ -196,7 +197,7 @@ async function sendToExternalApi(
     errorMessage,
     retryCount: config.retryAttempts,
     nextRetryAt: permanent ? undefined : getNextRetryAt(),
-    lastRetryAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+    lastRetryAt: toLocalDateTime(),
   });
 
   return { success: false, error: errorMessage, permanent };

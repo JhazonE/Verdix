@@ -8,6 +8,7 @@ import { formatQuantity } from '@/lib/utils';
 import type { Customer, SystemSettings } from '@/lib/types';
 import { format, differenceInDays } from 'date-fns';
 import { WALK_IN_CUSTOMER } from './customer-account-types';
+import { isPastDue } from '@/lib/due-date';
 
 type Options = {
   isOpen: boolean;
@@ -362,7 +363,8 @@ export function useCustomerAccount({ isOpen, onOpenChange, onSelectCustomer, ini
   );
 
   const overdueCharges = pendingCharges.filter(t =>
-    t.dueDate && new Date(t.dueDate) < new Date()
+    // By calendar day: due today is not overdue until today is over.
+    isPastDue(t.dueDate)
   );
 
   return {

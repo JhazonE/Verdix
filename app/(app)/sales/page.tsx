@@ -18,7 +18,7 @@ export default function SalesPage() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <CardTitle>Sales Transactions</CardTitle>
-                <CardDescription>A list of all POS sales to customers.</CardDescription>
+                <CardDescription>A list of all POS and back-office sales to customers.</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -48,6 +48,8 @@ export default function SalesPage() {
               onExportPDF={p.exportToPDF}
               hasActiveFilters={p.hasActiveFilters}
               onResetFilters={p.resetFilters}
+              sourceFilter={p.sourceFilter}
+              onSourceChange={p.setSourceFilter}
             />
 
             <SalesTable

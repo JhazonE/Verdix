@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ChevronDown, ChevronUp, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { formatAmount } from './use-details-utils';
+import { BackofficeBadge } from '@/components/sales-source';
 
 function SortBtn({ column, label }: { column: any; label: string }) {
   return (
@@ -54,7 +55,12 @@ export function useDetailsTable({ filteredSales, totalPages, expandedRows }: Tab
       header: ({ column }) => <SortBtn column={column} label="SI No." />,
       cell: ({ row }) => {
         const siNo = row.original.siNumber ? String(row.original.siNumber).padStart(6, '0') : (row.original.orderNumber ? String(row.original.orderNumber).padStart(6, '0') : '-');
-        return <span className="font-medium text-primary whitespace-nowrap">{siNo}</span>;
+        return (
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+            <span className="font-medium text-primary">{siNo}</span>
+            <BackofficeBadge source={row.original.transactionSource} />
+          </span>
+        );
       },
     },
     {

@@ -27,6 +27,7 @@ import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { formatQuantity } from '@/lib/utils';
 import { printReportTable, exportReportExcel } from '@/lib/report-print';
 import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
+import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { useToast } from '@/hooks/use-toast';
 
 const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
@@ -56,11 +57,13 @@ export default function StockMovementPage() {
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [movementType, setMovementType] = useState('all');
 
-  // No pagination state: this page fetches the whole range and renders every
-  // row. It used to carry page/pageSize/totalPages/totalItems and a pager, but
-  // setTotalPages and setTotalItems were never called and the fetch never sent
-  // a page, so the control sat at "Page 1 of 1, 0 items" over a full table and
-  // its buttons did nothing.
+  // Client-side pagination: the page fetches the whole matching range once and
+  // searches it in memory, so it pages the filtered rows locally. Print and
+  // Excel export deliberately ignore paging and take every row. (An earlier
+  // pager here was decorative -- its totals were never set and the fetch never
+  // sent a page -- so it sat at "Page 1 of 1" over a full table.)
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const handlePrint = () => {
     printReportTable<StockMovement>({
@@ -90,6 +93,18 @@ export default function StockMovementPage() {
       m.notes?.toLowerCase().includes(search)
     );
   });
+
+  const totalItems = filteredMovements.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  // Clamp rather than trust `page`: a new search or a narrower refetch can
+  // shrink the list underneath the page the user was on.
+  const currentPage = Math.min(page, totalPages);
+  const pagedMovements = filteredMovements.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  // A new search term or a new result set starts back at page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, movements]);
 
   const exportToExcel = () => {
     const fileName = `Stock_Movements_${format(new Date(startDate), 'yyyyMMdd')}_${format(new Date(endDate), 'yyyyMMdd')}.xls`;
@@ -269,7 +284,7 @@ export default function StockMovementPage() {
                     </TableCell>
                 </TableRow>
               ) : (
-                filteredMovements.map((movement) => (
+                pagedMovements.map((movement) => (
                   <TableRow key={movement.id}>
                     <TableCell className="whitespace-nowrap">
                         {format(new Date(movement.created_at), 'MMM dd, yyyy HH:mm')}
@@ -299,6 +314,16 @@ export default function StockMovementPage() {
           </Table>
         </div>
 
+        <div className="mt-4">
+          <DataTablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            pageSize={pageSize}
+            totalItems={totalItems}
+            setPage={setPage}
+            setPageSize={setPageSize}
+          />
+        </div>
       </div>
     </div>
   );

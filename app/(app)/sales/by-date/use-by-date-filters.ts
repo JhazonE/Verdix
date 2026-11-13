@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { DateRange } from 'react-day-picker';
+import type { SalesSourceFilter } from '@/lib/sales-source';
 
 export function useByDateFilters() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
@@ -9,6 +10,8 @@ export function useByDateFilters() {
   // eslint-disable-next-line no-shadow
   const [interval, setInterval] = useState<string>('daily');
   const [paymentType, setPaymentType] = useState<string>('all');
+  // All / POS / Backoffice. See lib/sales-source.ts.
+  const [sourceFilter, setSourceFilterState] = useState<SalesSourceFilter>('all');
   const [transactionReference, setTransactionReference] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -21,14 +24,17 @@ export function useByDateFilters() {
   const [tempPaymentType, setTempPaymentType] = useState<string>('all');
 
   const hasActiveFilters = !!(
-    dateRange || terminal !== 'all' || interval !== 'daily' || paymentType !== 'all' || searchTerm
+    dateRange || terminal !== 'all' || interval !== 'daily' || paymentType !== 'all' || searchTerm || sourceFilter !== 'all'
   );
+
+  const setSourceFilter = (v: SalesSourceFilter) => { setSourceFilterState(v); setCurrentPage(1); };
 
   const resetFilters = () => {
     setDateRange(undefined);
     setTerminal('all');
     setInterval('daily');
     setPaymentType('all');
+    setSourceFilterState('all');
     setTransactionReference('');
     setSearchTerm('');
     setCurrentPage(1);
@@ -46,6 +52,7 @@ export function useByDateFilters() {
     terminal, setTerminal,
     interval, setInterval,
     paymentType, setPaymentType,
+    sourceFilter, setSourceFilter,
     transactionReference, setTransactionReference,
     searchTerm, setSearchTerm,
     currentPage, setCurrentPage,

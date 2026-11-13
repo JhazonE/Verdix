@@ -17,6 +17,8 @@ export type SummaryTotals = {
   vatAmount: number;
   nonVatSales: number;
   accountPayments: number;
+  /** Sales in the range, returns excluded (from /api/sales/transactions). */
+  transactions?: number;
 };
 
 type UtilParams = {
@@ -24,12 +26,13 @@ type UtilParams = {
   dateRange: DateRange | undefined;
   terminalId: string;
   paymentTypeFilter: string;
+  sourceFilter?: string;
   totals?: SummaryTotals;
 };
 
 const EMPTY_TOTALS: SummaryTotals = { discounts: 0, revenue: 0, amountPaid: 0, customerBalance: 0, cost: 0, grossProfit: 0, vatableSales: 0, vatAmount: 0, nonVatSales: 0, accountPayments: 0 };
 
-export function useDetailsUtils({ sales, dateRange, terminalId, paymentTypeFilter, totals }: UtilParams) {
+export function useDetailsUtils({ sales, dateRange, terminalId, paymentTypeFilter, sourceFilter, totals }: UtilParams) {
   // Search, payment type, and all other filters are applied server-side by
   // /api/sales/transactions — `sales` already reflects the full filtered result set.
   const filteredSales = sales;
@@ -45,6 +48,7 @@ export function useDetailsUtils({ sales, dateRange, terminalId, paymentTypeFilte
     if (dateRange?.to) params.append('endDate', format(dateRange.to, 'yyyy-MM-dd'));
     if (terminalId && terminalId !== 'all') params.append('terminalId', terminalId);
     if (paymentTypeFilter && paymentTypeFilter !== 'all') params.append('paymentMethod', paymentTypeFilter);
+    if (sourceFilter && sourceFilter !== 'all') params.append('source', sourceFilter);
     params.append('limit', '1000000');
     try {
       const res = await fetch(`/api/sales/transactions?${params.toString()}`);

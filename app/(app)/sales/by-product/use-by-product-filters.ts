@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { DateRange } from 'react-day-picker';
+import type { SalesSourceFilter } from '@/lib/sales-source';
 
 export function useByProductFilters() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -11,6 +12,8 @@ export function useByProductFilters() {
   const [brandFilter, setBrandFilter] = useState<string>('all');
   const [cashierFilter, setCashierFilter] = useState<string>('all');
   const [referenceFilter, setReferenceFilter] = useState<string>('');
+  // All / POS / Backoffice. See lib/sales-source.ts.
+  const [sourceFilter, setSourceFilterState] = useState<SalesSourceFilter>('all');
 
   const [currentPage, setCurrentPage] = useState(1);
   const [limit, setLimit] = useState(10);
@@ -36,7 +39,10 @@ export function useByProductFilters() {
     brandFilter !== 'all',
     cashierFilter !== 'all',
     !!referenceFilter,
+    sourceFilter !== 'all',
   ].filter(Boolean).length;
+
+  const setSourceFilter = (v: SalesSourceFilter) => { setSourceFilterState(v); setCurrentPage(1); };
 
   const resetFilters = () => {
     setSearchTerm('');
@@ -46,6 +52,7 @@ export function useByProductFilters() {
     setBrandFilter('all');
     setCashierFilter('all');
     setReferenceFilter('');
+    setSourceFilterState('all');
     setCurrentPage(1);
   };
 
@@ -64,6 +71,7 @@ export function useByProductFilters() {
     brandFilter, setBrandFilter,
     cashierFilter, setCashierFilter,
     referenceFilter, setReferenceFilter,
+    sourceFilter, setSourceFilter,
     currentPage, setCurrentPage,
     limit, setLimit,
     dateRangeDialogOpen, setDateRangeDialogOpen,

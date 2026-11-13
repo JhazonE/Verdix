@@ -26,7 +26,9 @@ export type TransactionData = {
   id: string;
   /** Unique per transaction row — the sale and its return differ here. */
   posTransactionId: string;
-  orderNumber: string;
+  orderNumber: string | null;
+  /** "POS" or "Backoffice" (a sales invoice keyed in on Sales > Invoices). */
+  transactionSource?: string;
   /** BIR sales invoice number. Nullable on historical rows. */
   siNumber: string | null;
   date: string;

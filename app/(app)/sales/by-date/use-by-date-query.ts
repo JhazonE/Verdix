@@ -4,18 +4,20 @@ import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 import { useQuery } from '@tanstack/react-query';
-import type { SalesData } from './by-date-types';
+import type { SalesData, ByDateTotals } from './by-date-types';
+import type { SalesSourceFilter } from '@/lib/sales-source';
 
 type QueryParams = {
   dateRange: DateRange | undefined;
   terminal: string;
   interval: string;
   paymentType: string;
+  sourceFilter: SalesSourceFilter;
   currentPage: number;
   limit: number;
 };
 
-export function useByDateQuery({ dateRange, terminal, interval, paymentType, currentPage, limit }: QueryParams) {
+export function useByDateQuery({ dateRange, terminal, interval, paymentType, sourceFilter, currentPage, limit }: QueryParams) {
   const [totalPages, setTotalPages] = useState(1);
 
   const { data: rawData, isLoading } = useQuery({
@@ -26,6 +28,7 @@ export function useByDateQuery({ dateRange, terminal, interval, paymentType, cur
       terminal,
       interval,
       paymentType,
+      sourceFilter,
       currentPage,
       limit,
     ],
@@ -36,6 +39,7 @@ export function useByDateQuery({ dateRange, terminal, interval, paymentType, cur
       if (terminal && terminal !== 'all') params.append('terminalId', terminal);
       if (interval) params.append('interval', interval);
       if (paymentType && paymentType !== 'all') params.append('paymentType', paymentType);
+      if (sourceFilter !== 'all') params.append('source', sourceFilter);
       params.append('page', currentPage.toString());
       params.append('limit', limit.toString());
       const res = await fetch(`/api/sales/by-date?${params.toString()}`);
@@ -52,6 +56,8 @@ export function useByDateQuery({ dateRange, terminal, interval, paymentType, cur
   }, [rawData]);
 
   const salesData: SalesData[] = rawData?.success ? rawData.data : [];
+  // Range-wide totals from the server: the cards must cover every page.
+  const totals: ByDateTotals | undefined = rawData?.success ? rawData.totals : undefined;
 
-  return { salesData, isLoading, totalPages };
+  return { salesData, isLoading, totalPages, totals };
 }
