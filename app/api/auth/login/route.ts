@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { compare } from 'bcryptjs';
+import { getClientIp, getLoginLimiters, rateLimitDisabled } from '@/lib/rate-limit';
+
+function tooManyAttempts(retryAfterSec: number) {
+    return NextResponse.json(
+        { error: `Too many failed login attempts. Try again in ${Math.ceil(retryAfterSec / 60)} minute(s).` },
+        { status: 429, headers: { 'Retry-After': String(retryAfterSec) } }
+    );
+}
 
 export async function POST(request: NextRequest) {
     try {
@@ -12,6 +20,29 @@ export async function POST(request: NextRequest) {
                 { status: 400 }
             );
         }
+
+        // Brute-force protection. Only FAILED attempts count; a correct login
+        // clears the per-account counter. Checked before touching the DB so a
+        // blocked caller also costs us no query or bcrypt compare.
+        // A direct (non-proxied) connection has no client IP; those share the
+        // 'local' bucket, which still limits per-account guessing.
+        const limiters = getLoginLimiters();
+        const ip = getClientIp(request.headers) ?? 'local';
+        const accountKey = `${ip}|${String(username).toLowerCase().slice(0, 100)}`;
+        const limitingOn = !rateLimitDisabled();
+
+        if (limitingOn) {
+            const account = limiters.perAccount.peek(accountKey);
+            if (!account.allowed) return tooManyAttempts(account.retryAfterSec);
+            const byIp = limiters.perIp.peek(ip);
+            if (!byIp.allowed) return tooManyAttempts(byIp.retryAfterSec);
+        }
+
+        const recordFailure = () => {
+            if (!limitingOn) return;
+            limiters.perAccount.record(accountKey);
+            limiters.perIp.record(ip);
+        };
 
         // Fetch user and their role category from database
         const users = await query(`
@@ -27,6 +58,7 @@ export async function POST(request: NextRequest) {
         const user = users[0];
 
         if (!user) {
+            recordFailure();
             return NextResponse.json(
                 { error: 'Invalid credentials' },
                 { status: 401 }
@@ -44,11 +76,14 @@ export async function POST(request: NextRequest) {
         const isValid = await compare(password, user.password);
 
         if (!isValid) {
+            recordFailure();
             return NextResponse.json(
                 { error: 'Invalid credentials' },
                 { status: 401 }
             );
         }
+
+        limiters.perAccount.reset(accountKey);
 
         // Permissions live on the user's TYPE now, not per-user — see
         // docs/superpowers/specs/2026-09-28-user-type-permission-live-sync-design.md.
