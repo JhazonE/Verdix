@@ -16,6 +16,7 @@ export function useSalesByProduct() {
     brandFilter: filters.brandFilter,
     cashierFilter: filters.cashierFilter,
     referenceFilter: filters.referenceFilter,
+    sourceFilter: filters.sourceFilter,
     currentPage: filters.currentPage,
     limit: filters.limit,
   });
@@ -29,6 +30,7 @@ export function useSalesByProduct() {
     cashierFilter: filters.cashierFilter,
     referenceFilter: filters.referenceFilter,
     searchTerm: filters.searchTerm,
+    sourceFilter: filters.sourceFilter,
     totals: query.totals,
   });
 
@@ -37,6 +39,7 @@ export function useSalesByProduct() {
     totalPages: query.totalPages,
     dateRange: filters.dateRange,
     terminal: filters.terminal,
+    sourceFilter: filters.sourceFilter,
   });
 
   return {

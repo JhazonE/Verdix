@@ -229,7 +229,7 @@ export function ReferenceFilterDialog({ open, onOpenChange, tempReference, setTe
           <Label>Transaction Reference</Label>
           <Input
             className="mt-2"
-            placeholder="Order #, Invoice #..."
+            placeholder="OR #, Invoice #..."
             value={tempReference}
             onChange={(e) => setTempReference(e.target.value)}
           />

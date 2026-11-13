@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { backofficeInvoiceSql, NON_SALE_STATUSES } from '../../lib/backoffice-sales';
+import { parseSalesSource } from '../../lib/sales-source';
 
 // Back-office sales invoices (Sales > Invoices) write sales_invoices only: no
 // pos_transactions / sales_transactions row. Sales by Date and the Sales
@@ -50,5 +51,22 @@ assert.ok(
 );
 // The two id columns must not be coalesced: they can differ in collation.
 assert.ok(!/COALESCE\(\s*pos_id/.test(tx), 'do not COALESCE pos_id and bo_id');
+
+// 4. The POS / Backoffice source filter. An unknown value means ALL, never a
+// silent narrowing that would hide sales.
+assert.equal(parseSalesSource('pos'), 'pos');
+assert.equal(parseSalesSource('Backoffice'), 'backoffice');
+assert.equal(parseSalesSource(' BACKOFFICE '), 'backoffice');
+for (const v of ['all', '', null, undefined, 'bogus', 'POS;DROP']) {
+  assert.equal(parseSalesSource(v as any), 'all', `${String(v)} means all`);
+}
+for (const rel of [
+  'app/api/sales/transactions/route.ts',
+  'app/api/sales/by-date/route.ts',
+  'app/api/sales/by-product/route.ts',
+  'app/api/sales/product-transactions/route.ts',
+]) {
+  assert.ok(stripComments(read(rel)).includes('parseSalesSource('), `${rel} must honour ?source=`);
+}
 
 console.log('✓ backoffice-sales-in-reports');

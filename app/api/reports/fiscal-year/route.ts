@@ -4,6 +4,7 @@ import { getFiscalYearRange, getCurrentFiscalYear, formatFiscalYear, toLocalYmd 
 import { lineCostExpr } from '@/lib/cost-of-sale';
 import { profitOf, lineDateExpr } from '@/lib/profit';
 import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
+import { posSaleSql } from '@/lib/pos-sales';
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
     // fiscal year for it. See lib/backoffice-sales.ts.
     const [firstSaleRow] = await query(
       `SELECT MIN(d) AS first_date FROM (
-         SELECT MIN(invoice_date) AS d FROM sales_transactions WHERE status = 'Paid'
+         SELECT MIN(st.invoice_date) AS d FROM sales_transactions st WHERE ${posSaleSql('st')}
          UNION ALL
          SELECT MIN(sinv.invoice_date) FROM sales_invoices sinv WHERE ${backofficeInvoiceSql('sinv')}
        ) firsts`
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
          COALESCE(SUM(st.total), 0) AS revenue,
          COUNT(*) AS transactions
        FROM sales_transactions st
-       WHERE st.status = 'Paid' AND st.invoice_date >= ? AND st.invoice_date <= ?`,
+       WHERE ${posSaleSql('st')} AND st.invoice_date >= ? AND st.invoice_date <= ?`,
       [startStr, endStr]
     ) as any[];
 
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
       `SELECT COALESCE(SUM(si.price * si.quantity), 0) AS returned
        FROM sale_items si
        JOIN sales_transactions st ON si.sale_id = st.id
-       WHERE st.status = 'Paid' AND si.quantity < 0
+       WHERE ${posSaleSql('st')} AND si.quantity < 0
          AND DATE(si.created_at) >= ? AND DATE(si.created_at) <= ?`,
       [startStr, endStr]
     ) as any[];
@@ -71,7 +72,7 @@ export async function GET(request: NextRequest) {
        FROM sale_items si
        JOIN sales_transactions st ON si.sale_id = st.id
        JOIN products p ON si.product_id = p.id
-       WHERE st.status = 'Paid' AND DATE(${saleDate}) >= ? AND DATE(${saleDate}) <= ?`,
+       WHERE ${posSaleSql('st')} AND DATE(${saleDate}) >= ? AND DATE(${saleDate}) <= ?`,
       [startStr, endStr]
     ) as any[];
 
@@ -106,7 +107,7 @@ export async function GET(request: NextRequest) {
               COALESCE(SUM(st.total), 0) AS revenue,
               COUNT(*) AS transactions
        FROM sales_transactions st
-       WHERE st.status = 'Paid' AND st.invoice_date >= ? AND st.invoice_date <= ?
+       WHERE ${posSaleSql('st')} AND st.invoice_date >= ? AND st.invoice_date <= ?
        GROUP BY DATE_FORMAT(st.invoice_date, '%Y-%m')`,
       [startStr, endStr]
     ) as any[];
@@ -118,7 +119,7 @@ export async function GET(request: NextRequest) {
        FROM sale_items si
        JOIN sales_transactions st ON si.sale_id = st.id
        JOIN products p ON si.product_id = p.id
-       WHERE st.status = 'Paid' AND DATE(${saleDate}) >= ? AND DATE(${saleDate}) <= ?
+       WHERE ${posSaleSql('st')} AND DATE(${saleDate}) >= ? AND DATE(${saleDate}) <= ?
        GROUP BY DATE_FORMAT(${saleDate}, '%Y-%m')`,
       [startStr, endStr]
     ) as any[];
@@ -129,7 +130,7 @@ export async function GET(request: NextRequest) {
               COALESCE(SUM(si.price * si.quantity), 0) AS returned
        FROM sale_items si
        JOIN sales_transactions st ON si.sale_id = st.id
-       WHERE st.status = 'Paid' AND si.quantity < 0
+       WHERE ${posSaleSql('st')} AND si.quantity < 0
          AND DATE(si.created_at) >= ? AND DATE(si.created_at) <= ?
        GROUP BY DATE_FORMAT(si.created_at, '%Y-%m')`,
       [startStr, endStr]

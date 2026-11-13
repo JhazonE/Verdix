@@ -15,6 +15,8 @@ type SummaryTotals = {
   vatAmount: number;
   nonVatSales: number;
   accountPayments: number;
+  /** Sales in the range, returns excluded. */
+  transactions?: number;
 };
 
 type Props = { totals: SummaryTotals; transactionCount: number };

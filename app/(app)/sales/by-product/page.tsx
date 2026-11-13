@@ -20,6 +20,7 @@ export default function SalesByProductPage() {
     searchTerm, setSearchTerm,
     dateRange, terminal,
     categoryFilter, brandFilter, cashierFilter, referenceFilter,
+    sourceFilter, setSourceFilter,
     currentPage, setCurrentPage,
     limit, setLimit,
     activeFilterCount,
@@ -65,6 +66,8 @@ export default function SalesByProductPage() {
             brandFilter={brandFilter}
             cashierFilter={cashierFilter}
             referenceFilter={referenceFilter}
+            sourceFilter={sourceFilter}
+            setSourceFilter={setSourceFilter}
             resetFilters={resetFilters}
             exportToCSV={exportToCSV}
             exportToPDF={exportToPDF}

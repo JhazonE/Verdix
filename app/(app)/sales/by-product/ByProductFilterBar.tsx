@@ -12,6 +12,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { Table } from '@tanstack/react-table';
+import { SalesSourceFilter as SalesSourceToggle } from '@/components/sales-source';
+import type { SalesSourceFilter } from '@/lib/sales-source';
 
 type Props = {
   searchTerm: string;
@@ -24,6 +26,8 @@ type Props = {
   brandFilter: string;
   cashierFilter: string;
   referenceFilter: string;
+  sourceFilter: SalesSourceFilter;
+  setSourceFilter: (v: SalesSourceFilter) => void;
   resetFilters: () => void;
   exportToCSV: () => void;
   exportToPDF: () => void;
@@ -40,6 +44,7 @@ export function ByProductFilterBar({
   searchTerm, setSearchTerm, setCurrentPage,
   activeFilterCount,
   dateRange, terminal, categoryFilter, brandFilter, cashierFilter, referenceFilter,
+  sourceFilter, setSourceFilter,
   resetFilters, exportToCSV, exportToPDF,
   table,
   onOpenDateRange, onOpenTerminal, onOpenCategory, onOpenBrand, onOpenCashier, onOpenReference,
@@ -58,6 +63,7 @@ export function ByProductFilterBar({
       </div>
 
       <div className="flex items-center gap-2">
+        <SalesSourceToggle value={sourceFilter} onChange={setSourceFilter} />
         {/* Column Visibility */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

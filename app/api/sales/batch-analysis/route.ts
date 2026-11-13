@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '../../../../lib/mysql';
-import { profitOf } from '../../../../lib/profit';
+import { lineDateExpr } from '../../../../lib/profit';
 import { backofficeInvoiceSql } from '../../../../lib/backoffice-sales';
+import { posSaleSql } from '../../../../lib/pos-sales';
+import { unitCostExpr } from '../../../../lib/cost-of-sale';
+import { expandBatchLine } from '../../../../lib/batch-analysis-rows';
 
 /**
  * GET /api/sales/batch-analysis
@@ -49,14 +52,20 @@ export async function GET(request: NextRequest) {
         si.selling_unit_factor AS sellingUnitFactor,
         si.cost_at_sale AS costAtSale,
         si.batch_source AS batchSource,
-        st.created_at   AS saleDate,
+        ${unitCostExpr('si', 'p', { hasCostAtSale: true })} AS fallbackUnitCost,
+        DATE_FORMAT(${lineDateExpr('si', 'st.created_at')}, '%Y-%m-%d') AS saleDate,
         st.reference    AS reference
       FROM sale_items si
       JOIN sales_transactions st ON si.sale_id = st.id
       JOIN products p ON si.product_id = p.id
       LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
-      WHERE DATE(st.created_at) BETWEEN ? AND ?
-        AND si.batch_source IS NOT NULL
+      -- Same scope as every other sales report, so the summary cards agree:
+      --  * voided / training sales are not revenue (lib/pos-sales.ts);
+      --  * a RETURN line (negative qty) carries no batch_source, so requiring
+      --    one silently dropped every return; it is dated by when it was
+      --    returned, not by the original sale (lib/profit.ts).
+      WHERE DATE(${lineDateExpr('si', 'st.created_at')}) BETWEEN ? AND ?
+        AND ${posSaleSql('st')}
         ${productFilter}
       ORDER BY p.name ASC, st.created_at ASC
     `;
@@ -89,6 +98,7 @@ export async function GET(request: NextRequest) {
          sii.selling_unit_factor AS sellingUnitFactor,
          sii.cost_at_sale AS costAtSale,
          sii.batch_source AS batchSource,
+         ${unitCostExpr('sii', 'p', { hasCostAtSale: true })} AS fallbackUnitCost,
          DATE_FORMAT(sinv.invoice_date, '%Y-%m-%d') AS saleDate,
          sinv.reference AS reference
        FROM sales_invoice_items sii
@@ -97,7 +107,6 @@ export async function GET(request: NextRequest) {
        LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
        WHERE ${backofficeInvoiceSql('sinv')}
          AND DATE(sinv.invoice_date) BETWEEN ? AND ?
-         AND sii.batch_source IS NOT NULL
          ${boProductFilter}`,
       boParams
     );
@@ -114,38 +123,21 @@ export async function GET(request: NextRequest) {
     const analysis: any[] = [];
 
     for (const row of rows) {
-      let splits: any[] = [];
-      try {
-        splits = typeof row.batchSource === 'string'
-          ? JSON.parse(row.batchSource)
-          : row.batchSource || [];
-      } catch { splits = []; }
-
-      // si.price is per SELLING unit sold, but a batch split's qty is always
-      // in BASE units (batches are stocked and consumed in base units). Scale
-      // the price down to a per-base-unit figure before pairing it with a
-      // split's base-unit qty, or revenue overstates by the factor on every
-      // non-base sale. NULL factor means base unit (1).
-      const sellingUnitFactor = parseFloat(row.sellingUnitFactor) || 1;
-      const sellingPrice = (parseFloat(row.sellingPrice) || 0) / sellingUnitFactor;
-
-      for (const split of splits) {
-        const qty = parseFloat(split.qty) || 0;
-        const unitCost = parseFloat(split.unitCost) || 0;
-        const lineRevenue = qty * sellingPrice;
-        const lineCost = qty * unitCost;
-        const lineProfit = profitOf(lineRevenue, lineCost);
-        const margin = lineRevenue > 0 ? (lineProfit / lineRevenue) * 100 : 0;
+      // Base-unit rows, one per batch drawn from; a return or an un-batched
+      // line yields a single row. See lib/batch-analysis-rows.ts.
+      for (const split of expandBatchLine(row)) {
+        const { batchId, batchType, qtySold: qty, unitCost, unitSellingPrice: sellingPrice,
+                lineRevenue, lineCost, lineProfit, marginPct } = split;
 
         // Try to get batch details (received_date, PO reference)
         let batchDate: string | null = null;
         let poReference: string | null = null;
 
-        if (split.batchId && split.batchId !== 'fallback') {
+        if (batchId && batchId !== 'fallback') {
           try {
             const batchRows: any[] = await query(
               'SELECT received_date, purchase_order_id FROM inventory_batches WHERE id = ?',
-              [split.batchId]
+              [batchId]
             );
             if (batchRows.length > 0) {
               batchDate = batchRows[0].received_date
@@ -168,17 +160,17 @@ export async function GET(request: NextRequest) {
           baseUnitBarcode: row.baseUnitBarcode,
           barcode: row.barcode,
           category: row.category,
-          batchId: split.batchId,
+          batchId,
           batchReceivedDate: batchDate,
           poReference,
-          batchType: split.type || 'batch',
+          batchType,
           qtySold: qty,
           unitCost,
           unitSellingPrice: sellingPrice,
           lineRevenue,
           lineCost,
           lineProfit,
-          marginPct: parseFloat(margin.toFixed(2)),
+          marginPct,
         });
       }
     }

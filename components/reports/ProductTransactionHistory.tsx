@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { getApiUrl } from '@/lib/api-config';
+import { BackofficeBadge } from '@/components/sales-source';
 
 type TransactionItem = {
   productId: string;
@@ -37,7 +38,9 @@ type Transaction = {
   id: string;
   /** Unique per transaction row — a sale and its return differ here. */
   posTransactionId: string;
-  orderNumber: string;
+  orderNumber: string | null;
+  /** "POS" or "Backoffice" (a sales invoice keyed in on Sales > Invoices). */
+  transactionSource?: string;
   /** BIR sales invoice number. Nullable on historical rows. */
   siNumber: string | null;
   date: string;
@@ -122,7 +125,7 @@ export function ProductTransactionHistory({
                 <TableHeader>
                   <TableRow className="bg-muted hover:bg-muted">
                     <TableHead className="font-semibold">Date</TableHead>
-                    <TableHead className="font-semibold">Order # / SI No.</TableHead>
+                    <TableHead className="font-semibold">OR # / SI No.</TableHead>
                     <TableHead className="font-semibold">Customer</TableHead>
                     <TableHead className="font-semibold text-right">Qty</TableHead>
                     <TableHead className="font-semibold text-right">Price</TableHead>
@@ -159,10 +162,13 @@ export function ProductTransactionHistory({
                               across orders, so the order number is what
                               identifies the row. */}
                           <TableCell>
-                            {tx.orderNumber}
-                            {tx.siNumber ? (
+                            {/* A back-office invoice has no POS order number; its
+                                number (the invoice reference) is shown alone. */}
+                            {tx.transactionSource === 'Backoffice' ? tx.siNumber : tx.orderNumber}
+                            {tx.transactionSource !== 'Backoffice' && tx.siNumber ? (
                               <span className="text-muted-foreground"> / {tx.siNumber}</span>
                             ) : null}
+                            <BackofficeBadge source={tx.transactionSource} className="ml-1.5" />
                           </TableCell>
                           <TableCell>{tx.customer?.name || '—'}</TableCell>
                           <TableCell className="text-right">{qty}</TableCell>

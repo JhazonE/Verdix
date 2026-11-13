@@ -3,6 +3,7 @@ import { query } from '@/lib/mysql';
 import { unitCostExpr } from '@/lib/cost-of-sale';
 import { profitOf } from '@/lib/profit';
 import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
+import { parseSalesSource } from '@/lib/sales-source';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,6 +13,8 @@ export async function GET(request: NextRequest) {
     const terminalId = searchParams.get('terminalId');
     const interval = searchParams.get('interval') || 'daily'; // daily, hourly, monthly
     const paymentType = searchParams.get('paymentType');
+    // pos | backoffice | all (default). See lib/sales-source.ts.
+    const source = parseSalesSource(searchParams.get('source'));
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
     const offset = (page - 1) * limit;
@@ -98,7 +101,11 @@ export async function GET(request: NextRequest) {
     // A terminal filter excludes this leg entirely: a back-office invoice is
     // not rung up on any terminal, so "Terminal 2" has no back-office sales.
     // The payment-type filter applies to the invoice's own payment_method.
-    const includeBackoffice = !(terminalId && terminalId !== 'all');
+    const includeBackoffice = !(terminalId && terminalId !== 'all') && source !== 'pos';
+    // Backoffice-only: switch the POS leg off.
+    if (source === 'backoffice') {
+        whereClause += ' AND 1=0';
+    }
     const invoiceParams: any[] = [];
     let invoiceWhere = `WHERE ${backofficeInvoiceSql('sinv')}`;
     if (paymentType && paymentType !== 'all') {
@@ -182,12 +189,36 @@ export async function GET(request: NextRequest) {
     const dayParams = includeBackoffice ? [...params, ...invoiceParams] : [...params];
 
     // Get total count of groups for pagination.
+    //
+    // The same pass also totals the WHOLE range. The summary cards used to be
+    // summed client-side from the current page of days, so a range longer
+    // than one page showed less revenue/profit than every other report.
     const countQuery = `
-        SELECT COUNT(DISTINCT bucket) as total
+        SELECT COUNT(DISTINCT bucket) as total,
+               SUM(is_sale) as transaction_count,
+               SUM(total_amount) as total_revenue,
+               SUM(discount_amount) as total_discount,
+               SUM(tax_amount) as total_tax,
+               SUM(cost) as total_cost
         FROM (${dayRows}) day_rows
     `;
     const countResult = await query(countQuery, dayParams);
     const totalCount = countResult[0]?.total || 0;
+    const rangeRevenue = parseFloat(countResult[0]?.total_revenue) || 0;
+    const rangeTax = parseFloat(countResult[0]?.total_tax) || 0;
+    const rangeCost = parseFloat(countResult[0]?.total_cost) || 0;
+    const totals = {
+        transactions: parseInt(countResult[0]?.transaction_count) || 0,
+        revenue: rangeRevenue,
+        discount: parseFloat(countResult[0]?.total_discount) || 0,
+        vatable: rangeRevenue - rangeTax,
+        vatAmount: rangeTax,
+        vatExempt: 0,
+        zeroRated: 0,
+        nonVat: 0,
+        cost: rangeCost,
+        profit: profitOf(rangeRevenue, rangeCost),
+    };
     const totalPages = Math.ceil(totalCount / limit);
 
     const queryStr = `
@@ -284,6 +315,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
         success: true,
         data: formattedData,
+        totals,
         pagination: {
             total: totalCount,
             page,

@@ -11,6 +11,8 @@ import { cn } from '@/lib/utils';
 import { getApiUrl } from '@/lib/api-config';
 import { useQuery } from '@tanstack/react-query';
 import type { Sale, SalesTotals } from './sales-types';
+import { BackofficeBadge } from '@/components/sales-source';
+import type { SalesSourceFilter } from '@/lib/sales-source';
 
 function SortHeader({ column, label, className }: { column: any; label: string; className?: string }) {
   return (
@@ -27,6 +29,9 @@ function SortHeader({ column, label, className }: { column: any; label: string; 
 }
 
 export function useSalesPage() {
+  // All / POS / Backoffice. See lib/sales-source.ts.
+  const [sourceFilter, setSourceFilterState] = useState<SalesSourceFilter>('all');
+  const setSourceFilter = (v: SalesSourceFilter) => { setSourceFilterState(v); setCurrentPage(1); };
   const [searchTerm, setSearchTerm] = useState('');
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [terminalId, setTerminalId] = useState<string>('all');
@@ -71,6 +76,7 @@ export function useSalesPage() {
     if (cashierFilter && cashierFilter !== 'all') params.append('cashier', cashierFilter);
     if (referenceNumberFilter) params.append('reference', referenceNumberFilter);
     if (searchTerm) params.append('search', searchTerm);
+    if (sourceFilter !== 'all') params.append('source', sourceFilter);
     return params;
   };
 
@@ -78,7 +84,7 @@ export function useSalesPage() {
     queryKey: [
       'salesTransactions', dateRange?.from?.toISOString(), dateRange?.to?.toISOString(), terminalId,
       currentPage, limit, paymentTypeFilter, salesStatusFilter, customerFilter, cashierFilter,
-      referenceNumberFilter, searchTerm,
+      referenceNumberFilter, searchTerm, sourceFilter,
     ],
     queryFn: async () => {
       const params = buildSalesParams();
@@ -132,7 +138,13 @@ export function useSalesPage() {
     },
     { accessorKey: 'siNumber', header: ({ column }) => <SortHeader column={column} label="SI No." />, cell: ({ row }) => {
       const siNo = row.original.siNumber ? String(row.original.siNumber).padStart(6, '0') : (row.original.orderNumber ? String(row.original.orderNumber).padStart(6, '0') : '-');
-      return <span className="inline-flex items-center justify-center w-12 px-1 rounded-full bg-primary text-primary-foreground text-xs font-medium">{siNo}</span>;
+      // A back-office invoice carries its invoice reference here, so it is marked.
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-flex items-center justify-center min-w-12 px-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium">{siNo}</span>
+          <BackofficeBadge source={row.original.transactionSource} />
+        </span>
+      );
     } },
     { accessorKey: 'date', header: ({ column }) => <SortHeader column={column} label="Date" />, cell: ({ row }) => { const d = row.original.date || row.original.invoiceDate; return d ? format(new Date(d), 'MMM dd, yyyy hh:mm a') : 'N/A'; } },
     { accessorKey: 'terminal', header: ({ column }) => <SortHeader column={column} label="Terminal" />, cell: ({ row }) => row.original.terminal || '-' },
@@ -165,18 +177,18 @@ export function useSalesPage() {
 
   const hasActiveFilters = !!(searchTerm || dateRange || terminalId !== 'all' ||
     paymentTypeFilter !== 'all' || salesStatusFilter !== 'all' || customerFilter ||
-    (cashierFilter && cashierFilter !== 'all') || referenceNumberFilter);
+    (cashierFilter && cashierFilter !== 'all') || referenceNumberFilter || sourceFilter !== 'all');
 
   const resetFilters = () => {
     setSearchTerm(''); setDateRange(undefined); setTerminalId('all');
     setPaymentTypeFilter('all'); setSalesStatusFilter('all'); setCustomerFilter('');
-    setCashierFilter('all'); setReferenceNumberFilter(''); setCurrentPage(1);
+    setCashierFilter('all'); setReferenceNumberFilter(''); setSourceFilterState('all'); setCurrentPage(1);
   };
 
   const clearFilterValues = () => {
     setPaymentTypeFilter('all'); setTerminalId('all'); setDateRange(undefined);
     setSalesStatusFilter('all'); setCustomerFilter(''); setCashierFilter('all');
-    setReferenceNumberFilter('');
+    setReferenceNumberFilter(''); setSourceFilterState('all');
   };
 
   const fetchAllSalesForExport = async () => {
@@ -295,6 +307,7 @@ export function useSalesPage() {
     applyReferenceNumber,
     // computed
     summaryTotals, hasActiveFilters,
+    sourceFilter, setSourceFilter,
     // actions
     resetFilters, clearFilterValues, exportToCSV, exportToPDF,
   };

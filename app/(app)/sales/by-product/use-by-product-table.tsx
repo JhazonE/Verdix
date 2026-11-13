@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 import {
@@ -15,12 +15,14 @@ import { ChevronDown, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown } from 'luci
 import { cn } from '@/lib/utils';
 import { getApiUrl } from '@/lib/api-config';
 import type { ProductSalesData, TransactionData } from './by-product-types';
+import type { SalesSourceFilter } from '@/lib/sales-source';
 
 type TableParams = {
   productSales: ProductSalesData[];
   totalPages: number;
   dateRange: DateRange | undefined;
   terminal: string;
+  sourceFilter: SalesSourceFilter;
 };
 
 function SortBtn({ column, children }: { column: any; children: React.ReactNode }) {
@@ -43,12 +45,18 @@ function SortBtn({ column, children }: { column: any; children: React.ReactNode 
 
 export { SortBtn };
 
-export function useByProductTable({ productSales, totalPages, dateRange, terminal }: TableParams) {
+export function useByProductTable({ productSales, totalPages, dateRange, terminal, sourceFilter }: TableParams) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [transactions, setTransactions] = useState<Record<string, TransactionData[]>>({});
   const [loadingTransactions, setLoadingTransactions] = useState<Record<string, boolean>>({});
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+
+  // Cached drill-down rows belong to one source; refetch when it changes.
+  useEffect(() => {
+    setTransactions({});
+    setExpandedRows(new Set());
+  }, [sourceFilter]);
 
   const fetchTransactionsForProduct = async (productId: string) => {
     setLoadingTransactions((prev) => ({ ...prev, [productId]: true }));
@@ -58,6 +66,7 @@ export function useByProductTable({ productSales, totalPages, dateRange, termina
       if (dateRange?.from) params.append('startDate', format(dateRange.from, 'yyyy-MM-dd'));
       if (dateRange?.to) params.append('endDate', format(dateRange.to, 'yyyy-MM-dd'));
       if (terminal && terminal !== 'all') params.append('terminalId', terminal);
+      if (sourceFilter !== 'all') params.append('source', sourceFilter);
       const res = await fetch(getApiUrl(`/sales/transactions?${params.toString()}`));
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const result = await res.json();

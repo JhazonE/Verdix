@@ -23,6 +23,10 @@ export function useAnalysisQueries({ dateRange, terminal, interval, paymentType 
       if (terminal && terminal !== 'all') params.append('terminalId', terminal);
       if (interval) params.append('interval', interval);
       if (paymentType && paymentType !== 'all') params.append('paymentType', paymentType);
+      // Every bucket in the range. by-date paginates at 10 by default, so
+      // without this the cards and charts covered only the 10 latest days and
+      // disagreed with every other report on any longer range.
+      params.append('limit', '100000');
       const res = await fetch(getApiUrl(`/sales/by-date?${params.toString()}`));
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const result = await res.json();

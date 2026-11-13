@@ -3,6 +3,7 @@ import { query, getNextZReadingNumber } from '@/lib/mysql';
 import { format } from 'date-fns';
 import { saveEJournalFiles } from '@/lib/ejournal/ejournal-writer';
 import { sendZReadingToStaLucia } from '@/lib/integrations/sta-lucia/send-z-reading';
+import { readingTotals } from '@/lib/reading-totals';
 
 const safeParseFloat = (val: any): number => {
     if (val === null || val === undefined) return 0;
@@ -137,7 +138,7 @@ export async function GET(request: NextRequest) {
 
         const salesBaseSql = `
             FROM sales_transactions st
-            JOIN pos_transactions pt ON st.id = pt.sale_id
+            JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
             WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
             AND pt.is_training = 0
             ${dateCondition}
@@ -202,7 +203,7 @@ export async function GET(request: NextRequest) {
                 MAX(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as max_void_or_id,
                 SUM(st.total) as void_amount
             FROM sales_transactions st
-            JOIN pos_transactions pt ON st.id = pt.sale_id
+            JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
             WHERE st.status IN ('Void', 'Voided', 'Cancelled')
             AND pt.is_training = 0
             ${dateCondition}
@@ -236,7 +237,7 @@ export async function GET(request: NextRequest) {
           SELECT payment_method, SUM(amount) as amount FROM (
             SELECT pd.payment_method as payment_method, SUM(pd.amount_tendered - pd.change_given) as amount
             FROM sales_transactions st
-            JOIN pos_transactions pt ON st.id = pt.sale_id
+            JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
             JOIN payment_details pd ON pd.transaction_id = pt.id
             WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
             AND pt.is_training = 0
@@ -248,7 +249,7 @@ export async function GET(request: NextRequest) {
 
             SELECT st.payment_method as payment_method, SUM(st.total) as amount
             FROM sales_transactions st
-            JOIN pos_transactions pt ON st.id = pt.sale_id
+            JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
             WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
             AND pt.is_training = 0
             AND NOT EXISTS (SELECT 1 FROM payment_details pd WHERE pd.transaction_id = pt.id)
@@ -378,8 +379,11 @@ export async function GET(request: NextRequest) {
         const discounts = parseFloat(salesResult?.total_discounts || 0);
         const returns = parseFloat(returnsResult?.total_returns || 0);
         
-        const adjustedGrossSales = rawNetSales + discounts + returns + voidAmount;
-        const finalNetSales = rawNetSales; 
+        // See lib/reading-totals.ts: a return is deducted from net, not added
+        // to gross.
+        const { gross: adjustedGrossSales, net: finalNetSales } = readingTotals({
+            sales: rawNetSales, discounts, voids: voidAmount, returns,
+        });
         const vatRow = vatAdjustmentResults.find((v: any) => v.tax_type === 'VAT');
         const vatTotalAmount = parseFloat(vatRow?.total_amount || 0);
         const vatAmount = parseFloat(vatRow?.vat_amount || 0);
@@ -717,7 +721,7 @@ export async function POST(request: NextRequest) {
 
         const salesBaseSql = `
             FROM sales_transactions st
-            JOIN pos_transactions pt ON st.id = pt.sale_id
+            JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
             WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
             AND pt.is_training = 0
             ${dateCondition}
@@ -728,7 +732,18 @@ export async function POST(request: NextRequest) {
         const salesSql = `SELECT SUM(st.total) as gross_sales, COUNT(*) as transaction_count, MIN(st.si_number) as min_sale_id, MAX(st.si_number) as max_sale_id, MIN(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as min_sale_or_id, MAX(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as max_sale_or_id, SUM(pt.discount_amount) as total_discounts ${salesBaseSql}`;
         const [salesResult] = await query(salesSql, salesParams) as any[];
 
-        const returnsSql = `SELECT SUM(st.total) as total_returns FROM sales_transactions st JOIN pos_transactions pt ON st.id = pt.sale_id WHERE st.status = 'Returned' AND pt.is_training = 0 ${dateCondition} AND pt.terminal_id = ?`;
+        // The refund, from the RETURN's own row, dated by when it was given —
+        // the same query as the GET preview above. This FILING path still had
+        // the old `SUM(st.total) WHERE st.status = 'Returned'`, so every filed
+        // Z-reading reported 0.00 returns for a partial return (status stays
+        // 'Paid') and the whole original sale for a full one.
+        const returnsSql = `
+            SELECT ABS(COALESCE(SUM(pt.total_amount), 0)) as total_returns
+            FROM pos_transactions pt
+            WHERE pt.transaction_type = 'return'
+            AND pt.is_training = 0
+            ${dateCondition.replace(/st\.created_at/g, 'pt.created_at')}
+            AND pt.terminal_id = ?`;
         const [returnsResult] = await query(returnsSql, salesParams) as any[];
 
         // See the comment on the equivalent query in the GET handler above:
@@ -739,7 +754,7 @@ export async function POST(request: NextRequest) {
           SELECT payment_method, SUM(amount) as amount FROM (
             SELECT pd.payment_method as payment_method, SUM(pd.amount_tendered - pd.change_given) as amount
             FROM sales_transactions st
-            JOIN pos_transactions pt ON st.id = pt.sale_id
+            JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
             JOIN payment_details pd ON pd.transaction_id = pt.id
             WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
             AND pt.is_training = 0
@@ -750,7 +765,7 @@ export async function POST(request: NextRequest) {
 
             SELECT st.payment_method as payment_method, SUM(st.total) as amount
             FROM sales_transactions st
-            JOIN pos_transactions pt ON st.id = pt.sale_id
+            JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
             WHERE st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned')
             AND pt.is_training = 0
             AND NOT EXISTS (SELECT 1 FROM payment_details pd WHERE pd.transaction_id = pt.id)
@@ -761,7 +776,7 @@ export async function POST(request: NextRequest) {
         `;
         const paymentResults = await query(paymentSql, [...salesParams, ...salesParams]) as any[];
 
-        const voidSeqSql = `SELECT MIN(st.si_number) as min_void_id, MAX(st.si_number) as max_void_id, MIN(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as min_void_or_id, MAX(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as max_void_or_id, SUM(st.total) as void_amount FROM sales_transactions st JOIN pos_transactions pt ON st.id = pt.sale_id WHERE st.status IN ('Void', 'Voided', 'Cancelled') AND pt.is_training = 0 ${dateCondition} AND pt.terminal_id = ?`;
+        const voidSeqSql = `SELECT MIN(st.si_number) as min_void_id, MAX(st.si_number) as max_void_id, MIN(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as min_void_or_id, MAX(CASE WHEN st.bir_or_number IS NOT NULL THEN st.bir_or_number END) as max_void_or_id, SUM(st.total) as void_amount FROM sales_transactions st JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale' WHERE st.status IN ('Void', 'Voided', 'Cancelled') AND pt.is_training = 0 ${dateCondition} AND pt.terminal_id = ?`;
         const [voidSeqResult] = await query(voidSeqSql, salesParams) as any[];
         const voidAmount = parseFloat(voidSeqResult?.void_amount || 0);
 
@@ -862,7 +877,14 @@ export async function POST(request: NextRequest) {
         }).sort((a, b) => b.salesTotal - a.salesTotal);
 
         const rawNetSales = parseFloat(salesResult?.gross_sales || 0);
-        const finalNetSales = rawNetSales; 
+        // Same gross/net rule as the GET preview (lib/reading-totals.ts), so a
+        // filed reading shows what its preview showed.
+        const { gross: commitGrossSales, net: finalNetSales } = readingTotals({
+            sales: rawNetSales,
+            discounts: parseFloat(salesResult?.total_discounts || 0),
+            voids: voidAmount,
+            returns: parseFloat(returnsResult?.total_returns || 0),
+        });
         const vatRow = vatAdjustmentResults.find((v: any) => v.tax_type === 'VAT');
         const vatTotalAmount = parseFloat(vatRow?.total_amount || 0);
         const vatAmount = parseFloat(vatRow?.vat_amount || 0);
@@ -937,7 +959,7 @@ export async function POST(request: NextRequest) {
         `;
 
         await query(insertSql, [
-            readingNumber, endDate, terminalId, cashierName, rawNetSales + parseFloat(salesResult?.total_discounts || 0) + parseFloat(returnsResult?.total_returns || 0) + voidAmount,
+            readingNumber, endDate, terminalId, cashierName, commitGrossSales,
             parseFloat(returnsResult?.total_returns || 0), parseFloat(salesResult?.total_discounts || 0), finalNetSales, vatAmount,
             JSON.stringify(paymentMethods), parseInt(salesResult?.transaction_count || 0), startingCash, cashSales, cashInDrawer,
             salesResult?.min_sale_id || '000000', salesResult?.max_sale_id || '000000', voidSeqResult?.min_void_id || '000000', voidSeqResult?.max_void_id || '000000',
@@ -967,7 +989,7 @@ export async function POST(request: NextRequest) {
         const [settingsResult] = await query(`SELECT business_name, address FROM pos_settings LIMIT 1`) as any[];
         const generatedReading = {
             id: readingNumber, date: endDate, reportDate: new Date(endDate), businessName: settingsResult?.business_name || 'Business Name', address: settingsResult?.address || '',
-            grossSales: rawNetSales + parseFloat(salesResult?.total_discounts || 0) + parseFloat(returnsResult?.total_returns || 0) + voidAmount,
+            grossSales: commitGrossSales,
             returns: parseFloat(returnsResult?.total_returns || 0), discounts: parseFloat(salesResult?.total_discounts || 0),
             netSales: finalNetSales, vatSales: vatableSales, vatAmount, paymentMethods,
             transactionCount: parseInt(salesResult?.transaction_count || 0), startingCash, cashSales, cashInDrawer, cashDeposit, cashPickup, cashierName, terminalId,

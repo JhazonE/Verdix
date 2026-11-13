@@ -33,12 +33,14 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { getApiUrl } from '@/lib/api-config';
+import { BackofficeBadge } from '@/components/sales-source';
 import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 
 interface SalesTransaction {
   id: string;
   orderNumber: string;
+  transactionSource?: string;
   date: string;
   customer: {
     name: string;
@@ -52,6 +54,7 @@ interface SalesTransaction {
   total: number;
   cost: number;
   profit: number;
+  transactionType?: string;
 }
 
 export default function SalesSummaryPage() {
@@ -89,15 +92,18 @@ export default function SalesSummaryPage() {
     setCurrentPage(1);
   }, [searchTerm]);
 
-  // Calculate totals
+  // Calculate totals. Money sums every row (a return row is negative, so the
+  // totals are net of returns), but a return is not a transaction of its own:
+  // counting it made Total/Avg Transaction disagree with every other report.
+  const saleCount = records.filter((r) => r.transactionType !== 'return').length;
   const totals = {
     revenue: records.reduce((sum, r) => sum + r.total, 0),
     cost: records.reduce((sum, r) => sum + r.cost, 0),
     profit: records.reduce((sum, r) => sum + r.profit, 0),
     discount: records.reduce((sum, r) => sum + r.discount, 0),
     tax: records.reduce((sum, r) => sum + r.taxAmount, 0),
-    transactions: records.length,
-    avgTransaction: records.length > 0 ? records.reduce((sum, r) => sum + r.total, 0) / records.length : 0,
+    transactions: saleCount,
+    avgTransaction: saleCount > 0 ? records.reduce((sum, r) => sum + r.total, 0) / saleCount : 0,
   };
 
   const fetchReport = async () => {
@@ -434,7 +440,7 @@ export default function SalesSummaryPage() {
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
                         <div>
-                          <CardTitle className="text-base text-primary">{record.orderNumber}</CardTitle>
+                          <CardTitle className="text-base text-primary">{record.orderNumber} <BackofficeBadge source={record.transactionSource} className="ml-1" /></CardTitle>
                           <CardDescription className="text-xs">{record.date ? format(new Date(record.date), 'MMM dd, yyyy hh:mma') : '-'}</CardDescription>
                         </div>
                         <Badge variant="outline" className="border-blue-600 text-blue-600">Sale</Badge>
@@ -529,7 +535,7 @@ export default function SalesSummaryPage() {
                     )}
                     onClick={() => setSelectedRow(index)}
                   >
-                    <TableCell className="py-2 px-3 font-medium text-primary">{record.orderNumber}</TableCell>
+                    <TableCell className="py-2 px-3 font-medium text-primary">{record.orderNumber} <BackofficeBadge source={record.transactionSource} className="ml-1" /></TableCell>
                     <TableCell className="py-2 px-2">
                       {record.date ? format(new Date(record.date), 'MM/dd/yy hh:mma') : '-'}
                     </TableCell>

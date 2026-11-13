@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   useReactTable,
   getCoreRowModel,
@@ -11,6 +11,7 @@ import {
 } from '@tanstack/react-table';
 import { ChevronDown, ChevronUp, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import type { SalesData } from './by-date-types';
+import type { SalesSourceFilter } from '@/lib/sales-source';
 
 type TableParams = {
   filteredSalesData: SalesData[];
@@ -19,6 +20,7 @@ type TableParams = {
   formatCurrency: (val: number) => string;
   terminal: string;
   interval: string;
+  sourceFilter: SalesSourceFilter;
 };
 
 function SortBtn({ column, children }: { column: any; children: React.ReactNode }) {
@@ -41,12 +43,19 @@ function SortBtn({ column, children }: { column: any; children: React.ReactNode 
 
 export { SortBtn };
 
-export function useByDateTable({ filteredSalesData, totalPages, formatDate, formatCurrency, terminal, interval }: TableParams) {
+export function useByDateTable({ filteredSalesData, totalPages, formatDate, formatCurrency, terminal, interval, sourceFilter }: TableParams) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [transactionsByDate, setTransactionsByDate] = useState<Record<string, any[]>>({});
   const [loadingTransactions, setLoadingTransactions] = useState<Record<string, boolean>>({});
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+
+  // The cached drill-down rows were fetched for one source; a different
+  // source must refetch rather than show the old list under the new filter.
+  useEffect(() => {
+    setTransactionsByDate({});
+    setExpandedRows(new Set());
+  }, [sourceFilter]);
 
   const fetchTransactionsForDate = async (dateStr: string) => {
     if (transactionsByDate[dateStr]) return;
@@ -54,7 +63,7 @@ export function useByDateTable({ filteredSalesData, totalPages, formatDate, form
     try {
       const { format } = await import('date-fns');
       const formattedDate = format(new Date(dateStr), 'yyyy-MM-dd');
-      const res = await fetch(`/api/sales/transactions?startDate=${formattedDate}&endDate=${formattedDate}`);
+      const res = await fetch(`/api/sales/transactions?startDate=${formattedDate}&endDate=${formattedDate}${sourceFilter !== 'all' ? `&source=${sourceFilter}` : ''}`);
       const result = await res.json();
       if (result.success) {
         setTransactionsByDate((prev) => ({ ...prev, [dateStr]: result.data }));
@@ -133,6 +142,20 @@ export function useByDateTable({ filteredSalesData, totalPages, formatDate, form
             <div className="flex flex-col text-xs text-muted-foreground">
               <span>{row.original.startBirOr}</span>
               <span>{row.original.endBirOr}</span>
+            </div>
+          ) : '-',
+        enableSorting: false,
+      },
+      {
+        // How much of the row was a back-office sales invoice (already inside
+        // Revenue and the transaction count, shown so it is not invisible).
+        id: 'backoffice',
+        header: 'Backoffice',
+        cell: ({ row }) =>
+          (row.original.backofficeCount ?? 0) > 0 ? (
+            <div className="flex flex-col text-xs">
+              <span className="text-blue-700 font-medium">{formatCurrency(row.original.backofficeRevenue ?? 0)}</span>
+              <span className="text-muted-foreground">{row.original.backofficeCount} invoice{row.original.backofficeCount === 1 ? '' : 's'}</span>
             </div>
           ) : '-',
         enableSorting: false,

@@ -86,7 +86,7 @@ export default function TopItemsVolumePage() {
         params.append('endDate', format(toDate, 'yyyy-MM-dd'));
       }
       params.append('page', currentPage.toString());
-      params.append('limit', '1000'); // Get all for now
+      params.append('limit', '100000'); // the whole range: the cards total every product
       if (searchTerm) {
         params.append('search', searchTerm);
       }

@@ -75,8 +75,8 @@ export async function POST(request: NextRequest) {
         INSERT INTO pos_transaction_items (
           id, pos_transaction_id, sale_item_id, product_id, product_name,
           quantity, unit_price, line_total,
-          selling_unit_id, selling_unit_name, selling_unit_factor, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+          selling_unit_id, selling_unit_name, selling_unit_factor, tax_type, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
       `;
 
       for (let i = 0; i < items.length; i++) {
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
         // row, and restores stock. It does not touch pos_transaction_items —
         // that row stays here because its shape differs between the return
         // and exchange callers.
-        const { saleItemId, unitId, unitName, factor } = await processReturnLeg(connection, {
+        const { saleItemId, unitId, unitName, factor, taxType } = await processReturnLeg(connection, {
           saleId,
           item,
           posTransId,
@@ -108,7 +108,8 @@ export async function POST(request: NextRequest) {
           -(returnedQty * item.price),
           unitId,
           unitName,
-          factor
+          factor,
+          taxType
         ]);
       }
 

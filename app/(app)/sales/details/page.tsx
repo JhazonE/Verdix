@@ -23,6 +23,7 @@ export default function SalesDetailsPage() {
     tempTerminalId, setTempTerminalId,
     tempDateRange, setTempDateRange,
     hasActiveFilters, resetFilters,
+    sourceFilter, setSourceFilter,
     toggleRowExpansion, handlePageChange,
     applyPaymentType, applyTerminal, applyDateRange,
     filteredSales,
@@ -38,7 +39,9 @@ export default function SalesDetailsPage() {
         <h2 className="text-3xl font-bold tracking-tight">Sales Details</h2>
       </div>
 
-      <DetailsSummaryCards totals={summaryTotals} transactionCount={totalRecords} />
+      {/* Sales only (returns excluded), so it matches Sales by Date / Analysis;
+          totalRecords counts list rows, which include return rows. */}
+      <DetailsSummaryCards totals={summaryTotals} transactionCount={summaryTotals.transactions ?? totalRecords} />
 
       <Card>
         <CardHeader>
@@ -55,6 +58,8 @@ export default function SalesDetailsPage() {
               terminalId={terminalId}
               hasActiveFilters={hasActiveFilters}
               resetFilters={resetFilters}
+              sourceFilter={sourceFilter}
+              setSourceFilter={setSourceFilter}
               onOpenPaymentType={() => { setTempPaymentType(paymentTypeFilter); setPaymentTypeDialogOpen(true); }}
               onOpenTerminal={() => { setTempTerminalId(terminalId); setTerminalDialogOpen(true); }}
               onOpenDateRange={() => { setTempDateRange(dateRange); setDateRangeDialogOpen(true); }}

@@ -8,6 +8,8 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { SlidersHorizontal, Columns, Download, FileText, FileSpreadsheet, Search, X } from 'lucide-react';
 import { DateRange } from 'react-day-picker';
 import type { Sale } from './sales-types';
+import { SalesSourceFilter as SalesSourceToggle } from '@/components/sales-source';
+import type { SalesSourceFilter } from '@/lib/sales-source';
 
 interface Props {
   searchTerm: string;
@@ -36,6 +38,9 @@ interface Props {
   // clear all
   hasActiveFilters: boolean;
   onResetFilters: () => void;
+  // POS / Backoffice / All
+  sourceFilter: SalesSourceFilter;
+  onSourceChange: (v: SalesSourceFilter) => void;
 }
 
 export function SalesFilterToolbar({
@@ -45,6 +50,7 @@ export function SalesFilterToolbar({
   onOpenPaymentType, onOpenTerminal, onOpenDateRange, onOpenSalesStatus,
   onOpenCustomer, onOpenCashier, onOpenReferenceNumber,
   onClearFilterValues, onExportCSV, onExportPDF, hasActiveFilters, onResetFilters,
+  sourceFilter, onSourceChange,
 }: Props) {
   const activeFilterCount = [
     paymentTypeFilter !== 'all', terminalId !== 'all', !!dateRange,
@@ -60,6 +66,8 @@ export function SalesFilterToolbar({
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
+        <SalesSourceToggle value={sourceFilter} onChange={onSourceChange} />
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm">

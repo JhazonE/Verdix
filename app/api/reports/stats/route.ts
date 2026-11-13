@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { getFiscalYearRange, getCurrentFiscalYear, toLocalYmd } from '@/lib/fiscal-utils';
 import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
+import { posSaleSql } from '@/lib/pos-sales';
+import { lineDateExpr } from '@/lib/profit';
 
 export async function GET(request: NextRequest) {
     try {
@@ -16,19 +18,38 @@ export async function GET(request: NextRequest) {
         // query here was blind to them. They count while Pending (a sale from the
         // day it is issued), are dated by invoice_date, and are told apart from
         // the POS mirror rows in the same table by transaction_source. See
-        // lib/backoffice-sales.ts. The POS side is left exactly as it was.
+        // lib/backoffice-sales.ts.
         const BO = backofficeInvoiceSql('sinv');
+        // POS sales: every non-void, non-training sale, Charge (Pending) included.
+        // This used to be status = 'Paid', which dropped credit sales and kept
+        // training sales. See lib/pos-sales.ts.
+        const POS = posSaleSql('st');
+
+        // RETURNS. A return is a NEGATIVE sale_items line under the original
+        // sale, and st.total does not shrink when one is added, so a revenue
+        // figure summed from st.total alone ignores returns. Revenue here is
+        // net of returns, counted on the day of the return — the same rule as
+        // Sales by Date and Fiscal Year (lib/profit.ts). This expression is the
+        // (negative) returned value; callers add a date condition.
+        const returnedSql = (dateCond: string) => `
+            SELECT COALESCE(SUM(si.price * si.quantity), 0)
+            FROM sale_items si JOIN sales_transactions st ON si.sale_id = st.id
+            WHERE ${POS} AND si.quantity < 0 ${dateCond}`;
 
         // Dates come back as 'YYYY-MM-DD' strings (not Date objects) so the two
-        // sources can be merged by key without timezone drift.
+        // sources can be merged by key without timezone drift. The return leg is
+        // dated by when the return happened, so it nets against that day.
         const salesByDayQuery = `
-            SELECT
-                DATE_FORMAT(invoice_date, '%Y-%m-%d') as date,
-                SUM(total) as sales
-            FROM sales_transactions
-            WHERE status = 'Paid'
-            AND invoice_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-            GROUP BY DATE_FORMAT(invoice_date, '%Y-%m-%d')
+            SELECT date, SUM(sales) as sales FROM (
+                SELECT DATE_FORMAT(st.invoice_date, '%Y-%m-%d') as date, st.total as sales
+                FROM sales_transactions st
+                WHERE ${POS} AND st.invoice_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                UNION ALL
+                SELECT DATE_FORMAT(si.created_at, '%Y-%m-%d') as date, si.price * si.quantity as sales
+                FROM sale_items si JOIN sales_transactions st ON si.sale_id = st.id
+                WHERE ${POS} AND si.quantity < 0 AND DATE(si.created_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+            ) d
+            GROUP BY date
         `;
         const salesByDayPos = await query(salesByDayQuery) as any[];
         const salesByDayBo = await query(`
@@ -53,7 +74,7 @@ export async function GET(request: NextRequest) {
                 SUM(si.quantity * si.price) as sales
             FROM sale_items si
             JOIN sales_transactions st ON si.sale_id = st.id
-            WHERE st.status = 'Paid'
+            WHERE ${POS}
             GROUP BY si.product_id, si.product_name
         `;
         // No LIMIT per source: the combined top 5 is not the top 5 of each
@@ -85,7 +106,7 @@ export async function GET(request: NextRequest) {
             FROM sale_items si
             JOIN sales_transactions st ON si.sale_id = st.id
             JOIN products p ON si.product_id = p.id
-            WHERE st.status = 'Paid'
+            WHERE ${POS}
             GROUP BY p.category
         `;
         const salesByCategoryPos = await query(salesByCategoryQuery) as any[];
@@ -115,7 +136,9 @@ export async function GET(request: NextRequest) {
 
         const currentMonthStart = new Date();
         currentMonthStart.setDate(1);
-        const currentMonthStartStr = currentMonthStart.toISOString().split('T')[0];
+        // Local date, not toISOString(): in UTC+8 the UTC date of "the 1st at
+        // 07:00" is still the previous month's last day.
+        const currentMonthStartStr = toLocalYmd(currentMonthStart);
 
         // Fetch settings for fiscal year
         const settingsResult = await query("SELECT fiscal_year_start_month FROM pos_settings LIMIT 1") as any[];
@@ -134,7 +157,7 @@ export async function GET(request: NextRequest) {
         // Available fiscal years: from the earliest paid sale through the current FY.
         const [firstSaleRow] = await query(
             `SELECT MIN(d) AS first_date FROM (
-                SELECT MIN(invoice_date) AS d FROM sales_transactions WHERE status = 'Paid'
+                SELECT MIN(st.invoice_date) AS d FROM sales_transactions st WHERE ${POS}
                 UNION ALL
                 SELECT MIN(sinv.invoice_date) FROM sales_invoices sinv WHERE ${BO}
             ) firsts`
@@ -151,19 +174,32 @@ export async function GET(request: NextRequest) {
         // permanently out-of-stock and drag inventory valuation totals to zero.
         const summaryQuery = `
             SELECT
-                (SELECT COALESCE(SUM(total), 0) FROM sales_transactions WHERE status = 'Paid') as total_revenue_all_time,
-                (SELECT COALESCE(SUM(total), 0) FROM sales_transactions WHERE status = 'Paid' AND invoice_date >= ?) as total_revenue_month,
-                (SELECT COUNT(*) FROM sales_transactions WHERE status = 'Paid' AND invoice_date >= ?) as total_sales_month,
+                -- Revenue is net of returns (returnedSql is negative), each
+                -- return counted in the period it was returned.
+                ((SELECT COALESCE(SUM(st.total), 0) FROM sales_transactions st WHERE ${POS})
+                  + (${returnedSql('')})) as total_revenue_all_time,
+                ((SELECT COALESCE(SUM(st.total), 0) FROM sales_transactions st WHERE ${POS} AND st.invoice_date >= ?)
+                  + (${returnedSql('AND DATE(si.created_at) >= ?')})) as total_revenue_month,
+                (SELECT COUNT(*) FROM sales_transactions st WHERE ${POS} AND st.invoice_date >= ?) as total_sales_month,
                 -- si.quantity is in whatever selling unit was sold (1 case, 1 piece);
                 -- scale by selling_unit_factor so this counts actual base units moved,
-                -- not a mix of units. NULL factor means base unit (1).
-                (SELECT COALESCE(SUM(si.quantity * COALESCE(si.selling_unit_factor, 1)), 0) FROM sale_items si JOIN sales_transactions st ON si.sale_id = st.id WHERE st.status = 'Paid' AND st.invoice_date >= ?) as products_sold_month,
-                (SELECT COALESCE(SUM(total), 0) FROM sales_transactions WHERE status = 'Paid' AND invoice_date >= ? AND invoice_date <= ?) as total_revenue_fiscal_ytd,
+                -- not a mix of units. NULL factor means base unit (1). A return
+                -- line is dated by when it was returned (lineDateExpr), not by
+                -- the original sale, matching the revenue figures.
+                (SELECT COALESCE(SUM(si.quantity * COALESCE(si.selling_unit_factor, 1)), 0) FROM sale_items si JOIN sales_transactions st ON si.sale_id = st.id WHERE ${POS} AND DATE(${lineDateExpr('si', 'st.invoice_date')}) >= ?) as products_sold_month,
+                ((SELECT COALESCE(SUM(st.total), 0) FROM sales_transactions st WHERE ${POS} AND st.invoice_date >= ? AND st.invoice_date <= ?)
+                  + (${returnedSql('AND DATE(si.created_at) >= ? AND DATE(si.created_at) <= ?')})) as total_revenue_fiscal_ytd,
                 (SELECT COUNT(*) FROM products WHERE type = 'standard' AND stock > 0 AND (stock < reorder_point OR stock < (SELECT COALESCE(low_stock_threshold, 0) FROM pos_settings LIMIT 1))) as low_stock_items,
                 (SELECT COUNT(*) FROM products WHERE type = 'standard') as total_items
         `;
 
-        const [summaryData] = await query(summaryQuery, [currentMonthStartStr, currentMonthStartStr, currentMonthStartStr, fiscalStartDateStr, fiscalEndDateStr]) as any[];
+        const [summaryData] = await query(summaryQuery, [
+            currentMonthStartStr, currentMonthStartStr,   // total_revenue_month (sales, returns)
+            currentMonthStartStr,                         // total_sales_month
+            currentMonthStartStr,                         // products_sold_month
+            fiscalStartDateStr, fiscalEndDateStr,         // total_revenue_fiscal_ytd (sales)
+            fiscalStartDateStr, fiscalEndDateStr,         // total_revenue_fiscal_ytd (returns)
+        ]) as any[];
 
         // The same four sales figures, for back-office invoices. Quantity is
         // scaled by selling_unit_factor exactly as products_sold_month is above,

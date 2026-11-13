@@ -6,6 +6,7 @@ import { profitOf } from '@/lib/profit';
 import { deductFromBatches, getBatchCostingSettings } from '@/lib/batch-deduction';
 import { isService } from '@/lib/product-type';
 import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
+import { parseSalesSource } from '@/lib/sales-source';
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,6 +19,8 @@ export async function GET(request: NextRequest) {
     const paymentMethod = searchParams.get('paymentMethod');
     const customer = searchParams.get('customer');
     const cashier = searchParams.get('cashier');
+    // pos | backoffice | all (default). See lib/sales-source.ts.
+    const source = parseSalesSource(searchParams.get('source'));
     const reference = searchParams.get('reference');
     const search = searchParams.get('search');
     const page = parseInt(searchParams.get('page') || '1');
@@ -133,6 +136,13 @@ export async function GET(request: NextRequest) {
       params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
     }
 
+    // Source filter. 'backoffice' removes the POS source (`1=0` rather than
+    // skipping the clause: whereClause feeds the count, totals and page keys,
+    // so one predicate keeps all three consistent).
+    if (source === 'backoffice') {
+      whereClause += ' AND 1=0';
+    }
+
     // BACK-OFFICE INVOICES. A sales invoice keyed in on Sales > Invoices writes
     // sales_invoices only, never pos_transactions, so everything above is blind
     // to it. It is listed here as a second source, filtered by the same inputs.
@@ -147,7 +157,8 @@ export async function GET(request: NextRequest) {
     const includeBackoffice =
       !(terminalId && terminalId !== 'all') &&
       !(cashier && cashier !== 'all') &&
-      status !== 'Returned';
+      status !== 'Returned' &&
+      source !== 'pos';
 
     const boParams: any[] = [];
     let boWhere = `WHERE ${backofficeInvoiceSql('sinv')}`;
@@ -251,7 +262,11 @@ export async function GET(request: NextRequest) {
         COALESCE(SUM(pt.tax_amount), 0) as vatAmount,
         COALESCE(SUM(pt.total_amount - pt.tax_amount), 0) as vatableSales,
         COALESCE(SUM(CASE WHEN pt.payment_method = 'Account' THEN pt.total_amount ELSE 0 END), 0) as accountPayments,
-        COALESCE(SUM(item_costs.item_cost), 0) as cost
+        COALESCE(SUM(item_costs.item_cost), 0) as cost,
+        -- Sales only. A return is a row in this list but not a transaction of
+        -- its own; counting it made the Transactions card read one higher than
+        -- Sales by Date, Analysis and Fiscal Year for the same period.
+        COALESCE(SUM(CASE WHEN pt.transaction_type = 'sale' THEN 1 ELSE 0 END), 0) as saleCount
       FROM pos_transactions pt
       LEFT JOIN users u ON pt.user_id = u.uid
       LEFT JOIN pos_terminals term ON pt.terminal_id = term.id
@@ -283,6 +298,7 @@ export async function GET(request: NextRequest) {
     const aggVatableSales = parseFloat(totalsRow.vatableSales) || 0;
     const aggAccountPayments = parseFloat(totalsRow.accountPayments) || 0;
     const aggCost = parseFloat(totalsRow.cost) || 0;
+    const aggSaleCount = Number(totalsRow.saleCount) || 0;
 
     // Back-office invoices, summed in SQL over every match (not just this
     // page). Unlike a POS sale they can be unpaid, so they are the only rows
@@ -327,6 +343,8 @@ export async function GET(request: NextRequest) {
       vatAmount: aggVatAmount + bo.vat,
       nonVatSales: 0,
       accountPayments: aggAccountPayments + bo.account,
+      // Every back-office invoice is a sale (returns are POS-only rows).
+      transactions: aggSaleCount + boRecords,
     };
 
     // 2. Get paginated data
@@ -552,16 +570,25 @@ export async function GET(request: NextRequest) {
         const amountPaid = parseFloat(row.amount_paid) || 0;
         const items = boItemsByInvoice[row.id] || [];
         const cost = items.reduce((sum: number, it: any) => sum + it.cost * it.quantity, 0);
-        // No BIR SI number: those are issued at a terminal. Fall back to the
-        // invoice's own number so the column is never blank.
-        const docNo = row.receipt_number || row.reference || row.id;
+        // No BIR SI number: those are issued at a terminal. The SI No. column
+        // carries the invoice's own REFERENCE instead, the same number the
+        // Sales Invoices page lists, so a back-office row here can be matched
+        // to its invoice there. receipt_number is a separate counter (000002
+        // for INV-001012) and was misleading in this column.
+        // The "INV-" prefix is dropped for display (001012, not INV-001012);
+        // `reference` below still carries the full value for search/export.
+        const docNo = String(row.reference || row.receipt_number || row.id).replace(/^INV-?/i, '');
         return {
           id: row.id,
           reference: row.reference,
           transactionSource: 'Backoffice',
           siNumber: docNo,
           mcNumber: null,
-          orderNumber: null,
+          // Report pages (Sales Summary, Returns, ...) print orderNumber as
+          // the row's number and show 'N/A' when it is empty, which is how a
+          // back-office sale came out with no reference at all. An invoice has
+          // no POS order number, so its reference stands in.
+          orderNumber: docNo,
           receiptNo: row.receipt_number,
           posTransactionId: undefined,
           date: row.tx_time,

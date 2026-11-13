@@ -3,6 +3,7 @@ import { query } from '@/lib/mysql';
 import { unitCostExpr } from '@/lib/cost-of-sale';
 import { profitOf, lineDateExpr } from '@/lib/profit';
 import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
+import { parseSalesSource } from '@/lib/sales-source';
 
 /**
  * Every sold LINE in range, one row per transaction per product — the detail
@@ -28,6 +29,10 @@ export async function GET(request: NextRequest) {
     const brand = sp.get('brand');
     const cashier = sp.get('cashier');
     const search = sp.get('search') || '';
+    // pos | backoffice | all (default); mirrors /api/sales/by-product.
+    const source = parseSalesSource(sp.get('source'));
+    const noPos = source === 'backoffice' ? ' AND 1=0' : '';
+    const noBackoffice = source === 'pos' ? ' AND 1=0' : '';
     // A safety valve, not a pagination scheme: the client wants every line, but
     // an unbounded query against a huge range should fail loudly rather than
     // stream a million rows into a browser. The response says when it trips.
@@ -69,7 +74,7 @@ export async function GET(request: NextRequest) {
         LEFT JOIN users u ON pt.user_id = u.uid
         LEFT JOIN customers c ON st.customer_id = c.id
         LEFT JOIN pos_transaction_items pti ON pti.sale_item_id = si.id
-        WHERE st.status = 'Paid'
+        WHERE st.status = 'Paid'${noPos}
 
         UNION ALL
 
@@ -81,7 +86,8 @@ export async function GET(request: NextRequest) {
           ${unitCostExpr('sii', 'p_cost', { hasCostAtSale: true })} as unit_cost,
           0 as discount_amount,
           sinv.invoice_date as transaction_date,
-          sinv.id as order_number,
+          -- The invoice reference (INV-001012), not its internal id.
+          REGEXP_REPLACE(sinv.reference, '^INV-', '') as order_number,
           NULL as si_number,
           c.name as customer_name,
           NULL as cashier_name,
@@ -90,7 +96,7 @@ export async function GET(request: NextRequest) {
         JOIN sales_invoices sinv ON sii.sales_invoice_id = sinv.id
         LEFT JOIN products p_cost ON sii.product_id = p_cost.id
         LEFT JOIN customers c ON sinv.customer_id = c.id
-        WHERE ${backofficeInvoiceSql('sinv')}
+        WHERE ${backofficeInvoiceSql('sinv')}${noBackoffice}
 
         UNION ALL
 
@@ -112,7 +118,7 @@ export async function GET(request: NextRequest) {
         JOIN sales_orders so ON soi.sales_order_id = so.id
         LEFT JOIN products p_cost ON soi.product_id = p_cost.id
         LEFT JOIN customers c ON so.customer_id = c.id
-        WHERE so.status = 'Paid'
+        WHERE so.status = 'Paid'${noBackoffice}
       )
       SELECT
         al.product_id,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, getNextXReadingNumber } from '@/lib/mysql';
 import { saveEJournalFiles } from '@/lib/ejournal/ejournal-writer';
+import { readingTotals } from '@/lib/reading-totals';
 
 // x_readings historically had its columns added ad-hoc via a one-off script
 // (scripts/update_reading_schemas.ts) rather than a numbered migration or an
@@ -415,10 +416,20 @@ export async function GET(request: NextRequest) {
         reportDate: reportDay,
         shiftStart: shift.shift_start,
         shiftEnd: shift.shift_end,
-        grossSales: parseFloat(shift.gross_sales) || 0,
+        // Same gross/net rule as the Z-reading (lib/reading-totals.ts): voids
+        // are part of gross, and a RETURN is deducted from net. Net used to be
+        // the shift's sales alone, so a refund never reduced it.
+        ...(() => {
+            const { gross, net } = readingTotals({
+                sales: parseFloat(shift.net_sales) || 0,
+                discounts: parseFloat(shift.discounts) || 0,
+                voids: parseFloat(shift.void_amount) || 0,
+                returns: parseFloat(shift.returns_amount) || 0,
+            });
+            return { grossSales: gross, netSales: net };
+        })(),
         returns: parseFloat(shift.returns_amount) || 0,
         discounts: parseFloat(shift.discounts) || 0,
-        netSales: parseFloat(shift.net_sales) || 0,
         vatAmount: parseFloat(shift.vat_amount) || 0,
         paymentMethods: pMethods.map(p => ({ name: p.name, amount: parseFloat(p.amount) })),
         transactionCount: shift.transaction_count || 0,

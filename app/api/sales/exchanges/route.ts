@@ -7,6 +7,7 @@ import { isService } from '@/lib/product-type';
 import { ensureCustomerCreditColumn } from '@/lib/ensure-customer-credit';
 import { saveEJournalFiles } from '@/lib/ejournal/ejournal-writer';
 import { EXCHANGE_CREDIT_TENDER, isExchangeBalanceTender } from '@/lib/pos/exchange-tender';
+import { mapVatStatusToTaxType, resolveEffectiveTaxType } from '@/lib/tax-utils';
 
 /**
  * POST /api/sales/exchanges — 1-for-1 item exchange.
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest) {
     }
 
     const productTypeRows: any = await query(
-      'SELECT id, type FROM products WHERE id IN (?, ?)',
+      'SELECT id, type, vat_status FROM products WHERE id IN (?, ?)',
       [returnItem.productId, newItem.productId]
     );
     const typeById = new Map<string, string | null>(
@@ -92,8 +93,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Exchanges do not support service products in v1' }, { status: 400 });
     }
 
-    const posSettingsRows: any = await query('SELECT is_training_mode FROM pos_settings LIMIT 1');
+    const posSettingsRows: any = await query('SELECT is_training_mode, vat_registration FROM pos_settings LIMIT 1');
     const isTrainingMode = posSettingsRows?.[0]?.is_training_mode || false;
+    // The sale leg's tax bucket, resolved the way checkout resolves a cart line
+    // (product vat_status, then the store's registration). Left unset the
+    // column defaults to 'VAT', booking VAT a NON_VAT store never charges.
+    const newItemVatStatus = productTypeRows.find((r: any) => r.id === newItem.productId)?.vat_status;
+    const newItemTaxType = resolveEffectiveTaxType(
+      mapVatStatusToTaxType(newItemVatStatus),
+      undefined,
+      0,
+      posSettingsRows?.[0]?.vat_registration || 'VAT'
+    );
 
     const returnPosTransId = `RTN-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
     const salePosTransId = `PT-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
@@ -151,13 +162,14 @@ export async function POST(request: NextRequest) {
         `INSERT INTO pos_transaction_items (
           id, pos_transaction_id, sale_item_id, product_id, product_name,
           quantity, unit_price, line_total,
-          selling_unit_id, selling_unit_name, selling_unit_factor, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+          selling_unit_id, selling_unit_name, selling_unit_factor, tax_type, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
         [
           `${returnPosTransId}-DETAIL-1`, returnPosTransId, returnLegResult.saleItemId,
           returnItem.productId, returnItem.productName,
           -Number(returnItem.quantity), returnItem.price, -(Number(returnItem.quantity) * returnItem.price),
           returnLegResult.unitId, returnLegResult.unitName, returnLegResult.factor,
+          returnLegResult.taxType,
         ]
       );
 
@@ -259,13 +271,14 @@ export async function POST(request: NextRequest) {
         `INSERT INTO pos_transaction_items (
           id, pos_transaction_id, sale_item_id, product_id, product_name,
           quantity, unit_price, line_total,
-          selling_unit_id, selling_unit_name, selling_unit_factor, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+          selling_unit_id, selling_unit_name, selling_unit_factor, tax_type, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
         [
           `${salePosTransId}-DETAIL-1`, salePosTransId, saleLegResult.itemId,
           newItem.productId, newItem.productName,
           Number(newItem.quantity), newItem.price, newTotal,
           saleLegResult.unitId, saleLegResult.unitName, saleLegResult.factor,
+          newItemTaxType,
         ]
       );
 

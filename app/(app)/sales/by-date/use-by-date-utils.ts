@@ -3,10 +3,16 @@
 import { useMemo } from 'react';
 import { format } from 'date-fns';
 import { DateRange } from 'react-day-picker';
-import type { SalesData } from './by-date-types';
+import type { SalesData, ByDateTotals } from './by-date-types';
+
+const EMPTY_TOTALS: ByDateTotals = {
+  transactions: 0, revenue: 0, discount: 0, vatable: 0, vatAmount: 0,
+  vatExempt: 0, zeroRated: 0, nonVat: 0, cost: 0, profit: 0,
+};
 
 type UtilParams = {
   salesData: SalesData[];
+  totals?: ByDateTotals;
   interval: string;
   dateRange: DateRange | undefined;
   terminal: string;
@@ -14,7 +20,7 @@ type UtilParams = {
   searchTerm: string;
 };
 
-export function useByDateUtils({ salesData, interval, dateRange, terminal, paymentType, searchTerm }: UtilParams) {
+export function useByDateUtils({ salesData, totals, interval, dateRange, terminal, paymentType, searchTerm }: UtilParams) {
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('en-PH', {
       style: 'currency',
@@ -50,24 +56,10 @@ export function useByDateUtils({ salesData, interval, dateRange, terminal, payme
     });
   }, [salesData, searchTerm, interval]);
 
-  const summaryTotals = useMemo(
-    () =>
-      salesData.reduce(
-        (acc, row) => ({
-          discount: acc.discount + row.totalDiscount,
-          revenue: acc.revenue + row.totalRevenue,
-          vatable: acc.vatable + row.vatableSales,
-          vatAmount: acc.vatAmount + row.vatAmount,
-          vatExempt: acc.vatExempt + row.vatExemptSales,
-          zeroRated: acc.zeroRated + row.zeroRatedSales,
-          nonVat: acc.nonVat + row.nonVatSales,
-          cost: acc.cost + row.cost,
-          profit: acc.profit + row.profit,
-        }),
-        { discount: 0, revenue: 0, vatable: 0, vatAmount: 0, vatExempt: 0, zeroRated: 0, nonVat: 0, cost: 0, profit: 0 }
-      ),
-    [salesData]
-  );
+  // The cards cover the WHOLE date range, from the server's totals. Summing
+  // salesData here (as this used to) covered only the current page of days,
+  // so the cards disagreed with every other report on any longer range.
+  const summaryTotals = totals ?? EMPTY_TOTALS;
 
   const fetchAllSalesForExport = async () => {
     const params = new URLSearchParams();
