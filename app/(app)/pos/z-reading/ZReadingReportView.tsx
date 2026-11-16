@@ -6,6 +6,7 @@ import { Printer } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { usePrinter } from '@/lib/use-printer';
 import { getApiUrl } from '@/lib/api-config';
+import { withTerminalPaperSize } from '@/lib/pos-paper-size';
 import { ZReadingPreview, ZReadingData } from '../../sales/z-reading/z-reading-preview';
 import type { BusinessSettings } from './z-reading-types';
 
@@ -29,7 +30,7 @@ export function ZReadingReportView({ onPrint }: ZReadingReportViewProps) {
         const settingsRes = await fetch(getApiUrl('/pos-settings'));
         if (!settingsRes.ok) throw new Error(`API error ${settingsRes.status}`);
         const settingsResult = await settingsRes.json();
-        if (settingsResult.success) setBusinessSettings(settingsResult.data);
+        if (settingsResult.success) setBusinessSettings(withTerminalPaperSize(settingsResult.data));
 
         const zRes = await fetch(getApiUrl('/sales/z-reading?mode=current'));
         if (!zRes.ok) throw new Error(`API error ${zRes.status}`);

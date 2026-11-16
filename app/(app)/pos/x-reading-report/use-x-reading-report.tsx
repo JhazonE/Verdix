@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { usePrinter } from '@/lib/use-printer';
 import { getApiUrl } from '@/lib/api-config';
+import { withTerminalPaperSize } from '@/lib/pos-paper-size';
 import { XReadingGenerator } from '@/lib/x-reading-generator';
 import type { XReadingData } from '@/lib/types';
 import type { BusinessSettings } from '../../sales/z-reading/z-reading-preview';
@@ -153,7 +154,7 @@ export function useXReadingReport({ isOpen, shiftId, autoShow = false, terminalN
     if (isOpen) {
       fetch(getApiUrl('/pos-settings'))
         .then(res => res.json())
-        .then(data => { if (data.success) setBusinessSettings(data.data); })
+        .then(data => { if (data.success) setBusinessSettings(withTerminalPaperSize(data.data)); })
         .catch(err => console.error('Failed to load settings', err));
     }
   }, [isOpen]);

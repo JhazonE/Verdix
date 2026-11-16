@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
+import { resolvePaperSize, type PaperSize } from '@/lib/pos-paper-size';
 import { usePrinter } from '@/lib/use-printer';
 import { OverallReadingGenerator } from '@/lib/overall-reading-generator';
 import { OverallReadingPreview, OverallReadingData } from '../../sales/overall-reading/overall-reading-preview';
@@ -26,14 +27,14 @@ export function useOverallReading({ isOpen, terminalId, terminalName, printMode 
   // The overall-reading API doesn't carry the paper size, so read it from POS
   // settings like the X/Z readings do. Preview, browser print and thermal
   // print all use this one value so they cannot disagree.
-  const [paperSize, setPaperSize] = useState<'58mm' | '80mm'>('58mm');
+  const [paperSize, setPaperSize] = useState<PaperSize>(() => resolvePaperSize());
 
   useEffect(() => {
     if (isOpen) {
       loadReportData();
       fetch(getApiUrl('/pos-settings'))
         .then(res => res.json())
-        .then(result => { if (result.success) setPaperSize(result.data?.paperSize === '80mm' ? '80mm' : '58mm'); })
+        .then(result => { if (result.success) setPaperSize(resolvePaperSize(result.data?.paperSize)); })
         .catch(err => console.error('Failed to load POS settings', err));
     } else {
       setReportData(null);

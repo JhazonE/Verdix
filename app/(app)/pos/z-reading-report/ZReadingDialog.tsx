@@ -11,6 +11,7 @@ import type { ZReadingData } from '@/lib/types';
 import { usePrinter } from '@/lib/use-printer';
 import { ZReadingGenerator } from '@/lib/z-reading-generator';
 import { getApiUrl } from '@/lib/api-config';
+import { withTerminalPaperSize } from '@/lib/pos-paper-size';
 import { useReactToPrint } from 'react-to-print';
 import type { ZReadingDialogProps } from './z-reading-report-types';
 
@@ -48,7 +49,7 @@ function ZReadingReportView({ onBack, printMode, terminalId, terminalName, initi
           const settingsRes = await fetch(getApiUrl('/pos-settings'));
           if (!settingsRes.ok) throw new Error(`API error ${settingsRes.status}`);
           const settingsResult = await settingsRes.json();
-          if (settingsResult.success) setBusinessSettings(settingsResult.data);
+          if (settingsResult.success) setBusinessSettings(withTerminalPaperSize(settingsResult.data));
         } catch (e) { console.error(e); }
         setIsLoading(false);
         return;
@@ -58,7 +59,7 @@ function ZReadingReportView({ onBack, printMode, terminalId, terminalName, initi
         const settingsRes = await fetch(getApiUrl('/pos-settings'));
         if (!settingsRes.ok) throw new Error(`API error ${settingsRes.status}`);
         const settingsResult = await settingsRes.json();
-        if (settingsResult.success) setBusinessSettings(settingsResult.data);
+        if (settingsResult.success) setBusinessSettings(withTerminalPaperSize(settingsResult.data));
         const response = await fetch(getApiUrl(`/sales/z-reading?mode=current&terminalId=${terminalId || 'all'}`));
         if (!response.ok) throw new Error(`API error ${response.status}`);
         const result = await response.json();
