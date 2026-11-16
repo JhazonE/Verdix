@@ -87,9 +87,10 @@ export function useXReadingReport({ isOpen, shiftId, autoShow = false, terminalN
       try {
         const { printReactComponent } = await import('@/app/lib/print-utils');
         const { XReadingPreview } = await import('../../sales/x-reading/x-reading-preview');
+        const paperSize = businessSettings?.paperSize === '80mm' ? '80mm' : '58mm';
         printReactComponent(
-          <XReadingPreview data={{ ...reportData, terminalName }} businessSettings={businessSettings || {} as BusinessSettings} printerFormat="80mm" />,
-          '80mm'
+          <XReadingPreview data={{ ...reportData, terminalName }} businessSettings={businessSettings || {} as BusinessSettings} printerFormat={paperSize} />,
+          paperSize
         );
         return;
       } catch (e) {
@@ -117,7 +118,7 @@ export function useXReadingReport({ isOpen, shiftId, autoShow = false, terminalN
         min: reportData?.min,
         sn: reportData?.sn,
       };
-      const bytes = generator.generate(printData as any);
+      const bytes = generator.generate(printData as any, businessSettings?.paperSize);
       await print(bytes);
       toast({ title: 'Success', description: 'X-Reading report sent to printer.' });
     } catch (error) {

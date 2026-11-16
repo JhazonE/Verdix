@@ -3,8 +3,10 @@ import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder';
 import { format, addYears } from 'date-fns';
 import { ZReadingData } from './types';
 
-// 58mm thermal paper = 32 characters per line
-const W = 32;
+// Characters per line: 58mm thermal paper = 32, 80mm = 48 (matches
+// ReceiptGenerator.getLayout, so a terminal set to 80mm prints every slip
+// at the same width).
+const widthFor = (paperSize?: string) => (paperSize === '80mm' ? 48 : 32);
 
 type BusinessSettings = {
     businessName?: string;
@@ -14,6 +16,7 @@ type BusinessSettings = {
     minNumber?: string;
     serialNumber?: string;
     vatRegistration?: 'VAT' | 'NON_VAT';
+    paperSize?: string;
     [key: string]: any;
 };
 
@@ -24,11 +27,17 @@ export class ZReadingGenerator {
         this.encoder = new ReceiptPrinterEncoder({
             language: 'esc-pos',
             codepageMapping: 'epson',
-            width: W,
+            width: widthFor(),
         });
     }
 
     public generate(data: ZReadingData, settings?: BusinessSettings | null, isReprint?: boolean): Uint8Array {
+        const W = widthFor(settings?.paperSize);
+        this.encoder = new ReceiptPrinterEncoder({
+            language: 'esc-pos',
+            codepageMapping: 'epson',
+            width: W,
+        });
         const enc = this.encoder.initialize().codepage('cp437');
 
         const row = (left: string, right: string) => {

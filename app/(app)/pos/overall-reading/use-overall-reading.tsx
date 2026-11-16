@@ -23,10 +23,18 @@ export function useOverallReading({ isOpen, terminalId, terminalName, printMode 
   const { toast } = useToast();
   const nativePrinterName = typeof window !== 'undefined' ? localStorage.getItem('pos_printer_name') || undefined : undefined;
   const { isPrinting, isConnected, connect, print } = usePrinter(printMode, nativePrinterName);
+  // The overall-reading API doesn't carry the paper size, so read it from POS
+  // settings like the X/Z readings do. Preview, browser print and thermal
+  // print all use this one value so they cannot disagree.
+  const [paperSize, setPaperSize] = useState<'58mm' | '80mm'>('58mm');
 
   useEffect(() => {
     if (isOpen) {
       loadReportData();
+      fetch(getApiUrl('/pos-settings'))
+        .then(res => res.json())
+        .then(result => { if (result.success) setPaperSize(result.data?.paperSize === '80mm' ? '80mm' : '58mm'); })
+        .catch(err => console.error('Failed to load POS settings', err));
     } else {
       setReportData(null);
     }
@@ -65,7 +73,7 @@ export function useOverallReading({ isOpen, terminalId, terminalName, printMode 
     if (printMode === 'browser') {
       try {
         const { printReactComponent } = await import('@/app/lib/print-utils');
-        printReactComponent(<OverallReadingPreview data={reportData} printerFormat="80mm" />, '80mm');
+        printReactComponent(<OverallReadingPreview data={reportData} printerFormat={paperSize} />, paperSize);
         return;
       } catch (e) {
         console.error('Browser print error:', e);
@@ -81,7 +89,7 @@ export function useOverallReading({ isOpen, terminalId, terminalName, printMode 
 
     try {
       const generator = new OverallReadingGenerator();
-      const bytes = generator.generate(reportData);
+      const bytes = generator.generate(reportData, paperSize);
       await print(bytes);
       toast({ title: 'Success', description: 'Overall Reading report sent to printer.' });
     } catch (e) {
@@ -90,5 +98,5 @@ export function useOverallReading({ isOpen, terminalId, terminalName, printMode 
     }
   };
 
-  return { reportData, loading, isPrinting, handlePrint, loadReportData };
+  return { reportData, loading, isPrinting, handlePrint, loadReportData, paperSize };
 }

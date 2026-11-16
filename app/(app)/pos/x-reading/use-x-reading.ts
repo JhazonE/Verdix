@@ -90,7 +90,7 @@ export function useXReading() {
         const { XReadingGenerator } = await import('@/lib/x-reading-generator');
         const generator = new XReadingGenerator();
         const printData = { ...xReadingData, businessName: settings.businessName, operatedBy: settings.operatedBy, address: settings.address, tin: settings.tin, contactNumber: settings.contactNumber, email: settings.email };
-        const uint8Array = generator.generate(printData);
+        const uint8Array = generator.generate(printData, settings.paperSize);
         if ((window as any).electron) {
           await (window as any).electron.printThermal(uint8Array);
           toast({ title: 'X-Reading Printed', description: 'Thermal receipt has been sent to printer.' });
