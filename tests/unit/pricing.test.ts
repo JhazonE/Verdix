@@ -95,16 +95,53 @@ const retailLevel = 'retail-level';
   );
 }
 
-// BELOW the threshold the tiered row is skipped -> the unit's own price.
+// BELOW the threshold, on a cart NOT on that level, the tiered row is skipped
+// -> the unit's own price.
 {
   const unit = {
     price: 250,
     priceLevels: [{ levelId: wholesaleLevel, price: 200, minQuantity: 12 }],
   };
   assert.equal(
-    calculateEffectivePriceForUnit(unit, 11, wholesaleLevel, retailLevel),
+    calculateEffectivePriceForUnit(unit, 11, retailLevel, retailLevel),
     250,
     'below the tier threshold the row is skipped and the unit price stands',
+  );
+}
+
+// A customer whose OWN level is Wholesale gets the Wholesale price from
+// quantity 1, even when that row carries a tier. The tier exists to let
+// OTHER carts (walk-in on Retail) reach the price by volume; it must not
+// lock the price away from the customers the level was declared for.
+{
+  const unit = {
+    price: 150,
+    priceLevels: [{ levelId: wholesaleLevel, price: 130, minQuantity: 12 }],
+  };
+  assert.equal(
+    calculateEffectivePriceForUnit(unit, 1, wholesaleLevel, retailLevel),
+    130,
+    'a Wholesale customer pays the Wholesale price below its tier',
+  );
+  assert.equal(
+    calculateEffectivePriceForUnit(unit, 1, retailLevel, retailLevel),
+    150,
+    'a Retail/walk-in cart still has to reach the tier',
+  );
+}
+
+// The rule is for a NON-default active level only. On the default level a
+// tiered row is a volume break for everyone and must still wait for its
+// threshold — otherwise every walk-in would get it at quantity 1.
+{
+  const unit = {
+    price: 240,
+    priceLevels: [{ levelId: retailLevel, price: 230, minQuantity: 6 }],
+  };
+  assert.equal(
+    calculateEffectivePriceForUnit(unit, 1, retailLevel, retailLevel),
+    240,
+    'a default-level tier is not unlocked just because default is active',
   );
 }
 

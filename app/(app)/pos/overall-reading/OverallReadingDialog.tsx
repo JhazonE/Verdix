@@ -8,7 +8,7 @@ import { useOverallReading } from './use-overall-reading';
 import type { OverallReadingDialogProps } from './overall-reading-types';
 
 export function OverallReadingDialog({ isOpen, onOpenChange, terminalId, terminalName, printMode }: OverallReadingDialogProps) {
-  const { reportData, loading, isPrinting, handlePrint, loadReportData } = useOverallReading({
+  const { reportData, loading, isPrinting, handlePrint, loadReportData, paperSize } = useOverallReading({
     isOpen, terminalId, terminalName, printMode,
   });
 
@@ -35,8 +35,8 @@ export function OverallReadingDialog({ isOpen, onOpenChange, terminalId, termina
               <p className="text-sm text-muted-foreground">Generating overall reading...</p>
             </div>
           ) : reportData ? (
-            <div className="bg-white shadow-lg h-fit max-w-[400px] w-full">
-              <OverallReadingPreview data={reportData} printerFormat="80mm" />
+            <div className={`bg-white shadow-lg h-fit w-full ${paperSize === '80mm' ? 'max-w-[400px]' : 'max-w-[280px]'}`}>
+              <OverallReadingPreview data={reportData} printerFormat={paperSize} />
             </div>
           ) : (
             <div className="p-8 text-center text-sm text-gray-500">

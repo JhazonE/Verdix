@@ -69,7 +69,7 @@ export function XReadingDialog({ isOpen, onOpenChange, shiftId, autoShow = false
               </div>
             ) : reportData ? (
               <div className="bg-white shadow-lg h-fit max-w-[400px] w-full">
-                <XReadingPreview data={{ ...reportData, terminalName }} businessSettings={businessSettings} />
+                <XReadingPreview data={{ ...reportData, terminalName }} businessSettings={businessSettings} printerFormat={businessSettings?.paperSize === '80mm' ? '80mm' : '58mm'} />
               </div>
             ) : (
               <div className="p-8 text-center text-sm text-gray-500">

@@ -3,4 +3,5 @@ export interface BusinessSettings {
   address: string;
   contactNumber: string;
   tin: string;
+  paperSize?: '58mm' | '80mm';
 }

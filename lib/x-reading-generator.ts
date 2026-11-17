@@ -3,7 +3,11 @@ import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder';
 import { format } from 'date-fns';
 import { XReadingData } from './types';
 
-const W = 32;
+// Characters per line: 58mm thermal paper = 32, 80mm = 48 (matches
+// ReceiptGenerator.getLayout). Column widths below are written for 32; on
+// wider paper the right (value) column keeps its width and the label column
+// absorbs the extra space.
+const widthFor = (paperSize?: string) => (paperSize === '80mm' ? 48 : 32);
 
 export class XReadingGenerator {
     private encoder: any;
@@ -12,11 +16,23 @@ export class XReadingGenerator {
         this.encoder = new ReceiptPrinterEncoder({
             language: 'esc-pos',
             codepageMapping: 'epson',
-            width: W
+            width: widthFor()
         });
     }
 
-    public generate(data: XReadingData): Uint8Array {
+    public generate(data: XReadingData, paperSize?: string): Uint8Array {
+        const W = widthFor(paperSize);
+        this.encoder = new ReceiptPrinterEncoder({
+            language: 'esc-pos',
+            codepageMapping: 'epson',
+            width: W
+        });
+        // Two-column table sized for the current paper width.
+        const cols = (_left: number, right: number) => [
+            { width: W - right, align: 'left' },
+            { width: right, align: 'right' }
+        ];
+        const dash = '-'.repeat(W);
         const {
             reportDate,
             paymentMethods,
@@ -85,10 +101,7 @@ export class XReadingGenerator {
         enc.newline()
            .align('left')
            .table(
-                [
-                    { width: 12, align: 'left' },
-                    { width: 20, align: 'right' }
-                ],
+                cols(12, 20),
                 [
                     ['Report Date:', dateStr],
                     ['Report Time:', timeStr]
@@ -97,10 +110,7 @@ export class XReadingGenerator {
 
             .newline()
             .table(
-                [
-                    { width: 15, align: 'left' },
-                    { width: 17, align: 'right' }
-                ],
+                cols(15, 17),
                 [
                     ['Start Date & Time:', shiftStart ? format(new Date(shiftStart), 'MM/dd/yy h:mm a') : '-'],
                     ['End Date & Time:', shiftEnd ? format(new Date(shiftEnd), 'MM/dd/yy h:mm a') : 'Active']
@@ -108,20 +118,14 @@ export class XReadingGenerator {
             )
             .newline()
             .table(
-                [
-                    { width: 10, align: 'left' },
-                    { width: 22, align: 'right' }
-                ],
+                cols(10, 22),
                 [
                     ['Cashier:', cashierName]
                 ]
             )
             .newline()
             .table(
-                 [
-                    { width: 12, align: 'left' },
-                    { width: 20, align: 'right' }
-                ],
+                 cols(12, 20),
                 [
                     ['Beg. SI #:', minSaleId || '000000'],
                     ['End. SI #:', maxSaleId || '000000'],
@@ -131,45 +135,33 @@ export class XReadingGenerator {
             )
             .newline()
             .table(
-                 [
-                    { width: 15, align: 'left' },
-                    { width: 17, align: 'right' }
-                ],
+                 cols(15, 17),
                 [
                     ['Opening Fund:', formatCurrency(startingCash)]
                 ]
             )
-            .line('--------------------------------') // ~32 chars for 58mm
+            .line(dash)
             
             // PAYMENTS RECEIVED
             .line('PAYMENTS RECEIVED')
             .table(
-                [
-                    { width: 20, align: 'left' },
-                    { width: 12, align: 'right' }
-                ],
+                cols(20, 12),
                 paymentMethods.map(pm => [pm.name.toUpperCase(), formatCurrency(pm.amount)])
             )
             .table(
-                 [
-                    { width: 20, align: 'left' },
-                    { width: 12, align: 'right' }
-                ],
+                 cols(20, 12),
                 [
                      ['Total Payments:', formatCurrency(paymentMethods.reduce((acc, m) => acc + m.amount, 0))]
                 ]
             )
-            .line('--------------------------------')
+            .line(dash)
 
             // VOID
             .table(
-                 [
-                    { width: 20, align: 'left' },
-                    { width: 12, align: 'right' }
-                ],
+                 cols(20, 12),
                 [['VOID', formatCurrency(voidAmount || 0)]]
             )
-            .line('--------------------------------')
+            .line(dash)
 
             // RETURNS (Merchandise Credit) — a return issues a credit slip, not
             // cash from the drawer, so it is reported on its own line and never
@@ -177,13 +169,10 @@ export class XReadingGenerator {
             // positive magnitude (the stored total is negative); see the ABS()
             // in app/api/sales/x-reading/route.ts.
             .table(
-                 [
-                    { width: 20, align: 'left' },
-                    { width: 12, align: 'right' }
-                ],
+                 cols(20, 12),
                 [['RETURNS', formatCurrency(Math.abs(returns || 0))]]
             )
-            .line('--------------------------------')
+            .line(dash)
 
             // No REFUND line: this system has no refund feature — nothing ever
             // writes transaction_type = 'refund', so the figure could only ever
@@ -198,24 +187,18 @@ export class XReadingGenerator {
             // left a deposit silently raising expected cash with no line on
             // the report accounting for where that money came from.
              .table(
-                 [
-                    { width: 20, align: 'left' },
-                    { width: 12, align: 'right' }
-                ],
+                 cols(20, 12),
                 [
                     ['DEPOSIT', formatCurrency(cashDeposit || 0)],
                     ['WITHDRAWAL', formatCurrency(cashPickup || 0)]
                 ]
             )
-            .line('--------------------------------')
+            .line(dash)
 
             // TRANSACTION SUMMARY
             .line('TRANSACTION SUMMARY')
             .table(
-                [
-                     { width: 20, align: 'left' },
-                     { width: 12, align: 'right' }
-                ],
+                cols(20, 12),
                 [
                     ['Cash In Drawer:', formatCurrency(cashInDrawer)],
                     ...paymentMethods.filter(p => p.name !== 'CASH').map(pm => [pm.name.toUpperCase(), formatCurrency(pm.amount)]),
@@ -229,15 +212,12 @@ export class XReadingGenerator {
                     ['Payments Received:', formatCurrency(paymentMethods.reduce((acc, m) => acc + m.amount, 0))]
                 ]
             )
-             .line('--------------------------------')
+             .line(dash)
 
              // CASH DENOMINATIONS
              .line('CASH DENOMINATIONS')
              .table(
-                 [
-                     { width: 20, align: 'left' },
-                     { width: 12, align: 'right' }
-                 ],
+                 cols(20, 12),
                  (cashDenominations || []).map(d => [
                      `${d.qty} x ${d.amount >= 1 ? d.amount : d.amount.toFixed(2)}`,
                      formatCurrency(d.total)
@@ -249,15 +229,12 @@ export class XReadingGenerator {
         }
 
         enc
-             .line('--------------------------------')
+             .line(dash)
              .table(
-                 [
-                     { width: 20, align: 'left' },
-                     { width: 12, align: 'right' }
-                 ],
+                 cols(20, 12),
                  [['SHORT/OVER:', formatShortOver(overShort || 0)]]
              )
-             .line('--------------------------------')
+             .line(dash)
              .newline()
              .align('center')
              .line('_______________________')

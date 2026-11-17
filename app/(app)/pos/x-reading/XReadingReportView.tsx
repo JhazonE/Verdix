@@ -12,10 +12,11 @@ interface XReadingReportViewProps {
 }
 
 export function XReadingReportView({ data, businessSettings, onPrint }: XReadingReportViewProps) {
+  const is80mm = businessSettings?.paperSize === '80mm';
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6 flex flex-col items-center">
-      <div style={{ width: '220px' }} className="bg-white shadow-lg p-2 rounded-lg">
-        <XReadingPreview data={data} printerFormat="58mm" businessSettings={businessSettings} />
+      <div style={{ width: is80mm ? '300px' : '220px' }} className="bg-white shadow-lg p-2 rounded-lg">
+        <XReadingPreview data={data} printerFormat={is80mm ? '80mm' : '58mm'} businessSettings={businessSettings} />
       </div>
       <div className="flex justify-center space-x-4 print:hidden">
         <Button size="lg" onClick={onPrint}>

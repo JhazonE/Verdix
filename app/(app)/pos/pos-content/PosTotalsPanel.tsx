@@ -20,6 +20,8 @@ type Props = {
   currentTerminalName: string;
   currentUser: any;
   selectedCustomer: Customer | null;
+  /** Name of the price level the cart is currently priced at. */
+  activeLevelName?: string;
   handleSelectCustomer: (c: Customer | null) => void;
   setIsCustomerSelectOpen: (v: boolean) => void;
   totalDue: number;
@@ -38,7 +40,7 @@ type Props = {
 
 export function PosTotalsPanel({
   businessSettings, currentTerminalName, currentUser,
-  selectedCustomer, handleSelectCustomer, setIsCustomerSelectOpen,
+  selectedCustomer, activeLevelName, handleSelectCustomer, setIsCustomerSelectOpen,
   totalDue, numberOfItems, subTotal, vatSales, vatAmount, taxDetails,
   items, handleDefaultTender, isFrontliner, handleSendToQueue, posMode,
   editingQueueOrder,
@@ -99,6 +101,13 @@ export function PosTotalsPanel({
           <div className="min-w-0 flex-1">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground leading-none">Customer</p>
             <p className="mt-1 truncate text-sm font-semibold text-foreground">{selectedCustomer?.name || 'Walk-in Customer'}</p>
+            {/* Shown only when the customer carries their own level, so the
+                cashier can see the cart is priced at it. */}
+            {selectedCustomer?.priceLevelId && activeLevelName && (
+              <span className="mt-1 inline-block rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+                {activeLevelName} price
+              </span>
+            )}
           </div>
           {selectedCustomer?.id !== 'walk-in' ? (
             <span

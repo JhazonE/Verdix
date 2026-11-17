@@ -127,6 +127,8 @@ function POSContent() {
               isFrontliner={pos.isFrontliner}
               handleSendToQueue={pos.handleSendToQueue}
               priceLevelNameFor={pos.priceLevelNameFor}
+              activeLevelId={pos.activeLevelId}
+              defaultLevelId={pos.defaultLevelId}
             />
             <PosFooterActions
               handleOpenEndShift={pos.handleOpenEndShift}
@@ -148,6 +150,7 @@ function POSContent() {
           currentTerminalName={pos.currentTerminalName}
           currentUser={pos.currentUser}
           selectedCustomer={pos.selectedCustomer}
+          activeLevelName={pos.activeLevelName}
           handleSelectCustomer={pos.handleSelectCustomer}
           setIsCustomerSelectOpen={pos.setIsCustomerSelectOpen}
           totalDue={pos.totalDue}

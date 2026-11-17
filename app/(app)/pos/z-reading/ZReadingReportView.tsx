@@ -6,6 +6,7 @@ import { Printer } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { usePrinter } from '@/lib/use-printer';
 import { getApiUrl } from '@/lib/api-config';
+import { withTerminalPaperSize } from '@/lib/pos-paper-size';
 import { ZReadingPreview, ZReadingData } from '../../sales/z-reading/z-reading-preview';
 import type { BusinessSettings } from './z-reading-types';
 
@@ -29,7 +30,7 @@ export function ZReadingReportView({ onPrint }: ZReadingReportViewProps) {
         const settingsRes = await fetch(getApiUrl('/pos-settings'));
         if (!settingsRes.ok) throw new Error(`API error ${settingsRes.status}`);
         const settingsResult = await settingsRes.json();
-        if (settingsResult.success) setBusinessSettings(settingsResult.data);
+        if (settingsResult.success) setBusinessSettings(withTerminalPaperSize(settingsResult.data));
 
         const zRes = await fetch(getApiUrl('/sales/z-reading?mode=current'));
         if (!zRes.ok) throw new Error(`API error ${zRes.status}`);
@@ -124,8 +125,8 @@ export function ZReadingReportView({ onPrint }: ZReadingReportViewProps) {
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6 flex flex-col items-center">
-      <div style={{ width: '220px' }} className="bg-white shadow-lg p-2 rounded-lg">
-        <ZReadingPreview data={data} printerFormat="58mm" businessSettings={businessSettings} />
+      <div style={{ width: businessSettings?.paperSize === '80mm' ? '300px' : '220px' }} className="bg-white shadow-lg p-2 rounded-lg">
+        <ZReadingPreview data={data} printerFormat={businessSettings?.paperSize === '80mm' ? '80mm' : '58mm'} businessSettings={businessSettings} />
       </div>
       <div className="flex justify-center space-x-4 print:hidden">
         <Button size="lg" onClick={handlePrint} disabled={isSaving}>

@@ -18,7 +18,8 @@ import {
 } from '@/components/ui/command';
 import { Button } from '@/components/ui/button';
 import { Search, Tag } from 'lucide-react';
-import { calculateEffectivePrice } from '@/lib/pricing';
+import { calculateEffectivePriceForUnit } from '@/lib/pricing';
+import { baseSellingUnitOf } from '@/lib/pos-cart-units';
 import { usePriceInquiry } from './use-price-inquiry';
 import type { PriceInquiryDialogProps } from './price-inquiry-types';
 
@@ -139,7 +140,12 @@ export function PriceInquiryDialog({
                   <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
                   <div className="text-xs font-bold text-primary/70 uppercase tracking-widest mb-1">{activeLevelName} Price</div>
                   <div className="text-5xl font-black text-primary tracking-tighter drop-shadow-sm">
-                    ₱{calculateEffectivePrice(selectedProduct, 1, activeLevelId, defaultLevelId).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                    {/* Price levels live on selling units, not on the product
+                        (product.priceLevels is no longer populated), so this
+                        must resolve against the base unit exactly as the cart
+                        does — otherwise a Wholesale customer is shown the
+                        retail price under a "Wholesale Price" heading. */}
+                    ₱{calculateEffectivePriceForUnit(baseSellingUnitOf(selectedProduct as any), 1, activeLevelId, defaultLevelId).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
 

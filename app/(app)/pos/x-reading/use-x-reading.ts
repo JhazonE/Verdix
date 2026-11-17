@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
+import { withTerminalPaperSize } from '@/lib/pos-paper-size';
 import type { XReadingData } from '../../sales/x-reading/x-reading-preview';
 import type { BusinessSettings } from '../../sales/z-reading/z-reading-preview';
 
@@ -29,7 +30,7 @@ export function useXReading() {
       const settingsResponse = await fetch(getApiUrl('/pos-settings'));
       if (!settingsResponse.ok) throw new Error(`API error ${settingsResponse.status}`);
       const settingsResult = await settingsResponse.json();
-      if (settingsResult.success) setBusinessSettings(settingsResult.data);
+      if (settingsResult.success) setBusinessSettings(withTerminalPaperSize(settingsResult.data));
 
       // Prefer the current POS session's own shift (mirrors the in-POS
       // X-Reading dialog at pos/x-reading-report/use-x-reading-report.tsx).
@@ -84,13 +85,13 @@ export function useXReading() {
       const settingsResponse = await fetch(getApiUrl('/pos-settings'));
       if (!settingsResponse.ok) throw new Error(`API error ${settingsResponse.status}`);
       const settingsResult = await settingsResponse.json();
-      const settings = settingsResult.success ? settingsResult.data : {};
+      const settings = withTerminalPaperSize(settingsResult.success ? settingsResult.data : {});
 
       if (settings.printMode === 'escpos' || settings.printMode === 'usb') {
         const { XReadingGenerator } = await import('@/lib/x-reading-generator');
         const generator = new XReadingGenerator();
         const printData = { ...xReadingData, businessName: settings.businessName, operatedBy: settings.operatedBy, address: settings.address, tin: settings.tin, contactNumber: settings.contactNumber, email: settings.email };
-        const uint8Array = generator.generate(printData);
+        const uint8Array = generator.generate(printData, settings.paperSize);
         if ((window as any).electron) {
           await (window as any).electron.printThermal(uint8Array);
           toast({ title: 'X-Reading Printed', description: 'Thermal receipt has been sent to printer.' });

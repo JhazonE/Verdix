@@ -23,6 +23,14 @@ import { Product, PriceLevel } from './types';
  * row into being visible outside its own level. And because the caller takes
  * the MINIMUM of the qualifying candidates, a qualifying tier can only ever
  * lower the price, never raise it.
+ *
+ * 3. The row's level is the ACTIVE level and that level is NOT the default:
+ *    it competes from quantity 1, tier or no tier. A customer declared as
+ *    Wholesale pays the Wholesale price — the tier is how OTHER carts reach
+ *    that price by volume, not a gate on the customers the level was set for.
+ *    The default level is excluded on purpose: it is active for every walk-in,
+ *    so unlocking its tiers there would hand the volume break to everyone at
+ *    quantity 1.
  */
 function qualifies(
     pl: { levelId: string; minQuantity?: number | null },
@@ -32,6 +40,10 @@ function qualifies(
 ): boolean {
     const threshold = Number(pl.minQuantity ?? 0);
     const hasTier = Number.isFinite(threshold) && threshold > 0;
+
+    if (!!activeLevelId && activeLevelId !== defaultLevelId && pl.levelId === activeLevelId) {
+        return true;
+    }
 
     if (hasTier) return Number(quantity) >= threshold;
 
