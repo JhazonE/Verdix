@@ -116,8 +116,12 @@ scoping tiers to the active level (as this feature first shipped) meant they nev
 for ordinary customers. Untiered rows stay level-scoped, so this does not leak every
 level's price to everyone — only a deliberate tier opts a row into being visible outside
 its level — and because the resolver takes the MINIMUM of the qualifying candidates, a
-qualifying tier can only ever lower the price, never raise it. `qualifies` in
-`lib/pricing.ts` is the single place that encodes both rules.
+qualifying tier can only ever lower the price, never raise it. One exception runs the
+other way: a row on the ACTIVE level, when that level is not the default (a customer
+declared as Wholesale), competes from quantity 1 even if tiered — the tier is how other
+carts reach that price by volume, not a gate on the customers the level was declared for.
+The default level is excluded because it is active for every walk-in. `qualifies` in
+`lib/pricing.ts` is the single place that encodes these rules.
 
 Two rules protect the shelf price: the base unit's default-level row is the
 product's price and must stay untiered (the UI disables its Min Qty input, and

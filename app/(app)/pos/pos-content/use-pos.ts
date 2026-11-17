@@ -836,10 +836,19 @@ export function usePOS() {
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
-  const rankMatches = (list: any[], q: string, limit: number): any[] => {
+  // `serverMatched` = `list` is already the server's answer for `q` (the same
+  // SQL match the F9 dialog shows: name, sku, barcode, and ANY selling unit's
+  // barcode or name). Those rows are then only RANKED here, never dropped —
+  // re-filtering them by name/base-barcode alone used to hide everything F9
+  // found through a sku, a unit name or a pack barcode, so the row search
+  // looked like it was missing products. The local-cache fallback is NOT
+  // pre-filtered, so it still has to be filtered by the client-side match.
+  const rankMatches = (list: any[], q: string, serverMatched = false): any[] => {
     const exactCode: any[] = [];
     const exactName: any[] = [];
+    const prefix: any[] = [];
     const partial: any[] = [];
+    const rest: any[] = [];
     const seen = new Set<string>();
     for (const p of list) {
       if (seen.has(p.id)) continue;
@@ -850,13 +859,14 @@ export function usePOS() {
       const unitBarcodeMatch = (p.sellingUnits || []).some((u: any) => !u.isBase && (u.barcode || '').toLowerCase() === q);
       if (baseUnitBarcode === q || barcode === q || unitBarcodeMatch) exactCode.push(p);
       else if (name === q) exactName.push(p);
-      // Fuzzy/partial matching stays product-name/barcode only (base unit's
-      // own barcode included) — matching partial text against every EXTRA
-      // unit's barcode too would surface confusing unit-level partial hits
-      // for what should read as a product-name search.
+      else if (name.startsWith(q) || baseUnitBarcode.startsWith(q) || barcode.startsWith(q)) prefix.push(p);
+      // Name/barcode partials rank above the server-only matches (sku, unit
+      // name, a non-base unit's barcode) so a product-name search still reads
+      // as one.
       else if (baseUnitBarcode.includes(q) || barcode.includes(q) || name.includes(q)) partial.push(p);
+      else if (serverMatched) rest.push(p);
     }
-    return [...exactCode, ...exactName, ...partial];
+    return [...exactCode, ...exactName, ...prefix, ...partial, ...rest];
   };
 
   // Expands each ranked product into one suggestion row per selling unit, so
@@ -883,13 +893,16 @@ export function usePOS() {
   // The catalog is larger than the locally-cached page, so suggestions rank
   // matches from the debounced server search (comprehensive) — falling back
   // to the local cache only while that server call is in flight.
-  const getSearchSuggestions = useCallback((query: string, limit = 8): any[] => {
+  //
+  // The default limit matches the server page (100 products), so the dropdown
+  // can show everything F9 would — it was 8, which cut off the rest of any
+  // common word like "coke" or "shampoo". The dropdown scrolls.
+  const getSearchSuggestions = useCallback((query: string, limit = 100): any[] => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    const source = debouncedSearchQuery.trim().toLowerCase() === q && !searchLoading
-      ? serverSearchResults
-      : products;
-    return expandToUnitSuggestions(rankMatches(source || [], q, limit), limit);
+    const fromServer = debouncedSearchQuery.trim().toLowerCase() === q && !searchLoading;
+    const source = fromServer ? serverSearchResults : products;
+    return expandToUnitSuggestions(rankMatches(source || [], q, fromServer), limit);
   }, [products, serverSearchResults, searchLoading, debouncedSearchQuery]);
 
   // Scanners submit a barcode/SKU that exactly matches one product. Check the
@@ -1643,6 +1656,28 @@ export function usePOS() {
     setTimeout(() => setIsZReadingOpen(true), 0);
   };
 
+  // AdminAuthDialog calls onSuccess() and THEN onOpenChange(false). Routed
+  // through handleReadingDialogOpenChange, that close reopened the End Shift
+  // picker on top of the Overall Reading that onSuccess had just opened. The
+  // ref marks "authorized, proceeding to the reading" so only a cancel
+  // returns to the picker.
+  const overallReadingAuthSucceededRef = useRef(false);
+
+  const handleOverallReadingAuthSuccess = () => {
+    overallReadingAuthSucceededRef.current = true;
+    setIsOverallReadingAuthOpen(false);
+    setIsOverallReadingOpen(true);
+  };
+
+  const overallReadingAuthOpenChange = (open: boolean) => {
+    if (!open && overallReadingAuthSucceededRef.current) {
+      overallReadingAuthSucceededRef.current = false;
+      setIsOverallReadingAuthOpen(false);
+      return;
+    }
+    handleReadingDialogOpenChange(setIsOverallReadingAuthOpen)(open);
+  };
+
   const zReadingWarningOpenChange = (open: boolean) => {
     setIsZReadingWarningOpen(open);
     if (!open && !zReadingWarningConfirmedRef.current && returnToEndShiftReport) {
@@ -1762,6 +1797,8 @@ export function usePOS() {
     handleOpenXReadingFromEndShiftReport,
     handleOpenZReadingWarningFromEndShiftReport,
     handleReadingDialogOpenChange,
+    handleOverallReadingAuthSuccess,
+    overallReadingAuthOpenChange,
     lastEndedShiftId,
     // cart
     items, inputValue, setInputValue, inventoryLocation,

@@ -166,12 +166,15 @@ export function ReturnSalesDialog({
               />
             </>
           ) : step === 'select_items' && selectedSale ? (
-            <SelectItemsView
-              sale={selectedSale}
-              onReturnItems={handleReturnItems}
-              onBack={handleBackToSearch}
-              onExchangeItem={handleStartExchange}
-            />
+            <>
+              <SheetTitle className="sr-only">Select Items to Return</SheetTitle>
+              <SelectItemsView
+                sale={selectedSale}
+                onReturnItems={handleReturnItems}
+                onBack={handleBackToSearch}
+                onExchangeItem={handleStartExchange}
+              />
+            </>
           ) : (
             <div className="flex h-full flex-col">
               <SheetHeader className="shrink-0">

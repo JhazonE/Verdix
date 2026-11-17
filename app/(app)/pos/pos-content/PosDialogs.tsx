@@ -178,11 +178,11 @@ export function PosDialogs(pos: Props) {
 
       <AdminAuthDialog
         isOpen={pos.isOverallReadingAuthOpen}
-        onOpenChange={pos.handleReadingDialogOpenChange(pos.setIsOverallReadingAuthOpen)}
+        onOpenChange={pos.overallReadingAuthOpenChange}
         title="Overall Reading Authorization"
         description="Please provide credentials to view Overall Terminal Reading"
         requiredCredentials={pos.overallReadingAuthCredentials}
-        onSuccess={() => { pos.setIsOverallReadingAuthOpen(false); pos.setIsOverallReadingOpen(true); }}
+        onSuccess={pos.handleOverallReadingAuthSuccess}
       />
 
       <EndShiftDialog

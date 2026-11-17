@@ -7,6 +7,8 @@ import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/compon
 import { Search, ShoppingCart } from 'lucide-react';
 import { formatCartQuantity, formatStockQuantity } from '@/lib/utils';
 import { formatLineDiscount } from '@/lib/discount-format';
+import { calculateEffectivePriceForUnit } from '@/lib/pricing';
+import { baseSellingUnitOf } from '@/lib/pos-cart-units';
 import type { SaleItem } from './pos-types';
 
 type Props = {
@@ -53,6 +55,10 @@ type Props = {
   /** Resolves a line's picked level to a display name; undefined for no pick
       or a level that has since been deleted. */
   priceLevelNameFor?: (pickedPriceLevelId?: string) => string | undefined;
+  /** The cart's price level (customer's or selected) and the store default,
+      so suggestions quote the price the line will actually be added at. */
+  activeLevelId?: string;
+  defaultLevelId?: string;
 };
 
 export function PosCartTable({
@@ -67,6 +73,7 @@ export function PosCartTable({
   startEditName, commitInlineName, isFrontliner, handleSendToQueue, showQuantityInSearch,
   requestInlinePriceEdit, commitInlinePrice, focusInlineQuantity, commitQty,
   priceLevelNameFor,
+  activeLevelId, defaultLevelId = 'retail-level',
 }: Props) {
   const [isSuggestOpen, setIsSuggestOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -124,6 +131,15 @@ export function PosCartTable({
     setHighlightedIndex(0);
     setIsSuggestOpen(suggestions.length > 0);
   }, [suggestions]);
+
+  // The list can now hold every server match (up to 100 products), so it
+  // scrolls — keep the arrow-key highlight on screen as it moves.
+  const suggestListRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isSuggestOpen) return;
+    const el = suggestListRef.current?.children[highlightedIndex] as HTMLElement | undefined;
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [highlightedIndex, isSuggestOpen]);
 
   const selectSuggestion = (suggestion: any) => {
     handleAddItem(suggestion.product, undefined, suggestion.unit?.id);
@@ -241,10 +257,12 @@ export function PosCartTable({
           </Button>
 
           {isSuggestOpen && suggestions.length > 0 && (
-            <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-popover border rounded-lg shadow-lg overflow-hidden">
+            <div ref={suggestListRef} className="absolute left-0 right-0 top-full mt-1 z-30 bg-popover border rounded-lg shadow-lg max-h-[60vh] overflow-y-auto">
               {suggestions.map((suggestion, index) => {
                 const { product, unit } = suggestion;
-                const unitPrice = unit?.price ?? product.price;
+                // Same resolver the cart uses, so a Wholesale customer sees the
+                // Wholesale price here rather than the raw unit (retail) price.
+                const unitPrice = calculateEffectivePriceForUnit(unit ?? baseSellingUnitOf(product), 1, activeLevelId, defaultLevelId);
                 return (
                   <button
                     key={suggestion.key}
