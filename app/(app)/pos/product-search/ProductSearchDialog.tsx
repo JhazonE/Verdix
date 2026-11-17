@@ -33,8 +33,8 @@ export function ProductSearchDialog({
     searchTerm, setSearchTerm,
     selectedBrand, setSelectedBrand,
     selectedCategory, setSelectedCategory,
-    displayedRows, loading, error,
-    handleSelect, stockTone,
+    displayedRows, loading, error, isStale,
+    handleSelect, handleKeyDown, stockTone,
     brands, categories,
   } = useProductSearch({ isOpen, onOpenChange, onSelectProduct, activeLevelId, warehouseId, allProducts });
 
@@ -125,7 +125,7 @@ export function ProductSearchDialog({
           </div>
         </SheetHeader>
 
-        <Command shouldFilter={false} className="flex-1 flex flex-col overflow-hidden rounded-none">
+        <Command shouldFilter={false} onKeyDown={handleKeyDown} className="flex-1 flex flex-col overflow-hidden rounded-none">
           <div className="flex flex-1 overflow-hidden">
 
             {/* ── Filter columns ── */}
@@ -199,7 +199,7 @@ export function ProductSearchDialog({
                   onValueChange={setSearchTerm}
                   className="h-11"
                 />
-                {loading && (
+                {(loading || isStale) && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2">
                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                   </div>
@@ -234,13 +234,13 @@ export function ProductSearchDialog({
               {/* Product list */}
               <CommandList className="flex-1 max-h-none overflow-y-auto">
                 {error && <div className="p-4 text-center text-sm text-destructive">{error}</div>}
-                {displayedRows.length === 0 && !loading && !error && (
+                {displayedRows.length === 0 && !loading && !isStale && !error && (
                   <CommandEmpty className="flex h-32 flex-col items-center justify-center gap-2 text-muted-foreground">
                     <Package2 className="h-8 w-8 opacity-20" />
                     <span className="text-sm">No products found</span>
                   </CommandEmpty>
                 )}
-                <CommandGroup className={loading ? 'opacity-50 transition-opacity duration-200' : 'transition-opacity duration-200'}>
+                <CommandGroup className={loading || isStale ? 'opacity-50 transition-opacity duration-200' : 'transition-opacity duration-200'}>
                   {displayedRows.map(({ key, product, unit }) => {
                     const outOfStock = product.stock <= 0;
                     const unitPrice = unit

@@ -39,6 +39,14 @@ export function useProductSearch({
   );
 
   const [displayedProducts, setDisplayedProducts] = useState<Product[]>([]);
+  // The search term the rows on screen were actually fetched for. While the
+  // cashier is typing (debounce) or the server is still answering, the list
+  // still shows the PREVIOUS term's rows — and cmdk highlights the first one.
+  // A barcode scanner types the code and presses Enter in a few milliseconds,
+  // so without this guard Enter added whatever product sat in the first row
+  // of the stale list instead of the scanned one.
+  const [resultsTerm, setResultsTerm] = useState('');
+  const [pendingEnter, setPendingEnter] = useState(false);
 
   useEffect(() => {
     if (!loading && !error) {
@@ -46,13 +54,16 @@ export function useProductSearch({
       if (selectedBrand) filtered = filtered.filter(p => p.brand === selectedBrand);
       if (selectedCategory) filtered = filtered.filter(p => p.category === selectedCategory);
       setDisplayedProducts(filtered);
+      setResultsTerm(debouncedSearchTerm);
     }
-  }, [products, loading, error, selectedBrand, selectedCategory]);
+  }, [products, loading, error, selectedBrand, selectedCategory, debouncedSearchTerm]);
 
   const displayedRows = useMemo<ProductUnitRow[]>(
     () => explodeToUnitRows(displayedProducts),
     [displayedProducts]
   );
+
+  const isStale = searchTerm.trim() !== resultsTerm.trim();
 
   const stableRefresh = useCallback(() => { refetchProducts(); }, [refetchProducts]);
   useLiveRefresh(stableRefresh);
@@ -62,6 +73,7 @@ export function useProductSearch({
       setSearchTerm('');
       setSelectedBrand('');
       setSelectedCategory('');
+      setPendingEnter(false);
     }
   }, [isOpen, activeLevelId]);
 
@@ -87,6 +99,30 @@ export function useProductSearch({
     }
   }, [displayedRows, onSelectProduct, onOpenChange]);
 
+  // Enter pressed before the results for the typed term arrived: hold it,
+  // and keep it from reaching cmdk (which would select the stale first row).
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && isStale && searchTerm.trim()) {
+      e.preventDefault();
+      setPendingEnter(true);
+    }
+  }, [isStale, searchTerm]);
+
+  // Once the fresh results land, resolve the held Enter: an exact barcode/SKU
+  // match wins (that's what a scan means), otherwise the first fresh row.
+  useEffect(() => {
+    if (!pendingEnter || isStale || loading) return;
+    setPendingEnter(false);
+    const term = searchTerm.trim().toLowerCase();
+    if (!term || displayedRows.length === 0) return;
+    const exact = displayedRows.find(r =>
+      (r.unit?.barcode || '').toLowerCase() === term ||
+      (!r.unit && (r.product.barcode || '').toLowerCase() === term) ||
+      (r.product.sku || '').toLowerCase() === term
+    );
+    handleSelect((exact ?? displayedRows[0]).key);
+  }, [pendingEnter, isStale, loading, searchTerm, displayedRows, handleSelect]);
+
   const stockTone = useCallback((product: Product) => {
     if (product.stock <= 0) return 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300';
     if (product.reorderPoint && product.stock <= product.reorderPoint) return 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300';
@@ -109,8 +145,8 @@ export function useProductSearch({
     selectedBrand, setSelectedBrand,
     selectedCategory, setSelectedCategory,
     displayedRows,
-    loading, error,
-    handleSelect, stockTone,
+    loading, error, isStale,
+    handleSelect, handleKeyDown, stockTone,
     brands, categories,
   };
 }
