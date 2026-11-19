@@ -54,7 +54,7 @@ export async function deductFromBatches(
 ): Promise<DeductionResult> {
   // 1. Load available batches FIFO (oldest received_date first)
   const [batches]: any = await connection.query(
-    `SELECT id, quantity_remaining, unit_cost
+    `SELECT id, quantity_remaining, unit_cost, source_type
      FROM inventory_batches
      WHERE product_id = ? AND quantity_remaining > 0
      ORDER BY received_date ASC, created_at ASC`,
@@ -63,8 +63,25 @@ export async function deductFromBatches(
 
   const splits: BatchSplit[] = [];
   let remaining = quantity;
-  // Set when the products.cost fallback had nothing to read. See costUnknown.
-  let fallbackCostUnknown = false;
+  // True once any split is priced by a cost we actually know.
+  let anyKnownCost = false;
+
+  // products.cost, read at most once. NaN = no cost on record.
+  let productCost: number | undefined;
+  const readProductCost = async (): Promise<number> => {
+    if (productCost === undefined) {
+      const [prodRows]: any = await connection.query(
+        'SELECT cost FROM products WHERE id = ?',
+        [productId]
+      );
+      // `cost || 0` would collapse NULL and 0 into the same number, and the
+      // caller could no longer tell "costed at zero" from "no cost on record".
+      // Keep them apart: NULL (or a non-numeric) means unknown.
+      const rawCost = prodRows?.[0]?.cost;
+      productCost = rawCost == null ? NaN : parseFloat(rawCost);
+    }
+    return productCost;
+  };
 
   // 2. FIFO consumption
   for (const batch of batches) {
@@ -79,10 +96,35 @@ export async function deductFromBatches(
       [take, batch.id]
     );
 
+    // A non-purchase batch at cost 0 is stock that was entered while the
+    // product's cost was still blank: the "Initial Stock" batch on product
+    // create, a stock adjustment, an import. Those writers have no NULL to
+    // store (unit_cost is NOT NULL), so they write 0 — which does not mean
+    // "this stock was free", it means "nobody said". Charging that 0 made the
+    // sale snapshot cost_at_sale = 0 forever even after the cost was filled
+    // in. Price such stock at the product's current cost instead.
+    //
+    // A PURCHASE batch at 0 is different: it was received against a PO line
+    // at 0 (a supplier freebie) and is a real, deliberate cost.
+    const batchCost = parseFloat(batch.unit_cost);
+    const uncosted = (!Number.isFinite(batchCost) || batchCost === 0)
+      && batch.source_type !== 'purchase';
+
+    let unitCost = Number.isFinite(batchCost) ? batchCost : 0;
+    if (uncosted) {
+      const pc = await readProductCost();
+      if (Number.isFinite(pc)) {
+        unitCost = pc;
+        anyKnownCost = true;
+      }
+    } else {
+      anyKnownCost = true;
+    }
+
     splits.push({
       batchId: batch.id,
       qty: take,
-      unitCost: parseFloat(batch.unit_cost),
+      unitCost,
       type: 'batch',
     });
 
@@ -101,17 +143,9 @@ export async function deductFromBatches(
     }
 
     // Fallback: use current product cost from products table
-    const [prodRows]: any = await connection.query(
-      'SELECT cost FROM products WHERE id = ?',
-      [productId]
-    );
-    // `cost || 0` would collapse NULL and 0 into the same number, and the
-    // caller could no longer tell "costed at zero" from "no cost on record".
-    // Keep them apart: NULL (or a non-numeric) means unknown.
-    const rawCost = prodRows?.[0]?.cost;
-    const parsed = rawCost == null ? NaN : parseFloat(rawCost);
+    const parsed = await readProductCost();
     const fallbackKnown = Number.isFinite(parsed);
-    if (!fallbackKnown) fallbackCostUnknown = true;
+    if (fallbackKnown) anyKnownCost = true;
 
     splits.push({
       batchId: 'fallback',
@@ -126,11 +160,11 @@ export async function deductFromBatches(
   const totalCostValue = splits.reduce((s, x) => s + x.qty * x.unitCost, 0);
   const weightedAvgCost = totalUnits > 0 ? totalCostValue / totalUnits : 0;
 
-  // Unknown only when NOTHING priced this deduction: the products.cost fallback
-  // came back empty and no real batch contributed a cost. If any batch did,
-  // the weighted average is a genuine figure and must be snapshotted as-is.
-  const pricedByBatch = splits.some((s) => s.type === 'batch');
-  const costUnknown = fallbackCostUnknown && !pricedByBatch;
+  // Unknown only when NOTHING priced this deduction with a known cost: no
+  // costed batch, and products.cost was empty both for the fallback and for
+  // any uncosted batch. If anything did, the weighted average is a genuine
+  // figure and must be snapshotted as-is.
+  const costUnknown = splits.length > 0 && !anyKnownCost;
 
   return { splits, weightedAvgCost, costUnknown };
 }

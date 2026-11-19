@@ -5,6 +5,7 @@ import { getNextReference, getNextReceiptNumber } from '../../../../lib/mysql';
 import { PoolConnection } from 'mysql2/promise';
 import { deductFromBatches, getBatchCostingSettings } from '../../../../lib/batch-deduction';
 import { baseQuantity } from '../../../../lib/selling-units';
+import { resolveCostAtSale } from '../../../../lib/selling-unit-cost';
 import { resolveInitialSettlement } from '../../../../lib/invoice-payment';
 import { ensurePaymentAllocationsTable } from '../../../../lib/invoice-payment-db';
 import { nextPaymentReference } from '../../../../lib/payment-reference';
@@ -154,8 +155,13 @@ export class CreateSaleUseCase {
            SET cost_at_sale = ?, batch_source = ?
            WHERE id = ?`,
           // cost_at_sale is per SELLING unit (price is too) — see lib/cost-of-sale.ts.
-          // weightedAvgCost is per base unit, so scale it by the unit's factor.
-          [deduction.weightedAvgCost * factor, JSON.stringify(deduction.splits), saleItemId]
+          // A non-base unit's typed cost wins; otherwise FIFO × factor, and
+          // NULL (never 0) when no cost was on record. See lib/selling-unit-cost.ts.
+          [
+            await resolveCostAtSale(deduction, factor, item.sellingUnitId, connection),
+            JSON.stringify(deduction.splits),
+            saleItemId,
+          ]
         );
         // --- END BATCH COSTING ---
 
