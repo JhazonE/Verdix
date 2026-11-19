@@ -80,6 +80,33 @@ export function usePOS() {
   const productsRef = useRef<any[]>([]);
   productsRef.current = products;
 
+  /**
+   * A content signature of every selling unit's price-level rows.
+   *
+   * The re-price effect reads `productsRef.current`, and a ref is NOT a React
+   * dependency: when a refetch lands with price-level rows the cart has not
+   * seen — the customer's level rows arriving after refreshProducts() — the
+   * ref updates silently and the effect never re-runs. The line keeps the
+   * retail price it was added at, which is the wrong price at the till with
+   * nothing on screen to show it.
+   *
+   * Depending on `products` itself is not an option: React Query hands back a
+   * new array identity on every refetch (one per sale), so the cart would
+   * re-price in a loop. This string changes only when a price or a tier
+   * actually changes, so the effect fires exactly when the numbers move.
+   */
+  const priceLevelSignature = useMemo(
+    () => products
+      .map((p: any) => (p.sellingUnits ?? [])
+        .map((u: any) => `${u.id}:${u.price}:${(u.priceLevels ?? [])
+          .map((pl: any) => `${pl.levelId}=${pl.price}@${pl.minQuantity ?? 0}`)
+          .sort()
+          .join(',')}`)
+        .join('|'))
+      .join(';'),
+    [products],
+  );
+
   // The price-level LIST used to be fetched once at mount and never again, so
   // a level added in the back office after the POS opened was unknown here:
   // a customer assigned to it showed "Retail" and the level was missing from
@@ -776,7 +803,11 @@ export function usePOS() {
           : undefined;
         return freshUnit ?? item.selectedSellingUnit ?? baseSellingUnitOf(item);
       };
-      const updated = currentItems.map(item => ({ ...item, price: priceLineFor(freshUnitFor(item), item.quantity, item.pickedPriceLevelId) }));
+      const updated = currentItems.map(item => item.priceManuallySet
+        // A hand-typed price is the cashier's explicit instruction; re-pricing
+        // it would undo a correction they already made.
+        ? item
+        : { ...item, price: priceLineFor(freshUnitFor(item), item.quantity, item.pickedPriceLevelId) });
       const changed = JSON.stringify(currentItems.map(i => i.price)) !== JSON.stringify(updated.map(i => i.price));
       return changed ? updated : currentItems;
     });
@@ -788,8 +819,14 @@ export function usePOS() {
     // activeLevelId does NOT change again — so keying this effect on
     // activeLevelId alone meant it never re-fired and the line stayed at
     // retail. That is invisible to the cashier and wrong at the till.
+    //
+    // `priceLevelSignature` is here for the same reason one step further out:
+    // the effect reads productsRef.current, and a ref is not a dependency, so
+    // the refreshed rows carrying the customer's level price would otherwise
+    // land with nothing to re-price against them. See its definition for why
+    // this is a content signature rather than `products` itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeLevelId, defaultLevelId]);
+  }, [activeLevelId, defaultLevelId, priceLevelSignature]);
 
   // Handlers
   //
@@ -1055,6 +1092,15 @@ export function usePOS() {
           price: newPrice,
           discount: newDiscount,
           pickedPriceLevelId: pickedPriceLevelId ?? item.pickedPriceLevelId,
+          // A price typed by hand, with no level picked, is a deliberate
+          // instruction and must survive a re-price. The level re-price effect
+          // now also runs when refreshed products change a price-level row, so
+          // without this flag a hand-typed price would silently snap back to
+          // the resolved one on the next refetch — a wrong price at the till
+          // that the cashier already corrected once.
+          priceManuallySet: pickedPriceLevelId
+            ? false
+            : (newPrice !== item.price ? true : item.priceManuallySet),
         }
       : item));
   };

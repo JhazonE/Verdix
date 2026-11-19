@@ -60,5 +60,20 @@ export type SaleItem = Product & {
    * through app/api/pos/queue), and a scalar survives all of them for free.
    */
   pickedPriceLevelId?: string;
+
+  /**
+   * The cashier typed this line's price by hand, so automatic re-pricing must
+   * leave it alone.
+   *
+   * Distinct from `pickedPriceLevelId`: that records a level the cashier
+   * CHOSE, which still resolves to a price from the unit's rows. This records
+   * a price that came from no level at all, and so has no rule to re-derive it
+   * from — the only way to keep it is not to touch it.
+   *
+   * Picking a level clears it: the pick is the newer instruction and carries
+   * its own price. A scalar for the same reason as above, so it survives the
+   * cart's JSON round trips through holds, drafts and the queue.
+   */
+  priceManuallySet?: boolean;
 };
 
