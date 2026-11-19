@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { calculateEffectivePrice } from '@/lib/pricing';
+import { calculateEffectivePrice, calculateEffectivePriceForUnit, resolvePriceForLevel } from '@/lib/pricing';
+import { baseSellingUnitOf } from '@/lib/pos-cart-units';
 import type { Product } from '@/lib/types';
 import type { SaleItem } from '../pos-content/pos-types';
 
@@ -36,7 +37,18 @@ export function useEditItem({ isOpen, item, onUpdate, onOpenChange, activeLevelI
   const handleQuantityChange = (newQty: number) => {
     setQuantity(newQty);
     if (product || item) {
-      const newPrice = calculateEffectivePrice((product || item) as unknown as Product, newQty, activeLevelId, defaultLevelId);
+      // Price levels live on SELLING UNITS now; product.priceLevels no longer
+      // exists, so resolving against the product always fell back to retail.
+      const source: any = product ?? item;
+      const wantedId = (item as any)?.selectedSellingUnit?.id;
+      const unit =
+        (wantedId && source?.sellingUnits?.find((u: any) => u.id === wantedId)) ||
+        (item as any)?.selectedSellingUnit ||
+        (source?.sellingUnits?.length ? baseSellingUnitOf(source) : undefined);
+      const picked = (item as any)?.pickedPriceLevelId;
+      const newPrice = unit
+        ? (picked ? resolvePriceForLevel(unit, picked) : calculateEffectivePriceForUnit(unit, newQty, activeLevelId, defaultLevelId))
+        : calculateEffectivePrice(source as unknown as Product, newQty, activeLevelId, defaultLevelId);
       setPrice(newPrice);
     }
   };

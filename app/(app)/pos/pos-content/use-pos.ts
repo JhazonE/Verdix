@@ -75,8 +75,28 @@ export function usePOS() {
   useEffect(() => {
     if (!productsLoading && fetchedProducts) setProducts(fetchedProducts);
   }, [fetchedProducts, productsLoading]);
+  // Read by the level re-price effect without making it depend on `products`
+  // (which changes identity on every refetch and would re-price constantly).
+  const productsRef = useRef<any[]>([]);
+  productsRef.current = products;
 
-  const stableRefresh = useCallback(() => { refreshProducts(); }, [refreshProducts]);
+  // The price-level LIST used to be fetched once at mount and never again, so
+  // a level added in the back office after the POS opened was unknown here:
+  // a customer assigned to it showed "Retail" and the level was missing from
+  // the price pick list until the POS was reloaded. Refetched on every live
+  // refresh and whenever a customer is selected.
+  const [priceLevels, setPriceLevels] = useState<any[]>([]);
+  const refreshPriceLevels = useCallback(async (): Promise<any[] | null> => {
+    try {
+      const levels = await import('../../products/actions').then(m => m.getPriceLevels());
+      setPriceLevels(levels);
+      return levels;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const stableRefresh = useCallback(() => { refreshProducts(); refreshPriceLevels(); }, [refreshProducts, refreshPriceLevels]);
   useLiveRefresh(stableRefresh);
 
   // The locally-cached `products` above is capped (server returns only the
@@ -112,7 +132,6 @@ export function usePOS() {
 
   const [businessSettings, setBusinessSettings] = useState<SystemSettings | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [priceLevels, setPriceLevels] = useState<any[]>([]);
 
   const isFrontliner = useMemo(
     () => !!(currentUser?.permissions as string[] | undefined)?.includes('pos_frontliner'),
@@ -467,12 +486,9 @@ export function usePOS() {
   // Fetch initial data
   useEffect(() => {
     const fetchPriceLevels = async () => {
-      try {
-        const levels = await import('../../products/actions').then(m => m.getPriceLevels());
-        setPriceLevels(levels);
-        const defaultLevel = levels.find((l: any) => l.isDefault);
-        if (defaultLevel) setSelectedPriceLevelId(defaultLevel.id);
-      } catch {}
+      const levels = await refreshPriceLevels();
+      const defaultLevel = levels?.find((l: any) => l.isDefault);
+      if (defaultLevel) setSelectedPriceLevelId(defaultLevel.id);
     };
     fetchPriceLevels();
 
@@ -746,7 +762,21 @@ export function usePOS() {
       // A line with a picked level resolves to the same price here, so the
       // `changed` guard below leaves it untouched — the cart-wide level moving
       // must not drag a deliberately priced line with it.
-      const updated = currentItems.map(item => ({ ...item, price: priceLineFor(item.selectedSellingUnit ?? baseSellingUnitOf(item), item.quantity, item.pickedPriceLevelId) }));
+      // A cart line carries a COPY of its product's selling units taken when
+      // it was scanned. Pricing a level change against that copy meant a
+      // level price set after the line was added (e.g. PEDDLER ₱80) was
+      // invisible and the line stayed at retail. Prefer the freshly fetched
+      // product's unit; fall back to the line's copy when the product is
+      // outside the cached page.
+      const freshUnitFor = (item: any) => {
+        const fresh = productsRef.current.find((p: any) => p.id === item.id);
+        const wantedId = item.selectedSellingUnit?.id;
+        const freshUnit = fresh?.sellingUnits?.length
+          ? (wantedId ? fresh.sellingUnits.find((u: any) => u.id === wantedId) : baseSellingUnitOf(fresh))
+          : undefined;
+        return freshUnit ?? item.selectedSellingUnit ?? baseSellingUnitOf(item);
+      };
+      const updated = currentItems.map(item => ({ ...item, price: priceLineFor(freshUnitFor(item), item.quantity, item.pickedPriceLevelId) }));
       const changed = JSON.stringify(currentItems.map(i => i.price)) !== JSON.stringify(updated.map(i => i.price));
       return changed ? updated : currentItems;
     });
@@ -1458,8 +1488,25 @@ export function usePOS() {
       try {
         const parsed = JSON.parse(savedCart);
         setItems(withLineIds(parsed.items || []));
-        setSelectedCustomer(parsed.selectedCustomer || WALK_IN_CUSTOMER);
+        const savedCustomer = parsed.selectedCustomer || WALK_IN_CUSTOMER;
+        setSelectedCustomer(savedCustomer);
         setHeldTransactions(parsed.heldTransactions || []);
+        // The saved customer is a snapshot: if their price level was changed
+        // (or deleted) since, the cart would keep pricing at the old level.
+        if (savedCustomer?.id && savedCustomer.id !== WALK_IN_CUSTOMER?.id) {
+          fetch(getApiUrl(`/customers/${savedCustomer.id}`))
+            .then(r => (r.ok ? r.json() : null))
+            .then(res => {
+              if (!res?.success || !res.data) return;
+              const freshLevel = res.data.price_level_id ?? undefined;
+              setSelectedCustomer(cur =>
+                cur && cur.id === savedCustomer.id && cur.priceLevelId !== freshLevel
+                  ? { ...cur, priceLevelId: freshLevel }
+                  : cur,
+              );
+            })
+            .catch(() => {});
+        }
       } catch {}
     }
 
@@ -1612,6 +1659,10 @@ export function usePOS() {
   };
 
   const handleSelectCustomer = (customer: Customer | null) => {
+    // The customer may be on a level created after the POS loaded its list.
+    if (customer?.priceLevelId && !priceLevels.some((l: any) => l.id === customer.priceLevelId)) {
+      refreshPriceLevels();
+    }
     setSelectedCustomer(customer);
     setIsCustomerSelectOpen(false);
   };
