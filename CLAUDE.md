@@ -123,6 +123,15 @@ carts reach that price by volume, not a gate on the customers the level was decl
 The default level is excluded because it is active for every walk-in. `qualifies` in
 `lib/pricing.ts` is the single place that encodes these rules.
 
+**A non-default active level REPLACES the shelf price rather than competing with it.**
+When the active level is not the default and the unit has a row for it, that row's price
+is the starting point — the unit's own price and the default-level row are dropped — so a
+level priced ABOVE retail (Credit, Delivery) actually applies to the customers assigned to
+it. Under plain min-of-everything, retail always undercut a dearer level. Reached TIERED
+rows on other levels still compete on top, so a volume break can still lower it. With no
+row for the active level, the min-of-candidates rule above is unchanged.
+`resolveEffectivePrice` in `lib/pricing.ts` holds this.
+
 Two rules protect the shelf price: the base unit's default-level row is the
 product's price and must stay untiered (the UI disables its Min Qty input, and
 `updateProductPrice` writes `min_quantity = 0`), and **both** product read paths promote

@@ -51,6 +51,56 @@ function qualifies(
 }
 
 /**
+ * The resolution both calculateEffectivePrice and calculateEffectivePriceForUnit
+ * share.
+ *
+ * When the ACTIVE level is not the default (a customer declared on PEDDLER,
+ * Credit, Wholesale…) and this unit HAS a row for it, that row's price is the
+ * starting price — replacing the unit's own (retail) price and the default
+ * level's row. This is what lets a level priced ABOVE retail apply: under a
+ * plain min-of-everything, retail always undercut it, so a dearer level could
+ * never take effect for the customers assigned to it.
+ *
+ * Volume breaks are still honoured on top: any TIERED row on another level
+ * that the quantity has reached competes, and the cheapest wins. So the only
+ * thing a dearer level loses is being undercut by the plain shelf price.
+ *
+ * Without such a row, behaviour is exactly the long-standing min-of-candidates
+ * rule over the unit price and every qualifying row.
+ */
+function resolveEffectivePrice(
+  basePrice: number,
+  priceLevels: { levelId: string; price: number; minQuantity?: number | null }[] | undefined,
+  quantity: number,
+  activeLevelId: string | undefined,
+  defaultLevelId: string,
+): number {
+  const levels = priceLevels ?? [];
+
+  const activeRow = activeLevelId && activeLevelId !== defaultLevelId
+    ? levels.find(pl => pl.levelId === activeLevelId && Number.isFinite(Number(pl.price)))
+    : undefined;
+
+  if (activeRow) {
+    const candidates = [Number(activeRow.price)];
+    for (const pl of levels) {
+      if (pl === activeRow) continue;
+      const threshold = Number(pl.minQuantity ?? 0);
+      if (Number.isFinite(threshold) && threshold > 0 && Number(quantity) >= threshold) {
+        candidates.push(Number(pl.price));
+      }
+    }
+    return Math.min(...candidates);
+  }
+
+  const candidates = [Number(basePrice)];
+  for (const pl of levels) {
+    if (qualifies(pl, quantity, activeLevelId, defaultLevelId)) candidates.push(Number(pl.price));
+  }
+  return Math.min(...candidates);
+}
+
+/**
  * Calculates the effective price for a product based on the active price
  * level and the quantity being bought.
  *
@@ -76,24 +126,7 @@ export function calculateEffectivePrice(
     activeLevelId?: string,
     defaultLevelId: string = 'retail-level'
 ): number {
-    // Start with a list of valid price candidates
-    const priceCandidates: number[] = [];
-
-    // 1. Add the product's base price
-    priceCandidates.push(Number(product.price));
-
-    if (product.priceLevels && product.priceLevels.length > 0) {
-        // 2. Add the price from whichever level row matches the active level
-        // or the default level.
-        product.priceLevels.forEach(pl => {
-            if (qualifies(pl, quantity, activeLevelId, defaultLevelId)) {
-                priceCandidates.push(Number(pl.price));
-            }
-        });
-    }
-
-    // Return the lowest price among all valid candidates.
-    return priceCandidates.length > 0 ? Math.min(...priceCandidates) : Number(product.price);
+    return resolveEffectivePrice(Number(product.price), product.priceLevels as any, quantity, activeLevelId, defaultLevelId);
 }
 
 export type SellingUnitPriceLevel = {
@@ -132,17 +165,7 @@ export function calculateEffectivePriceForUnit(
   activeLevelId?: string,
   defaultLevelId: string = 'retail-level'
 ): number {
-  const priceCandidates: number[] = [Number(unit.price)];
-
-  if (unit.priceLevels && unit.priceLevels.length > 0) {
-    unit.priceLevels.forEach(pl => {
-      if (qualifies(pl, quantity, activeLevelId, defaultLevelId)) {
-        priceCandidates.push(Number(pl.price));
-      }
-    });
-  }
-
-  return priceCandidates.length > 0 ? Math.min(...priceCandidates) : Number(unit.price);
+  return resolveEffectivePrice(Number(unit.price), unit.priceLevels, quantity, activeLevelId, defaultLevelId);
 }
 
 /**

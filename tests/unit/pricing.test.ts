@@ -247,4 +247,55 @@ const retailLevel = 'retail-level';
   );
 }
 
+// --- A NON-default active level priced ABOVE retail still applies ---
+// A customer declared on a dearer level (e.g. "Credit", "Delivery") pays
+// that level's price. Previously the min-of-candidates rule let the unit's
+// own retail price undercut it, so a dearer level could never apply.
+{
+  const creditLevel = 'credit-level';
+  const unit = {
+    price: 100,
+    priceLevels: [
+      { levelId: retailLevel, price: 100, minQuantity: 0 },
+      { levelId: creditLevel, price: 110, minQuantity: 0 },
+    ],
+  };
+  assert.equal(
+    calculateEffectivePriceForUnit(unit, 1, creditLevel, retailLevel),
+    110,
+    'a customer on a dearer level pays that level\'s price, not retail',
+  );
+  assert.equal(
+    calculateEffectivePriceForUnit(unit, 1, retailLevel, retailLevel),
+    100,
+    'a walk-in on retail is unaffected by the dearer level',
+  );
+
+  // A volume break on ANOTHER level the cart reaches may still lower it.
+  const withBreak = {
+    price: 100,
+    priceLevels: [
+      { levelId: creditLevel, price: 110, minQuantity: 0 },
+      { levelId: wholesaleLevel, price: 90, minQuantity: 12 },
+    ],
+  };
+  assert.equal(
+    calculateEffectivePriceForUnit(withBreak, 11, creditLevel, retailLevel),
+    110,
+    'below another level\'s tier, the dearer active level stands',
+  );
+  assert.equal(
+    calculateEffectivePriceForUnit(withBreak, 12, creditLevel, retailLevel),
+    90,
+    'a reached volume break still lowers the dearer level',
+  );
+
+  // No row for the active level -> unchanged fallback to the unit price.
+  assert.equal(
+    calculateEffectivePriceForUnit({ price: 100, priceLevels: [] }, 1, creditLevel, retailLevel),
+    100,
+    'an active level with no row for this unit falls back to the unit price',
+  );
+}
+
 console.log('✅ pricing tests passed');
