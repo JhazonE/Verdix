@@ -780,8 +780,16 @@ export function usePOS() {
       const changed = JSON.stringify(currentItems.map(i => i.price)) !== JSON.stringify(updated.map(i => i.price));
       return changed ? updated : currentItems;
     });
+    // `defaultLevelId` is a dependency, not a formality. Selecting a customer
+    // whose level the POS has not loaded yet calls refreshPriceLevels() and
+    // sets the customer in the same handler, so activeLevelId changes while
+    // `priceLevels` is still the stale list. defaultLevelId then falls back to
+    // 'retail-level', the line prices as retail, and when the real list lands
+    // activeLevelId does NOT change again — so keying this effect on
+    // activeLevelId alone meant it never re-fired and the line stayed at
+    // retail. That is invisible to the cashier and wrong at the till.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeLevelId]);
+  }, [activeLevelId, defaultLevelId]);
 
   // Handlers
   //
@@ -1660,8 +1668,15 @@ export function usePOS() {
 
   const handleSelectCustomer = (customer: Customer | null) => {
     // The customer may be on a level created after the POS loaded its list.
+    // Refresh the PRODUCTS too: the levels list alone only tells the cart the
+    // level exists, while the prices for it live in each selling unit's
+    // priceLevels rows, which came down with the products. Without this the
+    // level resolves but every unit looks as if it has no row for it, so the
+    // line falls back to the shelf price — the same silent retail price this
+    // refresh exists to avoid.
     if (customer?.priceLevelId && !priceLevels.some((l: any) => l.id === customer.priceLevelId)) {
       refreshPriceLevels();
+      refreshProducts();
     }
     setSelectedCustomer(customer);
     setIsCustomerSelectOpen(false);
