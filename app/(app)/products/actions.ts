@@ -2822,7 +2822,22 @@ export async function updatePriceLevel(id: string, name: string, description: st
 
 export async function deletePriceLevel(id: string) {
   try {
-    await query('DELETE FROM price_levels WHERE id = ?', [id]);
+    const [level]: any = await query('SELECT is_default FROM price_levels WHERE id = ?', [id]);
+    if (level && Number(level.is_default) === 1) {
+      return { success: false, message: 'Cannot delete the default price level. Set another level as default first.' };
+    }
+    // Neither product_selling_unit_price_levels.price_level_id nor
+    // customers.price_level_id has a foreign key, so deleting only the level
+    // row left orphans behind: products kept showing the deleted level as a
+    // raw "pl_..." id, and customers stayed pointed at a level that no longer
+    // exists. Remove both in the same transaction as the level itself.
+    // sale_items keep their denormalised price_level_name, so filed sales
+    // still say what they were priced at.
+    await withTransaction(async (conn) => {
+      await conn.query('DELETE FROM product_selling_unit_price_levels WHERE price_level_id = ?', [id]);
+      await conn.query('UPDATE customers SET price_level_id = NULL WHERE price_level_id = ?', [id]);
+      await conn.query('DELETE FROM price_levels WHERE id = ?', [id]);
+    });
     return { success: true, message: 'Price level deleted successfully.' };
   } catch (error) {
     console.error('Error deleting price level:', error);
