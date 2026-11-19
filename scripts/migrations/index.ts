@@ -146,6 +146,8 @@ import './145_create_live_events';
 import './146_default_hidden_pages';
 import './147_null_unknown_cost_at_sale';
 import './148_add_tax_type_to_pos_transaction_items';
+import './149_null_cost_at_sale_from_uncosted_batches';
+import './150_typed_selling_unit_cost_at_sale';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';

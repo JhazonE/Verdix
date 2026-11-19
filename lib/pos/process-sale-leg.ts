@@ -2,6 +2,7 @@ import mysql from 'mysql2/promise';
 import { baseQuantity, getBaseUnit, type SellingUnit } from '../selling-units';
 import { updateStockAndRecordMovement } from '../stock-movements';
 import { deductFromBatches } from '../batch-deduction';
+import { resolveCostAtSale } from '../selling-unit-cost';
 import { isService } from '../product-type';
 
 export interface SaleLegItem {
@@ -135,7 +136,8 @@ export async function processSaleLeg(
       // only fall back to products.cost for a NULL snapshot. Leaving it NULL
       // lets a cost entered later apply to these lines — and once a real cost
       // IS captured here, the snapshot is frozen and later edits cannot move it.
-      costAtSale = deduction.costUnknown ? null : deduction.weightedAvgCost * factor;
+      // A non-base unit's TYPED cost wins over FIFO — see lib/selling-unit-cost.ts.
+      costAtSale = await resolveCostAtSale(deduction, factor, unitId, connection);
       batchSource = JSON.stringify(deduction.splits);
     } catch (batchErr: any) {
       if (batchErr.message && batchErr.message.startsWith('Batch stock exhausted')) {
