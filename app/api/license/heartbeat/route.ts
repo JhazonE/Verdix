@@ -4,7 +4,9 @@ import {
   evaluateLicenseKey,
   saveLicenseKey,
   removeLicenseKey,
+  readLicenseKey,
 } from '@/lib/licensing/verify';
+import { sameLicenseTerms } from '@/lib/licensing/license-file';
 import { HOSTED_MACHINE_ID, normalizeMachineId } from '@/lib/licensing/core';
 import { writeLicenseState } from '@/lib/licensing/state-store';
 import { decideHeartbeatWrite } from '@/lib/licensing/heartbeat-decide';
@@ -79,9 +81,12 @@ export async function POST() {
       });
     }
 
-    // Desktop: unchanged file-based behaviour.
+    // Desktop: file-based. The server re-signs on every heartbeat, but only
+    // persist when the licence TERMS changed (renewal, features, ...). Rewriting
+    // license.dat on every page load is what let a power cut mid-write wipe a
+    // perfectly good licence and drop the POS back to the activation screen.
     if (status === 'active') {
-      if (json.signedLicense) {
+      if (json.signedLicense && !sameLicenseTerms(readLicenseKey(), json.signedLicense)) {
         const info = evaluateLicenseKey(json.signedLicense);
         if (info.status === 'active' || info.status === 'expired') saveLicenseKey(json.signedLicense);
       }

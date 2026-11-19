@@ -8,9 +8,9 @@
  * survives across launches even for the portable Electron build (whose app
  * folder is unpacked to a temp directory each run). Override with LICENSE_FILE.
  */
-import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { readLicenseFile, writeLicenseFile, deleteLicenseFile } from './license-file';
 import {
   verifyLicenseSignature,
   normalizeMachineId,
@@ -60,29 +60,21 @@ export function getLicenseFilePath(): string {
 export function readLicenseKey(): string | null {
   const envKey = process.env.LICENSE_KEY?.trim();
   if (envKey) return envKey;
-  try {
-    const p = getLicenseFilePath();
-    if (!fs.existsSync(p)) return null;
-    const raw = fs.readFileSync(p, 'utf8').trim();
-    return raw || null;
-  } catch {
-    return null;
-  }
+  // Falls back to license.dat.bak when a torn write damaged the main file.
+  return readLicenseFile(
+    getLicenseFilePath(),
+    (k) => verifyLicenseSignature(k, PUBLIC_KEY_PEM).valid
+  );
 }
 
+/** Crash-safe (temp + fsync + rename) write, plus a last-known-good backup. */
 export function saveLicenseKey(key: string): void {
-  const p = getLicenseFilePath();
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, key.trim(), 'utf8');
+  writeLicenseFile(getLicenseFilePath(), key);
 }
 
+/** Removes license.dat AND its backup, so a revoked key cannot be resurrected. */
 export function removeLicenseKey(): void {
-  try {
-    const p = getLicenseFilePath();
-    if (fs.existsSync(p)) fs.unlinkSync(p);
-  } catch {
-    // ignore
-  }
+  deleteLicenseFile(getLicenseFilePath());
 }
 
 /**
