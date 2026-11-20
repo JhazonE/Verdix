@@ -10,7 +10,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Printer, User, CreditCard, Hash, Calendar, Clock, ShoppingBag } from 'lucide-react';
+import { Printer, FileText, User, CreditCard, Hash, Calendar, Clock, ShoppingBag } from 'lucide-react';
 import type { Sale } from '@/lib/types';
 import { formatSINumber } from '@/lib/si-number';
 import { format } from 'date-fns';
@@ -19,9 +19,11 @@ import { formatCurrency } from './recent-sales-utils';
 interface SaleDetailViewProps {
   sale: Sale;
   onReprint: () => void;
+  /** Omitted when Large Invoice is disabled in POS settings — hides the button. */
+  onPrintLargeInvoice?: () => void;
 }
 
-export function SaleDetailView({ sale, onReprint }: SaleDetailViewProps) {
+export function SaleDetailView({ sale, onReprint, onPrintLargeInvoice }: SaleDetailViewProps) {
   const items = sale.items || [];
   const gross = items.reduce((acc: number, it: any) => acc + it.price * it.quantity, 0);
   const totalDiscount = items.reduce((acc: number, it: any) => acc + (it.discount || 0), 0);
@@ -33,10 +35,18 @@ export function SaleDetailView({ sale, onReprint }: SaleDetailViewProps) {
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-2 border-b pb-3 shrink-0">
         <h2 className="text-sm font-semibold">Transaction Details</h2>
-        <Button size="sm" className="gap-1.5" onClick={onReprint}>
-          <Printer className="h-4 w-4" />
-          Reprint Receipt
-        </Button>
+        <div className="flex items-center gap-2">
+          {onPrintLargeInvoice && (
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={onPrintLargeInvoice}>
+              <FileText className="h-4 w-4" />
+              Large Invoice
+            </Button>
+          )}
+          <Button size="sm" className="gap-1.5" onClick={onReprint}>
+            <Printer className="h-4 w-4" />
+            Reprint Receipt
+          </Button>
+        </div>
       </div>
 
       <div className="mt-4 rounded-xl border bg-gradient-to-br from-primary/5 to-transparent p-4 shrink-0">

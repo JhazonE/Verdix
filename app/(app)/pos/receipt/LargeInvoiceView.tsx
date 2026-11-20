@@ -43,6 +43,14 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
                 <div className="font-bold uppercase" style={{ fontSize: '14px' }}>{settings?.businessName || 'VENDIX'}</div>
                 {settings?.address && <div style={{ fontSize: '10px' }}>{settings.address}</div>}
                 {settings?.contactNumber && <div style={{ fontSize: '10px' }}>{settings.contactNumber}</div>}
+                {/* Same marker the thermal receipt carries, so a copy printed later
+                    can never pass for the original invoice. */}
+                {saleDetails.isReprint && (
+                    <div style={{ marginTop: '4px' }}>
+                        <div className="font-bold" style={{ fontSize: '12px' }}>*** REPRINT ***</div>
+                        <div style={{ fontSize: '9px' }}>Reprinted: {format(new Date(), 'MMM dd, yyyy h:mm a')}</div>
+                    </div>
+                )}
             </div>
 
             <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }} />

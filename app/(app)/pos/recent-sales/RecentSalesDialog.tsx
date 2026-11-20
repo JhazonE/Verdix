@@ -1,6 +1,9 @@
 ﻿'use client';
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useMemo } from 'react';
+import { LargeInvoicePreviewDialog } from '../receipt/LargeInvoicePreviewDialog';
+import { mapSaleToReceiptDetails } from './recent-sales-utils';
+import type { Sale } from '@/lib/types';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -44,11 +47,21 @@ export function RecentSalesDialog({
   });
 
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
+  const [largeInvoiceSale, setLargeInvoiceSale] = useState<Sale | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  // MySQL returns BOOLEAN as TINYINT (0/1), hence the coercion.
+  const largeInvoiceEnabled = !!posSettings?.enableLargeInvoice;
+  const largeInvoiceDetails = useMemo(
+    () => (largeInvoiceSale ? { ...mapSaleToReceiptDetails(largeInvoiceSale), isReprint: true } : null),
+    [largeInvoiceSale]
+  );
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isOpen || isLoading) return;
+      // The preview dialog owns the keyboard while it is open; otherwise Enter
+      // would also trigger the thermal reprint underneath it.
+      if (largeInvoiceSale) return;
 
       // When viewing receipt preview
       if (saleToPrint) {
@@ -96,11 +109,12 @@ export function RecentSalesDialog({
       document.addEventListener('keydown', handleKeyDown);
       return () => document.removeEventListener('keydown', handleKeyDown);
     }
-  }, [isOpen, step, recentSales, highlightedIndex, isLoading, selectedSale, saleToPrint, setSelectedSale, handlePrintReceipt, handlePrintReceiptAction, handleBackToList]);
+  }, [isOpen, step, recentSales, highlightedIndex, isLoading, selectedSale, saleToPrint, largeInvoiceSale, setSelectedSale, handlePrintReceipt, handlePrintReceiptAction, handleBackToList]);
 
   useEffect(() => {
     if (!isOpen) {
       setHighlightedIndex(null);
+      setLargeInvoiceSale(null);
     }
   }, [isOpen]);
 
@@ -193,6 +207,7 @@ export function RecentSalesDialog({
                     <SaleDetailView
                       sale={selectedSale}
                       onReprint={() => handlePrintReceipt(selectedSale)}
+                      onPrintLargeInvoice={largeInvoiceEnabled ? () => setLargeInvoiceSale(selectedSale) : undefined}
                     />
                   ) : (
                     <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed text-center text-muted-foreground">
@@ -213,6 +228,13 @@ export function RecentSalesDialog({
           )}
         </SheetContent>
       </Sheet>
+
+      <LargeInvoicePreviewDialog
+        open={largeInvoiceEnabled && !!largeInvoiceSale}
+        onOpenChange={(open) => { if (!open) setLargeInvoiceSale(null); }}
+        saleDetails={largeInvoiceDetails}
+        settings={posSettings}
+      />
 
       <AdminAuthDialog
         isOpen={isOpen && step === 'auth'}
