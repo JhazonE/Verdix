@@ -80,8 +80,26 @@ export class MySqlProductRepository implements ProductRepository {
     }
 
     if (filters.warehouseId) {
-      sql += ' AND products.warehouse_id = ?';
-      params.push(filters.warehouseId);
+      // Accept a warehouse NAME as well as an id.
+      //
+      // The POS passes `pos_terminals.location` here, and that column holds a
+      // name ('STORE') on terminals created without a warehouse picked — the
+      // create route defaults it to the literal string 'Store'. Comparing that
+      // against products.warehouse_id ('wh_main') matched ZERO rows, so the
+      // cart silently loaded an empty/partial catalogue: the product's price
+      // levels never arrived and every line fell back to the shelf price.
+      //
+      // That is why a customer's dearer level worked in dev and not on an
+      // installed terminal — the dev terminal happened to have a real id
+      // stored, so the same code took a different branch of the data.
+      //
+      // Matching on either keeps both shapes working rather than migrating the
+      // column, which would need every terminal on every site re-pointed.
+      sql += ` AND (
+        products.warehouse_id = ?
+        OR products.warehouse_id = (SELECT id FROM warehouses WHERE name = ? LIMIT 1)
+      )`;
+      params.push(filters.warehouseId, filters.warehouseId);
     }
 
     if (filters.availability) {
@@ -234,8 +252,13 @@ export class MySqlProductRepository implements ProductRepository {
     }
 
     if (filters.warehouseId) {
-      countSql += ' AND warehouse_id = ?';
-      countParams.push(filters.warehouseId);
+      // Same name-or-id acceptance as findAll above; the two must agree or the
+      // total disagrees with the rows actually returned.
+      countSql += ` AND (
+        warehouse_id = ?
+        OR warehouse_id = (SELECT id FROM warehouses WHERE name = ? LIMIT 1)
+      )`;
+      countParams.push(filters.warehouseId, filters.warehouseId);
     }
 
     if (filters.availability) {
