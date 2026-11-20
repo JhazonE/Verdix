@@ -154,9 +154,20 @@ export function useBulkPriceUpdate(onUpdated?: () => void) {
     return rows
       .filter(r => selectedIds.has(r.key))
       .map(r => {
+        // A unit with no row for this level falls back to its OWN price, the
+        // same rule lib/pricing.ts resolves by — that IS what the unit
+        // currently sells at on this level, so it is the honest starting
+        // point for an adjustment.
+        //
+        // The old `?? 0` made this unusable for exactly the case it is needed
+        // for: setting a level on products that have never had one. Every
+        // such row started at 0, so a percentage adjustment wrote 0 (0 × 1.2)
+        // and a fixed one wrote the adjustment alone (0 + 20) instead of
+        // moving off the shelf price. Only 'exact' and 'markup' survived,
+        // because they ignore the current value.
         const currentValue = effectiveField === 'price' ? r.price
           : effectiveField === 'cost' ? r.cost
-          : Number(r.priceLevels.find(pl => pl.levelId === priceLevelId)?.price ?? 0);
+          : Number(r.priceLevels.find(pl => pl.levelId === priceLevelId)?.price ?? r.price);
         // Markup is computed off THIS unit's cost, so a Case marks up the case
         // cost rather than the per-piece cost.
         const newValue = applyAdjustment(effectiveAdjustmentType, currentValue, adjustmentValue, r.cost);
