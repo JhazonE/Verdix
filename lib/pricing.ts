@@ -86,6 +86,11 @@ function resolveEffectivePrice(
     for (const pl of levels) {
       if (pl === activeRow) continue;
       const threshold = Number(pl.minQuantity ?? 0);
+      // The default level's row at a threshold of 1 is just the shelf price
+      // (a stale min_quantity = 1 on it once priced a PEDDLING customer at
+      // retail). It is dropped here like the untiered one; only a genuine
+      // default-level volume break ("12+") still competes.
+      if (pl.levelId === defaultLevelId && threshold <= 1) continue;
       if (Number.isFinite(threshold) && threshold > 0 && Number(quantity) >= threshold) {
         candidates.push(Number(pl.price));
       }

@@ -296,6 +296,34 @@ const retailLevel = 'retail-level';
     100,
     'an active level with no row for this unit falls back to the unit price',
   );
+
+  // Regression (Coke Zero Sakto, 2026-11-20): the default-level row was stored
+  // with min_quantity = 1. That is the shelf price, not a volume break, and
+  // must not undercut a dearer active level just because every cart reaches 1.
+  const retailTierAtOne = {
+    price: 16,
+    priceLevels: [
+      { levelId: wholesaleLevel, price: 14, minQuantity: 0 },
+      { levelId: creditLevel, price: 30, minQuantity: 0 },
+      { levelId: retailLevel, price: 16, minQuantity: 1 },
+    ],
+  };
+  assert.equal(
+    calculateEffectivePriceForUnit(retailTierAtOne, 1, creditLevel, retailLevel),
+    30,
+    'a default-level row at min_quantity 1 does not undercut the active level',
+  );
+  // A REAL bulk break on the default level still lowers it once reached.
+  const retailBulk = {
+    price: 16,
+    priceLevels: [
+      { levelId: creditLevel, price: 30, minQuantity: 0 },
+      { levelId: retailLevel, price: 12, minQuantity: 12 },
+    ],
+  };
+  assert.equal(calculateEffectivePriceForUnit(retailBulk, 11, creditLevel, retailLevel), 30);
+  assert.equal(calculateEffectivePriceForUnit(retailBulk, 12, creditLevel, retailLevel), 12,
+    'a genuine "12+" default-level break still competes');
 }
 
 console.log('✅ pricing tests passed');

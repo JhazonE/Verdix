@@ -222,6 +222,28 @@ function normalizeMinQuantity(minQuantity: unknown): number {
 }
 
 /**
+ * The BASE unit's default-level row is the product's shelf price and must
+ * never carry a tier. The form disables that Min Qty input, but a disabled
+ * input still submits whatever value it was loaded with. A stale
+ * min_quantity = 1 saved this way made the row compete as a "1+" tier and
+ * undercut a customer's dearer level (Peddling ₱30 rang up at retail ₱16).
+ * So the server enforces it instead of trusting the form.
+ */
+async function untierBaseDefaultLevel(
+  connection: any,
+  priceLevels: ProductPriceLevelOverride[] | undefined,
+): Promise<ProductPriceLevelOverride[] | undefined> {
+  if (!priceLevels || priceLevels.length === 0) return priceLevels;
+  const [rows]: any = await connection.query(
+    'SELECT id FROM price_levels WHERE is_default = 1 LIMIT 1',
+  );
+  const defaultLevelId = rows?.[0]?.id ?? 'retail-level';
+  return priceLevels.map(pl =>
+    pl.levelId === defaultLevelId ? { ...pl, minQuantity: 0 } : pl,
+  );
+}
+
+/**
  * Replace a single selling unit's price-level rows: delete whatever is there,
  * then reinsert what was submitted. Used by updateProduct for every unit
  * present in the submitted form data — a unit the user deleted is handled by
@@ -934,7 +956,7 @@ export async function addProduct(
         productData.cost,
         productData.barcode,
         sellingUnits,
-        formData.priceLevels,
+        await untierBaseDefaultLevel(connection, formData.priceLevels),
       );
 
       // Stock this same item in any extra warehouses the form listed. Services
@@ -1265,7 +1287,7 @@ export async function updateProduct(id: string, formData: ProductFormData) {
         // unit's own overrides still come from formData.priceLevels (the
         // field the product's own price/cost form controls populate).
         const baseUnitId = baseRows.length > 0 ? baseRows[0].id : `psu_base_${id}`;
-        await replaceSellingUnitPriceLevels(connection, baseUnitId, formData.priceLevels);
+        await replaceSellingUnitPriceLevels(connection, baseUnitId, await untierBaseDefaultLevel(connection, formData.priceLevels));
 
         if (managesSellingUnits) {
           const [existingExtras]: any = await connection.query(
