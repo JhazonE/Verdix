@@ -72,7 +72,11 @@ export async function GET(request: NextRequest) {
       { name: 'enable_z_reading_auth', type: 'BOOLEAN DEFAULT FALSE' },
       { name: 'z_reading_auth_username', type: 'VARCHAR(255) NULL' },
       { name: 'z_reading_auth_password', type: 'VARCHAR(255) NULL' },
-      { name: 'show_cost_on_sales_invoice', type: 'TINYINT(1) DEFAULT 0' }
+      { name: 'show_cost_on_sales_invoice', type: 'TINYINT(1) DEFAULT 0' },
+      { name: 'large_invoice_show_business_name', type: 'TINYINT(1) DEFAULT 1' },
+      { name: 'large_invoice_show_counted_items', type: 'TINYINT(1) DEFAULT 1' },
+      { name: 'large_invoice_show_change', type: 'TINYINT(1) DEFAULT 1' },
+      { name: 'large_invoice_show_payment', type: 'TINYINT(1) DEFAULT 1' }
     ];
 
     const currentColumnsResult = await query(
@@ -198,7 +202,11 @@ export async function GET(request: NextRequest) {
         membership_duration_months AS membershipDurationMonths,
         enable_quick_add_customer AS enableQuickAddCustomer,
         enable_browser_pos AS enableBrowserPos,
-        show_cost_on_sales_invoice AS showCostOnSalesInvoice
+        show_cost_on_sales_invoice AS showCostOnSalesInvoice,
+        large_invoice_show_business_name AS largeInvoiceShowBusinessName,
+        large_invoice_show_counted_items AS largeInvoiceShowCountedItems,
+        large_invoice_show_change AS largeInvoiceShowChange,
+        large_invoice_show_payment AS largeInvoiceShowPayment
       FROM pos_settings
       LIMIT 1
     `;
@@ -462,7 +470,11 @@ export async function POST(request: NextRequest) {
         membershipDurationMonths: 'membership_duration_months',
         enableQuickAddCustomer: 'enable_quick_add_customer',
         enableBrowserPos: 'enable_browser_pos',
-        showCostOnSalesInvoice: 'show_cost_on_sales_invoice'
+        showCostOnSalesInvoice: 'show_cost_on_sales_invoice',
+        largeInvoiceShowBusinessName: 'large_invoice_show_business_name',
+        largeInvoiceShowCountedItems: 'large_invoice_show_counted_items',
+        largeInvoiceShowChange: 'large_invoice_show_change',
+        largeInvoiceShowPayment: 'large_invoice_show_payment'
       };
 
       const updates: string[] = [];

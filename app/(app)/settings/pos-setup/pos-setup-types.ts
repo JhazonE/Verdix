@@ -90,6 +90,10 @@ export interface PosSettings {
   membershipDurationMonths?: number;
   enableQuickAddCustomer?: boolean;
   showCostOnSalesInvoice?: boolean;
+  largeInvoiceShowBusinessName?: boolean;
+  largeInvoiceShowCountedItems?: boolean;
+  largeInvoiceShowChange?: boolean;
+  largeInvoiceShowPayment?: boolean;
 }
 
 export const DEFAULT_POS_SETTINGS: PosSettings = {
@@ -184,4 +188,8 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   membershipDurationMonths: 12,
   enableQuickAddCustomer: true,
   showCostOnSalesInvoice: false,
+  largeInvoiceShowBusinessName: true,
+  largeInvoiceShowCountedItems: true,
+  largeInvoiceShowChange: true,
+  largeInvoiceShowPayment: true,
 };

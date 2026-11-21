@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Settings } from 'lucide-react';
 import type { PosSettings } from './pos-setup-types';
+import { largeInvoiceFlag } from '@/lib/large-invoice-options';
 
 type SetFn = <K extends keyof PosSettings>(key: K, value: PosSettings[K]) => void;
 
@@ -53,6 +54,24 @@ export function GeneralSettingsCard({ settings, set }: Props) {
           </div>
           <Switch id="enableLargeInvoice" checked={!!settings.enableLargeInvoice} onCheckedChange={v => set('enableLargeInvoice', v)} />
         </div>
+        {!!settings.enableLargeInvoice && (
+          <div className="ml-4 pl-4 border-l space-y-3">
+            {([
+              ['largeInvoiceShowBusinessName', 'Show Business Name Title', 'Print the business name as the heading of the large invoice'],
+              ['largeInvoiceShowCountedItems', 'Show Counted Items', 'Print the counted items total beside the invoice totals'],
+              ['largeInvoiceShowPayment', 'Show Cash / Payment', 'Print the amount tendered and payment method (Cash, GCash, etc.) with its reference number'],
+              ['largeInvoiceShowChange', 'Show Change', 'Print the change given back to the customer'],
+            ] as const).map(([key, label, help]) => (
+              <div key={key} className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor={key}>{label}</Label>
+                  <p className="text-sm text-muted-foreground">{help}</p>
+                </div>
+                <Switch id={key} checked={largeInvoiceFlag(settings[key])} onCheckedChange={v => set(key, v)} />
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex items-center justify-between pt-4 border-t">
           <div className="space-y-0.5">
             <Label htmlFor="showCostOnSalesInvoice">Show Cost on Sales Invoices</Label>

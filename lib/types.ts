@@ -484,6 +484,12 @@ export interface SystemSettings {
   posMode?: 'default' | 'pharmacy';
   enableQuickAddCustomer?: boolean;
   showCostOnSalesInvoice?: boolean;
+  // Large Invoice layout toggles. MySQL returns these as 0/1; NULL/undefined
+  // means "show", matching the column default of 1.
+  largeInvoiceShowBusinessName?: boolean | number | null;
+  largeInvoiceShowCountedItems?: boolean | number | null;
+  largeInvoiceShowChange?: boolean | number | null;
+  largeInvoiceShowPayment?: boolean | number | null;
 }
 
 export interface User {
