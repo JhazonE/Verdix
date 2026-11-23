@@ -34,6 +34,7 @@ export function PoItemsTable({ order, products }: PoItemsTableProps) {
             <TableHead className="text-right font-bold text-zinc-900 w-[100px]">Qty</TableHead>
             <TableHead className="text-right font-bold text-zinc-800 w-[120px] italic">Landed Cost</TableHead>
             <TableHead className="text-right font-bold text-zinc-900 w-[120px]">Total</TableHead>
+            <TableHead className="text-right font-bold text-zinc-900 w-[120px]">Selling Price</TableHead>
             <TableHead className="text-right font-bold text-zinc-900 w-[120px] bg-primary/10">Qty Recv</TableHead>
           </TableRow>
         </TableHeader>
@@ -78,6 +79,11 @@ export function PoItemsTable({ order, products }: PoItemsTableProps) {
                 <TableCell className="text-right font-black text-zinc-950">
                   ₱{(item.cost * item.quantity).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </TableCell>
+                <TableCell className="text-right text-zinc-900 font-bold">
+                  {Number(item.sellingPrice) > 0
+                    ? `₱${Number(item.sellingPrice).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : '-'}
+                </TableCell>
                 <TableCell className="text-right bg-primary/10 font-black text-zinc-950">
                   {order.status === 'Received' || order.status === 'Paid'
                     ? item.quantity
@@ -91,7 +97,7 @@ export function PoItemsTable({ order, products }: PoItemsTableProps) {
           {/* Minimum Rows Filler */}
           {Array.from({ length: Math.max(0, 5 - order.items.length) }).map((_, i) => (
             <TableRow key={`empty-${i}`} className="hover:bg-transparent">
-              <TableCell colSpan={6} className="h-12" />
+              <TableCell colSpan={8} className="h-12" />
             </TableRow>
           ))}
         </TableBody>

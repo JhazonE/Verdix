@@ -36,7 +36,11 @@ export async function GET(request: NextRequest) {
           poi.quantity * COALESCE(poi.selling_unit_factor, 1)
           * COALESCE(ib.unit_cost, poi.cost / COALESCE(poi.selling_unit_factor, 1))
         ) as totalCost,
-        AVG(COALESCE(ib.unit_cost, poi.cost / COALESCE(poi.selling_unit_factor, 1))) as avgCost
+        AVG(COALESCE(ib.unit_cost, poi.cost / COALESCE(poi.selling_unit_factor, 1))) as avgCost,
+        -- poi.selling_price is per LINE unit too; per-piece like avgCost. Blank/zero
+        -- lines carried no price and are left out of the average rather than pulling it to 0.
+        AVG(NULLIF(poi.selling_price, 0) / COALESCE(poi.selling_unit_factor, 1)) as avgSellingPrice,
+        MAX(p.price) as currentPrice
       FROM purchase_order_items poi
       JOIN purchase_orders po ON poi.purchase_order_id = po.id
       LEFT JOIN inventory_batches ib ON poi.purchase_order_id = ib.purchase_order_id AND poi.product_id = ib.product_id
@@ -73,6 +77,8 @@ export async function GET(request: NextRequest) {
         totalQuantity: parseInt(row.totalQuantity || '0'),
         totalCost: parseFloat(row.totalCost || '0'),
         avgCost: parseFloat(row.avgCost || '0'),
+        avgSellingPrice: parseFloat(row.avgSellingPrice || '0'),
+        currentPrice: parseFloat(row.currentPrice || '0'),
       }))
     });
 

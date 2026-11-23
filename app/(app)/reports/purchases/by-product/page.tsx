@@ -47,6 +47,8 @@ interface ProductPurchase {
   totalQuantity: number;
   totalCost: number;
   avgCost: number;
+  avgSellingPrice: number;
+  currentPrice: number;
 }
 
 export default function PurchasesByProductPage() {
@@ -148,10 +150,12 @@ export default function PurchasesByProductPage() {
         { header: 'Quantity', width: 25, align: 'right', cell: (r) => r.totalQuantity.toString() },
         { header: 'UOM', width: 20, cell: (r) => r.uom || '-' },
         { header: 'Avg Cost', width: 30, align: 'right', cell: (r) => formatCurrency(r.avgCost) },
+        { header: 'Selling Price', width: 30, align: 'right', cell: (r) => formatCurrency(r.avgSellingPrice) },
+        { header: 'Current Price', width: 30, align: 'right', cell: (r) => formatCurrency(r.currentPrice) },
         { header: 'Total Spend', width: 40, align: 'right', cell: (r) => formatCurrency(r.totalCost) },
       ],
       rows: records,
-      totals: ['TOTAL', null, null, String(totals.totalQuantity), null, null, formatCurrency(totals.totalCost)],
+      totals: ['TOTAL', null, null, String(totals.totalQuantity), null, null, null, null, formatCurrency(totals.totalCost)],
       fileName,
     });
     if (!ok) {
@@ -175,10 +179,12 @@ export default function PurchasesByProductPage() {
         { header: 'Quantity', align: 'right', cell: (r) => r.totalQuantity },
         { header: 'UOM', cell: (r) => r.uom || '-' },
         { header: 'Avg Cost', align: 'right', cell: (r) => r.avgCost },
+        { header: 'Selling Price', align: 'right', cell: (r) => r.avgSellingPrice },
+        { header: 'Current Price', align: 'right', cell: (r) => r.currentPrice },
         { header: 'Total Spend', align: 'right', cell: (r) => r.totalCost },
       ],
       rows: filteredRecords,
-      totals: ['TOTAL', null, null, totalQuantitySum, null, null, totalCostSum.toFixed(2)],
+      totals: ['TOTAL', null, null, totalQuantitySum, null, null, null, null, totalCostSum.toFixed(2)],
       fileName,
     });
     if (!ok) {
@@ -372,6 +378,8 @@ export default function PurchasesByProductPage() {
                 <TableHead className="py-2 px-4 text-right">Quantity</TableHead>
                 <TableHead className="py-2 px-4">UOM</TableHead>
                 <TableHead className="py-2 px-4 text-right">Avg Unit Cost</TableHead>
+                <TableHead className="py-2 px-4 text-right">Selling Price</TableHead>
+                <TableHead className="py-2 px-4 text-right">Current Price</TableHead>
                 <TableHead className="py-2 px-4 text-right">Total Spend</TableHead>
                 <TableHead className="py-2 px-4">Category</TableHead>
                 <TableHead className="py-2 px-4">Brand</TableHead>
@@ -390,6 +398,8 @@ export default function PurchasesByProductPage() {
                     <TableCell className="py-2 px-4 text-right font-mono font-semibold">{record.totalQuantity.toLocaleString()}</TableCell>
                     <TableCell className="py-2 px-4">{record.uom || '-'}</TableCell>
                     <TableCell className="py-2 px-4 text-right font-mono">{formatCurrency(record.avgCost)}</TableCell>
+                    <TableCell className="py-2 px-4 text-right font-mono">{record.avgSellingPrice > 0 ? formatCurrency(record.avgSellingPrice) : '-'}</TableCell>
+                    <TableCell className="py-2 px-4 text-right font-mono">{formatCurrency(record.currentPrice)}</TableCell>
                     <TableCell className="py-2 px-4 text-right font-mono font-semibold text-green-600">
                       {formatCurrency(record.totalCost)}
                     </TableCell>
@@ -399,7 +409,7 @@ export default function PurchasesByProductPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center">
+                  <TableCell colSpan={9} className="h-24 text-center">
                     {isLoading ? (
                       <div className="flex items-center justify-center gap-2">
                         <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>

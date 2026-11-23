@@ -71,12 +71,13 @@ export function printPurchaseOrder(
       <table>
           <thead>
               <tr>
-                  <th style="width: 40%">Description</th>
+                  <th style="width: 30%">Description</th>
                   <th class="text-right" style="width: 10%">Rem. Qty</th>
                   <th class="text-right" style="width: 10%">Cost</th>
                   <th class="text-right" style="width: 10%">Qty</th>
                   <th class="text-right" style="width: 12%">Landed Cost</th>
                   <th class="text-right" style="width: 13%">Total</th>
+                  <th class="text-right" style="width: 10%">Selling Price</th>
                   <th class="text-right" style="width: 10%">Recv</th>
               </tr>
           </thead>
@@ -101,6 +102,7 @@ export function printPurchaseOrder(
                           return (results.items[index]?.landedCostPerUnit || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                       })()}</td>
                       <td class="text-right">₱${((Number(item.cost) || 0) * (Number(item.quantity) || 0)).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                      <td class="text-right">${Number(item.sellingPrice) > 0 ? '₱' + Number(item.sellingPrice).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '-'}</td>
                       <td class="text-right">${
                           order.status === 'Received' || order.status === 'Paid' ? formatQuantity(item.quantity) : 
                           (order.status === 'Approved' ? '0' : '-')
