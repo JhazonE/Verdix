@@ -117,6 +117,19 @@ assert.ok(/tax_type/.test(read('lib/pos/process-return-leg.ts')), 'return leg mu
 
 // --- 7. Client-side counts skip return rows ---------------------------------
 assert.ok(/transactionType !== 'return'/.test(read('app/(app)/reports/sales/summary/page.tsx')), 'Summary must not count a return as a transaction');
+
+// Split Payments was its own report, over an endpoint that also listed voided
+// sales. It is now Sales Summary's "Split Payments Only" filter, on the same
+// /api/sales/transactions that excludes voids.
+{
+  const tx = stripComments(read('app/api/sales/transactions/route.ts'));
+  assert.ok(/splitOnly/.test(tx) && /HAVING COUNT\(\*\) > 1/.test(tx), 'transactions API must support splitOnly');
+  assert.ok(/payments:\s*paymentsByTransaction/.test(tx), 'transactions API must return every tender row');
+  const summary = read('app/(app)/reports/sales/summary/page.tsx');
+  assert.ok(summary.includes("params.append('splitOnly', 'true')"), 'Sales Summary must offer the split-only filter');
+  assert.ok(read('app/(app)/reports/sales/split-payments/page.tsx').includes('/reports/sales/summary?payment=split'),
+    'Split Payments must redirect to Sales Summary filtered to split payments');
+}
 assert.ok(/transactionType !== 'return'/.test(read('app/(app)/reports/sales/by-customer/page.tsx')), 'By Customer must not count a return as a purchase');
 
 // --- 8. Readings: a return is deducted from net, not added to gross ---------

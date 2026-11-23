@@ -23,6 +23,11 @@ export async function GET(request: NextRequest) {
     const source = parseSalesSource(searchParams.get('source'));
     const reference = searchParams.get('reference');
     const search = searchParams.get('search');
+    // Only sales tendered with more than one payment row (cash + card, etc.).
+    // This is what the old Split Payments report listed; it is now a filter on
+    // Sales Summary. A split only exists on a POS sale, so it drops the
+    // back-office source below.
+    const splitOnly = searchParams.get('splitOnly') === 'true';
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = (page - 1) * limit;
@@ -143,6 +148,10 @@ export async function GET(request: NextRequest) {
       whereClause += ' AND 1=0';
     }
 
+    if (splitOnly) {
+      whereClause += ' AND pt.id IN (SELECT transaction_id FROM payment_details GROUP BY transaction_id HAVING COUNT(*) > 1)';
+    }
+
     // BACK-OFFICE INVOICES. A sales invoice keyed in on Sales > Invoices writes
     // sales_invoices only, never pos_transactions, so everything above is blind
     // to it. It is listed here as a second source, filtered by the same inputs.
@@ -158,7 +167,8 @@ export async function GET(request: NextRequest) {
       !(terminalId && terminalId !== 'all') &&
       !(cashier && cashier !== 'all') &&
       status !== 'Returned' &&
-      source !== 'pos';
+      source !== 'pos' &&
+      !splitOnly;
 
     const boParams: any[] = [];
     let boWhere = `WHERE ${backofficeInvoiceSql('sinv')}`;
@@ -426,6 +436,29 @@ export async function GET(request: NextRequest) {
         transactionItems = await query(itemsSql, transactionIds);
     }
 
+    // Every tender row per transaction, so a split sale shows its breakdown
+    // (Cash 500 + GCash 300) instead of just the first method.
+    const paymentsByTransaction: Record<string, any[]> = {};
+    if (transactions.length > 0) {
+      const ids = transactions.map((t: any) => t.pos_transaction_id);
+      const paymentRows: any[] = await query(
+        `SELECT transaction_id, payment_method, amount_tendered, gateway_reference, points_used, change_given
+           FROM payment_details
+          WHERE transaction_id IN (${ids.map(() => '?').join(',')})
+          ORDER BY created_at, id`,
+        ids
+      );
+      for (const pr of paymentRows) {
+        (paymentsByTransaction[pr.transaction_id] ||= []).push({
+          method: pr.payment_method,
+          amount: parseFloat(pr.amount_tendered) || 0,
+          reference: pr.gateway_reference || null,
+          pointsUsed: pr.points_used ? Number(pr.points_used) : null,
+          changeGiven: parseFloat(pr.change_given) || 0,
+        });
+      }
+    }
+
     // Group items by transaction ID
     const itemsByTransaction: Record<string, any[]> = {};
     transactionItems.forEach((item: any) => {
@@ -499,6 +532,7 @@ export async function GET(request: NextRequest) {
         transactionType: row.transaction_type,
         paymentMethod: row.payment_method,
         paymentReference: row.payment_reference,
+        payments: paymentsByTransaction[row.pos_transaction_id] || [],
         customer: {
           id: row.customer_id,
           name: row.customer_name || 'Walk-in Customer',

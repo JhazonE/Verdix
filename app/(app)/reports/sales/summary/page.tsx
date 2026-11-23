@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import {
   Table,
   TableBody,
@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/card';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, FileDown, FileSpreadsheet, DollarSign, TrendingUp, Receipt, Percent, ShoppingCart, LayoutGrid, Table as TableIcon, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PhilippinePeso } from 'lucide-react';
+import { CalendarIcon, FileDown, FileSpreadsheet, DollarSign, TrendingUp, Receipt, Percent, ShoppingCart, LayoutGrid, Table as TableIcon, Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, PhilippinePeso, ChevronDown, Package, CreditCard } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -39,8 +39,26 @@ import { BackofficeBadge } from '@/components/sales-source';
 import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 
+interface PaymentDetail {
+  method: string;
+  amount: number;
+  reference?: string | null;
+  pointsUsed?: number | null;
+  changeGiven?: number;
+}
+
+interface LineItem {
+  productName: string;
+  quantity: number;
+  price: number;
+  total: number;
+}
+
+type PaymentFilter = 'all' | 'split';
+
 interface SalesTransaction {
   id: string;
+  posTransactionId?: string;
   orderNumber: string;
   transactionSource?: string;
   date: string;
@@ -57,7 +75,17 @@ interface SalesTransaction {
   cost: number;
   profit: number;
   transactionType?: string;
+  payments?: PaymentDetail[];
+  items?: LineItem[];
 }
+
+const isSplit = (r: SalesTransaction) => (r.payments?.length ?? 0) > 1;
+
+// "Cash" for a single tender, "Cash 500.00 + GCash 300.00" for a split one.
+const paymentLabel = (r: SalesTransaction) =>
+  isSplit(r)
+    ? r.payments!.map((p) => `${p.method} ${p.amount.toFixed(2)}`).join(' + ')
+    : r.paymentMethod || 'N/A';
 
 export default function SalesSummaryPage() {
   const [fromDate, setFromDate] = useState<Date | undefined>(startOfMonth(new Date()));
@@ -67,11 +95,32 @@ export default function SalesSummaryPage() {
   const [records, setRecords] = useState<SalesTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
+  // Split Payments used to be its own report; it is this one filtered to
+  // sales with more than one tender. /reports/sales/split-payments redirects
+  // here with ?payment=split.
+  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('all');
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const latestRequest = useRef(0);
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const { toast } = useToast();
+
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).get('payment') === 'split') setPaymentFilter('split');
+    } catch { /* keep default */ }
+  }, []);
+
+  const rowKey = (r: SalesTransaction, i: number) => r.posTransactionId || r.id || String(i);
+  const toggleRow = (key: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   // Filter records based on search term
   const filteredRecords = records.filter(record => {
@@ -111,6 +160,11 @@ export default function SalesSummaryPage() {
   };
 
   const fetchReport = async () => {
+    // Only the newest request may write. Switching the Payment filter (or the
+    // ?payment=split link applying after the first load) starts a second
+    // request while the first is in flight; without this, whichever answered
+    // last won, so a slow "all" response could overwrite the split list.
+    const requestId = ++latestRequest.current;
     setIsLoading(true);
     try {
       const params = new URLSearchParams();
@@ -127,10 +181,12 @@ export default function SalesSummaryPage() {
       // and exports all silently describe that first page only.
       params.append('limit', '100000');
       if (sourceFilter !== 'all') params.append('source', sourceFilter);
+      if (paymentFilter === 'split') params.append('splitOnly', 'true');
 
       const response = await fetch(getApiUrl(`/sales/transactions?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!response.ok) throw new Error(`API error ${response.status}`);
       const result = await response.json();
+      if (requestId !== latestRequest.current) return;
       // A 200 carrying success:false is how this API reports its own errors.
       // Falling through used to leave the page with no rows and no message,
       // which read as "no data for this range" rather than "the report failed".
@@ -141,6 +197,7 @@ export default function SalesSummaryPage() {
         setRecords(result.data || []);
       }
     } catch (error) {
+      if (requestId !== latestRequest.current) return;
       console.error("Error fetching sales summary:", error);
       toast({
         title: "Error",
@@ -148,20 +205,21 @@ export default function SalesSummaryPage() {
         variant: "destructive"
       });
     } finally {
-      setIsLoading(false);
+      if (requestId === latestRequest.current) setIsLoading(false);
     }
   };
 
   useEffect(() => {
     fetchReport();
+    setExpandedRows(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceFilter]);
+  }, [sourceFilter, paymentFilter]);
 
   const exportToPDF = () => {
     const subtotalSum = records.reduce((s, r) => s + r.subtotal, 0);
     const fileName = `Sales_Summary_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.pdf`;
     const ok = exportReportPdf<SalesTransaction>({
-      title: 'Sales Summary Report',
+      title: paymentFilter === 'split' ? 'Sales Summary Report - Split Payments' : 'Sales Summary Report',
       dateRange: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
       summary: [
         { label: 'Total Transactions', value: String(totals.transactions) },
@@ -177,7 +235,7 @@ export default function SalesSummaryPage() {
         { header: 'Customer', width: 30, cell: (r) => r.customer?.name || 'Walk-in' },
         { header: 'Cashier', width: 25, cell: (r) => r.cashier || 'N/A' },
         { header: 'Terminal', width: 20, cell: (r) => r.terminal || 'N/A' },
-        { header: 'Payment', width: 20, cell: (r) => r.paymentMethod || 'N/A' },
+        { header: 'Payment', width: 20, cell: (r) => paymentLabel(r) },
         { header: 'Subtotal', width: 20, align: 'right', cell: (r) => r.subtotal.toFixed(2) },
         { header: 'Discount', width: 18, align: 'right', cell: (r) => r.discount.toFixed(2) },
         { header: 'Tax', width: 16, align: 'right', cell: (r) => r.taxAmount.toFixed(2) },
@@ -203,7 +261,7 @@ export default function SalesSummaryPage() {
     const profitSum = filteredRecords.reduce((s, r) => s + Number(r.profit), 0);
     const fileName = `Sales_Summary_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.xls`;
     const ok = exportReportExcel<SalesTransaction>({
-      title: 'Sales Summary Report',
+      title: paymentFilter === 'split' ? 'Sales Summary Report - Split Payments' : 'Sales Summary Report',
       subtitle: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
       columns: [
         { header: 'OR No.', cell: (r) => r.orderNumber || 'N/A' },
@@ -211,7 +269,7 @@ export default function SalesSummaryPage() {
         { header: 'Customer', cell: (r) => r.customer?.name || 'Walk-in' },
         { header: 'Cashier', cell: (r) => r.cashier || 'N/A' },
         { header: 'Terminal', cell: (r) => r.terminal || 'N/A' },
-        { header: 'Payment', cell: (r) => r.paymentMethod || 'N/A' },
+        { header: 'Payment', cell: (r) => paymentLabel(r) },
         { header: 'Subtotal', align: 'right', cell: (r) => r.subtotal },
         { header: 'Discount', align: 'right', cell: (r) => r.discount },
         { header: 'Tax', align: 'right', cell: (r) => r.taxAmount },
@@ -245,7 +303,9 @@ export default function SalesSummaryPage() {
                 Sales Summary Report
               </CardTitle>
               <CardDescription>
-                Comprehensive overview of all sales transactions
+                {paymentFilter === 'split'
+                  ? 'Sales paid with more than one payment method (POS only)'
+                  : 'Comprehensive overview of all sales transactions'}
               </CardDescription>
             </div>
             <Badge variant="outline" className="text-sm border-blue-600 text-blue-600">
@@ -310,6 +370,32 @@ export default function SalesSummaryPage() {
             <div className="space-y-2">
               <label className="block text-sm font-medium">Source</label>
               <SalesSourceToggle value={sourceFilter} onChange={setSourceFilter} className="h-10" />
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">Payment</label>
+              <Select
+                value={paymentFilter}
+                onValueChange={(v) => {
+                  const next = v === 'split' ? 'split' : 'all';
+                  setPaymentFilter(next);
+                  setCurrentPage(1);
+                  try {
+                    const url = new URL(window.location.href);
+                    if (next === 'split') url.searchParams.set('payment', 'split');
+                    else url.searchParams.delete('payment');
+                    window.history.replaceState(null, '', url.toString());
+                  } catch { /* URL sync is a convenience only */ }
+                }}
+              >
+                <SelectTrigger className="w-[190px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Payments</SelectItem>
+                  <SelectItem value="split">Split Payments Only</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <Button 
@@ -475,7 +561,7 @@ export default function SalesSummaryPage() {
                         </div>
                         <div>
                           <span className="text-muted-foreground text-xs">Payment</span>
-                          <p>{record.paymentMethod || '-'}</p>
+                          <p>{paymentLabel(record)}</p>
                         </div>
                       </div>
                       <div className="pt-2 border-t space-y-1">
@@ -522,6 +608,7 @@ export default function SalesSummaryPage() {
           <Table className="w-full text-sm">
             <TableHeader>
               <TableRow className="bg-muted/50">
+                <TableHead className="py-2 px-2 w-[32px]"></TableHead>
                 <TableHead className="py-2 px-3">OR No.</TableHead>
                 <TableHead className="py-2 px-2">Date/Time</TableHead>
                 <TableHead className="py-2 px-2">Customer</TableHead>
@@ -537,15 +624,21 @@ export default function SalesSummaryPage() {
             </TableHeader>
             <TableBody>
               {paginatedRecords.length > 0 ? (
-                paginatedRecords.map((record, index) => (
-                  <TableRow 
-                    key={index}
+                paginatedRecords.map((record, index) => {
+                  const key = rowKey(record, startIndex + index);
+                  const open = expandedRows.has(key);
+                  return (
+                  <Fragment key={key}>
+                  <TableRow
                     className={cn(
                       "cursor-pointer hover:bg-muted/50 transition-colors text-xs",
-                      selectedRow === index && "bg-muted"
+                      open && "bg-muted"
                     )}
-                    onClick={() => setSelectedRow(index)}
+                    onClick={() => toggleRow(key)}
                   >
+                    <TableCell className="py-2 px-2">
+                      {open ? <ChevronDown className="h-4 w-4 text-primary" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                    </TableCell>
                     <TableCell className="py-2 px-3 font-medium text-primary">{record.orderNumber} <BackofficeBadge source={record.transactionSource} className="ml-1" /></TableCell>
                     <TableCell className="py-2 px-2">
                       {record.date ? format(new Date(record.date), 'MM/dd/yy hh:mma') : '-'}
@@ -553,7 +646,17 @@ export default function SalesSummaryPage() {
                     <TableCell className="py-2 px-2">{record.customer?.name || 'Walk-in'}</TableCell>
                     <TableCell className="py-2 px-2">{record.cashier || '-'}</TableCell>
                     <TableCell className="py-2 px-2">{record.terminal || '-'}</TableCell>
-                    <TableCell className="py-2 px-2">{record.paymentMethod || '-'}</TableCell>
+                    <TableCell className="py-2 px-2">
+                      {isSplit(record) ? (
+                        <div className="flex flex-wrap gap-1">
+                          {record.payments!.map((p, i) => (
+                            <Badge key={i} variant="secondary" className="text-[10px] font-normal">
+                              {p.method}: {formatCurrency(p.amount)}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (record.paymentMethod || '-')}
+                    </TableCell>
                     <TableCell className="py-2 px-2 text-right font-mono">
                       {record.subtotal.toFixed(2)}
                     </TableCell>
@@ -573,10 +676,73 @@ export default function SalesSummaryPage() {
                       {record.profit.toFixed(2)}
                     </TableCell>
                   </TableRow>
-                ))
+                  {open && (
+                    <TableRow className="bg-muted/10 hover:bg-muted/10">
+                      <TableCell colSpan={12} className="p-4">
+                        <div className="grid md:grid-cols-2 gap-6">
+                          <div className="space-y-2">
+                            <h4 className="font-semibold flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider">
+                              <Package className="h-4 w-4" /> Items
+                            </h4>
+                            <div className="border rounded-md overflow-hidden bg-background">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow className="bg-muted/50">
+                                    <TableHead className="h-8 text-[11px]">Item</TableHead>
+                                    <TableHead className="h-8 text-[11px] text-center">Qty</TableHead>
+                                    <TableHead className="h-8 text-[11px] text-right">Price</TableHead>
+                                    <TableHead className="h-8 text-[11px] text-right">Total</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {(record.items || []).length > 0 ? record.items!.map((item, i) => (
+                                    <TableRow key={i} className="text-xs">
+                                      <TableCell className="py-1">{item.productName}</TableCell>
+                                      <TableCell className="py-1 text-center">{Number(item.quantity)}</TableCell>
+                                      <TableCell className="py-1 text-right">{formatCurrency(Number(item.price))}</TableCell>
+                                      <TableCell className="py-1 text-right">{formatCurrency(Number(item.total))}</TableCell>
+                                    </TableRow>
+                                  )) : (
+                                    <TableRow><TableCell colSpan={4} className="py-2 text-center text-xs text-muted-foreground">No line items.</TableCell></TableRow>
+                                  )}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <h4 className="font-semibold flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wider">
+                              <CreditCard className="h-4 w-4" /> Payments
+                            </h4>
+                            {(record.payments || []).length > 0 ? (
+                              <div className="space-y-2">
+                                {record.payments!.map((p, i) => (
+                                  <div key={i} className="flex items-center justify-between p-2 bg-background border rounded-md text-xs">
+                                    <div className="flex flex-col">
+                                      <span className="font-semibold">{p.method}</span>
+                                      {p.reference && <span className="text-[10px] text-muted-foreground">Ref: {p.reference}</span>}
+                                      {p.pointsUsed ? <span className="text-[10px] text-purple-600">{p.pointsUsed} points used</span> : null}
+                                    </div>
+                                    <div className="text-right">
+                                      <span className="font-mono font-semibold">{formatCurrency(p.amount)}</span>
+                                      {p.changeGiven ? <div className="text-[10px] text-orange-600">Change: {formatCurrency(p.changeGiven)}</div> : null}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">{record.paymentMethod || 'No payment detail recorded.'}</p>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  </Fragment>
+                  );
+                })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={11} className="h-24 text-center">
+                  <TableCell colSpan={12} className="h-24 text-center">
                     {isLoading ? (
                       <div className="flex items-center justify-center gap-2">
                         <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>

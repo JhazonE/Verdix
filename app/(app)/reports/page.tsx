@@ -277,7 +277,7 @@ export default function ReportsPage() {
                   <PhilippinePeso className="h-5 w-5 text-blue-600" />
                   Sales Summary
                 </CardTitle>
-                <CardDescription>Overall sales transactions with revenue, profit, and tax analysis.</CardDescription>
+                <CardDescription>Sales transactions with revenue, profit and tax, each sale's items and payment breakdown, and a Split Payments Only filter.</CardDescription>
               </CardHeader>
             </Card>
           </Link>
@@ -314,18 +314,6 @@ export default function ReportsPage() {
                   Sales by Customer
                 </CardTitle>
                 <CardDescription>Customer purchase history with credit sales and outstanding balances.</CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-
-          <Link href="/reports/sales/split-payments">
-            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full border-blue-100 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CreditCard className="h-5 w-5 text-blue-500" />
-                  Split Payments Report
-                </CardTitle>
-                <CardDescription>Breakdown of sales transactions paid with multiple payment methods.</CardDescription>
               </CardHeader>
             </Card>
           </Link>

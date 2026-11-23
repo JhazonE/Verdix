@@ -1017,12 +1017,11 @@ export const CHAPTERS: Chapter[] = [
             kind: 'table',
             headers: ['Report', 'Route', 'Purpose'],
             rows: [
-              ['Sales Summary', '/reports/sales/summary', 'Total sales for a chosen period, broken down by day.'],
+              ['Sales Summary', '/reports/sales/summary', 'Every sale in a chosen period with its items and payment breakdown. Set Payment to Split Payments Only to list sales paid using more than one payment method.'],
               ['Sales by Product/Service', '/reports/sales/by-product', 'How much of each product or service sold, ranked by revenue (Top Sales), units sold (Top Volume), profit, or margin % (Profit Margin). Pick the ranking in Rank by.'],
               ['Sales by Customer', '/reports/sales/by-customer', 'Total sales grouped by customer, useful for tracking your best accounts.'],
               ['Batch Profit', '/reports/sales/batch-profit', 'Profit calculated per FIFO cost batch, showing which stock batches were most profitable.'],
               ['Discounts', '/reports/sales/discounts', 'All discounts given, by cashier, product, or period.'],
-              ['Split Payments', '/reports/sales/split-payments', 'Sales paid using more than one payment method.'],
               ['Merchandise Credits', '/sales/returns', 'Merchandise credits and returned items. Listed under POS Reports.'],
               ['BIR Summary', '/reports/sales/bir-summary', 'Official BIR-format summary of sales invoice numbers and totals for tax filing.'],
               ['Purchases Summary', '/reports/purchases/summary', 'Total purchase spend for a chosen period.'],
