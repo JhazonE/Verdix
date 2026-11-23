@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
+import { posSaleSql } from '@/lib/pos-sales';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,7 +17,10 @@ export async function GET(request: NextRequest) {
     let sqlSelect = '';
 
     if (type === 'none') {
-      const subConditions = ["st.status != 'voided'", "st.status != 'returned'"];
+      // posSaleSql: the same definition of a sale as every other report. The
+      // hand-written status checks here let TRAINING sales count as movement
+      // and missed the 'Void' and 'Cancelled' spellings.
+      const subConditions = [posSaleSql('st')];
       if (startDate) {
         subConditions.push('DATE(st.created_at) >= ?');
         params.push(startDate);
@@ -27,7 +31,9 @@ export async function GET(request: NextRequest) {
       }
       baseSql = `
         FROM products p
-        WHERE p.id NOT IN (
+        -- Services carry no stock, so they are never "not moving" stock.
+        WHERE p.type = 'standard'
+          AND p.id NOT IN (
           SELECT si.product_id
           FROM sale_items si
           JOIN sales_transactions st ON si.sale_id = st.id
@@ -52,8 +58,13 @@ export async function GET(request: NextRequest) {
         LEFT JOIN sales_transactions st ON si.sale_id = st.id
       `;
       const conditions = [];
-      conditions.push("st.status != 'voided'");
-      conditions.push("st.status != 'returned'");
+      // Fast/slow rank products that SOLD; unsold ones are the None tab.
+      // posSaleSql passes a NULL status, so without this the LEFT JOIN would
+      // let every never-sold product in with total_sold = 0.
+      conditions.push('si.id IS NOT NULL');
+      conditions.push(posSaleSql('st'));
+      // Stock velocity: services carry no stock to move.
+      conditions.push("p.type = 'standard'");
       if (startDate) {
         conditions.push('DATE(st.created_at) >= ?');
         params.push(startDate);

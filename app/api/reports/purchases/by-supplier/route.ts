@@ -17,7 +17,8 @@ export async function GET(request: NextRequest) {
         MAX(po.date) as lastPurchaseDate
       FROM suppliers s
       JOIN purchase_orders po ON s.id = po.supplier_id
-      WHERE 1=1
+      -- A cancelled PO was never bought, so it is neither spend nor an order.
+      WHERE COALESCE(po.status, '') <> 'Cancelled'
     `;
     const params: any[] = [];
 

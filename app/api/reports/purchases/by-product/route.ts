@@ -46,10 +46,22 @@ export async function GET(request: NextRequest) {
         MAX(p.price) as currentPrice
       FROM purchase_order_items poi
       JOIN purchase_orders po ON poi.purchase_order_id = po.id
-      LEFT JOIN inventory_batches ib ON poi.purchase_order_id = ib.purchase_order_id AND poi.product_id = ib.product_id
+      -- One row per (PO, product). A PO can carry the same product on two
+      -- lines (a Case line and a Piece line), and receiving writes a batch per
+      -- line, so joining inventory_batches directly paired every line with
+      -- every batch and doubled its quantity and spend. The per-piece cost is
+      -- the quantity-weighted cost of those batches.
+      LEFT JOIN (
+        SELECT purchase_order_id, product_id,
+               SUM(quantity_in * unit_cost) / NULLIF(SUM(quantity_in), 0) AS unit_cost
+          FROM inventory_batches
+         WHERE purchase_order_id IS NOT NULL
+         GROUP BY purchase_order_id, product_id
+      ) ib ON poi.purchase_order_id = ib.purchase_order_id AND poi.product_id = ib.product_id
       LEFT JOIN products p ON poi.product_id = p.id
       LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
-      WHERE 1=1
+      -- A cancelled PO was never bought, so it is not spend.
+      WHERE COALESCE(po.status, '') <> 'Cancelled'
     `;
     const params: any[] = [];
 

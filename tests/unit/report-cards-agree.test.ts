@@ -165,4 +165,46 @@ for (const rel of ['app/api/sales/z-reading/route.ts', 'app/api/sales/overall-re
   }
 }
 
+// --- 9. Report audit (2026-11) ----------------------------------------------
+{
+  // Statutory discounts: a voided or training sale granted no discount.
+  const disc = stripComments(read('app/api/sales/discounts/route.ts'));
+  assert.ok(/NOT IN \('Void', 'Voided'\)/.test(disc), 'discounts must exclude voided sales');
+  assert.ok(/is_training/.test(disc), 'discounts must exclude training sales');
+
+  // Purchases: a cancelled PO is not spend; batches are collapsed per (PO, product).
+  for (const rel of ['app/api/reports/purchases/by-supplier/route.ts', 'app/api/reports/purchases/by-product/route.ts']) {
+    assert.ok(/<> 'Cancelled'/.test(stripComments(read(rel))), `${rel} must exclude cancelled POs`);
+  }
+  const pbp = stripComments(read('app/api/reports/purchases/by-product/route.ts'));
+  assert.ok(/GROUP BY purchase_order_id, product_id\s*\) ib/.test(pbp),
+    'purchases by product must join one batch row per (PO, product), not every batch');
+
+  // Velocity: the shared sale predicate, sold products only on fast/slow, no services.
+  const vel = stripComments(read('app/api/reports/velocity/route.ts'));
+  assert.ok(vel.includes('posSaleSql('), 'velocity must use posSaleSql (training sales are not movement)');
+  assert.ok(vel.includes("'si.id IS NOT NULL'"), 'velocity fast/slow must list only products that sold');
+  assert.ok((vel.match(/p\.type = 'standard'/g) || []).length >= 2, 'velocity must leave services out of every tab');
+
+  // Every PDF export covers the searched rows, like its Excel export.
+  for (const rel of [
+    'app/(app)/reports/purchases/by-product/page.tsx',
+    'app/(app)/reports/purchases/by-supplier/page.tsx',
+    'app/(app)/reports/purchases/summary/page.tsx',
+    'app/(app)/reports/sales/by-customer/page.tsx',
+    'app/(app)/reports/sales/returns/page.tsx',
+    'app/(app)/reports/sales/summary/page.tsx',
+    'app/(app)/reports/sales/by-product/page.tsx',
+  ]) {
+    const src = read(rel);
+    const pdf = src.slice(src.indexOf('const exportToPDF'), src.indexOf('const exportToExcel'));
+    assert.ok(pdf.includes('rows: filteredRecords'), `${rel}: PDF must export the searched rows`);
+    assert.ok(pdf.includes('summarize(filteredRecords)'), `${rel}: PDF totals must cover the searched rows`);
+  }
+  const fy = read('app/(app)/reports/fiscal-year/page.tsx');
+  const fyPdf = fy.slice(fy.indexOf('const exportToPDF'), fy.indexOf('const exportToExcel'));
+  assert.ok(fyPdf.includes('rows: filteredMonths') && !fyPdf.includes('report.summary'),
+    'Fiscal Year PDF must export the searched months with their own totals');
+}
+
 console.log('✓ report-cards-agree');

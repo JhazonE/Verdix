@@ -15,6 +15,13 @@ export async function GET(request: NextRequest) {
     let where = `
       WHERE (pti.discount_id_number IS NOT NULL OR pti.discount_holder_name IS NOT NULL)
         AND pti.discount_type IN ('senior','pwd','naac','solo_parent')
+        -- A voided sale's discount was never granted, and a training sale is a
+        -- rehearsal with no BIR number. Both were listed here (and in the BIR
+        -- statutory discount totals) because nothing filtered them out. Only
+        -- these two are excluded: a sale later returned still had its
+        -- discount granted on the day it was rung up.
+        AND COALESCE(st.status, '') NOT IN ('Void', 'Voided')
+        AND COALESCE(pt.is_training, 0) = 0
     `;
 
     if (startDate) {
