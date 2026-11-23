@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
         su.barcode    AS baseUnitBarcode,
         p.barcode,
         p.category,
+        (SELECT w.name FROM warehouses w WHERE w.id = p.warehouse_id) AS warehouseName,
         si.quantity   AS qtySold,
         si.price      AS sellingPrice,
         si.selling_unit_factor AS sellingUnitFactor,
@@ -96,6 +97,7 @@ export async function GET(request: NextRequest) {
          su.barcode     AS baseUnitBarcode,
          p.barcode,
          p.category,
+         (SELECT w.name FROM warehouses w WHERE w.id = p.warehouse_id) AS warehouseName,
          sii.quantity   AS qtySold,
          sii.price      AS sellingPrice,
          sii.selling_unit_factor AS sellingUnitFactor,
@@ -122,6 +124,28 @@ export async function GET(request: NextRequest) {
         dayOf(a.saleDate) - dayOf(b.saleDate)
     );
 
+    // Received date and PO of every batch these lines drew from, in ONE query.
+    // This used to be a query per batch split inside the loop below, so a busy
+    // month ran hundreds of round trips before the report could render.
+    const batchInfo = new Map<string, { receivedDate: string | null; poReference: string | null }>();
+    const batchIds = [
+      ...new Set(rows.flatMap((r) => expandBatchLine(r).map((x) => x.batchId)).filter((id) => id && id !== 'fallback')),
+    ] as string[];
+    if (batchIds.length > 0) {
+      try {
+        const batchRows: any[] = await query(
+          `SELECT id, received_date, purchase_order_id FROM inventory_batches WHERE id IN (${batchIds.map(() => '?').join(',')})`,
+          batchIds
+        );
+        for (const b of batchRows) {
+          batchInfo.set(String(b.id), {
+            receivedDate: b.received_date ? new Date(b.received_date).toISOString().split('T')[0] : null,
+            poReference: b.purchase_order_id ?? null,
+          });
+        }
+      } catch { /* batch table might not exist pre-migration */ }
+    }
+
     // Expand batch_source JSON into individual rows for the analysis table
     const analysis: any[] = [];
 
@@ -132,24 +156,9 @@ export async function GET(request: NextRequest) {
         const { batchId, batchType, qtySold: qty, unitCost, unitSellingPrice: sellingPrice,
                 lineRevenue, lineCost, lineProfit, marginPct } = split;
 
-        // Try to get batch details (received_date, PO reference)
-        let batchDate: string | null = null;
-        let poReference: string | null = null;
-
-        if (batchId && batchId !== 'fallback') {
-          try {
-            const batchRows: any[] = await query(
-              'SELECT received_date, purchase_order_id FROM inventory_batches WHERE id = ?',
-              [batchId]
-            );
-            if (batchRows.length > 0) {
-              batchDate = batchRows[0].received_date
-                ? new Date(batchRows[0].received_date).toISOString().split('T')[0]
-                : null;
-              poReference = batchRows[0].purchase_order_id;
-            }
-          } catch { /* batch table might not exist pre-migration */ }
-        }
+        const batch = batchId && batchId !== 'fallback' ? batchInfo.get(batchId) : undefined;
+        const batchDate = batch?.receivedDate ?? null;
+        const poReference = batch?.poReference ?? null;
 
         analysis.push({
           saleDate: row.saleDate
@@ -163,6 +172,7 @@ export async function GET(request: NextRequest) {
           baseUnitBarcode: row.baseUnitBarcode,
           barcode: row.barcode,
           category: row.category,
+          warehouseName: row.warehouseName ?? null,
           batchId,
           batchReceivedDate: batchDate,
           poReference,

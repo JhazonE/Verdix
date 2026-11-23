@@ -47,6 +47,7 @@ interface BatchAnalysisRecord {
   baseUnitBarcode: string | null;
   barcode: string;
   category: string;
+  warehouseName: string | null;
   batchId: string;
   batchReceivedDate: string | null;
   poReference: string | null;
@@ -136,6 +137,7 @@ export default function BatchProfitPage() {
       record.productName?.toLowerCase().includes(search) ||
       record.baseUnitBarcode?.toLowerCase().includes(search) ||
       record.barcode?.toLowerCase().includes(search) ||
+      record.warehouseName?.toLowerCase().includes(search) ||
       record.category?.toLowerCase().includes(search) ||
       record.saleReference?.toLowerCase().includes(search)
     );
@@ -160,7 +162,8 @@ export default function BatchProfitPage() {
       columns: [
         { header: 'Sale Date', width: 26, cell: (r) => r.saleDate || 'N/A' },
         { header: 'Ref', width: 24, cell: (r) => r.saleReference },
-        { header: 'Product', width: 40, cell: (r) => r.productName },
+        { header: 'Product', width: 36, cell: (r) => r.productName },
+        { header: 'Warehouse', width: 20, cell: (r) => r.warehouseName || '-' },
         { header: 'Batch ID', width: 26, cell: (r) => (r.batchId === 'fallback' ? 'Untracked' : r.batchId) },
         { header: 'Qty', width: 16, align: 'right', cell: (r) => String(r.qtySold) },
         { header: 'U.Cost', width: 20, align: 'right', cell: (r) => r.unitCost.toFixed(2) },
@@ -171,7 +174,7 @@ export default function BatchProfitPage() {
         { header: 'Margin', width: 16, align: 'right', cell: (r) => r.marginPct.toFixed(1) + '%' },
       ],
       rows: filteredRecords,
-      totals: ['TOTALS', null, null, null, totals.qty.toLocaleString(), null, null, totals.revenue.toFixed(2), totals.cost.toFixed(2), totals.profit.toFixed(2), `${totals.marginPct}%`],
+      totals: ['TOTALS', null, null, null, null, totals.qty.toLocaleString(), null, null, totals.revenue.toFixed(2), totals.cost.toFixed(2), totals.profit.toFixed(2), `${totals.marginPct}%`],
       fileName,
     });
     if (!ok) {
@@ -195,6 +198,7 @@ export default function BatchProfitPage() {
         { header: 'Sale Date', cell: (r) => r.saleDate || 'N/A' },
         { header: 'Ref', cell: (r) => r.saleReference },
         { header: 'Product', cell: (r) => r.productName },
+        { header: 'Warehouse', cell: (r) => r.warehouseName || '-' },
         { header: 'Batch ID', cell: (r) => (r.batchId === 'fallback' ? 'Untracked' : r.batchId) },
         { header: 'Qty', align: 'right', cell: (r) => r.qtySold },
         { header: 'U.Cost', align: 'right', cell: (r) => r.unitCost },
@@ -205,7 +209,7 @@ export default function BatchProfitPage() {
         { header: 'Margin', align: 'right', cell: (r) => r.marginPct.toFixed(1) + '%' },
       ],
       rows: filteredRecords,
-      totals: ['TOTALS', null, null, null, qtySum, null, null, revenueSum.toFixed(2), costSum.toFixed(2), profitSum.toFixed(2), `${marginPct}%`],
+      totals: ['TOTALS', null, null, null, null, qtySum, null, null, revenueSum.toFixed(2), costSum.toFixed(2), profitSum.toFixed(2), `${marginPct}%`],
       fileName,
     });
     if (!ok) {
@@ -387,6 +391,7 @@ export default function BatchProfitPage() {
                 <TableRow>
                   <TableHead className="py-3 text-xs">Date & Ref</TableHead>
                   <TableHead className="py-3 text-xs">Product / Barcode</TableHead>
+                  <TableHead className="py-3 text-xs">Warehouse</TableHead>
                   <TableHead className="py-3 text-xs">Source Batch</TableHead>
                   <TableHead className="py-3 text-right text-xs">Qty</TableHead>
                   <TableHead className="py-3 text-right text-xs">Unit Cost (B)</TableHead>
@@ -408,6 +413,7 @@ export default function BatchProfitPage() {
                         <div className="font-medium text-amber-900">{r.productName}</div>
                         <div className="text-[10px] font-mono text-muted-foreground">{r.barcode || '-'}</div>
                       </TableCell>
+                      <TableCell className="py-2 text-muted-foreground">{r.warehouseName || '-'}</TableCell>
                       <TableCell className="py-2">
                         {r.batchId === 'fallback' ? (
                           <Badge variant="outline" className="bg-gray-50 text-gray-400 border-gray-200 text-[10px] font-normal italic">
@@ -443,7 +449,7 @@ export default function BatchProfitPage() {
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={9} className="h-32 text-center text-muted-foreground text-sm">
+                    <TableCell colSpan={10} className="h-32 text-center text-muted-foreground text-sm">
                       {isLoading ? "Fetching batch analysis..." : "No batch transaction data found for this period."}
                     </TableCell>
                   </TableRow>
