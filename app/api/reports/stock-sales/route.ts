@@ -124,9 +124,12 @@ export async function GET(request: NextRequest) {
           ), 0))`
       : `p.stock`;
 
-    // Value of what is LEFT, at cost. FIFO batch cost where batches exist,
-    // falling back to products.cost — the same resolution the Stock on Hand
-    // report uses, so the two reports cannot disagree on stock value.
+    // Value of what is LEFT, at cost: stock × cost, the same basis Stock on
+    // Hand & Valuation uses (app/api/reports/cost-vs-retail/route.ts), so the
+    // two reports cannot disagree on stock value. This used to take the
+    // remaining-batch value, which matched Stock on Hand only while that report
+    // did the same; Stock on Hand moved to stock × cost and this was left
+    // behind.
     //
     // On an as-of date the batch figures are today's and would describe a
     // different moment than the quantity beside them, so value falls back to
@@ -134,14 +137,7 @@ export async function GET(request: NextRequest) {
     // approximation of historical value, not a restatement of it.
     const remainingValueExpr = asOfDate
       ? `(${remainingExpr} * COALESCE(p.cost, 0))`
-      : `
-      COALESCE(
-        (SELECT SUM(b.quantity_remaining * b.unit_cost)
-           FROM inventory_batches b
-          WHERE b.product_id = p.id AND b.quantity_remaining > 0),
-        (p.stock * COALESCE(p.cost, 0))
-      )
-    `;
+      : `(p.stock * COALESCE(p.cost, 0))`;
 
     // The supplier join is always present so `spm.supplier_id` can be filtered
     // on, and is a LEFT JOIN so products without a mapping are not dropped.
@@ -170,6 +166,7 @@ export async function GET(request: NextRequest) {
         p.barcode,
         p.category,
         p.brand,
+        (SELECT w.name FROM warehouses w WHERE w.id = p.warehouse_id) AS warehouse_name,
         ${remainingExpr} AS qty_remaining,
         p.unit_of_measure,
         ${qtySoldExpr} AS qty_sold,

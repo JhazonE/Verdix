@@ -30,6 +30,7 @@ interface Row {
   barcode: string;
   category: string;
   brand: string;
+  warehouse_name: string | null;
   unit_of_measure: string;
   /** Net of returns, in base units. */
   qty_sold: number;
@@ -234,6 +235,7 @@ export default function StockSalesReportPage() {
           { header: 'Barcode', cell: (r) => r.barcode || '-' },
           { header: 'Product Name', cell: (r) => r.name },
           { header: 'Category', cell: (r) => r.category || '-' },
+          { header: 'Warehouse', cell: (r) => r.warehouse_name || '-' },
           { header: 'Sold', align: 'right', emphasize: true, cell: (r) => formatStockQuantity(r.qty_sold) },
           { header: 'Returned', align: 'right', cell: (r) => formatStockQuantity(r.qty_returned) },
           { header: remainingLabel, align: 'right', emphasize: true, cell: (r) => `${formatStockQuantity(r.qty_remaining)} ${r.unit_of_measure || ''}`.trim() },
@@ -280,6 +282,7 @@ export default function StockSalesReportPage() {
           { header: 'Product Name', cell: (r) => r.name },
           { header: 'Category', cell: (r) => r.category || '-' },
           { header: 'Brand', cell: (r) => r.brand || '-' },
+          { header: 'Warehouse', cell: (r) => r.warehouse_name || '-' },
           { header: 'Unit', cell: (r) => r.unit_of_measure || '-' },
           { header: 'Sold', align: 'right', cell: (r) => r.qty_sold },
           { header: 'Returned', align: 'right', cell: (r) => r.qty_returned },
@@ -289,7 +292,7 @@ export default function StockSalesReportPage() {
         ],
         rows: exportRows,
         totals: [
-          'TOTALS', null, null, null, null,
+          'TOTALS', null, null, null, null, null,
           soldSum,
           returnedSum,
           remainingSum,
@@ -489,6 +492,7 @@ export default function StockSalesReportPage() {
                 <TableHead>Barcode</TableHead>
                 <TableHead className="w-[280px]">Product Name</TableHead>
                 <TableHead>Category</TableHead>
+                <TableHead>Warehouse</TableHead>
                 <TableHead className="text-right">Sold</TableHead>
                 <TableHead className="text-right">Returned</TableHead>
                 <TableHead className="text-right">{remainingLabel}</TableHead>
@@ -499,13 +503,13 @@ export default function StockSalesReportPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
+                  <TableCell colSpan={9} className="h-24 text-center">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                   </TableCell>
                 </TableRow>
               ) : filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-24 text-center">
+                  <TableCell colSpan={9} className="h-24 text-center">
                     No products were sold in this period.
                   </TableCell>
                 </TableRow>
@@ -515,6 +519,7 @@ export default function StockSalesReportPage() {
                     <TableCell className="font-medium text-muted-foreground">{r.barcode || '-'}</TableCell>
                     <TableCell className="font-medium">{r.name}</TableCell>
                     <TableCell>{r.category || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{r.warehouse_name || '-'}</TableCell>
                     <TableCell className="text-right font-bold text-emerald-600 dark:text-emerald-400">
                       {formatStockQuantity(r.qty_sold)}
                     </TableCell>
@@ -533,7 +538,7 @@ export default function StockSalesReportPage() {
             {!loading && filteredRows.length > 0 && (
               <TableFooter>
                 <TableRow>
-                  <TableCell colSpan={3} className="font-bold">
+                  <TableCell colSpan={4} className="font-bold">
                     TOTALS ({summary.totalProducts} products)
                   </TableCell>
                   <TableCell className="text-right font-bold">{formatStockQuantity(summary.totalSold)}</TableCell>

@@ -53,6 +53,7 @@ interface Product {
   barcode: string;
   category: string;
   brand: string;
+  warehouse_name: string | null;
   stock: number;
   unit_of_measure: string;
   reorder_point: number;
@@ -171,6 +172,7 @@ export default function LowStockReportPage() {
           { header: 'Product Name', cell: (p) => p.name },
           { header: 'Barcode', cell: (p) => p.barcode || '-' },
           { header: 'Category', cell: (p) => p.category || '-' },
+          { header: 'Warehouse', cell: (p) => p.warehouse_name || '-' },
           { header: 'Current Stock', align: 'right', cell: (p) => `${formatStockQuantity(p.stock)} ${p.unit_of_measure || ''}`.trim() },
           { header: 'Reorder Point', align: 'right', cell: (p) => formatStockQuantity(p.reorder_point) },
           { header: 'Status', cell: () => 'Restock Needed' },
@@ -313,6 +315,7 @@ export default function LowStockReportPage() {
                 <TableHead>Product Name</TableHead>
                 <TableHead>Barcode</TableHead>
                 <TableHead>Category</TableHead>
+                <TableHead>Warehouse</TableHead>
                 <TableHead className="text-right">Current Stock</TableHead>
                 <TableHead className="text-right">Reorder Point</TableHead>
                 <TableHead className="text-right">Status</TableHead>
@@ -321,13 +324,13 @@ export default function LowStockReportPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">
+                  <TableCell colSpan={7} className="h-24 text-center">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                   </TableCell>
                 </TableRow>
               ) : products.length === 0 ? (
                 <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-green-600 font-medium">
+                    <TableCell colSpan={7} className="h-24 text-center text-green-600 font-medium">
                         Good news! No products are currently low on stock.
                     </TableCell>
                 </TableRow>
@@ -337,6 +340,7 @@ export default function LowStockReportPage() {
                     <TableCell className="font-medium">{product.name}</TableCell>
                     <TableCell>{product.barcode || '-'}</TableCell>
                     <TableCell>{product.category}</TableCell>
+                    <TableCell className="text-muted-foreground">{product.warehouse_name || '-'}</TableCell>
                     <TableCell className="text-right font-bold text-red-600">
                         {formatStockQuantity(product.stock)} {product.unit_of_measure}
                     </TableCell>

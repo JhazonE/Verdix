@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
           p.name,
           p.barcode,
           p.category,
+          (SELECT w.name FROM warehouses w WHERE w.id = p.warehouse_id) AS warehouse_name,
           p.stock,
           0 as total_sold,
           0 as total_revenue
@@ -73,6 +74,7 @@ export async function GET(request: NextRequest) {
           p.name,
           p.barcode,
           p.category,
+          (SELECT w.name FROM warehouses w WHERE w.id = p.warehouse_id) AS warehouse_name,
           p.stock,
           COALESCE(SUM(si.quantity * COALESCE(si.selling_unit_factor, 1)), 0) as total_sold,
           COALESCE(SUM(si.quantity * si.price), 0) as total_revenue

@@ -34,6 +34,7 @@ interface VelocityProduct {
   name: string;
   barcode: string;
   category: string;
+  warehouse_name: string | null;
   stock: number;
   total_sold: number;
   total_revenue: number;
@@ -87,6 +88,7 @@ export default function FastSlowMovingReportPage() {
           { header: 'Barcode', cell: (p) => p.barcode || '-' },
           { header: 'Product Name', cell: (p) => p.name },
           { header: 'Category', cell: (p) => p.category },
+          { header: 'Warehouse', cell: (p) => p.warehouse_name || '-' },
           { header: 'Units Sold (30d)', align: 'right', emphasize: true, cell: (p) => p.total_sold },
           { header: 'Revenue Generated', align: 'right', cell: (p) => formatCurrency(p.total_revenue) },
           { header: 'Current Stock', align: 'right', cell: (p) => formatQuantity(p.stock) },
@@ -146,6 +148,7 @@ export default function FastSlowMovingReportPage() {
           { header: 'Barcode', cell: (p) => p.barcode || '-' },
           { header: 'Product Name', cell: (p) => p.name },
           { header: 'Category', cell: (p) => p.category },
+          { header: 'Warehouse', cell: (p) => p.warehouse_name || '-' },
           { header: 'Units Sold (30d)', align: 'right', cell: (p) => p.total_sold },
           { header: 'Revenue Generated', align: 'right', cell: (p) => p.total_revenue },
           { header: 'Current Stock', align: 'right', cell: (p) => p.stock },
@@ -280,6 +283,7 @@ export default function FastSlowMovingReportPage() {
                         <TableHead>Barcode</TableHead>
                         <TableHead>Product Name</TableHead>
                         <TableHead>Category</TableHead>
+                        <TableHead>Warehouse</TableHead>
                         <TableHead className="text-right">Units Sold (30d)</TableHead>
                         <TableHead className="text-right">Revenue Generated</TableHead>
                         <TableHead className="text-right">Current Stock</TableHead>
@@ -288,13 +292,13 @@ export default function FastSlowMovingReportPage() {
                     <TableBody>
                         {loading ? (
                         <TableRow>
-                            <TableCell colSpan={6} className="h-24 text-center">
+                            <TableCell colSpan={7} className="h-24 text-center">
                             <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                             </TableCell>
                         </TableRow>
                         ) : filteredProducts.length === 0 ? (
                         <TableRow>
-                            <TableCell colSpan={6} className="h-24 text-center">
+                            <TableCell colSpan={7} className="h-24 text-center">
                                 No data available.
                             </TableCell>
                         </TableRow>
@@ -306,6 +310,7 @@ export default function FastSlowMovingReportPage() {
                             </TableCell>
                             <TableCell className="font-medium">{product.name}</TableCell>
                             <TableCell>{product.category}</TableCell>
+                            <TableCell className="text-muted-foreground">{product.warehouse_name || '-'}</TableCell>
                             <TableCell className={`text-right font-bold ${activeTab === 'fast' ? 'text-green-600' : activeTab === 'slow' ? 'text-orange-600' : 'text-red-600'}`}>
                                 {product.total_sold}
                             </TableCell>

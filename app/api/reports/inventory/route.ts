@@ -62,6 +62,9 @@ export async function GET(request: NextRequest) {
         p.barcode,
         p.category,
         p.brand,
+        -- Each warehouse keeps its own row for the same item, so the
+        -- warehouse is what tells two same-named, same-barcode rows apart.
+        (SELECT w.name FROM warehouses w WHERE w.id = p.warehouse_id) AS warehouse_name,
         p.stock,
         p.unit_of_measure,
         p.cost,

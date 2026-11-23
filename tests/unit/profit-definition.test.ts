@@ -92,6 +92,10 @@ assert.ok(costVsRetail.includes('profitOf('), 'cost-vs-retail must use profitOf'
 const inventoryApi = read('app/api/reports/inventory/route.ts');
 assert.ok(!inventoryApi.includes('inventory_batches'),
   'reports/inventory must value stock as stock × cost, like cost-vs-retail');
+// Stock Sales' remaining value claimed to match Stock on Hand but still took
+// the batch value after Stock on Hand moved to stock × cost.
+assert.ok(!read('app/api/reports/stock-sales/route.ts').includes('inventory_batches'),
+  'stock-sales must value remaining stock as stock × cost, like Stock on Hand');
 assert.ok(read('app/(app)/reports/inventory/page.tsx').includes('/reports/cost-vs-retail?'),
   'the Inventory report must read the cost-vs-retail valuation');
 assert.ok(read('app/(app)/reports/cost-vs-retail/page.tsx').includes("redirect('/reports/inventory')"),
