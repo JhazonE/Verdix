@@ -183,7 +183,11 @@ for (const rel of ['app/api/sales/z-reading/route.ts', 'app/api/sales/overall-re
   // Velocity: the shared sale predicate, sold products only on fast/slow, no services.
   const vel = stripComments(read('app/api/reports/velocity/route.ts'));
   assert.ok(vel.includes('posSaleSql('), 'velocity must use posSaleSql (training sales are not movement)');
-  assert.ok(vel.includes("'si.id IS NOT NULL'"), 'velocity fast/slow must list only products that sold');
+  assert.ok(/JOIN \( \$\{soldLines\} \) AS sold/.test(vel), 'velocity fast/slow must list only products that sold');
+  // Back-office invoices are sales too; without them an item sold only by
+  // invoice showed as "not moving".
+  assert.ok(vel.includes('backofficeInvoiceSql('), 'velocity must count back-office invoice sales');
+  assert.ok(vel.includes('lineDateExpr('), 'velocity must date a return by when it was returned');
   assert.ok((vel.match(/p\.type = 'standard'/g) || []).length >= 2, 'velocity must leave services out of every tab');
 
   // Every PDF export covers the searched rows, like its Excel export.

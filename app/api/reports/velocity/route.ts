@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { posSaleSql } from '@/lib/pos-sales';
+import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
+import { lineDateExpr } from '@/lib/profit';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,34 +14,63 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10');
     const offset = (page - 1) * limit;
 
-    let baseSql = '';
+    // Every sold line in the window, in BASE units (total_sold is ranked
+    // against p.stock, which is in base units), from both places a sale lives:
+    //  * POS: sale_items under a sales_transactions row that is a real sale
+    //    (posSaleSql: not void/cancelled/returned, not training). A return is a
+    //    negative line under the original sale, dated by when it was returned
+    //    (lineDateExpr), the same as every other sales report.
+    //  * Back office: sales_invoice_items of a back-office invoice
+    //    (backofficeInvoiceSql). These write no sales_transactions row, so this
+    //    report used to miss them entirely and list an item sold only by
+    //    invoice as "not moving".
+    // Revenue is quantity × price per SELLING unit; scaling it by the factor
+    // would multiply a case price by the pieces in the case.
     const params: any[] = [];
+    const posDate: string[] = [];
+    const boDate: string[] = [];
+    const posParams: any[] = [];
+    const boParams: any[] = [];
+    if (startDate) {
+      posDate.push(`DATE(${lineDateExpr('si', 'st.created_at')}) >= ?`);
+      posParams.push(startDate);
+      boDate.push('DATE(sinv.invoice_date) >= ?');
+      boParams.push(startDate);
+    }
+    if (endDate) {
+      posDate.push(`DATE(${lineDateExpr('si', 'st.created_at')}) <= ?`);
+      posParams.push(endDate);
+      boDate.push('DATE(sinv.invoice_date) <= ?');
+      boParams.push(endDate);
+    }
+    const soldLines = `
+      SELECT si.product_id,
+             si.quantity * COALESCE(si.selling_unit_factor, 1) AS base_qty,
+             si.quantity * si.price AS revenue
+        FROM sale_items si
+        JOIN sales_transactions st ON si.sale_id = st.id
+       WHERE ${[posSaleSql('st'), ...posDate].join(' AND ')}
+      UNION ALL
+      SELECT sii.product_id,
+             sii.quantity * COALESCE(sii.selling_unit_factor, 1) AS base_qty,
+             sii.quantity * sii.price AS revenue
+        FROM sales_invoice_items sii
+        JOIN sales_invoices sinv ON sii.sales_invoice_id = sinv.id
+       WHERE ${[backofficeInvoiceSql('sinv'), ...boDate].join(' AND ')}
+    `;
+    const soldParams = [...posParams, ...boParams];
+
+    let baseSql = '';
     let sqlSelect = '';
 
     if (type === 'none') {
-      // posSaleSql: the same definition of a sale as every other report. The
-      // hand-written status checks here let TRAINING sales count as movement
-      // and missed the 'Void' and 'Cancelled' spellings.
-      const subConditions = [posSaleSql('st')];
-      if (startDate) {
-        subConditions.push('DATE(st.created_at) >= ?');
-        params.push(startDate);
-      }
-      if (endDate) {
-        subConditions.push('DATE(st.created_at) <= ?');
-        params.push(endDate);
-      }
       baseSql = `
         FROM products p
         -- Services carry no stock, so they are never "not moving" stock.
         WHERE p.type = 'standard'
-          AND p.id NOT IN (
-          SELECT si.product_id
-          FROM sale_items si
-          JOIN sales_transactions st ON si.sale_id = st.id
-          WHERE ${subConditions.join(' AND ')}
-        )
+          AND p.id NOT IN (SELECT sold.product_id FROM ( ${soldLines} ) AS sold)
       `;
+      params.push(...soldParams);
       sqlSelect = `
         SELECT
           p.id,
@@ -52,33 +83,14 @@ export async function GET(request: NextRequest) {
           0 as total_revenue
       `;
     } else {
+      // Fast/slow rank products that SOLD (an inner join to the sold lines);
+      // unsold ones are the None tab. Services carry no stock to move.
       baseSql = `
         FROM products p
-        LEFT JOIN sale_items si ON p.id = si.product_id
-        LEFT JOIN sales_transactions st ON si.sale_id = st.id
+        JOIN ( ${soldLines} ) AS sold ON sold.product_id = p.id
+        WHERE p.type = 'standard'
       `;
-      const conditions = [];
-      // Fast/slow rank products that SOLD; unsold ones are the None tab.
-      // posSaleSql passes a NULL status, so without this the LEFT JOIN would
-      // let every never-sold product in with total_sold = 0.
-      conditions.push('si.id IS NOT NULL');
-      conditions.push(posSaleSql('st'));
-      // Stock velocity: services carry no stock to move.
-      conditions.push("p.type = 'standard'");
-      if (startDate) {
-        conditions.push('DATE(st.created_at) >= ?');
-        params.push(startDate);
-      }
-      if (endDate) {
-        conditions.push('DATE(st.created_at) <= ?');
-        params.push(endDate);
-      }
-      if (conditions.length > 0) {
-        baseSql += ' WHERE ' + conditions.join(' AND ');
-      }
-      // total_sold is compared against p.stock (base units) to rank fast/slow
-      // movers, so it must be in base units too — scale si.quantity (whatever
-      // selling unit was sold) by its factor. NULL factor means base unit (1).
+      params.push(...soldParams);
       sqlSelect = `
         SELECT
           p.id,
@@ -87,8 +99,8 @@ export async function GET(request: NextRequest) {
           p.category,
           (SELECT w.name FROM warehouses w WHERE w.id = p.warehouse_id) AS warehouse_name,
           p.stock,
-          COALESCE(SUM(si.quantity * COALESCE(si.selling_unit_factor, 1)), 0) as total_sold,
-          COALESCE(SUM(si.quantity * si.price), 0) as total_revenue
+          COALESCE(SUM(sold.base_qty), 0) as total_sold,
+          COALESCE(SUM(sold.revenue), 0) as total_revenue
       `;
     }
 
