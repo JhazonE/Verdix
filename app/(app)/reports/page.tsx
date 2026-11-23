@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import Link from 'next/link';
-import { Package, PackageSearch, ArrowLeftRight, AlertTriangle, TrendingUp, ClipboardList, Receipt, Package2, Percent, Undo, Users, BarChart, LineChart, PhilippinePeso, ShoppingCart, Layers, CreditCard, ShieldCheck, Landmark, Calendar, CalendarClock, Tags, FileBarChart, ReceiptText, ClipboardCheck, ActivitySquare, ListChecks, FileSearch, CalendarDays, Ban, Banknote } from 'lucide-react';
+import { Package, PackageSearch, ArrowLeftRight, AlertTriangle, TrendingUp, ClipboardList, Receipt, Package2, Percent, Undo, Users, PhilippinePeso, ShoppingCart, Layers, CreditCard, ShieldCheck, Landmark, Calendar, CalendarClock, Tags, FileBarChart, ReceiptText, ClipboardCheck, ActivitySquare, ListChecks, FileSearch, CalendarDays, Ban, Banknote } from 'lucide-react';
 
 export default function ReportsPage() {
   return (
@@ -195,7 +195,7 @@ export default function ReportsPage() {
                   <Undo className="h-5 w-5 text-orange-600" />
                   Merchandise Credits
                 </CardTitle>
-                <CardDescription>Returns and merchandise credit processing history.</CardDescription>
+                <CardDescription>Returned items and merchandise credits, with the original SI, cashier and override.</CardDescription>
               </CardHeader>
             </Card>
           </Link>
@@ -301,55 +301,7 @@ export default function ReportsPage() {
                   <Package2 className="h-5 w-5 text-green-600" />
                   Sales by Product
                 </CardTitle>
-                <CardDescription>Product performance analysis with units sold and revenue breakdown.</CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-
-          <Link href="/reports/sales/top-volume">
-            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart className="h-5 w-5 text-indigo-500" />
-                  Top by Volume
-                </CardTitle>
-                <CardDescription>Highest selling items based on quantity sold.</CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-
-          <Link href="/reports/sales/top-sales">
-            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <LineChart className="h-5 w-5 text-rose-500" />
-                  Top by Sales
-                </CardTitle>
-                <CardDescription>Highest revenue generating items.</CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-
-          <Link href="/reports/sales/profit-margin">
-            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Percent className="h-5 w-5 text-purple-600" />
-                  Profit Margin Report
-                </CardTitle>
-                <CardDescription>Profitability analysis with margin percentages and ROI metrics.</CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-
-          <Link href="/reports/sales/returns">
-            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Undo className="h-5 w-5 text-orange-600" />
-                  Sales Returns
-                </CardTitle>
-                <CardDescription>Merchandise credit report with returned items and refund tracking.</CardDescription>
+                <CardDescription>Products ranked by revenue, units sold, profit or margin % (includes Top by Sales, Top by Volume and Profit Margin).</CardDescription>
               </CardHeader>
             </Card>
           </Link>
