@@ -215,28 +215,31 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
       if (quantityAdded <= 0) continue;
 
       const landedCost = toSafeNumber(calculatedItem.landedCostPerUnit); // already per-piece (Task 3)
+      // The PO line's selling price is in the LINE's own unit (e.g. per Case).
       const rawSellingPrice = toSafeNumber(receivedItem.sellingPrice || matchedRow?.sellingPrice);
+      // Per-piece figure, used only for the inventory_batches row (base-unit contract).
       const sellingPrice = rawSellingPrice / factor;
 
-      // "Highest wins" rule (applies to both cost AND retail price):
-      // Fetch the product's current cost and price from the DB. If the new landed cost
-      // (or new selling price) is lower than what's already recorded — e.g. the supplier
-      // gave a cheaper price this time — keep the higher value so the product's cost and
-      // retail never drop unexpectedly on receipt. A blank/zero PO selling price cannot
-      // lower retail either, since max(existingPrice, 0) preserves the existing price.
+      // Cost keeps the "highest wins" rule: a cheaper delivery never drops the
+      // recorded cost on receipt.
       const [existingProductRows]: any = await connection.query(
-        'SELECT cost, price FROM products WHERE id = ?',
+        'SELECT cost FROM products WHERE id = ?',
         [receivedItem.productId]
       );
       const existingCost = toSafeNumber(existingProductRows?.[0]?.cost ?? 0);
       const finalCost = Math.max(existingCost, landedCost);
-      const existingPrice = toSafeNumber(existingProductRows?.[0]?.price ?? 0);
-      const finalPrice = Math.max(existingPrice, sellingPrice);
 
-      // Update cost and price for the specific product received
       await connection.query(
-        'UPDATE products SET cost = ?, price = ?, expiration_date = ?, updated_at = NOW() WHERE id = ?',
-        [finalCost, finalPrice, receivedItem.expirationDate ? new Date(receivedItem.expirationDate).toISOString().slice(0, 10) : null, receivedItem.productId]
+        'UPDATE products SET cost = ?, expiration_date = ?, updated_at = NOW() WHERE id = ?',
+        [finalCost, receivedItem.expirationDate ? new Date(receivedItem.expirationDate).toISOString().slice(0, 10) : null, receivedItem.productId]
+      );
+
+      await applyPurchaseSellingPrice(
+        connection,
+        receivedItem.productId,
+        receivedItem.sellingUnitId ?? matchedRow?.sellingUnitId ?? null,
+        rawSellingPrice,
+        defaultLevelId,
       );
 
       // --- BATCH COSTING: Record this delivery as a new inventory batch ---
@@ -266,31 +269,6 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
         `Received Purchase: ${orderId}`,
         connection
       );
-
-      // Update default price level — use finalPrice so it stays consistent with the
-      // master products.price under the "highest wins" rule. Price levels are per
-      // selling unit now (product_selling_unit_price_levels); this writes onto the
-      // product's BASE selling unit, matching how every other write path in this
-      // codebase treats "the product's own price level" after the selling-units
-      // migration.
-      if (defaultLevelId && finalPrice > 0) {
-        const [baseUnitRows]: any = await connection.query(
-          'SELECT id FROM product_selling_units WHERE product_id = ? AND is_base = 1 LIMIT 1',
-          [receivedItem.productId],
-        );
-        if (baseUnitRows.length > 0) {
-          // min_quantity 0 on both branches: this is the base unit's
-          // DEFAULT-level row, which is the product's everyday shelf price
-          // and must apply at every quantity. A tier here would leave the
-          // product with no price below the threshold, and both product read
-          // paths would stop promoting it into products.price.
-          await connection.query(`
-            INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity)
-            VALUES (?, ?, ?, 0)
-            ON DUPLICATE KEY UPDATE price = VALUES(price), min_quantity = 0
-          `, [baseUnitRows[0].id, defaultLevelId, finalPrice]);
-        }
-      }
     }
 
     // 5. Update PO status and received total
@@ -307,4 +285,67 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
   } else {
     return await withTransaction(executeLogic);
   }
+}
+
+/**
+ * Write a PO line's selling price onto the product as the new price of the unit
+ * it was bought in — replacing the old price, up or down. A blank/zero price
+ * changes nothing.
+ *
+ * `unitId` NULL means the base unit (lines that predate selling units). Only a
+ * BASE-unit price writes products.price; a Case line updates the Case's own
+ * price and never a computed per-piece price, since price ÷ factor is not what
+ * a piece sells for. The unit's untiered default-level row is kept in step,
+ * because both product read paths promote the base unit's default-level row
+ * into products.price and a stale one would undo the update.
+ *
+ * Used by PO receipt and by scripts/backfill-po-selling-prices.ts, so the two
+ * can never disagree about what "apply a PO price" means.
+ */
+export async function applyPurchaseSellingPrice(
+  connection: any,
+  productId: string,
+  unitId: string | null,
+  price: number,
+  defaultLevelId: string | number | null | undefined,
+): Promise<{ applied: boolean; unitId: string | null; isBase: boolean }> {
+  const newPrice = toSafeNumber(price);
+  const [unitRows]: any = await connection.query(
+    `SELECT id, is_base FROM product_selling_units
+      WHERE product_id = ? AND (${unitId ? 'id = ?' : 'is_base = 1'})
+      LIMIT 1`,
+    unitId ? [productId, unitId] : [productId],
+  );
+  const unit = unitRows?.[0] ?? null;
+  const isBase = !unit || unit.is_base === 1 || unit.is_base === true;
+  if (!(newPrice > 0)) return { applied: false, unitId: unit?.id ?? null, isBase };
+
+  if (isBase) {
+    await connection.query('UPDATE products SET price = ?, updated_at = NOW() WHERE id = ?', [newPrice, productId]);
+  }
+  if (!unit) return { applied: true, unitId: null, isBase };
+
+  await connection.query('UPDATE product_selling_units SET price = ? WHERE id = ?', [newPrice, unit.id]);
+
+  if (defaultLevelId) {
+    if (isBase) {
+      // min_quantity 0: the base unit's DEFAULT-level row is the product's
+      // everyday shelf price and must apply at every quantity.
+      await connection.query(`
+        INSERT INTO product_selling_unit_price_levels (selling_unit_id, price_level_id, price, min_quantity)
+        VALUES (?, ?, ?, 0)
+        ON DUPLICATE KEY UPDATE price = VALUES(price), min_quantity = 0
+      `, [unit.id, defaultLevelId, newPrice]);
+    } else {
+      // A non-base unit with no default-level row already falls back to its own
+      // price; only refresh an existing untiered override so it doesn't keep
+      // shadowing the new price. Tiered rows are deliberate bulk prices.
+      await connection.query(
+        `UPDATE product_selling_unit_price_levels SET price = ?
+          WHERE selling_unit_id = ? AND price_level_id = ? AND min_quantity = 0`,
+        [newPrice, unit.id, defaultLevelId],
+      );
+    }
+  }
+  return { applied: true, unitId: unit.id, isBase };
 }

@@ -64,7 +64,7 @@ test.describe('Purchase order', () => {
     }).toPass({ timeout: 10_000 });
   });
 
-  test('Receive PO: "highest wins" rule sa cost ug retail price', async ({ request }) => {
+  test('Receive PO: cost "highest wins", selling price sa PO mo-update sa product', async ({ request }) => {
     // Dedicated product para dili ma-coupled sa laing test nga mo-mutate sa PO_PRODUCT.
     const productId = `hw-prod-${Date.now()}`;
     const sku = `HW-${Date.now()}`;
@@ -129,10 +129,15 @@ test.describe('Purchase order', () => {
     expect(afterHigher.cost).toBe(70);
     expect(afterHigher.price).toBe(130);
 
-    // 2. Lower cost + lower price → dili mo-ubos (highest wins). Magpabilin sa 70 / 130.
+    // 2. Lower cost + lower price → cost dili mo-ubos (highest wins), pero ang
+    //    selling price nga gibutang sa PO mao na ang bag-ong presyo.
     const afterLower = await receiveAndRead(40, 90);
     expect(afterLower.cost).toBe(70);
-    expect(afterLower.price).toBe(130);
+    expect(afterLower.price).toBe(90);
+
+    // 3. Blank/zero selling price → dili hilabtan ang presyo.
+    const afterBlank = await receiveAndRead(40, 0);
+    expect(afterBlank.price).toBe(90);
   });
 
   test('Receive PO by selling unit: Case quantity/cost convert to base-unit pieces', async ({ request }) => {
@@ -182,7 +187,8 @@ test.describe('Purchase order', () => {
     // so "highest wins" keeps the higher existing cost of ₱3 rather than dropping to ₱2.50.
     expect(Number(prod.cost)).toBe(PO_CASE_PRODUCT.cost);
 
-    // ₱100/Case ÷ 24 ≈ ₱4.17/pc, lower than the existing price of ₱5 — highest wins keeps ₱5.
+    // A Case line's selling price updates the CASE unit's own price, never the
+    // piece price — so the base price stays ₱5 rather than becoming ₱100 ÷ 24.
     expect(Number(prod.price)).toBe(PO_CASE_PRODUCT.price);
   });
 
