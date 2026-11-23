@@ -37,7 +37,10 @@ const MIN_POOL_LIMIT = 25;
 
 function resolvePoolLimit(fallback: number): number {
   const configured = parseInt(process.env.DB_POOL_LIMIT || '');
-  if (!Number.isFinite(configured) || configured <= 0) return fallback;
+  // The built-in default is held to the same floor. The dev default was 20, so
+  // with DB_POOL_LIMIT unset the floor that a configured value cannot go below
+  // did not apply at all.
+  if (!Number.isFinite(configured) || configured <= 0) return Math.max(fallback, MIN_POOL_LIMIT);
   if (configured < MIN_POOL_LIMIT) {
     console.warn(
       `[DB] DB_POOL_LIMIT=${configured} is below the ${MIN_POOL_LIMIT}-connection floor and was raised. ` +

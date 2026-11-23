@@ -25,8 +25,10 @@ import { getPoolStats } from '../../lib/mysql';
     assert.ok(stats.limit! >= 25, `effective pool limit must never fall below 25, got ${stats.limit}`);
   }
 
+  // No process.exit(0) here: this file runs inside tests/unit/run.ts, where an
+  // early exit would kill the runner before the files imported after it ran.
+  // run.ts ends the process once every test has had time to settle.
   console.log('✓ pool-limit-floor');
-  process.exit(0);
 })().catch((e) => {
   console.error('Test failed:', e);
   process.exit(1);

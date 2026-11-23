@@ -123,6 +123,33 @@ import './credit-limit.test';
 import './soa-voided-invoices.test';
 import './loyalty-points-redemption-lock.test';
 import './void-invoice-refund.test';
+// These existed but were never listed here, so a failure in any of them went
+// unnoticed (pool-limit-floor had been failing). Added together:
+import './license-file-durability.test';
+import './overall-reading-print-matches-preview.test';
+import './pos-paper-size.test';
+import './pos-reprice-on-level-rows.test';
+import './price-edit-dialog-save.test';
+import './price-level-seed-from-unit-price.test';
+import './pricing-picked-level.test';
+import './pricing-selling-unit-rows.test';
+import './reading-paper-width.test';
+import './selling-unit-autoprice-adopt-saved.test';
+import './warehouse-filter-accepts-name.test';
+import './picked-level-survives-repricing.test';
+import './pool-limit-floor.test';
+// DB-backed: each inserts its own uniquely-keyed rows and removes them (or
+// rolls back) in a finally block, so they leave the database as they found it.
+import './concurrent-checkout-deadlock.test';
+import './concurrent-product-edit.test';
+import './concurrent-stock-race.test';
+import './unit-of-measure-cascade.test';
+//
+// Deliberately NOT imported: pool-acquire-timeout.test.ts and
+// query-acquire-timeout.test.ts. Each holds EVERY connection in the shared pool
+// to prove saturation errors out, which would starve the DB-backed tests above
+// that run at the same time. Run them on their own, with a short
+// DB_ACQUIRE_TIMEOUT_MS as their headers describe.
 
 // Each test file above is a side-effecting async IIFE: it starts running during
 // import but settles only after every import has completed. The DB-backed ones
