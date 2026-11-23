@@ -13,9 +13,19 @@ assert.ok(!blob.includes('hello-password'), 'ciphertext hides plaintext');
 // wrong key → null (not throw)
 assert.equal(decryptGcm(blob, deriveKey('secret', 'other-machine')), null, 'wrong key returns null');
 
-// tampered blob → null
-const tampered = 'A' + blob.slice(1);
-assert.equal(decryptGcm(tampered, key), null, 'tampered blob returns null');
+// tampered blob → null. Flip one bit in the decoded bytes so the blob is
+// guaranteed to change. (This used to overwrite the first base64 character
+// with 'A', which changed nothing whenever the random IV already encoded to
+// an 'A' there — about 1 run in 64 — and the test failed at random.)
+// One flip in each region: iv[0..12) | authTag[12..28) | ciphertext[28..).
+const raw = Buffer.from(blob, 'base64');
+for (const [region, offset] of [['iv', 0], ['auth tag', 12], ['ciphertext', 28]] as const) {
+  const t = Buffer.from(raw);
+  t[offset] ^= 0x01;
+  const tampered = t.toString('base64');
+  assert.notEqual(tampered, blob, `tampering the ${region} must change the blob`);
+  assert.equal(decryptGcm(tampered, key), null, `tampered ${region} returns null`);
+}
 
 // malformed input → null
 assert.equal(decryptGcm('not-base64!!', key), null, 'garbage returns null');
