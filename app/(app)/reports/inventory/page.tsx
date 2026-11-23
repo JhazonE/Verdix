@@ -1,31 +1,27 @@
 'use client';
 
+// Stock on Hand & Valuation. This page and Cost vs Retail used to be two
+// reports over the same products, and they valued the same stock differently:
+// this one from the remaining inventory batches, Cost vs Retail as stock × cost.
+// They are now one report on the stock × cost basis (see
+// app/api/reports/cost-vs-retail/route.ts); /reports/cost-vs-retail redirects
+// here.
+
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Badge } from '@/components/ui/badge';
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { Loader2, Printer, FileSpreadsheet } from 'lucide-react';
-import { formatCurrency, formatQuantity, formatStockQuantity } from '@/lib/utils';
+import { formatCurrency, formatStockQuantity } from '@/lib/utils';
 import { ReportHeader } from '@/components/reports/ReportHeader';
 import { getApiUrl } from '@/lib/api-config';
 import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { printReportTable, exportReportExcel } from '@/lib/report-print';
-
 import { DataTablePagination } from '@/components/ui/data-table-pagination';
 import { getCategories } from '@/app/(app)/products/actions';
 import { Category } from '@/lib/types';
@@ -33,7 +29,7 @@ import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 
-interface Product {
+interface Row {
   id: string;
   name: string;
   barcode: string;
@@ -43,90 +39,159 @@ interface Product {
   unit_of_measure: string;
   cost: number;
   price: number;
-  reorder_point: number;
-  total_value: number;
+  cost_value: number;
+  retail_value: number;
+  profit: number;
 }
 
 interface Summary {
   totalItems: number;
   totalStock: number;
-  totalValue: number;
+  totalCostValue: number;
+  totalRetailValue: number;
+  totalProfit: number;
+  marginPct: number;
 }
 
-interface PaginationState {
-    page: number;
-    limit: number;
-    totalItems: number;
-    totalPages: number;
-}
+const EMPTY_SUMMARY: Summary = {
+  totalItems: 0, totalStock: 0, totalCostValue: 0, totalRetailValue: 0, totalProfit: 0, marginPct: 0,
+};
+
+const TITLE = 'Stock on Hand & Valuation';
+const SUBTITLE = 'Current stock with its value at cost and at selling price, potential profit and margin.';
+
+const marginOf = (retail: number, profit: number) =>
+  retail > 0 ? (profit / retail) * 100 : 0;
 
 export default function InventoryReportPage() {
   const { toast } = useToast();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [summary, setSummary] = useState<Summary>({ totalItems: 0, totalStock: 0, totalValue: 0 });
+  const [rows, setRows] = useState<Row[]>([]);
+  const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState('');
 
-  const filteredProducts = products.filter((p) => {
-    if (!searchTerm.trim()) return true;
-    const search = searchTerm.toLowerCase();
-    return (
-      p.name?.toLowerCase().includes(search) ||
-      p.barcode?.toLowerCase().includes(search) ||
-      p.category?.toLowerCase().includes(search)
-    );
-  });
-
-  // Pagination State
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [settings, setSettings] = useState<any>(null);
-
   const [isPrinting, setIsPrinting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  // The search runs on the server (the table is paginated there), debounced so
+  // each keystroke does not fire a query.
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearch(searchTerm.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
+  const buildParams = (pageNum: number, limit: number) => {
+    const params = new URLSearchParams();
+    if (selectedCategory && selectedCategory !== 'all') params.append('category', selectedCategory);
+    if (search) params.append('search', search);
+    params.append('page', String(pageNum));
+    params.append('limit', String(limit));
+    return params;
+  };
+
+  useEffect(() => {
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory, search, page, pageSize]);
+
+  useEffect(() => {
+    getCategories().then(setCategories).catch((e) => console.error('Failed to fetch categories:', e));
+    (async () => {
+      try {
+        const res = await fetch(getApiUrl('/pos-settings'), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
+        if (!res.ok) throw new Error(`API error ${res.status}`);
+        const data = await res.json();
+        if (data.success) setSettings(data.data);
+      } catch (e) {
+        console.error('Failed to fetch settings:', e);
+      }
+    })();
+  }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(getApiUrl(`/reports/cost-vs-retail?${buildParams(page, pageSize).toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const data = await res.json();
+      // A 200 carrying success:false is how this API reports its own errors.
+      if (!data.success) {
+        throw new Error(data.details || data.error || 'The report could not be generated.');
+      }
+      setRows(data.data);
+      setSummary({ ...EMPTY_SUMMARY, ...data.summary });
+      if (data.pagination) {
+        setTotalPages(data.pagination.totalPages);
+        setTotalItems(data.pagination.totalItems);
+      }
+    } catch (error) {
+      console.error('Failed to fetch inventory valuation:', error);
+      toast({ title: 'Error', description: 'Failed to load the inventory report. Please try again.', variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Print and export cover the whole filtered set, not just the visible page.
+  const fetchAll = async (): Promise<{ rows: Row[]; summary: Summary } | null> => {
+    try {
+      const res = await fetch(getApiUrl(`/reports/cost-vs-retail?${buildParams(1, 100000).toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data)) {
+        return { rows: data.data, summary: { ...EMPTY_SUMMARY, ...data.summary } };
+      }
+    } catch {
+      // handled by the caller
+    }
+    return null;
+  };
+
+  const columnsFor = (money: (n: number) => string | number) => [
+    { header: 'Product Name', cell: (r: Row) => r.name },
+    { header: 'Barcode', cell: (r: Row) => r.barcode || '-' },
+    { header: 'Category', cell: (r: Row) => r.category },
+    { header: 'Stock', align: 'right' as const, cell: (r: Row) => `${formatStockQuantity(r.stock)} ${r.unit_of_measure || ''}`.trim() },
+    { header: 'Cost', align: 'right' as const, cell: (r: Row) => money(r.cost) },
+    { header: 'Price', align: 'right' as const, cell: (r: Row) => money(r.price) },
+    { header: 'Cost Value', align: 'right' as const, cell: (r: Row) => money(r.cost_value) },
+    { header: 'Retail Value', align: 'right' as const, cell: (r: Row) => money(r.retail_value) },
+    { header: 'Profit', align: 'right' as const, cell: (r: Row) => money(r.profit) },
+    { header: 'Margin %', align: 'right' as const, cell: (r: Row) => `${marginOf(r.retail_value, r.profit).toFixed(1)}%` },
+  ];
 
   const handlePrint = async () => {
     setIsPrinting(true);
     try {
-      const params = new URLSearchParams();
-      if (selectedCategory && selectedCategory !== 'all') params.append('category', selectedCategory);
-      params.append('page', '1');
-      params.append('limit', '100000');
-
-      let rows: Product[] = products;
-      let printSummary: Summary = summary;
-      try {
-        const res = await fetch(getApiUrl(`/reports/inventory?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
-        const data = await res.json();
-        if (data.success && Array.isArray(data.data)) {
-          rows = data.data;
-          if (data.summary) printSummary = data.summary;
-        }
-      } catch {
-        // fall back to the currently loaded page
+      const all = await fetchAll();
+      if (!all) {
+        toast({ title: 'Print Failed', description: 'Could not load the full report. Printing the visible page only.', variant: 'destructive' });
       }
-
-      printReportTable<Product>({
-        title: 'Stock on Hand Report',
-        subtitle: 'Current inventory levels and valuation (based on batch-level FIFO costs).',
+      const printRows = all?.rows ?? rows;
+      const s = all?.summary ?? summary;
+      printReportTable<Row>({
+        title: TITLE,
+        subtitle: SUBTITLE,
         business: settings || undefined,
-        columns: [
-          { header: 'Product Name', cell: (p) => p.name },
-          { header: 'Barcode', cell: (p) => p.barcode || '-' },
-          { header: 'Category', cell: (p) => p.category },
-          { header: 'Cost', align: 'right', cell: (p) => formatCurrency(p.cost) },
-          { header: 'Price', align: 'right', cell: (p) => formatCurrency(p.price) },
-          { header: 'Stock', align: 'right', cell: (p) => `${formatStockQuantity(p.stock)} ${p.unit_of_measure || ''}`.trim() },
-          { header: 'Total Value', align: 'right', emphasize: true, cell: (p) => formatCurrency(p.total_value) },
-        ],
-        rows,
+        columns: columnsFor((n) => formatCurrency(n)),
+        rows: printRows,
         summary: [
-          { label: 'Total Items', value: String(printSummary.totalItems) },
-          { label: 'Total Quantity', value: formatStockQuantity(printSummary.totalStock) },
-          { label: 'Total Value (Avg Cost)', value: formatCurrency(printSummary.totalValue) },
+          { label: 'Total Items', value: String(s.totalItems) },
+          { label: 'Total Quantity', value: formatStockQuantity(s.totalStock) },
+          { label: 'Total Cost Value', value: formatCurrency(s.totalCostValue) },
+          { label: 'Total Retail Value', value: formatCurrency(s.totalRetailValue) },
+          { label: 'Total Potential Profit', value: formatCurrency(s.totalProfit) },
+          { label: 'Overall Margin', value: `${s.marginPct.toFixed(1)}%` },
         ],
         showSignature: true,
         emptyMessage: 'No products found.',
@@ -136,53 +201,22 @@ export default function InventoryReportPage() {
     }
   };
 
-  const [isExporting, setIsExporting] = useState(false);
-
   const exportToExcel = async () => {
     setIsExporting(true);
     try {
-      const params = new URLSearchParams();
-      if (selectedCategory && selectedCategory !== 'all') params.append('category', selectedCategory);
-      params.append('page', '1');
-      params.append('limit', '100000');
-
-      let rows: Product[] = products;
-      try {
-        const res = await fetch(getApiUrl(`/reports/inventory?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
-        const data = await res.json();
-        if (data.success && Array.isArray(data.data)) {
-          rows = data.data;
-        }
-      } catch {
-        // fall back to the currently loaded page
+      const all = await fetchAll();
+      if (!all) {
+        toast({ title: 'Export Failed', description: 'Could not load the full report. Please try again.', variant: 'destructive' });
+        return;
       }
-
-      const search = searchTerm.toLowerCase();
-      const fullFilteredProducts = rows.filter((p) => {
-        if (!searchTerm.trim()) return true;
-        return (
-          p.name?.toLowerCase().includes(search) ||
-          p.barcode?.toLowerCase().includes(search) ||
-          p.category?.toLowerCase().includes(search)
-        );
-      });
-
-      const totalValueSum = fullFilteredProducts.reduce((s, p) => s + Number(p.total_value), 0);
-      const fileName = `Stock_On_Hand_${format(new Date(), 'yyyyMMdd')}.xls`;
-      const ok = exportReportExcel<Product>({
-        title: 'Stock on Hand Report',
+      const s = all.summary;
+      const fileName = `Stock_On_Hand_Valuation_${format(new Date(), 'yyyyMMdd')}.xls`;
+      const ok = exportReportExcel<Row>({
+        title: TITLE,
         subtitle: `Generated ${format(new Date(), 'yyyy-MM-dd')}`,
-        columns: [
-          { header: 'Product Name', cell: (p) => p.name },
-          { header: 'Barcode', cell: (p) => p.barcode || '-' },
-          { header: 'Category', cell: (p) => p.category },
-          { header: 'Cost', align: 'right', cell: (p) => p.cost },
-          { header: 'Price', align: 'right', cell: (p) => p.price },
-          { header: 'Stock', align: 'right', cell: (p) => `${formatStockQuantity(p.stock)} ${p.unit_of_measure || ''}`.trim() },
-          { header: 'Total Value', align: 'right', cell: (p) => p.total_value },
-        ],
-        rows: fullFilteredProducts,
-        totals: ['TOTALS', null, null, null, null, null, totalValueSum.toFixed(2)],
+        columns: columnsFor((n) => n),
+        rows: all.rows,
+        totals: ['TOTALS', null, null, formatStockQuantity(s.totalStock), null, null, s.totalCostValue.toFixed(2), s.totalRetailValue.toFixed(2), s.totalProfit.toFixed(2), `${s.marginPct.toFixed(1)}%`],
         fileName,
       });
       if (!ok) {
@@ -198,87 +232,25 @@ export default function InventoryReportPage() {
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, [selectedCategory, page, pageSize]);
-  
-  // Separate effect to fetch categories only once on mount
-  useEffect(() => {
-    const fetchCategories = async () => {
-        try {
-            const data = await getCategories();
-            setCategories(data);
-        } catch (error) {
-            console.error('Failed to fetch categories:', error);
-        }
-    };
-    fetchCategories();
-
-    const fetchSettings = async () => {
-        try {
-            const res = await fetch(getApiUrl('/pos-settings'), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
-            if (!res.ok) throw new Error(`API error ${res.status}`);
-            const data = await res.json();
-            // A 200 carrying success:false is how this API reports its own errors.
-            // Falling through used to leave the page with no rows and no message,
-            // which read as "no data for this range" rather than "the report failed".
-            if (!data.success) {
-              throw new Error(data.details || data.error || 'The report could not be generated.');
-            }
-            if (data.success) {
-                setSettings(data.data);
-            }
-        } catch (error) {
-            console.error('Failed to fetch settings:', error);
-        }
-    };
-    fetchSettings();
-  }, []);
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (selectedCategory && selectedCategory !== 'all') {
-        params.append('category', selectedCategory);
-      }
-      params.append('page', page.toString());
-      params.append('limit', pageSize.toString());
-      
-      const res = await fetch(getApiUrl(`/reports/inventory?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
-      if (!res.ok) throw new Error(`API error ${res.status}`);
-      const data = await res.json();
-      
-      // A 200 carrying success:false is how this API reports its own errors.
-      // Falling through used to leave the page with no rows and no message,
-      // which read as "no data for this range" rather than "the report failed".
-      if (!data.success) {
-        throw new Error(data.details || data.error || 'The report could not be generated.');
-      }
-      if (data.success) {
-        setProducts(data.data);
-        setSummary(data.summary);
-        
-        if (data.pagination) {
-            setTotalPages(data.pagination.totalPages);
-            setTotalItems(data.pagination.totalItems);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch inventory data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const cards: { label: string; value: string; className?: string }[] = [
+    { label: 'Total Items', value: summary.totalItems.toLocaleString() },
+    { label: 'Total Quantity', value: formatStockQuantity(summary.totalStock) },
+    { label: 'Total Cost Value', value: formatCurrency(summary.totalCostValue) },
+    { label: 'Total Retail Value', value: formatCurrency(summary.totalRetailValue) },
+    {
+      label: 'Potential Profit',
+      value: formatCurrency(summary.totalProfit),
+      className: summary.totalProfit < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400',
+    },
+    { label: 'Overall Margin', value: `${summary.marginPct.toFixed(1)}%` },
+  ];
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Stock on Hand Report</h2>
-          <p className="text-muted-foreground">
-            Current inventory levels and valuation (based on batch-level FIFO costs).
-          </p>
+          <h2 className="text-3xl font-bold tracking-tight">{TITLE}</h2>
+          <p className="text-muted-foreground">{SUBTITLE}</p>
         </div>
         <div className="flex items-center gap-2">
           <ReportSearchInput
@@ -286,15 +258,15 @@ export default function InventoryReportPage() {
             onChange={setSearchTerm}
             placeholder="Search product, barcode, category..."
           />
-          <Button onClick={() => handlePrint()} variant="outline" className="gap-2" disabled={isPrinting}>
-              {isPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-              Print Report
+          <Button onClick={handlePrint} variant="outline" className="gap-2" disabled={isPrinting}>
+            {isPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+            Print Report
           </Button>
           <Button
             onClick={() => exportToExcel()}
             variant="outline"
             className="gap-2 border-emerald-700 text-emerald-700 hover:bg-emerald-50"
-            disabled={isExporting || filteredProducts.length === 0}
+            disabled={isExporting || rows.length === 0}
           >
             {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
             Export to Excel
@@ -304,158 +276,93 @@ export default function InventoryReportPage() {
 
       <div className="flex items-center gap-4">
         <div className="w-[200px]">
-            <Select value={selectedCategory} onValueChange={(val) => {
-                setSelectedCategory(val);
-                setPage(1); // Reset to first page on filter change
-            }}>
-                <SelectTrigger>
-                    <SelectValue placeholder="Filter by Category" />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="all">All Categories</SelectItem>
-                    {categories.map((category) => (
-                        <SelectItem key={category.id} value={category.name}>
-                            {category.name}
-                        </SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
+          <Select value={selectedCategory} onValueChange={(val) => { setSelectedCategory(val); setPage(1); }}>
+            <SelectTrigger>
+              <SelectValue placeholder="Filter by Category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Items</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary.totalItems}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Quantity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatStockQuantity(summary.totalStock)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Value (Avg Cost)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(summary.totalValue)}</div>
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+        {cards.map((c) => (
+          <Card key={c.label}>
+            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">{c.label}</CardTitle></CardHeader>
+            <CardContent><div className={`text-2xl font-bold ${c.className ?? ''}`}>{c.value}</div></CardContent>
+          </Card>
+        ))}
       </div>
 
-      {/* Report table */}
       <div className="bg-background p-4 rounded-md border">
-          <ReportHeader 
-            title="Stock on Hand Report" 
-            subtitle="Current inventory levels and valuation." 
-            businessName={settings?.businessName}
-            address={settings?.address}
-            contactNumber={settings?.contactNumber}
-            tin={settings?.tin}
-          />
-          
-          <div className="rounded-md border mb-4 print:border-none print:overflow-visible">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[300px]">Product Name</TableHead>
-                    <TableHead>Barcode</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead className="text-right">Cost</TableHead>
-                    <TableHead className="text-right">Price</TableHead>
-                    <TableHead className="text-right">Stock</TableHead>
-                    <TableHead className="text-right">Total Value</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRow>
-                      <TableCell colSpan={7} className="h-24 text-center">
-                        <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+        <ReportHeader
+          title={TITLE}
+          subtitle="Stock value at cost (stock × cost) and at selling price."
+          businessName={settings?.businessName}
+          address={settings?.address}
+          contactNumber={settings?.contactNumber}
+          tin={settings?.tin}
+        />
+
+        <div className="rounded-md border mb-4 print:border-none print:overflow-visible">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[260px]">Product Name</TableHead>
+                <TableHead>Barcode</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead className="text-right">Stock</TableHead>
+                <TableHead className="text-right">Cost</TableHead>
+                <TableHead className="text-right">Price</TableHead>
+                <TableHead className="text-right">Cost Value</TableHead>
+                <TableHead className="text-right">Retail Value</TableHead>
+                <TableHead className="text-right">Profit</TableHead>
+                <TableHead className="text-right">Margin %</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow><TableCell colSpan={10} className="h-24 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></TableCell></TableRow>
+              ) : rows.length === 0 ? (
+                <TableRow><TableCell colSpan={10} className="h-24 text-center">No products found.</TableCell></TableRow>
+              ) : (
+                rows.map((r) => {
+                  const margin = marginOf(r.retail_value, r.profit);
+                  return (
+                    <TableRow key={r.id}>
+                      <TableCell className="font-medium">{r.name}</TableCell>
+                      <TableCell className="text-muted-foreground">{r.barcode || '-'}</TableCell>
+                      <TableCell>{r.category}</TableCell>
+                      <TableCell className="text-right whitespace-nowrap">{formatStockQuantity(r.stock)} {r.unit_of_measure}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(r.cost)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(r.price)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(r.cost_value)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(r.retail_value)}</TableCell>
+                      <TableCell className={`text-right font-medium ${r.profit < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                        {formatCurrency(r.profit)}
                       </TableCell>
+                      <TableCell className="text-right">{margin.toFixed(1)}%</TableCell>
                     </TableRow>
-                  ) : filteredProducts.length === 0 ? (
-                    <TableRow>
-                        <TableCell colSpan={7} className="h-24 text-center">
-                            No products found.
-                        </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredProducts.map((product) => (
-                      <TableRow key={product.id}>
-                        <TableCell className="font-medium">
-                            {product.name}
-                            {product.stock <= Math.max(product.reorder_point, settings?.lowStockThreshold || 0) && (
-                                <Badge variant="destructive" className="ml-2 print:hidden">Low Stock</Badge>
-                            )}
-                        </TableCell>
-                        <TableCell>{product.barcode || '-'}</TableCell>
-                        <TableCell>{product.category}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(product.cost)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(product.price)}</TableCell>
-                        <TableCell className="text-right whitespace-nowrap">
-                            {formatStockQuantity(product.stock)} {product.unit_of_measure}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                            {formatCurrency(product.total_value)}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-          </div>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
-          <DataTablePagination 
-            currentPage={page}
-            totalPages={totalPages}
-            pageSize={pageSize}
-            totalItems={totalItems}
-            setPage={setPage}
-            setPageSize={setPageSize}
-          />
-
-          {/* Footer Summary for Print */}
-          {!loading && (
-             <div className="mt-12 border-t-2 border-slate-200 pt-6 flex justify-between items-start print:flex hidden">
-                 <div className="space-y-1">
-                     <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500">Report Summary</p>
-                     <div className="flex gap-8">
-                        <div>
-                            <p className="text-xs text-slate-500">Total Unique Items</p>
-                            <p className="text-xl font-black text-slate-900">{summary.totalItems}</p>
-                        </div>
-                        <div>
-                            <p className="text-xs text-slate-500">Total Stock Quantity</p>
-                            <p className="text-xl font-black text-slate-900">{formatStockQuantity(summary.totalStock)}</p>
-                        </div>
-                     </div>
-                 </div>
-                 <div className="text-right p-4 bg-slate-50 rounded-xl border border-slate-100">
-                     <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500 mb-1">Total Inventory Value</p>
-                     <p className="text-3xl font-black text-primary leading-none">{formatCurrency(summary.totalValue)}</p>
-                     <p className="text-[10px] text-slate-400 mt-2 italic">Based on average cost calculation</p>
-                 </div>
-             </div>
-          )}
-          
-          <div className="mt-20 pt-8 border-t border-slate-100 flex justify-between items-end print:flex hidden text-[10px] text-slate-400 uppercase tracking-widest">
-              <div>
-                  <p>Authorized Signature: ___________________________</p>
-              </div>
-              <div className="text-right">
-                  <p>Page 1 of 1</p>
-                  <p className="mt-1 font-bold text-primary/40">Powered by Vendix</p>
-              </div>
-          </div>
+        <DataTablePagination
+          currentPage={page}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          setPage={setPage}
+          setPageSize={setPageSize}
+        />
       </div>
     </div>
   );

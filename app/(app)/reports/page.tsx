@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import Link from 'next/link';
-import { Package, PackageSearch, ArrowLeftRight, AlertTriangle, TrendingUp, ClipboardList, Receipt, Package2, Percent, Undo, Users, PhilippinePeso, ShoppingCart, Layers, CreditCard, ShieldCheck, Landmark, Calendar, CalendarClock, Tags, FileBarChart, ReceiptText, ClipboardCheck, ActivitySquare, ListChecks, FileSearch, CalendarDays, Ban, Banknote } from 'lucide-react';
+import { Package, PackageSearch, ArrowLeftRight, AlertTriangle, TrendingUp, ClipboardList, Receipt, Package2, Undo, Users, PhilippinePeso, ShoppingCart, Layers, CreditCard, ShieldCheck, Landmark, Calendar, CalendarClock, Tags, FileBarChart, ReceiptText, ClipboardCheck, ActivitySquare, ListChecks, FileSearch, CalendarDays, Ban, Banknote } from 'lucide-react';
 
 export default function ReportsPage() {
   return (
@@ -29,19 +29,7 @@ export default function ReportsPage() {
                   <Package className="h-5 w-5" />
                   Stock on Hand & Valuation
                 </CardTitle>
-                <CardDescription>Current inventory levels and total value (Avg Cost).</CardDescription>
-              </CardHeader>
-            </Card>
-          </Link>
-
-          <Link href="/reports/cost-vs-retail">
-            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Percent className="h-5 w-5 text-emerald-600" />
-                  Cost vs Retail Valuation
-                </CardTitle>
-                <CardDescription>Stock value at cost vs selling price, with potential profit and margin.</CardDescription>
+                <CardDescription>Current stock with its cost value, retail value, potential profit and margin.</CardDescription>
               </CardHeader>
             </Card>
           </Link>

@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 
+// Stock value = stock × cost, the same basis as /api/reports/cost-vs-retail
+// (which the Inventory report page now reads). This used to take the
+// remaining-batch value when a product had batches, so the two reports put a
+// different value on the same stock.
+const COST_VALUE_EXPR = `(p.stock * COALESCE(p.cost, 0))`;
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -61,10 +67,7 @@ export async function GET(request: NextRequest) {
         p.cost,
         p.price,
         p.reorder_point,
-        COALESCE(
-          (SELECT SUM(quantity_remaining * unit_cost) FROM inventory_batches WHERE product_id = p.id AND quantity_remaining > 0),
-          (p.stock * COALESCE(p.cost, 0))
-        ) as total_value
+        ${COST_VALUE_EXPR} as total_value
       ${baseSql}
       ORDER BY p.name ASC
       LIMIT ? OFFSET ?
@@ -81,10 +84,7 @@ export async function GET(request: NextRequest) {
         COUNT(*) as totalItems,
         SUM(p.stock) as totalStock,
         SUM(
-          COALESCE(
-            (SELECT SUM(quantity_remaining * unit_cost) FROM inventory_batches WHERE product_id = p.id AND quantity_remaining > 0),
-            (p.stock * COALESCE(p.cost, 0))
-          )
+          ${COST_VALUE_EXPR}
         ) as totalValue
       ${baseSql}
     `;

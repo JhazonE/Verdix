@@ -15,6 +15,9 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
+    // Server-side so it searches the whole catalogue: the page is paginated
+    // here, and filtering in the browser only ever searched the visible page.
+    const search = (searchParams.get('search') || '').trim();
 
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '10');
@@ -34,6 +37,12 @@ export async function GET(request: NextRequest) {
     if (category && category !== 'all') {
       conditions.push('p.category = ?');
       params.push(category);
+    }
+
+    if (search) {
+      conditions.push('(p.name LIKE ? OR p.barcode LIKE ? OR p.category LIKE ?)');
+      const like = `%${search}%`;
+      params.push(like, like, like);
     }
 
     if (conditions.length > 0) {
@@ -64,6 +73,7 @@ export async function GET(request: NextRequest) {
     const sumSql = `
       SELECT
         COUNT(*) as totalItems,
+        SUM(p.stock) as totalStock,
         SUM(${COST_VALUE_EXPR}) as totalCostValue,
         SUM(p.stock * COALESCE(p.price, 0)) as totalRetailValue
       ${baseSql}
@@ -81,6 +91,7 @@ export async function GET(request: NextRequest) {
       pagination: { page, limit, totalItems, totalPages },
       summary: {
         totalItems: summaryResult.totalItems || 0,
+        totalStock: Number(summaryResult.totalStock) || 0,
         totalCostValue,
         totalRetailValue,
         totalProfit,

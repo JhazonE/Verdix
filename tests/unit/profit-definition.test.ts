@@ -80,4 +80,15 @@ assert.ok(!costVsRetail.includes('inventory_batches'),
   'cost-vs-retail must value cost as stock × cost, not from batches');
 assert.ok(costVsRetail.includes('profitOf('), 'cost-vs-retail must use profitOf');
 
+// Stock on Hand (/reports/inventory) was a second valuation report that still
+// took the remaining-batch value, so it disagreed with Cost vs Retail on the
+// same stock. The two are one page now, on the stock × cost basis.
+const inventoryApi = read('app/api/reports/inventory/route.ts');
+assert.ok(!inventoryApi.includes('inventory_batches'),
+  'reports/inventory must value stock as stock × cost, like cost-vs-retail');
+assert.ok(read('app/(app)/reports/inventory/page.tsx').includes('/reports/cost-vs-retail?'),
+  'the Inventory report must read the cost-vs-retail valuation');
+assert.ok(read('app/(app)/reports/cost-vs-retail/page.tsx').includes("redirect('/reports/inventory')"),
+  'Cost vs Retail must redirect to the merged Inventory report');
+
 console.log('✓ profit-definition: profit = sales − cost in every report');
