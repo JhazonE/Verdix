@@ -11,6 +11,7 @@ export default function SalesAnalysisPage() {
   const {
     dateRange, setDateRange,
     interval, setInterval,
+    sourceFilter, setSourceFilter,
     filterDialogOpen, setFilterDialogOpen,
     tempTerminal, setTempTerminal,
     tempInterval, setTempInterval,
@@ -44,6 +45,8 @@ export default function SalesAnalysisPage() {
         dateRange={dateRange}
         setDateRange={setDateRange}
         interval={interval}
+        sourceFilter={sourceFilter}
+        setSourceFilter={setSourceFilter}
         setInterval={setInterval}
         hasActiveFilters={hasActiveFilters}
         resetFilters={resetFilters}

@@ -33,6 +33,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { getApiUrl } from '@/lib/api-config';
+import { SalesSourceFilter as SalesSourceToggle } from '@/components/sales-source';
+import type { SalesSourceFilter } from '@/lib/sales-source';
 import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 
@@ -58,6 +60,8 @@ interface ProductSale {
 export default function TopItemsVolumePage() {
   const [fromDate, setFromDate] = useState<Date | undefined>(startOfMonth(new Date()));
   const [toDate, setToDate] = useState<Date | undefined>(endOfMonth(new Date()));
+  // All / POS / Backoffice, sent as ?source= (lib/sales-source.ts).
+  const [sourceFilter, setSourceFilter] = useState<SalesSourceFilter>('all');
   const [records, setRecords] = useState<ProductSale[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -87,6 +91,7 @@ export default function TopItemsVolumePage() {
       }
       params.append('page', currentPage.toString());
       params.append('limit', '100000'); // the whole range: the cards total every product
+      if (sourceFilter !== 'all') params.append('source', sourceFilter);
       if (searchTerm) {
         params.append('search', searchTerm);
       }
@@ -118,7 +123,8 @@ export default function TopItemsVolumePage() {
 
   useEffect(() => {
     fetchReport();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceFilter]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -288,6 +294,11 @@ export default function TopItemsVolumePage() {
                   />
                 </PopoverContent>
               </Popover>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">Source</label>
+              <SalesSourceToggle value={sourceFilter} onChange={setSourceFilter} className="h-10" />
             </div>
 
             <Button 

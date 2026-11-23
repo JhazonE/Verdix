@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 import { posSaleSql } from '@/lib/pos-sales';
+import { parseSalesSource } from '@/lib/sales-source';
 import { lineDateExpr } from '@/lib/profit';
 
 export const dynamic = 'force-dynamic';
@@ -18,8 +19,13 @@ export const dynamic = 'force-dynamic';
  * mirror rows there are never voided or reduced by a return, so voided sales
  * showed as revenue and returns were ignored.
  */
-export async function GET(_request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
+    // pos | backoffice | all (default). A filtered-out leg is switched off
+    // with 1=0, so the query's shape never changes.
+    const source = parseSalesSource(new URL(request.url).searchParams.get('source'));
+    const posGate = source === 'backoffice' ? ' AND 1=0' : '';
+    const boGate = source === 'pos' ? ' AND 1=0' : '';
     const lineDate = lineDateExpr('si', 'st.invoice_date');
     const thisMonth = (expr: string) =>
       `${expr} >= DATE_FORMAT(CURDATE(), '%Y-%m-01') AND ${expr} < DATE_FORMAT(CURDATE(), '%Y-%m-01') + INTERVAL 1 MONTH`;
@@ -30,13 +36,13 @@ export async function GET(_request: NextRequest) {
         FROM sale_items si
         JOIN sales_transactions st ON si.sale_id = st.id
         JOIN products p ON si.product_id = p.id
-        WHERE ${posSaleSql('st')} AND ${thisMonth(`DATE(${lineDate})`)}
+        WHERE ${posSaleSql('st')} AND ${thisMonth(`DATE(${lineDate})`)}${posGate}
         UNION ALL
         SELECT COALESCE(NULLIF(p.category, ''), 'Uncategorized'), sii.quantity * sii.price
         FROM sales_invoice_items sii
         JOIN sales_invoices sinv ON sii.sales_invoice_id = sinv.id
         JOIN products p ON sii.product_id = p.id
-        WHERE ${backofficeInvoiceSql('sinv')} AND ${thisMonth('DATE(sinv.invoice_date)')}
+        WHERE ${backofficeInvoiceSql('sinv')} AND ${thisMonth('DATE(sinv.invoice_date)')}${boGate}
       ) c
       GROUP BY category
       ORDER BY total_sales DESC

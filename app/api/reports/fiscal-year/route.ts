@@ -5,10 +5,16 @@ import { lineCostExpr } from '@/lib/cost-of-sale';
 import { profitOf, lineDateExpr } from '@/lib/profit';
 import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 import { posSaleSql } from '@/lib/pos-sales';
+import { parseSalesSource } from '@/lib/sales-source';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    // pos | backoffice | all (default). A filtered-out source is switched off
+    // with 1=0 in every query below, so none of them changes shape. The list
+    // of available fiscal years is left over both sources.
+    const source = parseSalesSource(searchParams.get('source'));
+    const posWhere = `${posSaleSql('st')}${source === 'backoffice' ? ' AND 1=0' : ''}`;
 
     const settingsResult = await query("SELECT fiscal_year_start_month FROM pos_settings LIMIT 1") as any[];
     const startMonth = settingsResult[0]?.fiscal_year_start_month || 1;
@@ -46,7 +52,7 @@ export async function GET(request: NextRequest) {
          COALESCE(SUM(st.total), 0) AS revenue,
          COUNT(*) AS transactions
        FROM sales_transactions st
-       WHERE ${posSaleSql('st')} AND st.invoice_date >= ? AND st.invoice_date <= ?`,
+       WHERE ${posWhere} AND st.invoice_date >= ? AND st.invoice_date <= ?`,
       [startStr, endStr]
     ) as any[];
 
@@ -59,7 +65,7 @@ export async function GET(request: NextRequest) {
       `SELECT COALESCE(SUM(si.price * si.quantity), 0) AS returned
        FROM sale_items si
        JOIN sales_transactions st ON si.sale_id = st.id
-       WHERE ${posSaleSql('st')} AND si.quantity < 0
+       WHERE ${posWhere} AND si.quantity < 0
          AND DATE(si.created_at) >= ? AND DATE(si.created_at) <= ?`,
       [startStr, endStr]
     ) as any[];
@@ -72,7 +78,7 @@ export async function GET(request: NextRequest) {
        FROM sale_items si
        JOIN sales_transactions st ON si.sale_id = st.id
        JOIN products p ON si.product_id = p.id
-       WHERE ${posSaleSql('st')} AND DATE(${saleDate}) >= ? AND DATE(${saleDate}) <= ?`,
+       WHERE ${posWhere} AND DATE(${saleDate}) >= ? AND DATE(${saleDate}) <= ?`,
       [startStr, endStr]
     ) as any[];
 
@@ -82,7 +88,7 @@ export async function GET(request: NextRequest) {
     // sales_invoice_items, the same per-selling-unit snapshot the POS lines
     // use). They have no returns. A Pending invoice counts: it is a sale from
     // the day it is issued. Dated by invoice_date, as the POS lines are.
-    const boWhere = `${backofficeInvoiceSql('sinv')} AND sinv.invoice_date >= ? AND sinv.invoice_date <= ?`;
+    const boWhere = `${backofficeInvoiceSql('sinv')}${source === 'pos' ? ' AND 1=0' : ''} AND sinv.invoice_date >= ? AND sinv.invoice_date <= ?`;
     const [boSummary] = await query(
       `SELECT COALESCE(SUM(sinv.total), 0) AS revenue, COUNT(*) AS transactions
        FROM sales_invoices sinv WHERE ${boWhere}`,
@@ -107,7 +113,7 @@ export async function GET(request: NextRequest) {
               COALESCE(SUM(st.total), 0) AS revenue,
               COUNT(*) AS transactions
        FROM sales_transactions st
-       WHERE ${posSaleSql('st')} AND st.invoice_date >= ? AND st.invoice_date <= ?
+       WHERE ${posWhere} AND st.invoice_date >= ? AND st.invoice_date <= ?
        GROUP BY DATE_FORMAT(st.invoice_date, '%Y-%m')`,
       [startStr, endStr]
     ) as any[];
@@ -119,7 +125,7 @@ export async function GET(request: NextRequest) {
        FROM sale_items si
        JOIN sales_transactions st ON si.sale_id = st.id
        JOIN products p ON si.product_id = p.id
-       WHERE ${posSaleSql('st')} AND DATE(${saleDate}) >= ? AND DATE(${saleDate}) <= ?
+       WHERE ${posWhere} AND DATE(${saleDate}) >= ? AND DATE(${saleDate}) <= ?
        GROUP BY DATE_FORMAT(${saleDate}, '%Y-%m')`,
       [startStr, endStr]
     ) as any[];
@@ -130,7 +136,7 @@ export async function GET(request: NextRequest) {
               COALESCE(SUM(si.price * si.quantity), 0) AS returned
        FROM sale_items si
        JOIN sales_transactions st ON si.sale_id = st.id
-       WHERE ${posSaleSql('st')} AND si.quantity < 0
+       WHERE ${posWhere} AND si.quantity < 0
          AND DATE(si.created_at) >= ? AND DATE(si.created_at) <= ?
        GROUP BY DATE_FORMAT(si.created_at, '%Y-%m')`,
       [startStr, endStr]

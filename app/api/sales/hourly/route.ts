@@ -3,6 +3,7 @@ import { query } from '@/lib/mysql';
 import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 import { posSaleSql } from '@/lib/pos-sales';
 import { lineDateExpr } from '@/lib/profit';
+import { parseSalesSource } from '@/lib/sales-source';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,11 @@ export async function GET(request: NextRequest) {
     const dateParam = searchParams.get('date'); // YYYY-MM-DD, optional
     const day = dateParam ? '?' : 'CURDATE()';
     const lineTime = lineDateExpr('si', 'st.created_at');
+    // pos | backoffice | all (default). A leg that is filtered out is switched
+    // off with 1=0 rather than removed, so the placeholder count never changes.
+    const source = parseSalesSource(searchParams.get('source'));
+    const posGate = source === 'backoffice' ? ' AND 1=0' : '';
+    const boGate = source === 'pos' ? ' AND 1=0' : '';
 
     const sql = `
       SELECT hour, SUM(sales) AS sales, SUM(is_sale) AS count FROM (
@@ -33,15 +39,15 @@ export async function GET(request: NextRequest) {
                0 AS is_sale
         FROM sale_items si
         JOIN sales_transactions st ON si.sale_id = st.id
-        WHERE ${posSaleSql('st')} AND DATE(${lineTime}) = ${day}
+        WHERE ${posSaleSql('st')} AND DATE(${lineTime}) = ${day}${posGate}
         UNION ALL
         SELECT HOUR(st.created_at), 0, 1
         FROM sales_transactions st
-        WHERE ${posSaleSql('st')} AND DATE(st.created_at) = ${day}
+        WHERE ${posSaleSql('st')} AND DATE(st.created_at) = ${day}${posGate}
         UNION ALL
         SELECT HOUR(sinv.created_at), sinv.total, 1
         FROM sales_invoices sinv
-        WHERE ${backofficeInvoiceSql('sinv')} AND DATE(sinv.invoice_date) = ${day}
+        WHERE ${backofficeInvoiceSql('sinv')} AND DATE(sinv.invoice_date) = ${day}${boGate}
       ) h
       GROUP BY hour
       ORDER BY hour ASC

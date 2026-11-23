@@ -15,6 +15,7 @@ export function useSalesAnalysis() {
     terminal: filters.terminal,
     interval: filters.interval,
     paymentType: filters.paymentType,
+    sourceFilter: filters.sourceFilter,
   });
 
   const utils = useAnalysisUtils({

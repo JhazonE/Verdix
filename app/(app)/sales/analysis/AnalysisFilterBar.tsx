@@ -19,12 +19,16 @@ import {
   DropdownMenuRadioItem,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { SalesSourceFilter as SalesSourceToggle } from '@/components/sales-source';
+import type { SalesSourceFilter } from '@/lib/sales-source';
 
 type Props = {
   dateRange: DateRange | undefined;
   setDateRange: (range: DateRange | undefined) => void;
   interval: string;
   setInterval: (value: string) => void;
+  sourceFilter: SalesSourceFilter;
+  setSourceFilter: (v: SalesSourceFilter) => void;
   hasActiveFilters: boolean;
   resetFilters: () => void;
   onOpenAdvancedFilters: () => void;
@@ -37,6 +41,8 @@ export function AnalysisFilterBar({
   setDateRange,
   interval,
   setInterval,
+  sourceFilter,
+  setSourceFilter,
   hasActiveFilters,
   resetFilters,
   onOpenAdvancedFilters,
@@ -59,6 +65,8 @@ export function AnalysisFilterBar({
             <DropdownMenuItem onSelect={exportToPDF}>Export to PDF</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <SalesSourceToggle value={sourceFilter} onChange={setSourceFilter} />
 
         {/* Date Range Picker */}
         <Popover>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { parseSalesSource } from '@/lib/sales-source';
 import { query } from '../../../../lib/mysql';
 import { lineDateExpr } from '../../../../lib/profit';
 import { backofficeInvoiceSql } from '../../../../lib/backoffice-sales';
@@ -23,6 +24,8 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const productId = searchParams.get('productId');
+    // pos | backoffice | all (default). See lib/sales-source.ts.
+    const source = parseSalesSource(searchParams.get('source'));
 
     if (!startDate || !endDate) {
       return NextResponse.json(
@@ -70,7 +73,7 @@ export async function GET(request: NextRequest) {
       ORDER BY p.name ASC, st.created_at ASC
     `;
 
-    const posRows: any[] = await query(sql, params);
+    const posRows: any[] = source === 'backoffice' ? [] : await query(sql, params);
 
     // BACK-OFFICE INVOICES. They deduct stock through the same FIFO batches and
     // CreateSaleUseCase writes batch_source onto sales_invoice_items exactly as
@@ -85,7 +88,7 @@ export async function GET(request: NextRequest) {
       boProductFilter = 'AND sii.product_id = ?';
       boParams.push(productId);
     }
-    const boRows: any[] = await query(
+    const boRows: any[] = source === 'pos' ? [] : await query(
       `SELECT
          sii.id         AS saleItemId,
          sii.product_id AS productId,

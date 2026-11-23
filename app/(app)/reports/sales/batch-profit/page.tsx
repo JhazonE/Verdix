@@ -33,6 +33,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { getApiUrl } from '@/lib/api-config';
+import { SalesSourceFilter as SalesSourceToggle } from '@/components/sales-source';
+import type { SalesSourceFilter } from '@/lib/sales-source';
 import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 
@@ -69,6 +71,8 @@ interface BatchAnalysisTotals {
 export default function BatchProfitPage() {
   const [fromDate, setFromDate] = useState<Date | undefined>(startOfMonth(new Date()));
   const [toDate, setToDate] = useState<Date | undefined>(endOfMonth(new Date()));
+  // All / POS / Backoffice, sent as ?source= (lib/sales-source.ts).
+  const [sourceFilter, setSourceFilter] = useState<SalesSourceFilter>('all');
   const [records, setRecords] = useState<BatchAnalysisRecord[]>([]);
   const [totals, setTotals] = useState<BatchAnalysisTotals>({ qty: 0, revenue: 0, cost: 0, profit: 0, marginPct: 0 });
   const [isLoading, setIsLoading] = useState(false);
@@ -87,6 +91,7 @@ export default function BatchProfitPage() {
       if (toDate) {
         params.append('endDate', format(toDate, 'yyyy-MM-dd'));
       }
+      if (sourceFilter !== 'all') params.append('source', sourceFilter);
 
       const response = await fetch(getApiUrl(`/sales/batch-analysis?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!response.ok) throw new Error(`API error ${response.status}`);
@@ -117,7 +122,8 @@ export default function BatchProfitPage() {
 
   useEffect(() => {
     fetchReport();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceFilter]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -278,6 +284,11 @@ export default function BatchProfitPage() {
                   />
                 </PopoverContent>
               </Popover>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">Source</label>
+              <SalesSourceToggle value={sourceFilter} onChange={setSourceFilter} className="h-10" />
             </div>
 
             <Button onClick={fetchReport} disabled={isLoading}>

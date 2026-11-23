@@ -16,6 +16,8 @@ import { Calendar, FileDown, FileSpreadsheet, ShoppingCart, TrendingUp, Percent 
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
+import { SalesSourceFilter as SalesSourceToggle } from '@/components/sales-source';
+import type { SalesSourceFilter } from '@/lib/sales-source';
 import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
 import { ReportSearchInput } from '@/components/reports/ReportSearchInput';
@@ -39,6 +41,8 @@ interface FiscalReport {
 export default function FiscalYearReportPage() {
   const [report, setReport] = useState<FiscalReport | null>(null);
   const [selectedYear, setSelectedYear] = useState<string>('');
+  // All / POS / Backoffice, sent as ?source= (lib/sales-source.ts).
+  const [sourceFilter, setSourceFilter] = useState<SalesSourceFilter>('all');
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const { toast } = useToast();
@@ -46,10 +50,14 @@ export default function FiscalYearReportPage() {
   const formatCurrency = (value: number) =>
     `₱${value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  const fetchReport = async (year?: string) => {
+  // `source` is passed explicitly by the toggle so it never reads a stale value.
+  const fetchReport = async (year?: string, source: SalesSourceFilter = sourceFilter) => {
     setIsLoading(true);
     try {
-      const q = year ? `?fiscalYear=${year}` : '';
+      const qs = new URLSearchParams();
+      if (year) qs.append('fiscalYear', year);
+      if (source !== 'all') qs.append('source', source);
+      const q = qs.toString() ? `?${qs.toString()}` : '';
       const res = await fetch(getApiUrl(`/reports/fiscal-year${q}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const result = await res.json();
@@ -181,6 +189,15 @@ export default function FiscalYearReportPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">Source</label>
+              <SalesSourceToggle
+                value={sourceFilter}
+                onChange={(v) => { setSourceFilter(v); fetchReport(selectedYear || undefined, v); }}
+                className="h-10"
+              />
             </div>
 
             <Button onClick={() => fetchReport(selectedYear)} disabled={isLoading}>
