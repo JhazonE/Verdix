@@ -43,10 +43,16 @@ for (const f of [
   'app/api/reports/fiscal-year/route.ts',
   'app/api/sales/voids-report/route.ts',
   'app/api/sales/product-transactions/route.ts',
-  'app/api/sales/batch-analysis/route.ts',
 ]) {
   assert.ok(read(f).includes('profitOf('), `${f} must use profitOf`);
 }
+// Batch Profit computes each line in lib/batch-analysis-rows.ts (moved out of
+// the route so returns and unbatched lines could be unit-tested), so the
+// profitOf check follows the computation there.
+assert.ok(read('app/api/sales/batch-analysis/route.ts').includes('expandBatchLine('),
+  'batch-analysis must build its rows with expandBatchLine');
+assert.ok(read('lib/batch-analysis-rows.ts').includes('profitOf('),
+  'lib/batch-analysis-rows.ts must use profitOf');
 
 // --- net of returns, on the day returned ---
 assert.ok(

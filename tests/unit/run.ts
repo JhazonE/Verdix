@@ -10,6 +10,7 @@ import './import-classify.test';
 import './import-csvout.test';
 import './import-vat-status.test';
 import './aes-gcm.test';
+import './profit-definition.test';
 import './license-machine-match.test';
 import './si-number.test';
 import './drawer-kick.test';
