@@ -53,7 +53,7 @@ export default function ReportsPage() {
                   <ArrowLeftRight className="h-5 w-5" />
                   Stock Movement
                 </CardTitle>
-                <CardDescription>History of stock changes with date filtering.</CardDescription>
+                <CardDescription>Every stock change, line by line (sales, purchases, returns, adjustments), with the running balance. Quantities only.</CardDescription>
               </CardHeader>
             </Card>
           </Link>
@@ -89,7 +89,7 @@ export default function ReportsPage() {
                   <ClipboardList className="h-5 w-5" />
                   Adjustment Report
                 </CardTitle>
-                <CardDescription>Log of damaged, lost, or corrected stock.</CardDescription>
+                <CardDescription>Damaged, lost or corrected stock per adjustment, with its peso value, reason and warehouse.</CardDescription>
               </CardHeader>
             </Card>
           </Link>

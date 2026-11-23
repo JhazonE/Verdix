@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2, ArrowUpRight, ArrowDownLeft, Minus, RefreshCcw, Printer, FileSpreadsheet } from 'lucide-react';
 import { format } from 'date-fns';
+import Link from 'next/link';
 import { ReportHeader } from '@/components/reports/ReportHeader';
 import { getApiUrl } from '@/lib/api-config';
 import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
@@ -79,7 +80,9 @@ export default function StockMovementPage() {
         { header: 'Balance', align: 'right', cell: (m) => formatQuantity(m.new_stock, m.unit_of_measure) },
         { header: 'Reference', cell: (m) => `${capitalize(m.reference_type || '')}${m.notes ? ` - ${m.notes}` : ''}`.trim() || '-' },
       ],
-      rows: movements,
+      // The searched rows, like the Excel export. Printing `movements` here
+      // ignored the search box, so print and export disagreed.
+      rows: filteredMovements,
       emptyMessage: 'No movements found for the selected period.',
     });
   };
@@ -248,6 +251,13 @@ export default function StockMovementPage() {
              </div>
              <Button onClick={() => fetchData()}>Filter Report</Button>
            </div>
+           {movementType === 'adjustment' && (
+             <p className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200">
+               This lists each adjusted quantity. For the peso value of what was
+               damaged, lost or corrected, with the reason and warehouse, see the{' '}
+               <Link href="/reports/adjustments" className="font-medium underline">Adjustment / Damaged Report</Link>.
+             </p>
+           )}
         </CardHeader>
       </Card>
       
