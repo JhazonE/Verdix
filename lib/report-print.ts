@@ -227,11 +227,44 @@ export interface PdfReportOptions<T> {
  * Generates a consistent landscape/portrait PDF from column definitions and rows.
  * Returns false if there are no rows to export (caller can toast a "No Data" message).
  */
+// jsPDF's built-in fonts (Helvetica here) only cover Latin-1. A string holding
+// anything outside it, such as the peso sign every formatCurrency() emits, is
+// written as UTF-16 that the font cannot read: "₱150.00" printed as "±" and the
+// rest of that string came out letter-spaced ("T o t a l   R e v e n u e").
+// Embedding a font with ₱ would add hundreds of KB to every page that exports,
+// so the sign is spelled "PHP", as the Stock Count and Purchase Order PDFs
+// already do, and the few other common non-Latin-1 characters get plain
+// equivalents. Anything else unprintable becomes "?" rather than garbling the
+// whole line.
+const PDF_CHAR_MAP: Record<string, string> = {
+  '₱': 'PHP ',
+  '—': '-',
+  '–': '-',
+  '−': '-',
+  '‘': "'",
+  '’': "'",
+  '“': '"',
+  '”': '"',
+  '…': '...',
+  '•': '*',
+};
+
+export function pdfSafeText(text: unknown): string {
+  return String(text ?? '').replace(/[^\x00-\xFF]/g, (ch) => PDF_CHAR_MAP[ch] ?? '?');
+}
+
 export function exportReportPdf<T>(opts: PdfReportOptions<T>): boolean {
   const { title, dateRange, summary, columns, rows, totals, fileName, orientation = 'landscape', detail } = opts;
   if (rows.length === 0) return false;
 
   const doc = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
+  // Every string this report writes goes through pdfSafeText (see below).
+  const rawText = doc.text.bind(doc);
+  doc.text = ((text: string | string[], ...rest: unknown[]) =>
+    (rawText as (...a: unknown[]) => jsPDF)(
+      Array.isArray(text) ? text.map(pdfSafeText) : pdfSafeText(text),
+      ...rest
+    )) as typeof doc.text;
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 10;
