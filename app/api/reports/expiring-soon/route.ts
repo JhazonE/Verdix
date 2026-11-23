@@ -19,13 +19,17 @@ export async function GET(request: NextRequest) {
         b.id                  AS batchId,
         b.product_id          AS productId,
         p.name                AS productName,
-        su.barcode            AS baseUnitBarcode,
+        -- A warehouse sibling's base unit carries no barcode (it is UNIQUE
+        -- across selling units), so fall back to the row's own barcode.
+        COALESCE(su.barcode, p.barcode) AS baseUnitBarcode,
+        w.name                AS warehouseName,
         b.quantity_remaining  AS quantityRemaining,
         DATE_FORMAT(b.expiration_date, '%Y-%m-%d') AS expirationDate,
         DATEDIFF(b.expiration_date, CURDATE())     AS daysUntilExpiry
       FROM inventory_batches b
       JOIN products p ON p.id = b.product_id
       LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
+      LEFT JOIN warehouses w ON w.id = p.warehouse_id
       WHERE b.expiration_date IS NOT NULL
         AND b.quantity_remaining > 0
         AND b.expiration_date <= DATE_ADD(CURDATE(), INTERVAL ? DAY)

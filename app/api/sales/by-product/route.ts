@@ -318,6 +318,20 @@ export async function GET(request: NextRequest) {
     
     const productSales = await query(paginationQuery, paginationParams);
 
+    // Warehouse of each products row on this page. Each warehouse keeps its own
+    // row for the same item, so a sale from BODEGA's row is otherwise
+    // indistinguishable from STORE's. Looked up afterwards rather than joined
+    // into every leg of the union above.
+    const warehouseById = new Map<string, string | null>();
+    const pageIds = [...new Set(productSales.map((r: any) => r.product_id).filter(Boolean))] as string[];
+    if (pageIds.length > 0) {
+      const whRows: any[] = await query(
+        `SELECT p.id, w.name FROM products p LEFT JOIN warehouses w ON w.id = p.warehouse_id WHERE p.id IN (${pageIds.map(() => '?').join(',')})`,
+        pageIds
+      );
+      for (const w of whRows) warehouseById.set(w.id, w.name ?? null);
+    }
+
     // Transform the data to match expected format
     const formattedData = productSales.map((row: any) => ({
       product: {
@@ -328,6 +342,7 @@ export async function GET(request: NextRequest) {
         category: row.category,
         brand: row.brand,
         unitOfMeasure: row.unit_of_measure,
+        warehouse: warehouseById.get(row.product_id) ?? null,
       },
       unitsSold: parseInt(row.units_sold),
       totalRevenue: parseFloat(row.total_revenue),

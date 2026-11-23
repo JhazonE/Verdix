@@ -43,6 +43,7 @@ interface ProductPurchase {
   barcode: string;
   category: string;
   brand: string;
+  warehouseName: string | null;
   uom: string;
   totalQuantity: number;
   totalCost: number;
@@ -153,9 +154,10 @@ export default function PurchasesByProductPage() {
         { header: 'Selling Price', width: 30, align: 'right', cell: (r) => formatCurrency(r.avgSellingPrice) },
         { header: 'Current Price', width: 30, align: 'right', cell: (r) => formatCurrency(r.currentPrice) },
         { header: 'Total Spend', width: 40, align: 'right', cell: (r) => formatCurrency(r.totalCost) },
+        { header: 'Warehouse', width: 30, cell: (r) => r.warehouseName || '-' },
       ],
       rows: records,
-      totals: ['TOTAL', null, null, String(totals.totalQuantity), null, null, null, null, formatCurrency(totals.totalCost)],
+      totals: ['TOTAL', null, null, String(totals.totalQuantity), null, null, null, null, formatCurrency(totals.totalCost), null],
       fileName,
     });
     if (!ok) {
@@ -182,9 +184,10 @@ export default function PurchasesByProductPage() {
         { header: 'Selling Price', align: 'right', cell: (r) => r.avgSellingPrice },
         { header: 'Current Price', align: 'right', cell: (r) => r.currentPrice },
         { header: 'Total Spend', align: 'right', cell: (r) => r.totalCost },
+        { header: 'Warehouse', cell: (r) => r.warehouseName || '-' },
       ],
       rows: filteredRecords,
-      totals: ['TOTAL', null, null, totalQuantitySum, null, null, null, null, totalCostSum.toFixed(2)],
+      totals: ['TOTAL', null, null, totalQuantitySum, null, null, null, null, totalCostSum.toFixed(2), null],
       fileName,
     });
     if (!ok) {
@@ -383,6 +386,7 @@ export default function PurchasesByProductPage() {
                 <TableHead className="py-2 px-4 text-right">Total Spend</TableHead>
                 <TableHead className="py-2 px-4">Category</TableHead>
                 <TableHead className="py-2 px-4">Brand</TableHead>
+                <TableHead className="py-2 px-4">Warehouse</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -405,11 +409,12 @@ export default function PurchasesByProductPage() {
                     </TableCell>
                     <TableCell className="py-2 px-4">{record.category || '-'}</TableCell>
                     <TableCell className="py-2 px-4">{record.brand || '-'}</TableCell>
+                    <TableCell className="py-2 px-4 text-muted-foreground">{record.warehouseName || '-'}</TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={9} className="h-24 text-center">
+                  <TableCell colSpan={10} className="h-24 text-center">
                     {isLoading ? (
                       <div className="flex items-center justify-center gap-2">
                         <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>

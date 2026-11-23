@@ -45,6 +45,7 @@ interface StockMovement {
   created_at: string;
   barcode: string;
   unit_of_measure: string;
+  warehouse_name: string | null;
 }
 
 export default function StockMovementPage() {
@@ -76,6 +77,7 @@ export default function StockMovementPage() {
         { header: 'Type', cell: (m) => capitalize(m.movement_type) },
         { header: 'Product', cell: (m) => m.product_name },
         { header: 'Barcode', cell: (m) => m.barcode || '-' },
+        { header: 'Warehouse', cell: (m) => m.warehouse_name || '-' },
         { header: 'Change', align: 'right', emphasize: true, cell: (m) => `${Number(m.quantity_change) > 0 ? '+' : ''}${formatQuantity(m.quantity_change, m.unit_of_measure)}` },
         { header: 'Balance', align: 'right', cell: (m) => formatQuantity(m.new_stock, m.unit_of_measure) },
         { header: 'Reference', cell: (m) => `${capitalize(m.reference_type || '')}${m.notes ? ` - ${m.notes}` : ''}`.trim() || '-' },
@@ -93,6 +95,7 @@ export default function StockMovementPage() {
     return (
       m.product_name?.toLowerCase().includes(search) ||
       m.barcode?.toLowerCase().includes(search) ||
+      m.warehouse_name?.toLowerCase().includes(search) ||
       m.notes?.toLowerCase().includes(search)
     );
   });
@@ -119,6 +122,7 @@ export default function StockMovementPage() {
         { header: 'Type', cell: (m) => capitalize(m.movement_type) },
         { header: 'Product', cell: (m) => m.product_name },
         { header: 'Barcode', cell: (m) => m.barcode || '-' },
+        { header: 'Warehouse', cell: (m) => m.warehouse_name || '-' },
         { header: 'Change', align: 'right', cell: (m) => `${Number(m.quantity_change) > 0 ? '+' : ''}${formatQuantity(m.quantity_change, m.unit_of_measure)}` },
         { header: 'Balance', align: 'right', cell: (m) => formatQuantity(m.new_stock, m.unit_of_measure) },
         { header: 'Reference', cell: (m) => `${capitalize(m.reference_type || '')}${m.notes ? ` - ${m.notes}` : ''}`.trim() || '-' },
@@ -275,6 +279,7 @@ export default function StockMovementPage() {
                 <TableHead>Type</TableHead>
                 <TableHead>Product</TableHead>
                 <TableHead>Barcode</TableHead>
+                <TableHead>Warehouse</TableHead>
                 <TableHead className="text-right">Change</TableHead>
                 <TableHead className="text-right">Balance</TableHead>
                 <TableHead>Reference</TableHead>
@@ -283,13 +288,13 @@ export default function StockMovementPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center">
+                  <TableCell colSpan={8} className="h-24 text-center">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                   </TableCell>
                 </TableRow>
               ) : filteredMovements.length === 0 ? (
                 <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center">
+                    <TableCell colSpan={8} className="h-24 text-center">
                         No movements found for the selected period.
                     </TableCell>
                 </TableRow>
@@ -307,6 +312,7 @@ export default function StockMovementPage() {
                     </TableCell>
                     <TableCell className="font-medium">{movement.product_name}</TableCell>
                     <TableCell>{movement.barcode || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{movement.warehouse_name || '-'}</TableCell>
                     <TableCell className={`text-right font-bold ${Number(movement.quantity_change) > 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {Number(movement.quantity_change) > 0 ? '+' : ''}{formatQuantity(movement.quantity_change, movement.unit_of_measure)}
                     </TableCell>

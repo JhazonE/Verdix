@@ -63,6 +63,7 @@ interface ProductSale {
     category: string;
     brand: string;
     unitOfMeasure: string;
+    warehouse?: string | null;
   };
   unitsSold: number;
   totalRevenue: number;
@@ -301,6 +302,7 @@ export default function SalesByProductPage() {
         { header: 'Barcode', width: 25, cell: (r) => r.product.baseUnitBarcode || r.product.barcode || '-' },
         { header: 'Category', width: 25, cell: (r) => r.product.category || '-' },
         { header: 'Brand', width: 25, cell: (r) => r.product.brand || '-' },
+        { header: 'Warehouse', width: 22, cell: (r) => r.product.warehouse || '-' },
         { header: 'Units Sold', width: 18, align: 'right', cell: (r) => r.unitsSold.toString() },
         { header: 'UOM', width: 15, cell: (r) => r.product.unitOfMeasure || '-' },
         { header: 'Revenue', width: 22, align: 'right', cell: (r) => r.totalRevenue.toFixed(2) },
@@ -310,7 +312,7 @@ export default function SalesByProductPage() {
         { header: '# Sales', width: 15, align: 'right', cell: (r) => r.numberOfSales.toString() },
       ],
       rows: sortedRecords,
-      totals: ['TOTALS', null, null, null, null, totals.unitsSold.toString(), null, totals.revenue.toFixed(2), totals.cost.toFixed(2), totals.profit.toFixed(2), null, null],
+      totals: ['TOTALS', null, null, null, null, null, totals.unitsSold.toString(), null, totals.revenue.toFixed(2), totals.cost.toFixed(2), totals.profit.toFixed(2), null, null],
       detail: byProduct ? {
         headers: DETAIL_HEADERS,
         widths: [30, 26, 30, 12, 16, 18, 20, 20, 20],
@@ -342,6 +344,7 @@ export default function SalesByProductPage() {
         { header: 'Barcode', cell: (r) => r.product.baseUnitBarcode || r.product.barcode || '-' },
         { header: 'Category', cell: (r) => r.product.category || '-' },
         { header: 'Brand', cell: (r) => r.product.brand || '-' },
+        { header: 'Warehouse', cell: (r) => r.product.warehouse || '-' },
         { header: 'Units Sold', align: 'right', cell: (r) => r.unitsSold },
         { header: 'UOM', cell: (r) => r.product.unitOfMeasure || '-' },
         { header: 'Revenue', align: 'right', cell: (r) => r.totalRevenue },
@@ -351,7 +354,7 @@ export default function SalesByProductPage() {
         { header: '# Sales', align: 'right', cell: (r) => r.numberOfSales },
       ],
       rows: filteredRecords,
-      totals: ['TOTALS', null, null, null, null, unitsSoldSum, null, revenueSum.toFixed(2), costSum.toFixed(2), profitSum.toFixed(2), null, null],
+      totals: ['TOTALS', null, null, null, null, null, unitsSoldSum, null, revenueSum.toFixed(2), costSum.toFixed(2), profitSum.toFixed(2), null, null],
       detail: byProduct ? {
         headers: DETAIL_HEADERS,
         rows: (r: ProductSale) => (byProduct.get(r.product.id) || []).map(detailCells),
@@ -625,6 +628,7 @@ export default function SalesByProductPage() {
                 <TableHead className="py-2 px-2">Barcode</TableHead>
                 <TableHead className="py-2 px-2">Category</TableHead>
                 <TableHead className="py-2 px-2">Brand</TableHead>
+                <TableHead className="py-2 px-2">Warehouse</TableHead>
                 <TableHead className="py-2 px-2 text-right">Units Sold</TableHead>
                 <TableHead className="py-2 px-2">UOM</TableHead>
                 <TableHead className="py-2 px-2 text-right">Revenue</TableHead>
@@ -656,6 +660,7 @@ export default function SalesByProductPage() {
                       <TableCell className="py-2 px-2 text-muted-foreground">{record.product.baseUnitBarcode || record.product.barcode || '-'}</TableCell>
                       <TableCell className="py-2 px-2">{record.product.category || '-'}</TableCell>
                       <TableCell className="py-2 px-2">{record.product.brand || '-'}</TableCell>
+                      <TableCell className="py-2 px-2 text-muted-foreground">{record.product.warehouse || '-'}</TableCell>
                       <TableCell className="py-2 px-2 text-right font-mono font-semibold">
                         {record.unitsSold}
                       </TableCell>
@@ -687,7 +692,7 @@ export default function SalesByProductPage() {
                         productId={record.product.id}
                         startDate={fromDate ? format(fromDate, 'yyyy-MM-dd') : undefined}
                         endDate={toDate ? format(toDate, 'yyyy-MM-dd') : undefined}
-                        colSpan={13}
+                        colSpan={14}
                       />
                     )}
                     </Fragment>
@@ -695,7 +700,7 @@ export default function SalesByProductPage() {
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={13} className="h-24 text-center">
+                  <TableCell colSpan={14} className="h-24 text-center">
                     {isLoading ? (
                       <div className="flex items-center justify-center gap-2">
                         <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>

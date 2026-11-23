@@ -22,6 +22,9 @@ export async function GET(request: NextRequest) {
         p.barcode,
         p.category,
         p.brand,
+        -- Receiving into BODEGA stocks the BODEGA products row, a separate row
+        -- from STORE's for the same item; poi.product_id is a GROUP BY key.
+        (SELECT w.name FROM products pw JOIN warehouses w ON w.id = pw.warehouse_id WHERE pw.id = poi.product_id) as warehouseName,
         p.unit_of_measure as uom,
         -- poi.quantity is in the LINE's own unit (e.g. Cases); convert to base-unit
         -- pieces before summing so a Case line and a Piece line for the same product

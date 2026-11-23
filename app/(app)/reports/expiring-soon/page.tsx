@@ -19,6 +19,7 @@ interface ExpiringBatch {
   productId: string;
   productName: string;
   baseUnitBarcode: string | null;
+  warehouseName: string | null;
   quantityRemaining: number;
   expirationDate: string;
   daysUntilExpiry: number;
@@ -46,7 +47,8 @@ export default function ExpiringSoonPage() {
     const search = searchTerm.toLowerCase();
     return (
       item.productName?.toLowerCase().includes(search) ||
-      item.baseUnitBarcode?.toLowerCase().includes(search)
+      item.baseUnitBarcode?.toLowerCase().includes(search) ||
+      item.warehouseName?.toLowerCase().includes(search)
     );
   });
   const filteredExpired = filteredItems.filter((i) => i.isExpired);
@@ -64,6 +66,7 @@ export default function ExpiringSoonPage() {
       columns: [
         { header: 'Product', cell: (r) => r.productName },
         { header: 'Barcode', cell: (r) => r.baseUnitBarcode || '—' },
+        { header: 'Warehouse', cell: (r) => r.warehouseName || '—' },
         { header: 'Qty', align: 'right', cell: (r) => r.quantityRemaining },
         { header: 'Expires', cell: (r) => r.expirationDate },
         { header: 'Status', cell: (r) => r.statusLabel },
@@ -83,6 +86,7 @@ export default function ExpiringSoonPage() {
       <TableRow key={item.batchId}>
         <TableCell className="font-medium">{item.productName}</TableCell>
         <TableCell className="text-xs font-mono text-muted-foreground">{item.baseUnitBarcode || '—'}</TableCell>
+        <TableCell className="text-muted-foreground">{item.warehouseName || '—'}</TableCell>
         <TableCell className="tabular-nums">{item.quantityRemaining}</TableCell>
         <TableCell className="tabular-nums">{item.expirationDate}</TableCell>
         <TableCell>
@@ -145,7 +149,7 @@ export default function ExpiringSoonPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Product</TableHead><TableHead>Barcode</TableHead>
+                      <TableHead>Product</TableHead><TableHead>Barcode</TableHead><TableHead>Warehouse</TableHead>
                       <TableHead>Qty</TableHead><TableHead>Expires</TableHead><TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -162,7 +166,7 @@ export default function ExpiringSoonPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Product</TableHead><TableHead>Barcode</TableHead>
+                      <TableHead>Product</TableHead><TableHead>Barcode</TableHead><TableHead>Warehouse</TableHead>
                       <TableHead>Qty</TableHead><TableHead>Expires</TableHead><TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>

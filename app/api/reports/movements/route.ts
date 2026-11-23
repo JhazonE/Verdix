@@ -16,6 +16,11 @@ export async function GET(request: NextRequest) {
     let baseSql = `
       FROM stock_movements sm
       LEFT JOIN products p ON sm.product_id = p.id
+      -- The movement's own warehouse where it was recorded (migration 075),
+      -- else the warehouse of the products row it moved: each warehouse keeps
+      -- its own row for the same item, so this is what tells a STORE movement
+      -- from a BODEGA one.
+      LEFT JOIN warehouses w ON w.id = COALESCE(sm.warehouse_id, p.warehouse_id)
     `;
 
     const conditions = [];
@@ -66,7 +71,8 @@ export async function GET(request: NextRequest) {
         sm.notes,
         sm.created_at,
         p.barcode,
-        p.unit_of_measure
+        p.unit_of_measure,
+        w.name as warehouse_name
       ${baseSql}
       ORDER BY sm.created_at DESC 
       LIMIT ? OFFSET ?
