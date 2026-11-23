@@ -7,6 +7,7 @@ import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { getApiUrl } from '@/lib/api-config';
 import jsPDF from 'jspdf';
 import type { VoidRecord } from './voids-types';
+import { SALES_SOURCE_OPTIONS, type SalesSourceFilter } from '@/lib/sales-source';
 
 export function useVoidsData() {
   const { toast } = useToast();
@@ -16,13 +17,16 @@ export function useVoidsData() {
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
   });
+  // Applies immediately, like the toggle on the other sales reports.
+  const [sourceFilter, setSourceFilter] = useState<SalesSourceFilter>('all');
 
   const { data: records = [], isLoading, isError, error } = useQuery<VoidRecord[]>({
-    queryKey: ['voids', queryDates.from?.toISOString(), queryDates.to?.toISOString()],
+    queryKey: ['voids', queryDates.from?.toISOString(), queryDates.to?.toISOString(), sourceFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (queryDates.from) params.append('startDate', format(queryDates.from, 'yyyy-MM-dd'));
       if (queryDates.to) params.append('endDate', format(queryDates.to, 'yyyy-MM-dd'));
+      if (sourceFilter !== 'all') params.append('source', sourceFilter);
       const response = await fetch(getApiUrl(`/sales/voids-report?${params.toString()}`));
       if (!response.ok) throw new Error(`API error ${response.status}`);
       const result = await response.json();
@@ -69,7 +73,7 @@ export function useVoidsData() {
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
       doc.text(
-        `From: ${queryDates.from ? format(queryDates.from, 'yyyy-MM-dd') : 'N/A'} To: ${queryDates.to ? format(queryDates.to, 'yyyy-MM-dd') : 'N/A'}`,
+        `From: ${queryDates.from ? format(queryDates.from, 'yyyy-MM-dd') : 'N/A'} To: ${queryDates.to ? format(queryDates.to, 'yyyy-MM-dd') : 'N/A'}   Source: ${SALES_SOURCE_OPTIONS.find((o) => o.value === sourceFilter)?.label ?? 'All'}`,
         pageWidth / 2, yPos, { align: 'center' }
       );
       yPos += 10;
@@ -161,6 +165,7 @@ export function useVoidsData() {
     fromDate, setFromDate,
     toDate, setToDate,
     queryDates,
+    sourceFilter, setSourceFilter,
     records, isLoading, isError, error,
     totals,
     handleShowReport,

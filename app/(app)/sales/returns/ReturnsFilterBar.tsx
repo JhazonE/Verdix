@@ -8,19 +8,23 @@ import { Badge } from '@/components/ui/badge';
 import { CalendarIcon, FileDown, Undo } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
+import { SalesSourceFilter as SalesSourceToggle } from '@/components/sales-source';
+import type { SalesSourceFilter } from '@/lib/sales-source';
 
 interface Props {
   fromDate: Date | undefined;
   setFromDate: (date: Date | undefined) => void;
   toDate: Date | undefined;
   setToDate: (date: Date | undefined) => void;
+  sourceFilter: SalesSourceFilter;
+  setSourceFilter: (v: SalesSourceFilter) => void;
   isLoading: boolean;
   recordCount: number;
   onShowReport: () => void;
   onExportPDF: () => void;
 }
 
-export function ReturnsFilterBar({ fromDate, setFromDate, toDate, setToDate, isLoading, recordCount, onShowReport, onExportPDF }: Props) {
+export function ReturnsFilterBar({ fromDate, setFromDate, toDate, setToDate, sourceFilter, setSourceFilter, isLoading, recordCount, onShowReport, onExportPDF }: Props) {
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -69,6 +73,11 @@ export function ReturnsFilterBar({ fromDate, setFromDate, toDate, setToDate, isL
             </Popover>
           </div>
 
+          <div className="space-y-2">
+            <label className="block text-sm font-medium">Source</label>
+            <SalesSourceToggle value={sourceFilter} onChange={setSourceFilter} className="h-10" />
+          </div>
+
           <Button onClick={onShowReport} disabled={isLoading}>
             {isLoading ? 'Loading...' : 'Show Report'}
           </Button>
@@ -78,6 +87,14 @@ export function ReturnsFilterBar({ fromDate, setFromDate, toDate, setToDate, isL
             Export to PDF
           </Button>
         </div>
+        {/* Returns are taken only at a till (/api/sales/returns and
+            /api/sales/exchanges are POS-only), so this is always empty —
+            say why rather than leave it looking broken. */}
+        {sourceFilter === 'backoffice' && (
+          <p className="mt-3 text-sm text-muted-foreground">
+            Merchandise credits are issued only at the POS, so there are no back-office records.
+          </p>
+        )}
       </CardContent>
     </Card>
   );

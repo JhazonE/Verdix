@@ -14,9 +14,17 @@ export const formatAmount = (val: any) =>
  * covers older rows written before amount_paid was carried on this payload.
  */
 export const getAmountPaid = (sale: Sale) => {
+  // A voided invoice no longer exists as a sale: whatever was paid on it went
+  // back to the customer as account credit (see the void route), so it must
+  // not count as money collected. amount_paid stays on the row as history.
+  if (sale.status === 'Voided') return 0;
   if (sale.amountPaid != null) return Number(sale.amountPaid);
   return sale.status === 'Paid' ? sale.total : 0;
 };
+
+/** What is still owed. A voided invoice owes nothing. */
+export const getBalance = (sale: Sale) =>
+  sale.status === 'Voided' ? 0 : sale.total - getAmountPaid(sale);
 
 export const isOverDue = (sale: Sale) => {
   if (sale.status === 'Paid' || sale.status === 'Voided' || sale.status === 'Returned') return false;
@@ -72,7 +80,10 @@ export function useInvoicesUtils({
 
   const relevantSales = useMemo(
     () => salesInvoices.filter((s: Sale) => {
-      if (!['Paid', 'Partially Paid', 'Shipped', 'Delivered', 'Pending', 'Voided'].includes(s.status)) return false;
+      // Voided invoices leave this list entirely and are reviewed on Post Void
+      // (/sales/voids), the same rule the Sales Transactions page follows. The
+      // void itself already restored the stock and refunded what qualifies.
+      if (!['Paid', 'Partially Paid', 'Shipped', 'Delivered', 'Pending'].includes(s.status)) return false;
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         const matches =
@@ -112,8 +123,11 @@ export function useInvoicesUtils({
 
   const summaryTotals = useMemo(
     () => relevantSales.reduce((acc, sale) => {
+      // Voided invoices stay in the list (marked Voided) but are left out of
+      // every total — they appear on the Voided Sales report instead.
+      if (sale.status === 'Voided') return acc;
       const amountPaid = getAmountPaid(sale);
-      const balance = sale.total - amountPaid;
+      const balance = getBalance(sale);
       const overdue = isOverDue(sale);
       return {
         total: acc.total + sale.total,

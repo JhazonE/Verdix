@@ -17,6 +17,8 @@ export default function ReturnedSalesPage() {
         setFromDate={d.setFromDate}
         toDate={d.toDate}
         setToDate={d.setToDate}
+        sourceFilter={d.sourceFilter}
+        setSourceFilter={d.setSourceFilter}
         isLoading={d.isLoading}
         recordCount={d.records.length}
         onShowReport={d.handleShowReport}

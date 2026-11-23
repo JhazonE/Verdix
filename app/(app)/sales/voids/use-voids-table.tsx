@@ -16,6 +16,8 @@ import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import type { VoidRecord } from './voids-types';
+import { VoidSourceBadge } from './VoidSourceBadge';
+import { BackofficeBadge } from '@/components/sales-source';
 
 export function useVoidsTable(records: VoidRecord[]) {
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
@@ -58,8 +60,17 @@ export function useVoidsTable(records: VoidRecord[]) {
           </button>
         ),
         cell: ({ row }) => (
-          <div className="font-medium text-primary leading-tight">{row.original.refNo}</div>
+          <div className="font-medium text-primary leading-tight flex items-center gap-1">
+            {row.original.refNo}
+            <BackofficeBadge source={row.original.saleSource} />
+          </div>
         ),
+      },
+      {
+        id: 'voidedFrom',
+        accessorKey: 'source',
+        header: 'Voided From',
+        cell: ({ row }) => <VoidSourceBadge source={row.original.source} />,
       },
       {
         accessorKey: 'transDate',

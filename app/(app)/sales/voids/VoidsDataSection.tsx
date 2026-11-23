@@ -12,6 +12,7 @@ import { Search, Eye, LayoutGrid, Table as TableIcon, ChevronLeft, ChevronRight,
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { formatCurrency, type VoidRecord } from './voids-types';
+import { VoidSourceBadge } from './VoidSourceBadge';
 
 interface Props {
   table: ReactTable<VoidRecord>;
@@ -110,7 +111,10 @@ export function VoidsDataSection({ table, columns, isLoading, isError, error, vi
                           <CardTitle className="text-base text-primary">{record.refNo}</CardTitle>
                           <CardDescription className="text-xs">{record.siNo}</CardDescription>
                         </div>
-                        <Badge variant="destructive">Voided</Badge>
+                        <div className="flex items-center gap-1">
+                          <VoidSourceBadge source={record.source} />
+                          <Badge variant="destructive">Voided</Badge>
+                        </div>
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-3">

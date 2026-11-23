@@ -7,6 +7,7 @@ import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { getApiUrl } from '@/lib/api-config';
 import jsPDF from 'jspdf';
 import type { ReturnRecord } from './returns-types';
+import { SALES_SOURCE_OPTIONS, type SalesSourceFilter } from '@/lib/sales-source';
 
 export function useReturnsData() {
   const { toast } = useToast();
@@ -16,14 +17,18 @@ export function useReturnsData() {
     from: startOfMonth(new Date()),
     to: endOfMonth(new Date()),
   });
+  // Applies immediately, like the toggle on the other sales reports. Sent as
+  // ?source= to /api/sales/transactions, which already parses it.
+  const [sourceFilter, setSourceFilter] = useState<SalesSourceFilter>('all');
 
   const { data: records = [], isLoading } = useQuery<ReturnRecord[]>({
-    queryKey: ['returns', queryDates.from?.toISOString(), queryDates.to?.toISOString()],
+    queryKey: ['returns', queryDates.from?.toISOString(), queryDates.to?.toISOString(), sourceFilter],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (queryDates.from) params.append('startDate', format(queryDates.from, 'yyyy-MM-dd'));
       if (queryDates.to) params.append('endDate', format(queryDates.to, 'yyyy-MM-dd'));
       params.append('status', 'Returned');
+      if (sourceFilter !== 'all') params.append('source', sourceFilter);
       const response = await fetch(getApiUrl(`/sales/transactions?${params.toString()}`));
       if (!response.ok) throw new Error(`API error ${response.status}`);
       const result = await response.json();
@@ -91,7 +96,7 @@ export function useReturnsData() {
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
       doc.text(
-        `From: ${queryDates.from ? format(queryDates.from, 'yyyy-MM-dd') : 'N/A'} To: ${queryDates.to ? format(queryDates.to, 'yyyy-MM-dd') : 'N/A'}`,
+        `From: ${queryDates.from ? format(queryDates.from, 'yyyy-MM-dd') : 'N/A'} To: ${queryDates.to ? format(queryDates.to, 'yyyy-MM-dd') : 'N/A'}   Source: ${SALES_SOURCE_OPTIONS.find((o) => o.value === sourceFilter)?.label ?? 'All'}`,
         pageWidth / 2, yPos, { align: 'center' }
       );
       yPos += 10;
@@ -183,6 +188,7 @@ export function useReturnsData() {
     fromDate, setFromDate,
     toDate, setToDate,
     queryDates,
+    sourceFilter, setSourceFilter,
     records, isLoading,
     totals,
     handleShowReport,

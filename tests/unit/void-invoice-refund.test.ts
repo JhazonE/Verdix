@@ -7,6 +7,7 @@ import {
   NON_PAYMENT_TYPES,
   type VoidRefundInput,
 } from '../../lib/void-refund';
+import { isRefundableToAccount } from '../../lib/pos/void-customer-refund';
 
 // Voiding an invoice reversed stock and flipped the status, but did nothing
 // about money the customer had already handed over. The SOA fix (28447a2f)
@@ -166,12 +167,23 @@ for (const bad of [null, undefined, NaN, -500]) {
 }
 
 // ─── the void route performs it ──────────────────────────────────────────
-const route = fs
-  .readFileSync(
-    path.join(__dirname, '../..', 'app/api/sales/invoices/[id]/void/route.ts'),
-    'utf-8',
-  )
-  .replace(/\r\n/g, '\n');
+// The refund lives in lib/pos/void-customer-refund.ts, shared by the back-office
+// void and the POS terminal void; both routes must call it inside their own
+// void transaction.
+const readSrc = (rel: string) =>
+  fs.readFileSync(path.join(__dirname, '../..', rel), 'utf-8').replace(/\r\n/g, '\n');
+for (const rel of [
+  'app/api/sales/invoices/[id]/void/route.ts',
+  'app/api/pos/void-transaction/route.ts',
+]) {
+  const src = readSrc(rel);
+  assert.ok(
+    /refundVoidedInvoiceToAccount\(connection/.test(src),
+    `${rel} refunds through lib/pos/void-customer-refund`,
+  );
+  assert.ok(/withTransaction/.test(src), `${rel} refunds inside its void transaction`);
+}
+const route = readSrc('lib/pos/void-customer-refund.ts');
 
 assert.ok(
   /from ['"]@\/lib\/void-refund['"]/.test(route),
@@ -190,9 +202,9 @@ assert.ok(
 // Must be inside the existing transaction, so a failed void cannot leave a
 // credit behind.
 assert.ok(
-  /withTransaction/.test(route),
-  'the refund happens inside the void transaction, so a void that fails ' +
-    'cannot leave the customer credited for a sale still standing',
+  !/withTransaction|getConnection/.test(route),
+  "the refund helper runs on the caller's connection, inside its void " +
+    'transaction, so a void that fails cannot leave the customer credited',
 );
 // The customer row must be locked before its balance is changed.
 assert.ok(
@@ -267,6 +279,43 @@ for (const rel of [
     !/!=\s*'CHARGE'/.test(src),
     `${rel} no longer hand-writes its own CHARGE-only exclusion, which would ` +
       'silently let REFUND rows through',
+  );
+}
+
+// ─── which invoices are refunded to the account ─────────────────────────
+// A POS sale paid at the counter is returned across the counter: the void
+// drops it from the drawer's expected cash. Crediting the account too would
+// refund it twice — calculateVoidRefund would restore ALL of amount_paid,
+// since such a sale has no payment_allocations row.
+{
+  const base = {
+    id: 'INV-1', customer_id: 'C1' as string | null, reference: 'INV-000001',
+    total: 1000, amount_paid: 1000,
+  };
+  assert.equal(
+    isRefundableToAccount({ ...base, payment_method: 'CASH', transaction_source: 'POS' }),
+    false,
+    'a POS cash sale is not refunded to account credit — the cash goes back at the counter',
+  );
+  assert.equal(
+    isRefundableToAccount({ ...base, payment_method: 'charge', transaction_source: 'POS' }),
+    true,
+    'a POS charge (utang) sale is — whatever was settled on it never sat in the drawer',
+  );
+  assert.equal(
+    isRefundableToAccount({ ...base, payment_method: 'CASH', transaction_source: 'Backoffice' }),
+    true,
+    'a back-office invoice keeps the full refund rule',
+  );
+  assert.equal(
+    isRefundableToAccount({ ...base, customer_id: null, payment_method: 'CHARGE', transaction_source: 'POS' }),
+    false,
+    'a walk-in has no account to credit',
+  );
+  assert.equal(
+    isRefundableToAccount({ ...base, customer_id: 'walk-in', payment_method: 'CHARGE', transaction_source: 'Backoffice' }),
+    false,
+    "nor does the 'walk-in' placeholder",
   );
 }
 

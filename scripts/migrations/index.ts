@@ -149,6 +149,8 @@ import './148_add_tax_type_to_pos_transaction_items';
 import './149_null_cost_at_sale_from_uncosted_batches';
 import './150_typed_selling_unit_cost_at_sale';
 import './151_remove_orphan_price_level_rows';
+import './152_add_void_audit_to_sales_invoices';
+import './153_add_void_source_to_sales_transactions';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';

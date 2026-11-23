@@ -47,8 +47,14 @@ export function useInvoicesQuery({ setVoidDialogOpen }: QueryParams) {
     onSuccess: async (result, saleId) => {
       if (result.success) {
         await logActivity({ action: 'VOID', module: 'SALES', description: 'Voided sales invoice', referenceId: saleId });
-        toast({ title: 'Invoice voided successfully' });
+        toast({
+          title: 'Invoice voided',
+          description: result.message
+            ? `${result.message}. It has been moved to Post Void.`
+            : 'Stock restored. It has been moved to Post Void.',
+        });
         queryClient.invalidateQueries({ queryKey: ['salesInvoices'] });
+        queryClient.invalidateQueries({ queryKey: ['voids'] });
       } else {
         toast({ variant: 'destructive', title: 'Failed to void invoice', description: result.error || 'An error occurred' });
       }

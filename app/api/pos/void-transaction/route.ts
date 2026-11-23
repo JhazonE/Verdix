@@ -1,32 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { withTransaction, query } from '@/lib/mysql';
+import { withTransaction } from '@/lib/mysql';
 import { baseQuantity } from '@/lib/selling-units';
 import { updateStockAndRecordMovement } from '@/lib/stock-movements';
 import { saveEJournalFiles } from '@/lib/ejournal/ejournal-writer';
-
-// The void_reason column can't disappear once ensured — only pay the
-// INFORMATION_SCHEMA round trip until the first success this process.
-let voidReasonColumnEnsured = false;
-
-async function ensureVoidReasonColumn() {
-    if (voidReasonColumnEnsured) return;
-    const cols = await query(
-        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'sales_transactions' AND TABLE_SCHEMA = DATABASE()"
-    ) as any[];
-    if (!cols.some((c: any) => c.COLUMN_NAME === 'void_reason')) {
-        await query("ALTER TABLE sales_transactions ADD COLUMN void_reason VARCHAR(255) DEFAULT NULL");
-        console.log('✅ Added void_reason column to sales_transactions');
-    }
-    if (!cols.some((c: any) => c.COLUMN_NAME === 'voided_by_user_id')) {
-        await query("ALTER TABLE sales_transactions ADD COLUMN voided_by_user_id VARCHAR(100) DEFAULT NULL");
-        console.log('✅ Added voided_by_user_id column to sales_transactions');
-    }
-    if (!cols.some((c: any) => c.COLUMN_NAME === 'voided_by_name')) {
-        await query("ALTER TABLE sales_transactions ADD COLUMN voided_by_name VARCHAR(255) DEFAULT NULL");
-        console.log('✅ Added voided_by_name column to sales_transactions');
-    }
-    voidReasonColumnEnsured = true;
-}
+import {
+    isSaleLockedByZReading, ensureSaleVoidColumns, markLinkedInvoiceVoided, VOID_SOURCE_POS,
+} from '@/lib/pos/void-lock';
+import { refundVoidedInvoiceToAccount } from '@/lib/pos/void-customer-refund';
+import { ensureCustomerCreditColumn } from '@/lib/ensure-customer-credit';
 
 export async function POST(request: NextRequest) {
     try {
@@ -40,7 +21,10 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ success: false, error: 'A void reason is required' }, { status: 400 });
         }
 
-        await ensureVoidReasonColumn();
+        await ensureSaleVoidColumns();
+        // A refund lands in customers.credit_balance; the column must exist
+        // before the transaction opens.
+        await ensureCustomerCreditColumn();
 
         let notFound = false;
         let alreadyVoided = false;
@@ -48,7 +32,7 @@ export async function POST(request: NextRequest) {
 
         const result = await withTransaction(async (connection: any) => {
             // 1. Fetch sales transaction to check status
-            const [sale]: any = await connection.query('SELECT id, status, created_at FROM sales_transactions WHERE id = ?', [saleId]);
+            const [sale]: any = await connection.query('SELECT id, status, reference, created_at FROM sales_transactions WHERE id = ?', [saleId]);
             console.log('void-transaction: Found sale:', sale);
 
             if (!sale || sale.length === 0) {
@@ -61,24 +45,25 @@ export async function POST(request: NextRequest) {
                 return null;
             }
 
-            // 1b. BIR immutability: a transaction already swept into a Z-reading for its
-            // terminal can no longer be voided — the Z-reading's totals are a locked
-            // report, so silently voiding after the fact would make it disagree with
-            // what was actually filed.
-            const [termRow]: any = await connection.query(
-                'SELECT terminal_id FROM pos_transactions WHERE sale_id = ? LIMIT 1', [saleId]
-            );
-            const terminalId = termRow?.[0]?.terminal_id;
-            if (terminalId) {
-                const [zRow]: any = await connection.query(
-                    'SELECT report_date FROM z_readings WHERE terminal_id = ? AND report_date >= ? ORDER BY report_date DESC LIMIT 1',
-                    [terminalId, sale[0].created_at]
-                );
-                if (zRow && zRow.length > 0) {
-                    periodLocked = true;
-                    return null;
-                }
+            // 1b. BIR immutability: see lib/pos/void-lock.ts.
+            if (await isSaleLockedByZReading(connection, saleId, sale[0].created_at)) {
+                periodLocked = true;
+                return null;
             }
+
+            // 1c. The sale's twin in sales_invoices (checkout writes both with
+            // the same reference). Before the two voids were linked, the back
+            // office could void that invoice alone — it restored the stock
+            // then, so it must not be restored a second time here.
+            const reference = sale[0].reference;
+            const [invRow]: any = reference
+                ? await connection.query(
+                    "SELECT id, status, customer_id, reference, total, amount_paid, payment_method, transaction_source FROM sales_invoices WHERE reference = ? AND transaction_source = 'POS' LIMIT 1",
+                    [reference]
+                )
+                : [[]];
+            const linkedInvoice = invRow?.[0] || null;
+            const stockAlreadyRestored = linkedInvoice?.status === 'Voided';
 
             // 2. Fetch items to reverse stock
             const [items]: any = await connection.query(
@@ -87,7 +72,7 @@ export async function POST(request: NextRequest) {
             );
             console.log('void-transaction: Found items:', items?.length || 0);
 
-            if (items && items.length > 0) {
+            if (!stockAlreadyRestored && items && items.length > 0) {
                 for (const item of items) {
                     // Restore exactly what the sale took: one product, one stock
                     // figure, in base units — nothing cascades to a family any more.
@@ -118,9 +103,22 @@ export async function POST(request: NextRequest) {
 
             // 3. Update sales_transactions status to 'voided'
             await connection.query(
-                'UPDATE sales_transactions SET status = "Voided", void_reason = ?, voided_by_user_id = ?, voided_by_name = ?, updated_at = NOW() WHERE id = ?',
-                [voidReason.trim(), voidedByUserId || null, voidedByName || null, saleId]
+                'UPDATE sales_transactions SET status = "Voided", void_reason = ?, voided_by_user_id = ?, voided_by_name = ?, void_source = ?, updated_at = NOW() WHERE id = ?',
+                [voidReason.trim(), voidedByUserId || null, voidedByName || null, VOID_SOURCE_POS, saleId]
             );
+
+            // Void the twin invoice too, or Sales → Invoices keeps showing the
+            // sale as Paid and counting it in Amount Paid.
+            //
+            // A charge sale also gets back, as account credit, whatever had been
+            // settled on it; a sale paid at the counter is returned there. See
+            // lib/pos/void-customer-refund.ts. An invoice already voided from
+            // the back office was refunded then, so it is skipped.
+            let refund = { totalCreditRestored: 0, shouldRefund: false };
+            if (linkedInvoice && linkedInvoice.status !== 'Voided') {
+                await markLinkedInvoiceVoided(connection, linkedInvoice.id, voidedByUserId || null, voidedByName || null);
+                refund = await refundVoidedInvoiceToAccount(connection, linkedInvoice);
+            }
             console.log('void-transaction: Transaction marked as voided');
 
             // Mirror the reason onto the POS transaction row. pos_transactions
@@ -140,7 +138,7 @@ export async function POST(request: NextRequest) {
             const d = meta?.[0]?.d ? String(meta[0].d) : null;
             const t = meta?.[0]?.t ?? 'all';
 
-            return { d, t };
+            return { d, t, refund };
         });
 
         if (notFound) {
@@ -159,7 +157,10 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            message: 'POS sale voided and stock restored successfully'
+            message: result?.refund?.shouldRefund
+                ? `POS sale voided, stock restored, and ${result.refund.totalCreditRestored.toFixed(2)} returned to the customer's account credit`
+                : 'POS sale voided and stock restored successfully',
+            refund: { totalCreditRestored: result?.refund?.totalCreditRestored ?? 0 },
         });
     } catch (error: any) {
         console.error('Error voiding POS sale:', error);
