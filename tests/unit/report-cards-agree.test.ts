@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { expandBatchLine } from '../../lib/batch-analysis-rows';
+import { expandBatchLine, batchLabel } from '../../lib/batch-analysis-rows';
 import { readingTotals } from '../../lib/reading-totals';
 
 // The summary cards on the sales reports (Revenue, Cost, Profit, Qty) showed
@@ -32,6 +32,12 @@ assert.equal(ret[0].qtySold, -1);
 assert.equal(ret[0].lineRevenue, -165, 'a return reduces revenue');
 assert.equal(ret[0].lineCost, -115, 'a return reduces cost');
 assert.equal(ret[0].batchType, 'return');
+// ...and is labelled as a return, not left blank: the page only recognised
+// the old 'fallback' id, so a null batchId rendered an empty Source Batch.
+assert.equal(batchLabel(ret[0]), 'Return');
+assert.equal(batchLabel({ batchId: null, batchType: 'unbatched' }), 'Untracked');
+assert.equal(batchLabel({ batchId: 'fallback', batchType: 'batch' }), 'Untracked');
+assert.equal(batchLabel({ batchId: '426069', batchType: 'batch' }), '426069');
 
 // A case of 12 (factor 12) sold at 1200 with no batch record: base-unit qty
 // and a per-base-unit price/cost, so revenue is still 1200, not 14,400.

@@ -37,6 +37,7 @@ import { SalesSourceFilter as SalesSourceToggle } from '@/components/sales-sourc
 import type { SalesSourceFilter } from '@/lib/sales-source';
 import { REPORT_FETCH_TIMEOUT_MS } from '@/lib/fetch-report';
 import { exportReportPdf, exportReportExcel } from '@/lib/report-print';
+import { batchLabel } from '@/lib/batch-analysis-rows';
 
 // Type definitions matching the API response
 interface BatchAnalysisRecord {
@@ -48,7 +49,7 @@ interface BatchAnalysisRecord {
   barcode: string;
   category: string;
   warehouseName: string | null;
-  batchId: string;
+  batchId: string | null;
   batchReceivedDate: string | null;
   poReference: string | null;
   batchType: string;
@@ -164,7 +165,7 @@ export default function BatchProfitPage() {
         { header: 'Ref', width: 24, cell: (r) => r.saleReference },
         { header: 'Product', width: 36, cell: (r) => r.productName },
         { header: 'Warehouse', width: 20, cell: (r) => r.warehouseName || '-' },
-        { header: 'Batch ID', width: 26, cell: (r) => (r.batchId === 'fallback' ? 'Untracked' : r.batchId) },
+        { header: 'Batch ID', width: 26, cell: (r) => batchLabel(r) },
         { header: 'Qty', width: 16, align: 'right', cell: (r) => String(r.qtySold) },
         { header: 'U.Cost', width: 20, align: 'right', cell: (r) => r.unitCost.toFixed(2) },
         { header: 'U.Sell', width: 20, align: 'right', cell: (r) => r.unitSellingPrice.toFixed(2) },
@@ -199,7 +200,7 @@ export default function BatchProfitPage() {
         { header: 'Ref', cell: (r) => r.saleReference },
         { header: 'Product', cell: (r) => r.productName },
         { header: 'Warehouse', cell: (r) => r.warehouseName || '-' },
-        { header: 'Batch ID', cell: (r) => (r.batchId === 'fallback' ? 'Untracked' : r.batchId) },
+        { header: 'Batch ID', cell: (r) => batchLabel(r) },
         { header: 'Qty', align: 'right', cell: (r) => r.qtySold },
         { header: 'U.Cost', align: 'right', cell: (r) => r.unitCost },
         { header: 'U.Sell', align: 'right', cell: (r) => r.unitSellingPrice },
@@ -415,7 +416,11 @@ export default function BatchProfitPage() {
                       </TableCell>
                       <TableCell className="py-2 text-muted-foreground">{r.warehouseName || '-'}</TableCell>
                       <TableCell className="py-2">
-                        {r.batchId === 'fallback' ? (
+                        {r.batchType === 'return' ? (
+                          <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-[10px] font-normal">
+                            Return
+                          </Badge>
+                        ) : batchLabel(r) === 'Untracked' ? (
                           <Badge variant="outline" className="bg-gray-50 text-gray-400 border-gray-200 text-[10px] font-normal italic">
                             Untracked
                           </Badge>

@@ -76,3 +76,15 @@ export function expandBatchLine(line: BatchLineInput): BatchRow[] {
 
   return [row(null, lineQty < 0 ? 'return' : 'unbatched', lineQty * factor, num(line.fallbackUnitCost) / factor)];
 }
+
+/**
+ * What the Source Batch column shows for a row. A return or a line that
+ * predates batch costing has no batch (batchId null, see expandBatchLine), and
+ * older batch_source JSON used the id 'fallback' for the same thing. The page
+ * only recognised 'fallback', so return rows showed a blank Source Batch.
+ */
+export function batchLabel(row: { batchId: string | null; batchType: string }): string {
+  if (row.batchType === 'return') return 'Return';
+  if (!row.batchId || row.batchId === 'fallback') return 'Untracked';
+  return row.batchId;
+}
