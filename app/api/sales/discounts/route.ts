@@ -48,6 +48,8 @@ export async function GET(request: NextRequest) {
         pt.sale_id            AS sale_id,
         st.reference          AS reference,
         st.receipt_number     AS receipt_number,
+        st.si_number          AS si_number,
+        st.bir_or_number      AS bir_or_number,
         pti.product_name,
         pti.discount_type,
         pti.discount_id_number,
@@ -71,6 +73,14 @@ export async function GET(request: NextRequest) {
       saleId: r.sale_id,
       reference: r.reference,
       receiptNumber: r.receipt_number,
+      // The BIR number the "OR/SI No." column should carry: SI for goods, OR
+      // for services. order_number (shown before) is an internal counter.
+      siOrNumber:
+        r.si_number != null
+          ? String(r.si_number).padStart(6, '0')
+          : r.bir_or_number != null
+            ? String(r.bir_or_number)
+            : null,
       productName: r.product_name,
       discountType: r.discount_type,
       idNumber: r.discount_id_number,

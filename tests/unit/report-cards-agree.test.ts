@@ -211,4 +211,21 @@ for (const rel of ['app/api/sales/z-reading/route.ts', 'app/api/sales/overall-re
     'Fiscal Year PDF must export the searched months with their own totals');
 }
 
+// --- 10. BIR Sales Summary reconciles with the Z-reading ---------------------
+{
+  const bir = stripComments(read('app/api/sales/bir-summary/route.ts'));
+  // Returns were looked up by a status nothing sets, so the column read 0.
+  assert.ok(!/st\.status = 'Returned'/.test(bir), "BIR summary must not find returns by status = 'Returned'");
+  assert.ok(/pt\.transaction_type = 'return'/.test(bir), 'BIR summary must take returns from the return rows');
+  // Sales columns read sale lines only; the return is a deduction, not a negative sale.
+  assert.ok(/\$\{validSale\} AND pt\.transaction_type = 'sale'/.test(bir), 'BIR daily sales columns must read sale lines only');
+  assert.ok(/grossSales: num\(r\.gross_sales\) \+ voids/.test(bir), 'BIR gross must include voids (gross = sales + discounts + voids)');
+  assert.ok(/netSales = num\(r\.net_sales\) - returns/.test(bir), 'BIR net must be sales less returns');
+  // Statutory books carry the BIR SI/OR number, not the receipt counter.
+  assert.ok(!/receipt_number/.test(bir.slice(bir.indexOf('buildBook'))), 'BIR sales books must not use receipt_number as the SI/OR number');
+  assert.ok(/MAX\(st\.si_number\)/.test(bir), 'BIR sales books must use si_number');
+  const disc = stripComments(read('app/api/sales/discounts/route.ts'));
+  assert.ok(/si_number/.test(disc), 'statutory discount report must carry the SI number');
+}
+
 console.log('✓ report-cards-agree');

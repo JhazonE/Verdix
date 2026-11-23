@@ -41,6 +41,21 @@ export async function GET(request: NextRequest) {
     const validSale = `st.status NOT IN ('Void', 'Voided', 'Cancelled', 'Returned') AND pt.is_training = 0`;
 
     // ---- Daily summary: aggregate line items per business day --------------
+    //
+    // Same arithmetic as the Z-reading (lib/reading-totals.ts), so the two
+    // reconcile:
+    //     gross = sales + discounts + voids      (everything rung up)
+    //     net   = gross − discounts − returns − voids = sales − returns
+    //
+    // The sales columns (gross, vatable, VAT, exempt, zero-rated) therefore
+    // read SALE lines only. A return is a separate pos_transactions row
+    // (transaction_type = 'return') under the original sale, and it used to be
+    // summed in here as negative lines: it shrank gross and VAT instead of
+    // appearing as a deduction, while the Returns column (looked up by
+    // st.status = 'Returned', which nothing sets) always read 0. Gross minus
+    // Total Deductions then did not equal Net. Returns are now the deduction
+    // and the VAT on them a VAT adjustment, so Net and VAT Payable are what
+    // they were; only where the return is shown has changed.
     const dailySql = `
       SELECT
         DATE(pt.transaction_time)                                          AS report_date,
@@ -73,23 +88,34 @@ export async function GET(request: NextRequest) {
       FROM pos_transaction_items pti
       JOIN pos_transactions pt ON pti.pos_transaction_id = pt.id
       JOIN sales_transactions st ON pt.sale_id = st.id
-      WHERE ${validSale} ${dateWhere}
+      WHERE ${validSale} AND pt.transaction_type = 'sale' ${dateWhere}
       GROUP BY DATE(pt.transaction_time)
       ORDER BY DATE(pt.transaction_time) ASC
     `;
     const dailyRows = (await query(dailySql, dateParams)) as any[];
 
-    // Returns per day (status = 'Returned')
+    // Returns per day: the money refunded, from the return rows themselves and
+    // dated by when the return happened, as the Z-reading takes them. The VAT
+    // on them comes from their lines, by tax type, so a returned VAT-exempt
+    // item carries no VAT adjustment.
     const returnsSql = `
-      SELECT DATE(pt.transaction_time) AS report_date, SUM(st.total) AS amount
-      FROM sales_transactions st
-      JOIN pos_transactions pt ON st.id = pt.sale_id
-      WHERE st.status = 'Returned' AND pt.is_training = 0 ${dateWhere}
+      SELECT DATE(pt.transaction_time) AS report_date,
+             ABS(SUM(pti.line_total)) AS amount,
+             ABS(SUM(CASE WHEN COALESCE(pti.tax_type,'VAT') = 'VAT'
+                          THEN pti.line_total - (pti.line_total / ${VAT_RATE}) ELSE 0 END)) AS vat
+      FROM pos_transaction_items pti
+      JOIN pos_transactions pt ON pti.pos_transaction_id = pt.id
+      JOIN sales_transactions st ON pt.sale_id = st.id
+      WHERE pt.transaction_type = 'return' AND pt.is_training = 0
+        AND st.status NOT IN ('Void', 'Voided', 'Cancelled') ${dateWhere}
       GROUP BY DATE(pt.transaction_time)
     `;
     const returnRows = (await query(returnsSql, dateParams)) as any[];
     const returnsByDate = new Map<string, number>(
       returnRows.map((r) => [String(r.report_date), num(r.amount)])
+    );
+    const returnVatByDate = new Map<string, number>(
+      returnRows.map((r) => [String(r.report_date), num(r.vat)])
     );
 
     // Voids per day (status void/cancelled)
@@ -97,7 +123,10 @@ export async function GET(request: NextRequest) {
       SELECT DATE(pt.transaction_time) AS report_date, SUM(st.total) AS amount
       FROM sales_transactions st
       JOIN pos_transactions pt ON st.id = pt.sale_id
-      WHERE st.status IN ('Void', 'Voided', 'Cancelled') AND pt.is_training = 0 ${dateWhere}
+      -- Only the sale's own row: a sale that also had a return has a second
+      -- pos_transactions row, and joining both counted its total twice.
+      WHERE st.status IN ('Void', 'Voided', 'Cancelled') AND pt.is_training = 0
+        AND pt.transaction_type = 'sale' ${dateWhere}
       GROUP BY DATE(pt.transaction_time)
     `;
     const voidRows = (await query(voidsSql, dateParams)) as any[];
@@ -121,6 +150,18 @@ export async function GET(request: NextRequest) {
 
     const pct = (numerator: number) => numerator - numerator / VAT_RATE; // VAT portion of a VAT-inclusive amount
 
+    // A day with only a return or only a void has no sale lines, but its
+    // deduction still has to be reported, so it gets a row of its own.
+    const salesDays = new Set(dailyRows.map((r) => String(r.report_date)));
+    for (const r of [...returnRows, ...voidRows]) {
+      const key = String(r.report_date);
+      if (!salesDays.has(key)) {
+        salesDays.add(key);
+        dailyRows.push({ report_date: r.report_date });
+      }
+    }
+    dailyRows.sort((a, b) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime());
+
     const dailySummary = dailyRows.map((r) => {
       const date = String(r.report_date);
       const discSenior = num(r.disc_senior);
@@ -136,12 +177,14 @@ export async function GET(request: NextRequest) {
       const vatAdjSenior = pct(discSenior);
       const vatAdjPwd = pct(discPwd);
       const vatAdjOther = pct(discNaac + discSolo + discOther);
-      const vatOnReturns = pct(returns);
+      const vatOnReturns = returnVatByDate.get(date) || 0;
       const totalVatAdjustment = vatAdjSenior + vatAdjPwd + vatAdjOther + vatOnReturns;
 
       const vatAmount = num(r.vat_amount);
       const vatPayable = vatAmount - totalVatAdjustment;
-      const netSales = num(r.net_sales);
+      // Sale lines after discounts, less the day's refunds (= gross − total
+      // deductions). Unchanged from when returns were summed in as lines.
+      const netSales = num(r.net_sales) - returns;
       const grandBeginning = runningBalance;
       runningBalance += netSales;
 
@@ -158,7 +201,8 @@ export async function GET(request: NextRequest) {
         endingOR: r.ending_or != null ? String(r.ending_or) : '—',
         grandAccumulatedBeginning: grandBeginning,
         manualSiOr: 0, // sales issued with manual SI/OR (per RR 16-2018) — not captured by the POS
-        grossSales: num(r.gross_sales),
+        // Everything rung up: sale lines before discount, plus voided sales.
+        grossSales: num(r.gross_sales) + voids,
         vatableSales: num(r.vatable_sales),
         vatAmount,
         vatExempt: num(r.vat_exempt),
@@ -195,7 +239,11 @@ export async function GET(request: NextRequest) {
       const sql = `
         SELECT
           MIN(pt.transaction_time)                                                 AS transaction_date,
-          MAX(st.receipt_number)                                                   AS receipt_number,
+          -- The BIR number of the sale: si_number for goods, bir_or_number
+          -- for services. receipt_number is a per-terminal receipt counter
+          -- unrelated to the SI series (see the daily summary above).
+          MAX(st.si_number)                                                        AS si_number,
+          MAX(st.bir_or_number)                                                    AS bir_or_number,
           pt.order_number                                                          AS order_number,
           pti.discount_holder_name                                                 AS holder_name,
           pti.discount_id_number                                                   AS id_number,
@@ -211,6 +259,7 @@ export async function GET(request: NextRequest) {
         WHERE pti.discount_type = ?
           AND st.status NOT IN ('Void', 'Voided', 'Cancelled')
           AND pt.is_training = 0
+          AND pt.transaction_type = 'sale'
           ${dateWhere}
         GROUP BY pt.id, pti.discount_id_number, pti.discount_holder_name, pt.order_number
         ORDER BY MIN(pt.transaction_time) ASC
@@ -222,9 +271,11 @@ export async function GET(request: NextRequest) {
         idNumber: r.id_number || '—',
         tin: null, // not captured at checkout
         siOrNumber:
-          r.receipt_number != null
-            ? String(r.receipt_number).padStart(6, '0')
-            : String(r.order_number || '').padStart(6, '0'),
+          r.si_number != null
+            ? String(r.si_number).padStart(6, '0')
+            : r.bir_or_number != null
+              ? String(r.bir_or_number)
+              : String(r.order_number || '').padStart(6, '0'),
         salesInclusiveVat: num(r.sales_inclusive_vat),
         vatAmount: num(r.vat_amount),
         vatExemptSales: num(r.vat_exempt_sales),

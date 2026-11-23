@@ -43,6 +43,7 @@ interface DiscountRecord {
   saleId: string;
   reference: string | null;
   receiptNumber: string | null;
+  siOrNumber: string | null;
   productName: string;
   discountType: string;
   idNumber: string | null;
@@ -127,7 +128,8 @@ export default function DiscountReportPage() {
       record.holderName?.toLowerCase().includes(s) ||
       record.idNumber?.toLowerCase().includes(s) ||
       record.productName?.toLowerCase().includes(s) ||
-      String(record.orderNumber).includes(s)
+      String(record.orderNumber).includes(s) ||
+      String(record.siOrNumber || '').toLowerCase().includes(s)
     );
   });
 
@@ -146,7 +148,7 @@ export default function DiscountReportPage() {
       ],
       columns: [
         { header: 'Date', width: 30, cell: (r) => r.transactionDate ? format(new Date(r.transactionDate), 'yyyy-MM-dd HH:mm') : '-' },
-        { header: 'OR/SI No.', width: 24, cell: (r) => String(r.orderNumber || '-').padStart(6, '0') },
+        { header: 'OR/SI No.', width: 24, cell: (r) => r.siOrNumber || String(r.orderNumber || '-').padStart(6, '0') },
         { header: 'Type', width: 26, cell: (r) => TYPE_LABELS[r.discountType] || r.discountType },
         { header: 'Cardholder Name', width: 45, cell: (r) => r.holderName || '-' },
         { header: 'ID Number', width: 35, cell: (r) => r.idNumber || '-' },
@@ -174,7 +176,7 @@ export default function DiscountReportPage() {
       subtitle: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'}  To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
       columns: [
         { header: 'Date', cell: (r) => r.transactionDate ? format(new Date(r.transactionDate), 'yyyy-MM-dd HH:mm') : '-' },
-        { header: 'OR/SI No.', cell: (r) => String(r.orderNumber || '-').padStart(6, '0') },
+        { header: 'OR/SI No.', cell: (r) => r.siOrNumber || String(r.orderNumber || '-').padStart(6, '0') },
         { header: 'Type', cell: (r) => TYPE_LABELS[r.discountType] || r.discountType },
         { header: 'Cardholder Name', cell: (r) => r.holderName || '-' },
         { header: 'ID Number', cell: (r) => r.idNumber || '-' },
@@ -376,7 +378,7 @@ export default function DiscountReportPage() {
                     <TableCell className="py-2 px-3 whitespace-nowrap">
                       {record.transactionDate ? format(new Date(record.transactionDate), 'MMM d, yyyy h:mm a') : '-'}
                     </TableCell>
-                    <TableCell className="py-2 px-2 font-mono">{String(record.orderNumber || '-').padStart(6, '0')}</TableCell>
+                    <TableCell className="py-2 px-2 font-mono">{record.siOrNumber || String(record.orderNumber || '-').padStart(6, '0')}</TableCell>
                     <TableCell className="py-2 px-2">
                       <Badge variant="outline" className={cn('font-medium', TYPE_BADGE[record.discountType] || '')}>
                         {TYPE_LABELS[record.discountType] || record.discountType}
