@@ -35,6 +35,7 @@ interface Row {
   barcode: string;
   category: string;
   brand: string;
+  warehouse_name: string | null;
   stock: number;
   unit_of_measure: string;
   cost: number;
@@ -161,6 +162,7 @@ export default function InventoryReportPage() {
     { header: 'Product Name', cell: (r: Row) => r.name },
     { header: 'Barcode', cell: (r: Row) => r.barcode || '-' },
     { header: 'Category', cell: (r: Row) => r.category },
+    { header: 'Warehouse', cell: (r: Row) => r.warehouse_name || '-' },
     { header: 'Stock', align: 'right' as const, cell: (r: Row) => `${formatStockQuantity(r.stock)} ${r.unit_of_measure || ''}`.trim() },
     { header: 'Cost', align: 'right' as const, cell: (r: Row) => money(r.cost) },
     { header: 'Price', align: 'right' as const, cell: (r: Row) => money(r.price) },
@@ -216,7 +218,7 @@ export default function InventoryReportPage() {
         subtitle: `Generated ${format(new Date(), 'yyyy-MM-dd')}`,
         columns: columnsFor((n) => n),
         rows: all.rows,
-        totals: ['TOTALS', null, null, formatStockQuantity(s.totalStock), null, null, s.totalCostValue.toFixed(2), s.totalRetailValue.toFixed(2), s.totalProfit.toFixed(2), `${s.marginPct.toFixed(1)}%`],
+        totals: ['TOTALS', null, null, null, formatStockQuantity(s.totalStock), null, null, s.totalCostValue.toFixed(2), s.totalRetailValue.toFixed(2), s.totalProfit.toFixed(2), `${s.marginPct.toFixed(1)}%`],
         fileName,
       });
       if (!ok) {
@@ -256,7 +258,7 @@ export default function InventoryReportPage() {
           <ReportSearchInput
             value={searchTerm}
             onChange={setSearchTerm}
-            placeholder="Search product, barcode, category..."
+            placeholder="Search product, barcode, category, warehouse..."
           />
           <Button onClick={handlePrint} variant="outline" className="gap-2" disabled={isPrinting}>
             {isPrinting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
@@ -316,6 +318,7 @@ export default function InventoryReportPage() {
                 <TableHead className="w-[260px]">Product Name</TableHead>
                 <TableHead>Barcode</TableHead>
                 <TableHead>Category</TableHead>
+                <TableHead>Warehouse</TableHead>
                 <TableHead className="text-right">Stock</TableHead>
                 <TableHead className="text-right">Cost</TableHead>
                 <TableHead className="text-right">Price</TableHead>
@@ -327,9 +330,9 @@ export default function InventoryReportPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={10} className="h-24 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} className="h-24 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></TableCell></TableRow>
               ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={10} className="h-24 text-center">No products found.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={11} className="h-24 text-center">No products found.</TableCell></TableRow>
               ) : (
                 rows.map((r) => {
                   const margin = marginOf(r.retail_value, r.profit);
@@ -338,6 +341,7 @@ export default function InventoryReportPage() {
                       <TableCell className="font-medium">{r.name}</TableCell>
                       <TableCell className="text-muted-foreground">{r.barcode || '-'}</TableCell>
                       <TableCell>{r.category}</TableCell>
+                      <TableCell className="text-muted-foreground">{r.warehouse_name || '-'}</TableCell>
                       <TableCell className="text-right whitespace-nowrap">{formatStockQuantity(r.stock)} {r.unit_of_measure}</TableCell>
                       <TableCell className="text-right">{formatCurrency(r.cost)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(r.price)}</TableCell>

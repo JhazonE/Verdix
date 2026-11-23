@@ -23,8 +23,12 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10');
     const offset = (page - 1) * limit;
 
+    // Each warehouse holds its own products row for the same item (same name and
+    // barcode, see TransferStockService.ts), so without the warehouse the
+    // STORE and BODEGA rows read as duplicate products.
     let baseSql = `
       FROM products p
+      LEFT JOIN warehouses w ON w.id = p.warehouse_id
     `;
 
     const conditions: string[] = [];
@@ -40,9 +44,9 @@ export async function GET(request: NextRequest) {
     }
 
     if (search) {
-      conditions.push('(p.name LIKE ? OR p.barcode LIKE ? OR p.category LIKE ?)');
+      conditions.push('(p.name LIKE ? OR p.barcode LIKE ? OR p.category LIKE ? OR w.name LIKE ?)');
       const like = `%${search}%`;
-      params.push(like, like, like);
+      params.push(like, like, like, like);
     }
 
     if (conditions.length > 0) {
@@ -58,13 +62,13 @@ export async function GET(request: NextRequest) {
     // Paginated rows
     const sql = `
       SELECT
-        p.id, p.name, p.barcode, p.category, p.brand,
+        p.id, p.name, p.barcode, p.category, p.brand, w.name as warehouse_name,
         p.stock, p.unit_of_measure, p.cost, p.price,
         ${COST_VALUE_EXPR} as cost_value,
         (p.stock * COALESCE(p.price, 0)) as retail_value,
         (p.stock * COALESCE(p.price, 0)) - ${COST_VALUE_EXPR} as profit
       ${baseSql}
-      ORDER BY p.name ASC
+      ORDER BY p.name ASC, w.name ASC
       LIMIT ? OFFSET ?
     `;
     const products = await query(sql, [...params, limit, offset]);
