@@ -123,25 +123,31 @@ export default function PurchasesSummaryPage() {
     setCurrentPage(1);
   }, [searchTerm]);
 
-  const totals = {
-    totalSpent: records.reduce((sum, r) => sum + r.total, 0),
-    totalOrders: records.length,
-    avgOrderValue: records.length > 0 ? records.reduce((sum, r) => sum + r.total, 0) / records.length : 0,
-    pendingOrders: records.filter(r => r.status === 'Pending').length,
-    receivedOrders: records.filter(r => r.status === 'Received').length,
+  const summarize = (rows: PurchaseOrder[]) => {
+    return {
+      totalSpent: rows.reduce((sum, r) => sum + r.total, 0),
+      totalOrders: rows.length,
+      avgOrderValue: rows.length > 0 ? rows.reduce((sum, r) => sum + r.total, 0) / rows.length : 0,
+      pendingOrders: rows.filter(r => r.status === 'Pending').length,
+      receivedOrders: rows.filter(r => r.status === 'Received').length,
+    };
   };
+  const totals = summarize(records);
 
   const exportToPDF = () => {
+    // The PDF covers the rows the search box leaves, like the Excel export.
+    // It used every fetched row, so the two exports disagreed while searching.
+    const pdfTotals = summarize(filteredRecords);
     const fileName = `Purchases_Summary_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
     const ok = exportReportPdf<PurchaseOrder>({
       title: 'Purchases Summary Report',
       dateRange: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
       summary: [
-        { label: 'Total Orders', value: String(totals.totalOrders) },
-        { label: 'Total Spent', value: formatCurrency(totals.totalSpent) },
-        { label: 'Avg Order Value', value: formatCurrency(totals.avgOrderValue) },
-        { label: 'Pending', value: String(totals.pendingOrders) },
-        { label: 'Received', value: String(totals.receivedOrders) },
+        { label: 'Total Orders', value: String(pdfTotals.totalOrders) },
+        { label: 'Total Spent', value: formatCurrency(pdfTotals.totalSpent) },
+        { label: 'Avg Order Value', value: formatCurrency(pdfTotals.avgOrderValue) },
+        { label: 'Pending', value: String(pdfTotals.pendingOrders) },
+        { label: 'Received', value: String(pdfTotals.receivedOrders) },
       ],
       columns: [
         { header: 'PO ID', width: 40, cell: (r) => r.id || 'N/A' },
@@ -152,8 +158,8 @@ export default function PurchasesSummaryPage() {
         { header: 'Status', width: 30, cell: (r) => r.status || '-' },
         { header: 'Total Amount', width: 40, align: 'right', cell: (r) => formatCurrency(r.total) },
       ],
-      rows: records,
-      totals: [null, null, null, null, null, 'TOTAL', formatCurrency(totals.totalSpent)],
+      rows: filteredRecords,
+      totals: [null, null, null, null, null, 'TOTAL', formatCurrency(pdfTotals.totalSpent)],
       fileName,
     });
     if (!ok) {

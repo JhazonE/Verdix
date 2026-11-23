@@ -83,15 +83,21 @@ export default function FiscalYearReportPage() {
 
   const exportToPDF = () => {
     if (!report) return;
+    // The PDF covers the months the search box leaves, like the Excel export.
+    // It printed every month (with the full-year totals) while Excel printed
+    // the filtered ones, so the two exports disagreed while searching.
+    const transactionsSum = filteredMonths.reduce((s, m) => s + Number(m.transactions), 0);
+    const revenueSum = filteredMonths.reduce((s, m) => s + Number(m.revenue), 0);
+    const profitSum = filteredMonths.reduce((s, m) => s + Number(m.profit), 0);
     const fileName = `Fiscal_Year_${report.label.replace(/\s+/g, '_')}.pdf`;
     const ok = exportReportPdf<MonthRow>({
       title: 'Fiscal Year Report',
       dateRange: report.label,
       summary: [
-        { label: 'Total Revenue', value: formatCurrency(report.summary.revenue) },
-        { label: 'Total Transactions', value: String(report.summary.transactions) },
-        { label: 'Total Profit', value: formatCurrency(report.summary.profit) },
-        { label: 'Avg Transaction', value: formatCurrency(report.summary.avgTransaction) },
+        { label: 'Total Revenue', value: formatCurrency(revenueSum) },
+        { label: 'Total Transactions', value: String(transactionsSum) },
+        { label: 'Total Profit', value: formatCurrency(profitSum) },
+        { label: 'Avg Transaction', value: formatCurrency(transactionsSum > 0 ? revenueSum / transactionsSum : 0) },
       ],
       columns: [
         { header: 'Month', width: 40, cell: (r) => r.monthLabel },
@@ -99,12 +105,12 @@ export default function FiscalYearReportPage() {
         { header: 'Revenue', width: 35, align: 'right', cell: (r) => r.revenue.toFixed(2) },
         { header: 'Profit', width: 35, align: 'right', cell: (r) => r.profit.toFixed(2) },
       ],
-      rows: report.months,
+      rows: filteredMonths,
       totals: [
         'TOTALS',
-        String(report.summary.transactions),
-        report.summary.revenue.toFixed(2),
-        report.summary.profit.toFixed(2),
+        String(transactionsSum),
+        revenueSum.toFixed(2),
+        profitSum.toFixed(2),
       ],
       fileName,
     });

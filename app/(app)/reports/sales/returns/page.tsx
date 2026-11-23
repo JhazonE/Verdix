@@ -97,13 +97,16 @@ export default function ReturnedSalesPage() {
   }, [searchTerm]);
 
   // Calculate totals
-  const totals = {
-    revenue: records.reduce((sum, r) => sum + r.salesAmount, 0),
-    cost: records.reduce((sum, r) => sum + r.cost, 0),
-    profit: records.reduce((sum, r) => sum + r.profit, 0),
-    vatableSales: records.reduce((sum, r) => sum + r.vatableSales, 0),
-    vatAmount: records.reduce((sum, r) => sum + r.vatAmount, 0),
+  const summarize = (rows: ReturnRecord[]) => {
+    return {
+      revenue: rows.reduce((sum, r) => sum + r.salesAmount, 0),
+      cost: rows.reduce((sum, r) => sum + r.cost, 0),
+      profit: rows.reduce((sum, r) => sum + r.profit, 0),
+      vatableSales: rows.reduce((sum, r) => sum + r.vatableSales, 0),
+      vatAmount: rows.reduce((sum, r) => sum + r.vatAmount, 0),
+    };
   };
+  const totals = summarize(records);
 
   const fetchReport = async () => {
     setIsLoading(true);
@@ -170,16 +173,19 @@ export default function ReturnedSalesPage() {
   }, [sourceFilter]);
 
   const exportToPDF = () => {
+    // The PDF covers the rows the search box leaves, like the Excel export.
+    // It used every fetched row, so the two exports disagreed while searching.
+    const pdfTotals = summarize(filteredRecords);
     const fileName = `Merchandise_Credit_Report_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.pdf`;
     const ok = exportReportPdf<ReturnRecord>({
       title: 'Merchandise Credit Report',
       dateRange: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
       summary: [
-        { label: 'Revenue', value: formatCurrency(totals.revenue) },
-        { label: 'Cost', value: formatCurrency(totals.cost) },
-        { label: 'Profit', value: formatCurrency(totals.profit) },
-        { label: 'Vatable Sales', value: formatCurrency(totals.vatableSales) },
-        { label: 'VAT Amount', value: formatCurrency(totals.vatAmount) },
+        { label: 'Revenue', value: formatCurrency(pdfTotals.revenue) },
+        { label: 'Cost', value: formatCurrency(pdfTotals.cost) },
+        { label: 'Profit', value: formatCurrency(pdfTotals.profit) },
+        { label: 'Vatable Sales', value: formatCurrency(pdfTotals.vatableSales) },
+        { label: 'VAT Amount', value: formatCurrency(pdfTotals.vatAmount) },
       ],
       columns: [
         { header: 'MC No.', width: 24, cell: (r) => r.mcNo || '—' },
@@ -196,8 +202,8 @@ export default function ReturnedSalesPage() {
         { header: 'VAT', width: 14, align: 'right', cell: (r) => r.vatAmount.toFixed(2) },
         { header: 'Note', width: 30, cell: (r) => r.note || '-' },
       ],
-      rows: records,
-      totals: ['TOTALS', null, null, null, null, null, null, totals.revenue.toFixed(2), totals.cost.toFixed(2), totals.profit.toFixed(2), totals.vatableSales.toFixed(2), totals.vatAmount.toFixed(2), null],
+      rows: filteredRecords,
+      totals: ['TOTALS', null, null, null, null, null, null, pdfTotals.revenue.toFixed(2), pdfTotals.cost.toFixed(2), pdfTotals.profit.toFixed(2), pdfTotals.vatableSales.toFixed(2), pdfTotals.vatAmount.toFixed(2), null],
       fileName,
     });
     if (!ok) {

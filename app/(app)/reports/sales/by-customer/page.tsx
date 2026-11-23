@@ -62,14 +62,17 @@ export default function SalesByCustomerPage() {
   const [pageSize, setPageSize] = useState(10);
   const { toast } = useToast();
 
-  const totals = {
-    customers: records.length,
-    totalSales: records.reduce((sum, r) => sum + r.totalSales, 0),
-    creditSales: records.filter(r => r.paymentTerms !== 'Cash').reduce((sum, r) => sum + r.totalSales, 0),
-    cashSales: records.filter(r => r.paymentTerms === 'Cash').reduce((sum, r) => sum + r.totalSales, 0),
-    outstanding: records.reduce((sum, r) => sum + r.outstandingBalance, 0),
-    avgSale: records.length > 0 ? records.reduce((sum, r) => sum + r.totalSales, 0) / records.length : 0,
+  const summarize = (rows: CustomerSale[]) => {
+    return {
+      customers: rows.length,
+      totalSales: rows.reduce((sum, r) => sum + r.totalSales, 0),
+      creditSales: rows.filter(r => r.paymentTerms !== 'Cash').reduce((sum, r) => sum + r.totalSales, 0),
+      cashSales: rows.filter(r => r.paymentTerms === 'Cash').reduce((sum, r) => sum + r.totalSales, 0),
+      outstanding: rows.reduce((sum, r) => sum + r.outstandingBalance, 0),
+      avgSale: rows.length > 0 ? rows.reduce((sum, r) => sum + r.totalSales, 0) / rows.length : 0,
+    };
   };
+  const totals = summarize(records);
 
   const fetchReport = async () => {
     setIsLoading(true);
@@ -174,14 +177,17 @@ export default function SalesByCustomerPage() {
   const paginatedRecords = filteredRecords.slice(startIndex, endIndex);
 
   const exportToPDF = () => {
+    // The PDF covers the rows the search box leaves, like the Excel export.
+    // It used every fetched row, so the two exports disagreed while searching.
+    const pdfTotals = summarize(filteredRecords);
     const fileName = `Sales_By_Customer_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.pdf`;
     const ok = exportReportPdf<CustomerSale>({
       title: 'Sales by Customer Report',
       dateRange: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
       summary: [
-        { label: 'Total Customers', value: String(totals.customers) },
-        { label: 'Total Sales', value: formatCurrency(totals.totalSales) },
-        { label: 'Outstanding', value: formatCurrency(totals.outstanding) },
+        { label: 'Total Customers', value: String(pdfTotals.customers) },
+        { label: 'Total Sales', value: formatCurrency(pdfTotals.totalSales) },
+        { label: 'Outstanding', value: formatCurrency(pdfTotals.outstanding) },
       ],
       columns: [
         { header: 'Customer Name', width: 45, cell: (r) => r.customerName || 'N/A' },
@@ -193,8 +199,8 @@ export default function SalesByCustomerPage() {
         { header: 'Outstanding', width: 25, align: 'right', cell: (r) => r.outstandingBalance.toFixed(2) },
         { header: 'Last Purchase', width: 30, cell: (r) => r.lastPurchaseDate ? format(new Date(r.lastPurchaseDate), 'MMM dd, yyyy') : '-' },
       ],
-      rows: records,
-      totals: ['TOTALS', null, null, null, totals.totalSales.toFixed(2), null, totals.outstanding.toFixed(2), null],
+      rows: filteredRecords,
+      totals: ['TOTALS', null, null, null, pdfTotals.totalSales.toFixed(2), null, pdfTotals.outstanding.toFixed(2), null],
       fileName,
     });
     if (!ok) {

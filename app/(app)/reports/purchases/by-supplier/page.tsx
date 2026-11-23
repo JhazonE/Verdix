@@ -117,23 +117,29 @@ export default function PurchasesBySupplierPage() {
     setCurrentPage(1);
   }, [searchTerm]);
 
-  const totals = {
-    totalSpent: records.reduce((sum, r) => sum + r.totalSpent, 0),
-    totalSuppliers: records.length,
-    avgSpentPerSupplier: records.length > 0 ? records.reduce((sum, r) => sum + r.totalSpent, 0) / records.length : 0,
-    totalOrders: records.reduce((sum, r) => sum + r.totalOrders, 0),
+  const summarize = (rows: SupplierPurchase[]) => {
+    return {
+      totalSpent: rows.reduce((sum, r) => sum + r.totalSpent, 0),
+      totalSuppliers: rows.length,
+      avgSpentPerSupplier: rows.length > 0 ? rows.reduce((sum, r) => sum + r.totalSpent, 0) / rows.length : 0,
+      totalOrders: rows.reduce((sum, r) => sum + r.totalOrders, 0),
+    };
   };
+  const totals = summarize(records);
 
   const exportToPDF = () => {
+    // The PDF covers the rows the search box leaves, like the Excel export.
+    // It used every fetched row, so the two exports disagreed while searching.
+    const pdfTotals = summarize(filteredRecords);
     const fileName = `Purchases_By_Supplier_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
-    const pct = (v: number) => (totals.totalSpent > 0 ? ((v / totals.totalSpent) * 100).toFixed(1) + '%' : '0%');
+    const pct = (v: number) => (pdfTotals.totalSpent > 0 ? ((v / pdfTotals.totalSpent) * 100).toFixed(1) + '%' : '0%');
     const ok = exportReportPdf<SupplierPurchase>({
       title: 'Purchases by Supplier Report',
       dateRange: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
       summary: [
-        { label: 'Total Suppliers', value: String(totals.totalSuppliers) },
-        { label: 'Total Spent', value: formatCurrency(totals.totalSpent) },
-        { label: 'Total Orders', value: String(totals.totalOrders) },
+        { label: 'Total Suppliers', value: String(pdfTotals.totalSuppliers) },
+        { label: 'Total Spent', value: formatCurrency(pdfTotals.totalSpent) },
+        { label: 'Total Orders', value: String(pdfTotals.totalOrders) },
       ],
       columns: [
         { header: 'Supplier Name', width: 70, cell: (r) => r.supplierName || 'N/A' },
@@ -143,8 +149,8 @@ export default function PurchasesBySupplierPage() {
         { header: 'Last Purchase Date', width: 40, cell: (r) => r.lastPurchaseDate ? format(new Date(r.lastPurchaseDate), 'yyyy-MM-dd') : '-' },
         { header: '% of Total', width: 30, align: 'right', cell: (r) => pct(r.totalSpent) },
       ],
-      rows: records,
-      totals: ['TOTAL', null, String(totals.totalOrders), formatCurrency(totals.totalSpent), null, '100%'],
+      rows: filteredRecords,
+      totals: ['TOTAL', null, String(pdfTotals.totalOrders), formatCurrency(pdfTotals.totalSpent), null, '100%'],
       fileName,
     });
     if (!ok) {

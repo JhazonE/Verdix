@@ -148,16 +148,19 @@ export default function SalesSummaryPage() {
   // Calculate totals. Money sums every row (a return row is negative, so the
   // totals are net of returns), but a return is not a transaction of its own:
   // counting it made Total/Avg Transaction disagree with every other report.
-  const saleCount = records.filter((r) => r.transactionType !== 'return').length;
-  const totals = {
-    revenue: records.reduce((sum, r) => sum + r.total, 0),
-    cost: records.reduce((sum, r) => sum + r.cost, 0),
-    profit: records.reduce((sum, r) => sum + r.profit, 0),
-    discount: records.reduce((sum, r) => sum + r.discount, 0),
-    tax: records.reduce((sum, r) => sum + r.taxAmount, 0),
-    transactions: saleCount,
-    avgTransaction: saleCount > 0 ? records.reduce((sum, r) => sum + r.total, 0) / saleCount : 0,
+  const summarize = (rows: SalesTransaction[]) => {
+    const saleCount = rows.filter((r) => r.transactionType !== 'return').length;
+    return {
+      revenue: rows.reduce((sum, r) => sum + r.total, 0),
+      cost: rows.reduce((sum, r) => sum + r.cost, 0),
+      profit: rows.reduce((sum, r) => sum + r.profit, 0),
+      discount: rows.reduce((sum, r) => sum + r.discount, 0),
+      tax: rows.reduce((sum, r) => sum + r.taxAmount, 0),
+      transactions: saleCount,
+      avgTransaction: saleCount > 0 ? rows.reduce((sum, r) => sum + r.total, 0) / saleCount : 0,
+    };
   };
+  const totals = summarize(records);
 
   const fetchReport = async () => {
     // Only the newest request may write. Switching the Payment filter (or the
@@ -216,18 +219,21 @@ export default function SalesSummaryPage() {
   }, [sourceFilter, paymentFilter]);
 
   const exportToPDF = () => {
-    const subtotalSum = records.reduce((s, r) => s + r.subtotal, 0);
+    // The PDF covers the rows the search box leaves, like the Excel export.
+    // It used every fetched row, so the two exports disagreed while searching.
+    const pdfTotals = summarize(filteredRecords);
+    const subtotalSum = filteredRecords.reduce((s, r) => s + r.subtotal, 0);
     const fileName = `Sales_Summary_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.pdf`;
     const ok = exportReportPdf<SalesTransaction>({
       title: paymentFilter === 'split' ? 'Sales Summary Report - Split Payments' : 'Sales Summary Report',
       dateRange: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
       summary: [
-        { label: 'Total Transactions', value: String(totals.transactions) },
-        { label: 'Total Revenue', value: formatCurrency(totals.revenue) },
-        { label: 'Total Profit', value: formatCurrency(totals.profit) },
-        { label: 'Avg Transaction', value: formatCurrency(totals.avgTransaction) },
-        { label: 'Total Tax', value: formatCurrency(totals.tax) },
-        { label: 'Total Discount', value: formatCurrency(totals.discount) },
+        { label: 'Total Transactions', value: String(pdfTotals.transactions) },
+        { label: 'Total Revenue', value: formatCurrency(pdfTotals.revenue) },
+        { label: 'Total Profit', value: formatCurrency(pdfTotals.profit) },
+        { label: 'Avg Transaction', value: formatCurrency(pdfTotals.avgTransaction) },
+        { label: 'Total Tax', value: formatCurrency(pdfTotals.tax) },
+        { label: 'Total Discount', value: formatCurrency(pdfTotals.discount) },
       ],
       columns: [
         { header: 'OR No.', width: 22, cell: (r) => r.orderNumber || 'N/A' },
@@ -242,8 +248,8 @@ export default function SalesSummaryPage() {
         { header: 'Total', width: 20, align: 'right', cell: (r) => r.total.toFixed(2) },
         { header: 'Profit', width: 18, align: 'right', cell: (r) => r.profit.toFixed(2) },
       ],
-      rows: records,
-      totals: ['TOTALS', null, null, null, null, null, subtotalSum.toFixed(2), totals.discount.toFixed(2), totals.tax.toFixed(2), totals.revenue.toFixed(2), totals.profit.toFixed(2)],
+      rows: filteredRecords,
+      totals: ['TOTALS', null, null, null, null, null, subtotalSum.toFixed(2), pdfTotals.discount.toFixed(2), pdfTotals.tax.toFixed(2), pdfTotals.revenue.toFixed(2), pdfTotals.profit.toFixed(2)],
       fileName,
     });
     if (!ok) {

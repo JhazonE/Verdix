@@ -127,22 +127,28 @@ export default function PurchasesByProductPage() {
     setCurrentPage(1);
   }, [searchTerm]);
 
-  const totals = {
-    totalQuantity: records.reduce((sum, r) => sum + r.totalQuantity, 0),
-    totalCost: records.reduce((sum, r) => sum + r.totalCost, 0),
-    totalProducts: records.length,
-    avgUnitCost: records.length > 0 ? records.reduce((sum, r) => sum + r.avgCost, 0) / records.length : 0,
+  const summarize = (rows: ProductPurchase[]) => {
+    return {
+      totalQuantity: rows.reduce((sum, r) => sum + r.totalQuantity, 0),
+      totalCost: rows.reduce((sum, r) => sum + r.totalCost, 0),
+      totalProducts: rows.length,
+      avgUnitCost: rows.length > 0 ? rows.reduce((sum, r) => sum + r.avgCost, 0) / rows.length : 0,
+    };
   };
+  const totals = summarize(records);
 
   const exportToPDF = () => {
+    // The PDF covers the rows the search box leaves, like the Excel export.
+    // It used every fetched row, so the two exports disagreed while searching.
+    const pdfTotals = summarize(filteredRecords);
     const fileName = `Purchases_By_Product_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
     const ok = exportReportPdf<ProductPurchase>({
       title: 'Purchases by Product Report',
       dateRange: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
       summary: [
-        { label: 'Total Products', value: String(totals.totalProducts) },
-        { label: 'Total Units Purchased', value: String(totals.totalQuantity) },
-        { label: 'Total Spend', value: formatCurrency(totals.totalCost) },
+        { label: 'Total Products', value: String(pdfTotals.totalProducts) },
+        { label: 'Total Units Purchased', value: String(pdfTotals.totalQuantity) },
+        { label: 'Total Spend', value: formatCurrency(pdfTotals.totalCost) },
       ],
       columns: [
         { header: 'Product Name', width: 50, cell: (r) => r.productName || 'N/A' },
@@ -156,8 +162,8 @@ export default function PurchasesByProductPage() {
         { header: 'Total Spend', width: 40, align: 'right', cell: (r) => formatCurrency(r.totalCost) },
         { header: 'Warehouse', width: 30, cell: (r) => r.warehouseName || '-' },
       ],
-      rows: records,
-      totals: ['TOTAL', null, null, String(totals.totalQuantity), null, null, null, null, formatCurrency(totals.totalCost), null],
+      rows: filteredRecords,
+      totals: ['TOTAL', null, null, String(pdfTotals.totalQuantity), null, null, null, null, formatCurrency(pdfTotals.totalCost), null],
       fileName,
     });
     if (!ok) {

@@ -158,14 +158,17 @@ export default function SalesByProductPage() {
     });
   };
 
-  const totals = {
-    unitsSold: records.reduce((sum, r) => sum + r.unitsSold, 0),
-    revenue: records.reduce((sum, r) => sum + r.totalRevenue, 0),
-    cost: records.reduce((sum, r) => sum + r.totalCost, 0),
-    profit: records.reduce((sum, r) => sum + r.totalProfit, 0),
-    products: records.length,
-    avgPrice: records.length > 0 ? records.reduce((sum, r) => sum + r.avgPricePerUnit, 0) / records.length : 0,
+  const summarize = (rows: ProductSale[]) => {
+    return {
+      unitsSold: rows.reduce((sum, r) => sum + r.unitsSold, 0),
+      revenue: rows.reduce((sum, r) => sum + r.totalRevenue, 0),
+      cost: rows.reduce((sum, r) => sum + r.totalCost, 0),
+      profit: rows.reduce((sum, r) => sum + r.totalProfit, 0),
+      products: rows.length,
+      avgPrice: rows.length > 0 ? rows.reduce((sum, r) => sum + r.avgPricePerUnit, 0) / rows.length : 0,
+    };
   };
+  const totals = summarize(records);
 
   const fetchReport = async () => {
     setIsLoading(true);
@@ -284,17 +287,20 @@ export default function SalesByProductPage() {
   };
 
   const exportToPDF = async () => {
+    // The PDF covers the rows the search box leaves, like the Excel export.
+    // It used every fetched row, so the two exports disagreed while searching.
+    const pdfTotals = summarize(filteredRecords);
     const byProduct = await loadDetail();
     const fileName = `Sales_By_Product_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.pdf`;
     const ok = exportReportPdf<ProductSale>({
       title: `Sales by Product Report - ${sortOption.title}`,
       dateRange: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
       summary: [
-        { label: 'Total Products', value: String(totals.products) },
-        { label: 'Total Units Sold', value: String(totals.unitsSold) },
-        { label: 'Total Revenue', value: formatCurrency(totals.revenue) },
-        { label: 'Total Profit', value: formatCurrency(totals.profit) },
-        { label: 'Avg Price/Unit', value: formatCurrency(totals.avgPrice) },
+        { label: 'Total Products', value: String(pdfTotals.products) },
+        { label: 'Total Units Sold', value: String(pdfTotals.unitsSold) },
+        { label: 'Total Revenue', value: formatCurrency(pdfTotals.revenue) },
+        { label: 'Total Profit', value: formatCurrency(pdfTotals.profit) },
+        { label: 'Avg Price/Unit', value: formatCurrency(pdfTotals.avgPrice) },
       ],
       columns: [
         { header: 'Rank', width: 12, align: 'right', cell: (r) => String(rankOf.get(r.product.id) ?? '') },
@@ -311,8 +317,8 @@ export default function SalesByProductPage() {
         { header: 'Margin %', width: 18, align: 'right', cell: (r) => (r.totalRevenue > 0 ? ((r.totalProfit / r.totalRevenue) * 100) : 0).toFixed(1) + '%' },
         { header: '# Sales', width: 15, align: 'right', cell: (r) => r.numberOfSales.toString() },
       ],
-      rows: sortedRecords,
-      totals: ['TOTALS', null, null, null, null, null, totals.unitsSold.toString(), null, totals.revenue.toFixed(2), totals.cost.toFixed(2), totals.profit.toFixed(2), null, null],
+      rows: filteredRecords,
+      totals: ['TOTALS', null, null, null, null, null, pdfTotals.unitsSold.toString(), null, pdfTotals.revenue.toFixed(2), pdfTotals.cost.toFixed(2), pdfTotals.profit.toFixed(2), null, null],
       detail: byProduct ? {
         headers: DETAIL_HEADERS,
         widths: [30, 26, 30, 12, 16, 18, 20, 20, 20],
