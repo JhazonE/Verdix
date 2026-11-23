@@ -75,8 +75,23 @@ assert.ok(/by-date[\s\S]*limit|limit[\s\S]*by-date/.test(analysis), 'analysis mu
 
 // --- 4. Product reports fetch the whole range --------------------------------
 
-for (const rel of ['app/(app)/reports/sales/top-sales/page.tsx', 'app/(app)/reports/sales/top-volume/page.tsx']) {
-  assert.ok(!/'limit',\s*'1000'\)/.test(read(rel)), `${rel} must not cap at 1000 products`);
+// Top by Sales / Top by Volume / Profit Margin were merged into Sales by
+// Product. Each used to be its own page and none of them sorted, so Top by
+// Volume came back in revenue order.
+{
+  const rel = 'app/(app)/reports/sales/by-product/page.tsx';
+  const src = read(rel);
+  assert.ok(!/'limit',\s*'1000'\)/.test(src), `${rel} must not cap at 1000 products`);
+  assert.ok(/sortProductSales\(records, sortBy\)/.test(src), 'Sales by Product must rank the rows it shows');
+  for (const s of ['revenue', 'volume', 'profit', 'margin']) {
+    assert.ok(src.includes(`value: '${s}'`), `Rank by must offer ${s}`);
+  }
+  for (const [route, sort] of [['top-sales', 'revenue'], ['top-volume', 'volume'], ['profit-margin', 'margin']]) {
+    assert.ok(
+      read(`app/(app)/reports/sales/${route}/page.tsx`).includes(`/reports/sales/by-product?sort=${sort}`),
+      `${route} must redirect to Sales by Product ranked by ${sort}`
+    );
+  }
 }
 
 // --- 5. Dashboard charts use the same definition of a sale -----------------

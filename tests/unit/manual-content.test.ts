@@ -45,6 +45,8 @@ const reportRows = ch8.sections
   .flatMap((s) => s.blocks)
   .filter((b) => b.kind === 'table')
   .reduce((n, t) => n + (t as { kind: 'table'; rows: string[][] }).rows.length, 0);
-assert.ok(reportRows >= 23, `report index lists ${reportRows} reports, expected at least 23`);
+// 20, not 23: Top Sales, Top Volume and Profit Margin were merged into Sales by
+// Product (its Rank by selector), so they no longer have rows of their own.
+assert.ok(reportRows >= 20, `report index lists ${reportRows} reports, expected at least 20`);
 
 console.log('manual-content: all assertions passed');

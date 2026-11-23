@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import {
   Table,
   TableBody,
@@ -73,6 +73,36 @@ interface ProductSale {
   avgPricePerUnit: number;
 }
 
+// One report, four rankings. Top by Sales, Top by Volume and Profit Margin
+// used to be separate pages over this same endpoint with identical columns,
+// and none of them actually sorted (Top by Volume came back in revenue order).
+// The old routes now redirect here with ?sort=.
+type ProductSalesSort = 'revenue' | 'volume' | 'profit' | 'margin';
+
+const SORT_OPTIONS: { value: ProductSalesSort; label: string; title: string; by: string }[] = [
+  { value: 'revenue', label: 'Revenue (Top by Sales)', title: 'Top by Sales', by: 'revenue' },
+  { value: 'volume', label: 'Units Sold (Top by Volume)', title: 'Top by Volume', by: 'units sold' },
+  { value: 'profit', label: 'Profit', title: 'Top by Profit', by: 'profit' },
+  { value: 'margin', label: 'Margin %', title: 'Profit Margin', by: 'margin %' },
+];
+
+const isSort = (v: string | null): v is ProductSalesSort =>
+  v === 'revenue' || v === 'volume' || v === 'profit' || v === 'margin';
+
+// Same formula the Margin % column displays, so the ranking matches what is shown.
+const marginOf = (r: ProductSale) => (r.totalRevenue > 0 ? (r.totalProfit / r.totalRevenue) * 100 : 0);
+
+const sortValue = (r: ProductSale, sort: ProductSalesSort) =>
+  sort === 'volume' ? r.unitsSold : sort === 'profit' ? r.totalProfit : sort === 'margin' ? marginOf(r) : r.totalRevenue;
+
+function sortProductSales(rows: ProductSale[], sort: ProductSalesSort): ProductSale[] {
+  return [...rows].sort((a, b) =>
+    sortValue(b, sort) - sortValue(a, sort) ||
+    b.totalRevenue - a.totalRevenue ||
+    (a.product.name || '').localeCompare(b.product.name || '')
+  );
+}
+
 export default function SalesByProductPage() {
   const [fromDate, setFromDate] = useState<Date | undefined>(startOfMonth(new Date()));
   const [toDate, setToDate] = useState<Date | undefined>(endOfMonth(new Date()));
@@ -93,7 +123,30 @@ export default function SalesByProductPage() {
   // notice below the filters explains it.
   const [taxType, setTaxType] = useState<string>('all');
   const [taxScopedToPos, setTaxScopedToPos] = useState(false);
+  const [sortBy, setSortBy] = useState<ProductSalesSort>('revenue');
   const { toast } = useToast();
+
+  // ?sort= comes from the old Top by Sales / Top by Volume / Profit Margin
+  // links. Read once on mount (no useSearchParams, so no Suspense boundary).
+  useEffect(() => {
+    try {
+      const s = new URLSearchParams(window.location.search).get('sort');
+      if (isSort(s)) setSortBy(s);
+    } catch { /* keep default */ }
+  }, []);
+
+  const changeSort = (value: string) => {
+    if (!isSort(value)) return;
+    setSortBy(value);
+    setCurrentPage(1);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('sort', value);
+      window.history.replaceState(null, '', url.toString());
+    } catch { /* URL sync is a convenience only */ }
+  };
+
+  const sortOption = SORT_OPTIONS.find((o) => o.value === sortBy) ?? SORT_OPTIONS[0];
 
   const toggleRow = (productId: string) => {
     setExpandedRows((prev) => {
@@ -172,8 +225,17 @@ export default function SalesByProductPage() {
     setCurrentPage(1);
   }, [searchTerm]);
 
+  // Ranked over the whole range; the rank stays the product's overall
+  // position even when the search box narrows the rows shown.
+  const sortedRecords = useMemo(() => sortProductSales(records, sortBy), [records, sortBy]);
+  const rankOf = useMemo(() => {
+    const m = new Map<string, number>();
+    sortedRecords.forEach((r, i) => m.set(r.product.id, i + 1));
+    return m;
+  }, [sortedRecords]);
+
   // Client-side filtering and pagination
-  const filteredRecords = records.filter(record => {
+  const filteredRecords = sortedRecords.filter(record => {
     if (!searchTerm.trim()) return true;
     const search = searchTerm.toLowerCase();
     return (
@@ -224,7 +286,7 @@ export default function SalesByProductPage() {
     const byProduct = await loadDetail();
     const fileName = `Sales_By_Product_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.pdf`;
     const ok = exportReportPdf<ProductSale>({
-      title: 'Sales by Product Report',
+      title: `Sales by Product Report - ${sortOption.title}`,
       dateRange: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
       summary: [
         { label: 'Total Products', value: String(totals.products) },
@@ -234,7 +296,8 @@ export default function SalesByProductPage() {
         { label: 'Avg Price/Unit', value: formatCurrency(totals.avgPrice) },
       ],
       columns: [
-        { header: 'Product', width: 35, cell: (r) => r.product.name || 'N/A' },
+        { header: 'Rank', width: 12, align: 'right', cell: (r) => String(rankOf.get(r.product.id) ?? '') },
+        { header: 'Product', width: 30, cell: (r) => r.product.name || 'N/A' },
         { header: 'Barcode', width: 25, cell: (r) => r.product.baseUnitBarcode || r.product.barcode || '-' },
         { header: 'Category', width: 25, cell: (r) => r.product.category || '-' },
         { header: 'Brand', width: 25, cell: (r) => r.product.brand || '-' },
@@ -246,8 +309,8 @@ export default function SalesByProductPage() {
         { header: 'Margin %', width: 18, align: 'right', cell: (r) => (r.totalRevenue > 0 ? ((r.totalProfit / r.totalRevenue) * 100) : 0).toFixed(1) + '%' },
         { header: '# Sales', width: 15, align: 'right', cell: (r) => r.numberOfSales.toString() },
       ],
-      rows: records,
-      totals: ['TOTALS', null, null, null, totals.unitsSold.toString(), null, totals.revenue.toFixed(2), totals.cost.toFixed(2), totals.profit.toFixed(2), null, null],
+      rows: sortedRecords,
+      totals: ['TOTALS', null, null, null, null, totals.unitsSold.toString(), null, totals.revenue.toFixed(2), totals.cost.toFixed(2), totals.profit.toFixed(2), null, null],
       detail: byProduct ? {
         headers: DETAIL_HEADERS,
         widths: [30, 26, 30, 12, 16, 18, 20, 20, 20],
@@ -271,9 +334,10 @@ export default function SalesByProductPage() {
     const profitSum = filteredRecords.reduce((s, r) => s + Number(r.totalProfit), 0);
     const fileName = `Sales_By_Product_${format(fromDate || new Date(), 'yyyyMMdd')}_${format(toDate || new Date(), 'yyyyMMdd')}.xls`;
     const ok = exportReportExcel<ProductSale>({
-      title: 'Sales by Product Report',
+      title: `Sales by Product Report - ${sortOption.title}`,
       subtitle: `From: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'N/A'} To: ${toDate ? format(toDate, 'yyyy-MM-dd') : 'N/A'}`,
       columns: [
+        { header: 'Rank', align: 'right', cell: (r) => rankOf.get(r.product.id) ?? '' },
         { header: 'Product', cell: (r) => r.product.name || 'N/A' },
         { header: 'Barcode', cell: (r) => r.product.baseUnitBarcode || r.product.barcode || '-' },
         { header: 'Category', cell: (r) => r.product.category || '-' },
@@ -287,7 +351,7 @@ export default function SalesByProductPage() {
         { header: '# Sales', align: 'right', cell: (r) => r.numberOfSales },
       ],
       rows: filteredRecords,
-      totals: ['TOTALS', null, null, null, unitsSoldSum, null, revenueSum.toFixed(2), costSum.toFixed(2), profitSum.toFixed(2), null, null],
+      totals: ['TOTALS', null, null, null, null, unitsSoldSum, null, revenueSum.toFixed(2), costSum.toFixed(2), profitSum.toFixed(2), null, null],
       detail: byProduct ? {
         headers: DETAIL_HEADERS,
         rows: (r: ProductSale) => (byProduct.get(r.product.id) || []).map(detailCells),
@@ -316,7 +380,7 @@ export default function SalesByProductPage() {
                 Sales by Product Report
               </CardTitle>
               <CardDescription>
-                Product performance analysis with sales metrics
+                Product performance ranked by revenue, units sold, profit or margin
               </CardDescription>
             </div>
             <Badge variant="outline" className="text-sm border-green-600 text-green-600">
@@ -389,6 +453,22 @@ export default function SalesByProductPage() {
                   {TAX_TYPES.map((t) => (
                     <SelectItem key={t} value={t}>
                       {TAX_TYPE_LABELS[t]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">Rank by</label>
+              <Select value={sortBy} onValueChange={changeSort}>
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SORT_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -519,9 +599,9 @@ export default function SalesByProductPage() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Product Sales Details</CardTitle>
+              <CardTitle>{sortOption.title}</CardTitle>
               <CardDescription>
-                Detailed breakdown of sales by product
+                Products ranked by {sortOption.by}, highest first
               </CardDescription>
             </div>
             <div className="relative">
@@ -540,6 +620,7 @@ export default function SalesByProductPage() {
             <TableHeader>
               <TableRow className="bg-muted/50">
                 <TableHead className="py-2 px-2 w-[40px]"></TableHead>
+                <TableHead className="py-2 px-2 w-[50px] text-right">Rank</TableHead>
                 <TableHead className="py-2 px-3">Product Name</TableHead>
                 <TableHead className="py-2 px-2">Barcode</TableHead>
                 <TableHead className="py-2 px-2">Category</TableHead>
@@ -555,7 +636,7 @@ export default function SalesByProductPage() {
             </TableHeader>
             <TableBody>
               {paginatedRecords.length > 0 ? (
-                paginatedRecords.map((record, index) => {
+                paginatedRecords.map((record) => {
                   const profitMargin = record.totalRevenue > 0 ? ((record.totalProfit / record.totalRevenue) * 100) : 0;
                   return (
                     <Fragment key={record.product.id}>
@@ -570,6 +651,7 @@ export default function SalesByProductPage() {
                           <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
                         )}
                       </TableCell>
+                      <TableCell className="py-2 px-2 text-right font-mono text-muted-foreground">{rankOf.get(record.product.id)}</TableCell>
                       <TableCell className="py-2 px-3 font-medium">{record.product.name}</TableCell>
                       <TableCell className="py-2 px-2 text-muted-foreground">{record.product.baseUnitBarcode || record.product.barcode || '-'}</TableCell>
                       <TableCell className="py-2 px-2">{record.product.category || '-'}</TableCell>
@@ -605,7 +687,7 @@ export default function SalesByProductPage() {
                         productId={record.product.id}
                         startDate={fromDate ? format(fromDate, 'yyyy-MM-dd') : undefined}
                         endDate={toDate ? format(toDate, 'yyyy-MM-dd') : undefined}
-                        colSpan={12}
+                        colSpan={13}
                       />
                     )}
                     </Fragment>
@@ -613,7 +695,7 @@ export default function SalesByProductPage() {
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={12} className="h-24 text-center">
+                  <TableCell colSpan={13} className="h-24 text-center">
                     {isLoading ? (
                       <div className="flex items-center justify-center gap-2">
                         <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
