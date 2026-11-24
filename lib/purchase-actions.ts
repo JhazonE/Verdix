@@ -4,6 +4,7 @@ import { generateBatchId } from './batch-utils';
 import { calculatePurchaseCosts } from './purchase-utils';
 import { toSafeNumber } from './utils';
 import { updateStockAndRecordMovement } from './stock-movements';
+import { normalizeExpirationDate, refreshProductExpirationCache } from './expiration';
 
 // Two lines on the same PO can share a productId (e.g. a Piece line and a
 // Case line for the same product) — matching on productId alone would let one
@@ -229,9 +230,16 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
       const existingCost = toSafeNumber(existingProductRows?.[0]?.cost ?? 0);
       const finalCost = Math.max(existingCost, landedCost);
 
+      // The delivery's expiry belongs on its BATCH (inserted below), which is
+      // what the Expiring Soon report and FEFO read. It used to be written
+      // only to products.expiration_date — a cache of the soonest expiry in
+      // stock — so receiving overwrote that cache with this delivery's date
+      // (or NULL) and the report never saw the date at all. The cache is
+      // recomputed from batches once the batch exists.
+      const expirationDate = normalizeExpirationDate(receivedItem.expirationDate);
       await connection.query(
-        'UPDATE products SET cost = ?, expiration_date = ?, updated_at = NOW() WHERE id = ?',
-        [finalCost, receivedItem.expirationDate ? new Date(receivedItem.expirationDate).toISOString().slice(0, 10) : null, receivedItem.productId]
+        'UPDATE products SET cost = ?, updated_at = NOW() WHERE id = ?',
+        [finalCost, receivedItem.productId]
       );
 
       await applyPurchaseSellingPrice(
@@ -247,9 +255,9 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
         const batchId = generateBatchId();
         await connection.query(
           `INSERT INTO inventory_batches
-             (id, product_id, purchase_order_id, received_date, quantity_in, quantity_remaining, unit_cost, selling_price, source_type)
-           VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?, 'purchase')`,
-          [batchId, receivedItem.productId, orderId, quantityAdded, quantityAdded, landedCost, sellingPrice]
+             (id, product_id, purchase_order_id, received_date, quantity_in, quantity_remaining, unit_cost, selling_price, expiration_date, source_type)
+           VALUES (?, ?, ?, CURDATE(), ?, ?, ?, ?, ?, 'purchase')`,
+          [batchId, receivedItem.productId, orderId, quantityAdded, quantityAdded, landedCost, sellingPrice, expirationDate]
         );
       } catch (batchErr) {
         // Non-fatal: batch table may not exist yet (pre-migration). Log and continue.
@@ -269,6 +277,9 @@ export async function processPurchaseOrderReceipt(orderId: string, receiptData: 
         `Received Purchase: ${orderId}`,
         connection
       );
+
+      // Soonest expiry still in stock, now that this batch is in.
+      await refreshProductExpirationCache(receivedItem.productId, connection);
     }
 
     // 5. Update PO status and received total
