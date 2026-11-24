@@ -7,7 +7,10 @@
 ;   - Existing Vendix     -> in-place update: stops the running app, overwrites
 ;     the app files, applies pending DB migrations. The existing .env, MySQL
 ;     service, and database (C:\ProgramData\Verdix) are never touched.
-; updater.iss remains as a smaller patch-only alternative.
+;   - Existing client terminal (.env DB_HOST is another PC, no local MySQL
+;     service) -> app update only: no MySQL, no local DB; migrations run
+;     against the server DB its .env names. So this ONE file also replaces
+;     VendixUpdater on terminals. (updater.iss is kept but no longer needed.)
 #define AppName "Vendix"
 ; Version comes from package.json via `npm run build:installer`
 ; (iscc /DAppVersion=x.y.z). The fallback below is only for direct iscc runs.
@@ -59,7 +62,7 @@ Source: "C:\Program Files\nodejs\node.exe"; DestDir: "{app}"; Flags: ignoreversi
 
 ; Microsoft VC++ 2015-2022 Redistributable — required by bundled mysqld.exe.
 ; Fresh Windows PCs often lack it; installed silently before MySQL setup.
-Source: "redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsUpgrade
+Source: "redist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: not IsExistingInstall
 
 ; Database setup — verdix_install.sql holds the full table structure, reference
 ; data, and the default admin. Applied via bundled mysql.exe (no Node).
@@ -160,10 +163,10 @@ Name: "{commonstartup}\Vendix Server"; Filename: "wscript.exe"; Parameters: """{
 
 [Run]
 ; Install VC++ runtime first — bundled mysqld.exe depends on it.
-Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing runtime components..."; Flags: waituntilterminated; Check: not IsUpgrade
+Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing runtime components..."; Flags: waituntilterminated; Check: not IsExistingInstall
 ; Sets up bundled MySQL as a Windows service, creates the DB, applies schema + admin.
 ; On an update the service/DB already exist, so it only makes sure MySQL is running.
-Filename: "{app}\setup_mysql_service.bat"; Flags: runhidden waituntilterminated; StatusMsg: "Setting up database..."
+Filename: "{app}\setup_mysql_service.bat"; Flags: runhidden waituntilterminated; StatusMsg: "Setting up database..."; Check: NeedLocalDatabaseSetup
 ; Applies pending migrations (update) / brings the bundled schema current (fresh).
 Filename: "{app}\run_update.bat"; Flags: runhidden waituntilterminated; StatusMsg: "Applying database updates..."
 Filename: "{app}\{#AppExeName}"; Flags: nowait skipifsilent
@@ -187,13 +190,86 @@ begin
             RegKeyExists(HKLM, 'SYSTEM\CurrentControlSet\Services\VerdixMySQL');
 end;
 
+// DB_HOST from the existing {app}\.env, or '' when there is none.
+function ExistingDbHost: String;
+var
+  Lines: TArrayOfString;
+  I: Integer;
+  Line: String;
+begin
+  Result := '';
+  if not LoadStringsFromFile(ExpandConstant('{app}\.env'), Lines) then
+    Exit;
+  for I := 0 to GetArrayLength(Lines) - 1 do
+  begin
+    Line := Trim(Lines[I]);
+    if CompareText(Copy(Line, 1, 8), 'DB_HOST=') = 0 then
+    begin
+      Result := Trim(Copy(Line, 9, Length(Line)));
+      StringChangeEx(Result, '"', '', True);
+      StringChangeEx(Result, '''', '', True);
+    end;
+  end;
+end;
+
+// A client terminal: Vendix is already installed here, but its .env points at
+// another PC's database and there is no local MySQL service. Re-running this
+// installer on it is an UPDATE of the app, never a fresh install - without
+// this check it would register a local VerdixMySQL service and create an empty
+// second database the terminal never uses. Topology is decided by .env alone.
+var
+  ClientTerminalDecided: Boolean;
+  ClientTerminalValue: Boolean;
+
+function DetectClientTerminal: Boolean;
+var
+  Host: String;
+begin
+  Result := False;
+  if IsUpgrade then
+    Exit;
+  if not (FileExists(ExpandConstant('{app}\{#AppExeName}')) and
+          FileExists(ExpandConstant('{app}\.env'))) then
+    Exit;
+  Host := Lowercase(ExistingDbHost);
+  Result := (Host <> '') and (Host <> 'localhost') and
+            (Host <> '127.0.0.1') and (Host <> '::1');
+end;
+
+// Decided once, in PrepareToInstall, from the PC's state BEFORE [Files] runs,
+// so the files this installer copies can never change the answer mid-install.
+function IsClientTerminal: Boolean;
+begin
+  if not ClientTerminalDecided then
+  begin
+    ClientTerminalValue := DetectClientTerminal;
+    ClientTerminalDecided := True;
+  end;
+  Result := ClientTerminalValue;
+end;
+
+// Fresh install only: VC++ runtime, local MySQL service, schema + seed.
+function NeedLocalDatabaseSetup: Boolean;
+begin
+  Result := not IsClientTerminal;
+end;
+
+function IsExistingInstall: Boolean;
+begin
+  Result := IsUpgrade or IsClientTerminal;
+end;
+
 // The bundled MySQL files are copied on a fresh install, and also on an update
 // if they are somehow missing. On a normal update they are skipped: the
 // running service holds them locked (jemalloc.dll etc.) and they never change.
+// A client terminal never gets them - it has no local database.
 function NeedMySqlFiles: Boolean;
 begin
-  Result := (not IsUpgrade) or
-            (not FileExists(ExpandConstant('{app}\mysql\bin\mysqld.exe')));
+  if IsClientTerminal then
+    Result := False
+  else
+    Result := (not IsUpgrade) or
+              (not FileExists(ExpandConstant('{app}\mysql\bin\mysqld.exe')));
 end;
 
 // Runs BEFORE [Files] copies anything. On an update, release locks on
@@ -205,7 +281,7 @@ var
   NodeExePath: String;
   PsCommand: String;
 begin
-  if IsUpgrade then
+  if IsExistingInstall then
   begin
     Exec('taskkill.exe', '/F /IM verdix.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     // node.exe is a generic name - kill only the copy bundled at {app}\node.exe,
