@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
+import { posSaleSql } from '@/lib/pos-sales';
+import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
+import { lineDateExpr } from '@/lib/profit';
 
 /**
  * Stock & Sales Summary.
@@ -15,10 +18,17 @@ import { query } from '@/lib/mysql';
  * `products.stock`, which is always base units. A NULL factor predates
  * selling units and means the base unit (factor 1) — see CLAUDE.md.
  *
+ * Sold lines come from BOTH places a sale lives (the same pair Velocity
+ * reads): POS `sale_items` under a real sale (`posSaleSql`) and back-office
+ * `sales_invoice_items` (`backofficeInvoiceSql`). A back-office invoice writes
+ * no `sales_transactions` row, so reading POS lines alone hid every item sold
+ * only by invoice.
+ *
  * Returns need no separate table: `lib/pos/process-return-leg.ts` files them
  * as NEGATIVE `sale_items` rows, so SUM() over the range is already net of
- * them. `qty_returned` re-reads only the negative rows so the report can show
- * the returned quantity as its own column without a second query.
+ * them. A return is dated by when it was returned (`lineDateExpr`), as in the
+ * other sales reports. `qty_returned` re-reads only the negative rows so the
+ * report can show the returned quantity as its own column.
  *
  * Only products with movement in the range are returned (HAVING on net sold),
  * by design: the Fast & Slow Moving report's "None Moving" tab already covers
@@ -46,25 +56,39 @@ export async function GET(request: NextRequest) {
 
     const sortParam = searchParams.get('sort') || 'sold_desc';
 
-    // Conditions on the SALE side live inside the JOIN, not the WHERE clause.
-    // In the WHERE they would discard the product row entirely whenever its
-    // sales fall outside the range — the same outcome here, since rows without
-    // movement are dropped anyway, but it would break the moment this report
-    // grows a "show all products" option.
-    const joinConditions: string[] = [
-      "st.status != 'voided'",
-      "st.status != 'returned'",
-    ];
-    const joinParams: any[] = [];
-
+    // Conditions on the SALE side live inside the sold-lines subquery, not the
+    // outer WHERE, so a "show all products" option could later LEFT JOIN it.
+    // posSaleSql is the same definition of a sale every other report uses; the
+    // hand-written `status != 'voided'` checks here missed 'Void' and
+    // 'Cancelled' and let TRAINING sales count as stock that left the store.
+    const posDate: string[] = [];
+    const boDate: string[] = [];
+    const posParams: any[] = [];
+    const boParams: any[] = [];
     if (startDate) {
-      joinConditions.push('DATE(st.created_at) >= ?');
-      joinParams.push(startDate);
+      posDate.push(`DATE(${lineDateExpr('si', 'st.created_at')}) >= ?`);
+      posParams.push(startDate);
+      boDate.push('DATE(sinv.invoice_date) >= ?');
+      boParams.push(startDate);
     }
     if (endDate) {
-      joinConditions.push('DATE(st.created_at) <= ?');
-      joinParams.push(endDate);
+      posDate.push(`DATE(${lineDateExpr('si', 'st.created_at')}) <= ?`);
+      posParams.push(endDate);
+      boDate.push('DATE(sinv.invoice_date) <= ?');
+      boParams.push(endDate);
     }
+    const soldLines = `
+      SELECT si.product_id, si.quantity, si.selling_unit_factor, si.price
+        FROM sale_items si
+        JOIN sales_transactions st ON si.sale_id = st.id
+       WHERE ${[posSaleSql('st'), ...posDate].join(' AND ')}
+      UNION ALL
+      SELECT sii.product_id, sii.quantity, sii.selling_unit_factor, sii.price
+        FROM sales_invoice_items sii
+        JOIN sales_invoices sinv ON sii.sales_invoice_id = sinv.id
+       WHERE ${[backofficeInvoiceSql('sinv'), ...boDate].join(' AND ')}
+    `;
+    const joinParams = [...posParams, ...boParams];
 
     // Services carry no stock, so a "remaining" figure for them is
     // meaningless — the same reason the Stock on Hand report excludes them.
@@ -144,9 +168,7 @@ export async function GET(request: NextRequest) {
     const baseSql = `
       FROM products p
       LEFT JOIN supplier_product_mapping spm ON p.id = spm.product_id AND spm.is_primary = 1
-      JOIN sale_items si ON p.id = si.product_id
-      JOIN sales_transactions st ON si.sale_id = st.id
-        AND ${joinConditions.join(' AND ')}
+      JOIN ( ${soldLines} ) AS si ON p.id = si.product_id
       WHERE ${whereConditions.join(' AND ')}
       GROUP BY p.id, p.name, p.barcode, p.category, p.brand, p.stock, p.unit_of_measure, p.cost
       HAVING qty_sold <> 0 OR qty_returned <> 0
