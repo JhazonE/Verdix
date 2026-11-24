@@ -7,7 +7,7 @@ import { isService } from '@/lib/product-type';
 import { ensureCustomerCreditColumn } from '@/lib/ensure-customer-credit';
 import { saveEJournalFiles } from '@/lib/ejournal/ejournal-writer';
 import { EXCHANGE_CREDIT_TENDER, isExchangeBalanceTender } from '@/lib/pos/exchange-tender';
-import { mapVatStatusToTaxType, resolveEffectiveTaxType } from '@/lib/tax-utils';
+import { mapVatStatusToTaxType, resolveEffectiveTaxType, vatOfLines } from '@/lib/tax-utils';
 
 /**
  * POST /api/sales/exchanges — 1-for-1 item exchange.
@@ -173,6 +173,20 @@ export async function POST(request: NextRequest) {
         ]
       );
 
+      // The return leg was inserted with tax_amount 0 because its line's tax
+      // type is only resolved by processReturnLeg. Left at 0, reports summing
+      // pt.tax_amount netted the returned amount out of revenue but not its VAT.
+      await connection.query(
+        'UPDATE pos_transactions SET tax_amount = ? WHERE id = ?',
+        [
+          vatOfLines([{
+            lineTotal: -(Number(returnItem.quantity) * returnItem.price),
+            taxType: returnLegResult.taxType,
+          }]),
+          returnPosTransId,
+        ]
+      );
+
       // --- SALE LEG TENDER ---
       // The sale leg is paid by (a) the returned item's value, up to newTotal,
       // and (b) on an upsell, the balance the cashier actually collected. Only
@@ -228,10 +242,14 @@ export async function POST(request: NextRequest) {
           subtotal, tax_amount, discount_amount, total_amount, payment_method,
           payment_status, payment_details_id, payment_validated_at,
           notes, is_training, exchange_group_id, transaction_time, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 'sale', ?, ?, 0, 0, ?, ?, 'completed', ?, NOW(), ?, ?, ?, NOW(), NOW(), NOW())`,
+        ) VALUES (?, ?, ?, ?, ?, 'sale', ?, ?, ?, 0, ?, ?, 'completed', ?, NOW(), ?, ?, ?, NOW(), NOW(), NOW())`,
         [
           salePosTransId, newSaleId, finalShiftId, finalUserId, terminalId || null,
-          siNumber, newTotal, newTotal, saleLegPaymentMethod, firstPaymentDetailsId,
+          // tax_amount used to be a literal 0 here. This is a real sale with an
+          // SI number, and the X-reading and e-journal take its VAT from this
+          // column, so an exchange's sale reported no VAT at all.
+          siNumber, newTotal, vatOfLines([{ lineTotal: newTotal, taxType: newItemTaxType }]),
+          newTotal, saleLegPaymentMethod, firstPaymentDetailsId,
           'Exchange (sale leg)', isTrainingMode, exchangeGroupId,
         ]
       );

@@ -90,3 +90,24 @@ export const taxTypeExpr = (item: string): string =>
  */
 export const taxTypeFilterSql = (item: string): string =>
   `${taxTypeExpr(item)} = ?`;
+
+/**
+ * Output VAT contained in a set of VAT-inclusive lines: 12/112 of each VAT
+ * line, nothing for VAT_EXEMPT / ZERO_RATED / NON_VAT. A line with no tax type
+ * is VAT, as `taxTypeExpr` reads it. Same formula the Z-reading and BIR
+ * summary apply to `pos_transaction_items`
+ * (`line_total - line_total / 1.12`), so a row written with this agrees with
+ * the readings built from its lines.
+ *
+ * Signed like the totals: negative return lines give negative VAT, which is
+ * what a return row's `tax_amount` must carry so `SUM(tax_amount)` nets out
+ * alongside `SUM(total_amount)`.
+ */
+export function vatOfLines(lines: { lineTotal: number; taxType?: string | null }[]): number {
+  const vat = lines.reduce((sum, l) => {
+    if ((l.taxType || 'VAT') !== 'VAT') return sum;
+    const total = Number(l.lineTotal) || 0;
+    return sum + (total - total / 1.12);
+  }, 0);
+  return Math.round(vat * 100) / 100;
+}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, withTransaction, getNextMCNumber } from '@/lib/mysql';
 import { saveEJournalFiles } from '@/lib/ejournal/ejournal-writer';
 import { processReturnLeg } from '@/lib/pos/process-return-leg';
+import { vatOfLines } from '@/lib/tax-utils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -79,6 +80,7 @@ export async function POST(request: NextRequest) {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
       `;
 
+      const writtenLines: { lineTotal: number; taxType: string }[] = [];
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         const posItemId = `${posTransId}-DETAIL-${i + 1}`;
@@ -111,7 +113,18 @@ export async function POST(request: NextRequest) {
           factor,
           taxType
         ]);
+        writtenLines.push({ lineTotal: -(returnedQty * item.price), taxType });
       }
+
+      // The row was inserted with tax_amount 0 because each line's tax type is
+      // only known once processReturnLeg has resolved it. Left at 0, every
+      // report that sums pt.total_amount and pt.tax_amount (Sales by Date,
+      // Sales Transactions, the e-journal) netted the returned amount out of
+      // revenue but not its VAT, overstating VAT for the period.
+      await connection.query(
+        'UPDATE pos_transactions SET tax_amount = ? WHERE id = ?',
+        [vatOfLines(writtenLines), posTransId]
+      );
 
       // 3. Update original sale status if needed (Optional: could mark as 'Returned' or keep it as 'Paid' but has return links)
       // For now, let's keep it simple and just record the return transaction.

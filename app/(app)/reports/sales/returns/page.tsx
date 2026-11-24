@@ -149,10 +149,17 @@ export default function ReturnedSalesPage() {
               soldByCashier: tx.originalCashierName || 'N/A',
               returnedDate: tx.date || '',
               returnedByCashier: tx.cashier || 'N/A',
-              overrideBy: tx.customer?.name || 'admin',
+              // No approver is recorded for a return: the POS supervisor prompt
+              // (enableReturnAuth) does not pass on who approved it, and
+              // pos_transactions has no column for it. This used to show the
+              // CUSTOMER's name, or a literal "admin", as the approver.
+              overrideBy: '',
               salesAmount: Math.abs(tx.total || 0),
               cost: Math.abs(tx.cost || 0),
-              profit: tx.profit || 0,
+              // Amount and Cost are shown as positive figures, so profit is
+              // their difference. tx.profit is signed like the return row
+              // (negative), which printed -40 beside 100 and 60.
+              profit: Math.abs(tx.total || 0) - Math.abs(tx.cost || 0),
               vatableSales: Math.abs(tx.vatableSales || 0),
               vatAmount: Math.abs(tx.taxAmount || 0),
               note: tx.notes || ''
