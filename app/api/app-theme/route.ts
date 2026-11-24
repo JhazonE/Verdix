@@ -1,15 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '../../../lib/mysql';
-import { isColorThemeId, normalizeColorTheme, DEFAULT_COLOR_THEME } from '@/lib/color-themes';
+import { normalizeBrandColor } from '@/lib/color-themes';
 
 /**
- * Store-wide colour theme (Developer Options → Color Theme).
+ * Store-wide brand colour (Developer Options → Color Theme).
  *
  * Stored on the single `pos_settings` row so every terminal sharing the
- * database renders the same theme. Deliberately its own endpoint rather than a
- * field on /api/pos-settings: every page of every terminal reads this on load,
- * and that route runs ~70 INFORMATION_SCHEMA checks per GET.
+ * database renders the same colour. Holds `#rrggbb`, or 'default' for the
+ * original palette. Deliberately its own endpoint rather than a field on
+ * /api/pos-settings: every page of every terminal reads this on load, and that
+ * route runs ~70 INFORMATION_SCHEMA checks per GET.
  */
+
+const DEFAULT_MARKER = 'default';
 
 // The column check runs once per server process, not once per request.
 let columnReady = false;
@@ -23,7 +26,7 @@ async function ensureColumn() {
   if (!cols?.length) {
     try {
       await query(
-        `ALTER TABLE pos_settings ADD COLUMN color_theme VARCHAR(30) NOT NULL DEFAULT '${DEFAULT_COLOR_THEME}'`
+        `ALTER TABLE pos_settings ADD COLUMN color_theme VARCHAR(30) NOT NULL DEFAULT '${DEFAULT_MARKER}'`
       );
     } catch (e: any) {
       // Another terminal added it between our check and the ALTER.
@@ -37,25 +40,23 @@ export async function GET() {
   try {
     await ensureColumn();
     const rows: any = await query('SELECT color_theme FROM pos_settings LIMIT 1');
-    return NextResponse.json({
-      success: true,
-      theme: normalizeColorTheme(rows?.[0]?.color_theme),
-    });
+    // Anything that is not a hex colour (including the 'default' marker)
+    // reads as null = original palette.
+    return NextResponse.json({ success: true, color: normalizeBrandColor(rows?.[0]?.color_theme) });
   } catch (error) {
     console.error('Error fetching color theme:', error);
-    // The client keeps whatever it already shows; the default is only a hint.
-    return NextResponse.json(
-      { success: false, theme: DEFAULT_COLOR_THEME, error: 'Failed to fetch color theme' },
-      { status: 500 }
-    );
+    // success:false tells the client to keep whatever it already shows.
+    return NextResponse.json({ success: false, error: 'Failed to fetch color theme' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
-    if (!isColorThemeId(body?.theme)) {
-      return NextResponse.json({ success: false, error: 'Unknown color theme' }, { status: 400 });
+    // null resets to the default palette; anything else must be a colour.
+    const color = body?.color === null ? null : normalizeBrandColor(body?.color);
+    if (body?.color !== null && !color) {
+      return NextResponse.json({ success: false, error: 'Invalid colour — use #rrggbb' }, { status: 400 });
     }
 
     await ensureColumn();
@@ -67,8 +68,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await query('UPDATE pos_settings SET color_theme = ? WHERE id = ?', [body.theme, existing[0].id]);
-    return NextResponse.json({ success: true, theme: body.theme });
+    await query('UPDATE pos_settings SET color_theme = ? WHERE id = ?', [color ?? DEFAULT_MARKER, existing[0].id]);
+    return NextResponse.json({ success: true, color });
   } catch (error) {
     console.error('Error updating color theme:', error);
     return NextResponse.json({ success: false, error: 'Failed to update color theme' }, { status: 500 });

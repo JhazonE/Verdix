@@ -1,71 +1,108 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Check, Loader2, Palette } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Loader2, Palette, RotateCcw, Save } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getApiUrl } from '@/lib/api-config';
 import {
-  COLOR_THEMES,
-  COLOR_THEME_EVENT,
-  DEFAULT_COLOR_THEME,
-  normalizeColorTheme,
-  type ColorThemeId,
+  applyColorTheme,
+  DEFAULT_BRAND_COLOR,
+  normalizeBrandColor,
+  setColorPreviewActive,
 } from '@/lib/color-themes';
 
 /**
- * Store-wide colour theme picker. Persists through /api/app-theme onto the
- * shared pos_settings row; every page on every terminal picks it up via
- * components/color-theme-sync.tsx (instantly here, within ~2 minutes or on
- * next focus elsewhere). Light/dark mode is separate and stays per machine
- * under Settings → Appearance.
+ * Store-wide brand colour picker. Any colour picked previews live on this
+ * page; Save persists it through /api/app-theme onto the shared pos_settings
+ * row, and every page on every terminal follows via
+ * components/color-theme-sync.tsx. Leaving without saving restores the saved
+ * colour. Light/dark mode is separate and stays per machine.
  */
 export function ColorThemeCard() {
   const { toast } = useToast();
-  const [current, setCurrent] = useState<ColorThemeId>(DEFAULT_COLOR_THEME);
+  // null = the default palette (nothing saved).
+  const [saved, setSaved] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [hexInput, setHexInput] = useState(DEFAULT_BRAND_COLOR);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<ColorThemeId | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetch(getApiUrl('/app-theme'), { cache: 'no-store' })
       .then(r => r.json())
       .then(result => {
-        if (result?.success) setCurrent(normalizeColorTheme(result.theme));
+        if (!result?.success) return;
+        const color = normalizeBrandColor(result.color);
+        setSaved(color);
+        setPicked(color);
+        setHexInput(color ?? DEFAULT_BRAND_COLOR);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  const announce = (id: ColorThemeId) =>
-    window.dispatchEvent(new CustomEvent(COLOR_THEME_EVENT, { detail: id }));
+  // While a preview is unsaved, hold off ColorThemeSync (see
+  // setColorPreviewActive). Leaving the page restores the saved colour.
+  const dirty = picked !== saved;
+  useEffect(() => {
+    setColorPreviewActive(dirty);
+  }, [dirty]);
+  const savedRef = useRef(saved);
+  savedRef.current = saved;
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  useEffect(() => () => {
+    setColorPreviewActive(false);
+    if (dirtyRef.current) applyColorTheme(savedRef.current);
+  }, []);
 
-  const select = async (id: ColorThemeId) => {
-    if (id === current || saving) return;
-    const previous = current;
-    setCurrent(id);
-    announce(id); // preview immediately
-    setSaving(id);
+  const showPreview = (color: string | null) => {
+    setPicked(color);
+    applyColorTheme(color, { cache: false });
+  };
+
+  const onPicked = (color: string | null) => {
+    setHexInput(color ?? DEFAULT_BRAND_COLOR);
+    showPreview(color);
+  };
+
+  const onHexTyped = (value: string) => {
+    setHexInput(value);
+    const color = normalizeBrandColor(value.startsWith('#') ? value : `#${value}`);
+    if (color) showPreview(color);
+  };
+
+  const persist = async (color: string | null) => {
+    setSaving(true);
     try {
       const res = await fetch(getApiUrl('/app-theme'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theme: id }),
+        body: JSON.stringify({ color }),
       });
       const result = await res.json();
       if (!result?.success) throw new Error(result?.error);
-      const label = COLOR_THEMES.find(t => t.id === id)?.label ?? id;
+      setSaved(color);
+      setPicked(color);
+      setHexInput(color ?? DEFAULT_BRAND_COLOR);
+      applyColorTheme(color); // cached, so a reload boots straight into it
       toast({
-        title: 'Color theme updated',
-        description: `${label} now applies store-wide. Other terminals switch within a couple of minutes.`,
+        title: color ? 'Color theme saved' : 'Default colors restored',
+        description: 'Applies store-wide. Other terminals switch within a couple of minutes.',
       });
     } catch {
-      setCurrent(previous);
-      announce(previous);
-      toast({ title: 'Update failed', description: 'Could not save the color theme.', variant: 'destructive' });
+      toast({ title: 'Save failed', description: 'Could not save the color theme.', variant: 'destructive' });
     } finally {
-      setSaving(null);
+      setSaving(false);
     }
   };
+
+  const shown = picked ?? DEFAULT_BRAND_COLOR;
+  const hexInvalid = !normalizeBrandColor(hexInput.startsWith('#') ? hexInput : `#${hexInput}`);
 
   return (
     <Card>
@@ -75,59 +112,66 @@ export function ColorThemeCard() {
           Color Theme
         </CardTitle>
         <CardDescription>
-          Sets the accent and surface colours for the whole system — back office, POS, customer
-          display and every terminal on this database. Light/Dark mode is still chosen per machine
-          in Settings → Appearance; each theme has both.
+          Pick one brand colour. Buttons, highlights, the sidebar and page backgrounds are all
+          derived from it, for the whole system: back office, POS, customer display and every
+          terminal on this database. Light/Dark mode is still chosen per machine in Settings →
+          Appearance.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
-          {COLOR_THEMES.map(theme => {
-            const active = theme.id === current;
-            return (
-              <button
-                key={theme.id}
-                type="button"
-                disabled={loading || saving !== null}
-                onClick={() => select(theme.id)}
-                aria-pressed={active}
-                className={`group flex flex-col overflow-hidden rounded-xl border-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                  active ? 'border-primary ring-2 ring-primary/30' : 'border-border hover:border-muted-foreground/40'
-                }`}
-              >
-                {/* Miniature of the app: sidebar strip, page, a primary button. */}
-                <div className="flex h-16 w-full" aria-hidden>
-                  <div className="w-1/4" style={{ background: `hsl(${theme.preview.sidebar})` }} />
-                  <div
-                    className="flex flex-1 flex-col justify-between p-2"
-                    style={{ background: `hsl(${theme.preview.background})` }}
-                  >
-                    <div className="h-1.5 w-3/4 rounded-full bg-black/10" />
-                    <div className="flex items-center justify-between">
-                      <div className="h-3 w-10 rounded" style={{ background: `hsl(${theme.preview.primary})` }} />
-                      {active && (
-                        <span
-                          className="flex h-4 w-4 items-center justify-center rounded-full text-white"
-                          style={{ background: `hsl(${theme.preview.primary})` }}
-                        >
-                          {saving === theme.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Check className="h-3 w-3" />
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-0.5 border-t bg-card p-2">
-                  <div className="text-sm font-semibold">{theme.label}</div>
-                  <div className="text-[11px] leading-tight text-muted-foreground">{theme.description}</div>
-                </div>
-              </button>
-            );
-          })}
+        <div className="flex flex-wrap items-end gap-4">
+          <label
+            className="relative h-20 w-20 shrink-0 cursor-pointer overflow-hidden rounded-xl border-2 border-border shadow-sm"
+            style={{ background: shown }}
+            title="Pick a colour"
+          >
+            <input
+              type="color"
+              value={shown}
+              disabled={loading || saving}
+              onChange={e => onPicked(normalizeBrandColor(e.target.value))}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              aria-label="Brand colour"
+            />
+          </label>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="brand-hex" className="text-xs font-semibold">Hex</Label>
+            <Input
+              id="brand-hex"
+              value={hexInput}
+              disabled={loading || saving}
+              onChange={e => onHexTyped(e.target.value.trim())}
+              maxLength={7}
+              className={`h-9 w-32 font-mono uppercase ${hexInvalid ? 'border-destructive' : ''}`}
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <Button onClick={() => persist(picked)} disabled={loading || saving || !dirty}>
+              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Save
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => persist(null)}
+              disabled={loading || saving || (saved === null && picked === null)}
+            >
+              <RotateCcw className="mr-2 h-4 w-4" />
+              Reset to default
+            </Button>
+          </div>
         </div>
+
+        <p className="mt-3 text-xs text-muted-foreground">
+          {loading
+            ? 'Loading…'
+            : dirty
+              ? 'Previewing. Save to apply to every terminal, or leave this page to discard.'
+              : saved
+                ? `Saved: ${saved.toUpperCase()}`
+                : 'Using the default colors.'}
+        </p>
       </CardContent>
     </Card>
   );
