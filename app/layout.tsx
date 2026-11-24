@@ -1,6 +1,7 @@
 import React from 'react';
 import './globals.css';
 import ClientLayout from '../components/client-layout';
+import { COLOR_THEME_BOOT_SCRIPT } from '../lib/color-themes';
 
 export const metadata = {
   title: 'VENDIX POS',
@@ -24,6 +25,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Paint the cached store colour theme before hydration (no blue flash). */}
+        <script dangerouslySetInnerHTML={{ __html: COLOR_THEME_BOOT_SCRIPT }} />
+      </head>
       <body className={`${inter.className} antialiased`} suppressHydrationWarning>
         <ClientLayout>{children}</ClientLayout>
       </body>

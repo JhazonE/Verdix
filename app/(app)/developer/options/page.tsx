@@ -10,6 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { Percent, Save, ShieldAlert } from 'lucide-react';
 import { PosModeCard } from './PosModeCard';
+import { ColorThemeCard } from './ColorThemeCard';
 
 export default function DeveloperOptionsPage() {
   const router = useRouter();
@@ -95,6 +96,8 @@ export default function DeveloperOptionsPage() {
       </div>
 
       <PosModeCard />
+
+      <ColorThemeCard />
 
       <Card
         className="cursor-pointer hover:bg-accent transition-colors"

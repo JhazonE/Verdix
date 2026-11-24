@@ -10,6 +10,7 @@ const Toaster = dynamic(
 
 import { ThemeProvider } from '@/components/theme-provider';
 import { LicenseGate } from '@/components/license-gate';
+import { ColorThemeSync } from '@/components/color-theme-sync';
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -19,6 +20,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       enableSystem
       disableTransitionOnChange
     >
+      <ColorThemeSync />
       <LicenseGate>{children}</LicenseGate>
       <Toaster />
     </ThemeProvider>

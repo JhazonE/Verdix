@@ -23,6 +23,7 @@ const PRESERVED_KEYS = [
   'pos_print_two_receipts',
   'pos-theme',
   'admin-theme',
+  'color-theme',
 ];
 
 export default function CacheSettingsPage() {

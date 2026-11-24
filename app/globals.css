@@ -99,6 +99,141 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Store-wide colour themes (Developer Options → Color Theme).
+
+   Applied as `data-color-theme="<id>"` on <html>; registry in
+   lib/color-themes.ts. The default Ocean Blue has NO attribute, so the blocks
+   above stay the untouched original palette.
+
+   Each theme only declares its hue (--th) and its primary colour for light and
+   dark. The two shared blocks below derive every surface from --th, so a new
+   theme is ~10 lines. Optional knobs (with their fallbacks in the shared block):
+     --th-s / --th-sd / --th-sd2   surface saturation (light / dark / dark muted)
+     --th-sb / --th-sb2            sidebar saturation
+     --th-sp / --th-spf            sidebar primary + its foreground, for themes
+                                   whose primary would vanish on the dark sidebar
+
+   Specificity is load-bearing: shared light (0,2,1) and per-theme light (0,1,1)
+   both beat `.dark` (0,1,0), and shared dark (0,3,1) / per-theme dark (0,2,1)
+   beat the light ones — so the dark palette wins only when dark mode is on.
+   --------------------------------------------------------------------------- */
+@layer base {
+  html[data-color-theme]:not([data-color-theme='blue']) {
+    --background: var(--th) var(--th-s, 30%) 94%;
+    --secondary: var(--th) var(--th-s, 30%) 91%;
+    --muted: var(--th) var(--th-s, 30%) 91%;
+    --accent: var(--th) var(--th-s, 30%) 91%;
+    --muted-foreground: var(--th) 14% 44%;
+    --border: var(--th) var(--th-s, 30%) 85%;
+    --input: var(--th) var(--th-s, 30%) 85%;
+    --ring: var(--primary);
+    --chart-1: var(--primary);
+
+    --sidebar-background: var(--th) var(--th-sb, 40%) 11%;
+    --sidebar-accent: var(--th) var(--th-sb2, 30%) 17%;
+    --sidebar-border: var(--th) var(--th-sb2, 30%) 17%;
+    --sidebar-primary: var(--th-sp, var(--primary));
+    --sidebar-primary-foreground: var(--th-spf, 0 0% 100%);
+    --sidebar-ring: var(--th-sp, var(--primary));
+  }
+
+  html.dark[data-color-theme]:not([data-color-theme='blue']) {
+    --background: var(--th) var(--th-sd, 40%) 7%;
+    --card: var(--th) var(--th-sd, 40%) 11%;
+    --popover: var(--th) var(--th-sd, 40%) 14%;
+    --secondary: var(--th) var(--th-sd2, 28%) 17%;
+    --muted: var(--th) var(--th-sd2, 28%) 17%;
+    --accent: var(--th) var(--th-sd2, 28%) 20%;
+    --muted-foreground: var(--th) 18% 65%;
+    --border: var(--th) var(--th-sd2, 28%) 22%;
+    --input: var(--th) var(--th-sd2, 28%) 22%;
+    --ring: var(--primary);
+    --chart-1: var(--primary);
+
+    --sidebar-background: var(--th) var(--th-sd, 40%) 11%;
+    --sidebar-accent: var(--th) var(--th-sd2, 28%) 17%;
+    --sidebar-border: var(--th) var(--th-sd2, 28%) 17%;
+    --sidebar-primary: var(--th-sp, var(--primary));
+    --sidebar-primary-foreground: var(--th-spf, 0 0% 100%);
+    --sidebar-ring: var(--th-sp, var(--primary));
+  }
+
+  /* Emerald */
+  html[data-color-theme='emerald'] {
+    --th: 160;
+    --primary: 161 94% 30%;
+    --primary-foreground: 0 0% 100%;
+  }
+  html.dark[data-color-theme='emerald'] {
+    --primary: 158 64% 52%;
+    --primary-foreground: 160 50% 8%;
+  }
+
+  /* Teal */
+  html[data-color-theme='teal'] {
+    --th: 178;
+    --primary: 175 84% 32%;
+    --primary-foreground: 0 0% 100%;
+  }
+  html.dark[data-color-theme='teal'] {
+    --primary: 172 66% 50%;
+    --primary-foreground: 175 50% 8%;
+  }
+
+  /* Violet */
+  html[data-color-theme='violet'] {
+    --th: 262;
+    --primary: 262 83% 58%;
+    --primary-foreground: 0 0% 100%;
+  }
+  html.dark[data-color-theme='violet'] {
+    --primary: 258 90% 66%;
+    --primary-foreground: 0 0% 100%;
+  }
+
+  /* Rose */
+  html[data-color-theme='rose'] {
+    --th: 345;
+    --primary: 347 77% 50%;
+    --primary-foreground: 0 0% 100%;
+  }
+  html.dark[data-color-theme='rose'] {
+    --primary: 350 89% 60%;
+    --primary-foreground: 0 0% 100%;
+  }
+
+  /* Sunset Orange */
+  html[data-color-theme='orange'] {
+    --th: 24;
+    --primary: 21 90% 48%;
+    --primary-foreground: 0 0% 100%;
+  }
+  html.dark[data-color-theme='orange'] {
+    --primary: 25 95% 53%;
+    --primary-foreground: 24 60% 8%;
+  }
+
+  /* Graphite — near-neutral surfaces; primary is near-black in light mode, so
+     the (always dark) sidebar needs its own light accent to stay visible. */
+  html[data-color-theme='graphite'] {
+    --th: 240;
+    --th-s: 5%;
+    --th-sd: 6%;
+    --th-sd2: 4%;
+    --th-sb: 6%;
+    --th-sb2: 5%;
+    --th-sp: 0 0% 98%;
+    --th-spf: 240 6% 10%;
+    --primary: 240 6% 10%;
+    --primary-foreground: 0 0% 98%;
+  }
+  html.dark[data-color-theme='graphite'] {
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 6% 10%;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;
