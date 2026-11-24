@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
         st.created_at,
         si.id                                                     as item_id
       FROM sales_transactions st
-      JOIN pos_transactions pt ON st.id = pt.sale_id
+      JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
       JOIN sale_items si ON st.id = si.sale_id
       LEFT JOIN pos_transaction_items pti ON pti.sale_item_id = si.id
       JOIN users u ON pt.user_id = u.uid
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         st.status,
         st.created_at
       FROM sales_transactions st
-      JOIN pos_transactions pt ON st.id = pt.sale_id
+      JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
       WHERE DATE(st.created_at) = ? AND st.is_training = 0${terminalFilter}
       ORDER BY st.created_at ASC
     `;
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
     const taxSql = `
       SELECT pti.tax_type, SUM(pti.line_total) as amount
       FROM sales_transactions st
-      JOIN pos_transactions pt ON st.id = pt.sale_id
+      JOIN pos_transactions pt ON st.id = pt.sale_id AND pt.transaction_type = 'sale'
       JOIN pos_transaction_items pti ON pti.pos_transaction_id = pt.id
       WHERE DATE(st.created_at) = ? AND st.is_training = 0${terminalFilter}
       GROUP BY pti.tax_type

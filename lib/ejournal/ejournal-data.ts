@@ -36,7 +36,7 @@ export async function fetchEJournalData(date: string, terminalId?: string): Prom
             st.payment_method, st.total, pt.tax_amount AS vat,
             si.product_name, si.quantity, si.price
      FROM sales_transactions st
-     JOIN pos_transactions pt ON pt.sale_id = st.id
+     JOIN pos_transactions pt ON pt.sale_id = st.id AND pt.transaction_type = 'sale'
      JOIN sale_items si ON si.sale_id = st.id
      LEFT JOIN users u ON pt.user_id = u.uid
      LEFT JOIN customers c ON st.customer_id = c.id
@@ -55,7 +55,7 @@ export async function fetchEJournalData(date: string, terminalId?: string): Prom
             st.payment_method, st.total, pt.tax_amount AS vat, st.void_reason,
             si.product_name, si.quantity, si.price
      FROM sales_transactions st
-     JOIN pos_transactions pt ON pt.sale_id = st.id
+     JOIN pos_transactions pt ON pt.sale_id = st.id AND pt.transaction_type = 'sale'
      JOIN sale_items si ON si.sale_id = st.id
      LEFT JOIN users u ON pt.user_id = u.uid
      LEFT JOIN customers c ON st.customer_id = c.id

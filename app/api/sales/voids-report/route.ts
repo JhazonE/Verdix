@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
           WHERE si.sale_id = st.id
         ) as total_cost
       FROM sales_transactions st
-      LEFT JOIN pos_transactions pt ON pt.sale_id = st.id
+      LEFT JOIN pos_transactions pt ON pt.sale_id = st.id AND pt.transaction_type = 'sale'
       LEFT JOIN customers c ON st.customer_id = c.id
       LEFT JOIN users u_cashier ON pt.user_id = u_cashier.uid
       WHERE st.status = 'Voided'
