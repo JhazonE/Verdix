@@ -68,8 +68,10 @@ export default function PurchasesSummaryPage() {
       if (toDate) {
         params.append('endDate', format(toDate, 'yyyy-MM-dd'));
       }
-      // Fetch more to allow client-side searching/pagination for now, or implement server-side
-      params.append('limit', '1000');
+      // This report filters, paginates and totals client-side, so it needs the
+      // whole matching range. At 1000 a busier range was cut short and the
+      // cards and exports silently described the first 1000 orders only.
+      params.append('limit', '100000');
 
       const response = await fetch(getApiUrl(`/purchase-orders?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!response.ok) throw new Error(`API error ${response.status}`);
@@ -124,10 +126,15 @@ export default function PurchasesSummaryPage() {
   }, [searchTerm]);
 
   const summarize = (rows: PurchaseOrder[]) => {
+    // A cancelled PO stays in the list (its status is shown) but was never
+    // bought, so it is neither spend nor an order — the rule Purchases by
+    // Supplier and by Product apply.
+    const bought = rows.filter(r => r.status !== 'Cancelled');
+    const spent = bought.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
     return {
-      totalSpent: rows.reduce((sum, r) => sum + r.total, 0),
-      totalOrders: rows.length,
-      avgOrderValue: rows.length > 0 ? rows.reduce((sum, r) => sum + r.total, 0) / rows.length : 0,
+      totalSpent: spent,
+      totalOrders: bought.length,
+      avgOrderValue: bought.length > 0 ? spent / bought.length : 0,
       pendingOrders: rows.filter(r => r.status === 'Pending').length,
       receivedOrders: rows.filter(r => r.status === 'Received').length,
     };
@@ -170,7 +177,8 @@ export default function PurchasesSummaryPage() {
   };
 
   const exportToExcel = () => {
-    const totalSpentSum = filteredRecords.reduce((s, r) => s + Number(r.total), 0);
+    // Same total as the cards and the PDF: cancelled orders are listed but not spend.
+    const totalSpentSum = summarize(filteredRecords).totalSpent;
     const fileName = `Purchases_Summary_${format(new Date(), 'yyyyMMdd_HHmm')}.xls`;
     const ok = exportReportExcel<PurchaseOrder>({
       title: 'Purchases Summary Report',
