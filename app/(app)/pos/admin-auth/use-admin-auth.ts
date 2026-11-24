@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { getApiUrl } from '@/lib/api-config';
+import type { AuthApprover } from './admin-auth-types';
 
 type Options = {
   isOpen: boolean;
-  onSuccess: () => void;
+  onSuccess: (approver: AuthApprover) => void;
   onOpenChange: (open: boolean) => void;
   requiredCredentials?: { username?: string | null; password?: string | null } | null;
 };
@@ -33,8 +34,14 @@ export function useAdminAuth({ isOpen, onSuccess, onOpenChange, requiredCredenti
       const validUser = !requiredCredentials.username || requiredCredentials.username === username;
       const validPass = !requiredCredentials.password || requiredCredentials.password === password;
       if (validUser && validPass) {
+        // Only a CONFIGURED username identifies the approver; with none set,
+        // any username passes, so the typed one is not recorded.
+        const approver: AuthApprover = {
+          userId: null,
+          name: requiredCredentials.username || null,
+        };
         setTimeout(() => {
-          onSuccess();
+          onSuccess(approver);
           onOpenChange(false);
           setIsProcessing(false);
         }, 500);
@@ -63,7 +70,10 @@ export function useAdminAuth({ isOpen, onSuccess, onOpenChange, requiredCredenti
           permissions.includes('edit_price') || permissions.includes('super_admin');
 
         if (hasPermission) {
-          onSuccess();
+          onSuccess({
+            userId: result.uid ?? null,
+            name: result.displayName || username || null,
+          });
           onOpenChange(false);
         } else {
           setError('You do not have permission to perform this action.');

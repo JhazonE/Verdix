@@ -12,6 +12,7 @@ import { useReactToPrint } from 'react-to-print';
 import { buildRecentSalesQuery } from '../transaction-search/build-recent-sales-query';
 import { calculateExchangeBalance } from '@/lib/pos/exchange-balance';
 import type { ExchangeReplacementItem, ExchangeResult } from './return-sales-types';
+import type { AuthApprover } from '../admin-auth/admin-auth-types';
 
 type Options = {
   isOpen: boolean;
@@ -63,6 +64,10 @@ export function useReturnSales({
   const { isPrinting, isConnected, connect, print } = usePrinter(printMode, nativePrinterName);
   const { toast } = useToast();
   const authSucceededRef = useRef(false);
+  // Who approved this dialog session's returns, from the authorization
+  // prompt. Null when return auth is off. Sent with every return and exchange
+  // made before the dialog closes, since one approval opens the session.
+  const approverRef = useRef<AuthApprover | null>(null);
 
   const handleBrowserPrint = useReactToPrint({
     contentRef: creditSlipRef,
@@ -99,6 +104,7 @@ export function useReturnSales({
   useEffect(() => {
     if (isOpen) {
       authSucceededRef.current = false;
+      approverRef.current = null;
       setStep('loading');
       setIsLoading(false);
       setSearchText('');
@@ -156,8 +162,9 @@ export function useReturnSales({
     setStep('select_items');
   }, []);
 
-  const handleAuthSuccess = useCallback(() => {
+  const handleAuthSuccess = useCallback((approver: AuthApprover) => {
     authSucceededRef.current = true;
+    approverRef.current = approver;
     setStep('input_so');
   }, []);
 
@@ -200,7 +207,9 @@ export function useReturnSales({
               ? localStorage.getItem('pos_current_shift_id')
               : null,
             reason: 'Merchandise Credit',
-            totalAmount
+            totalAmount,
+            approvedByUserId: approverRef.current?.userId ?? null,
+            approvedByName: approverRef.current?.name ?? null,
           })
         });
 
@@ -271,6 +280,8 @@ export function useReturnSales({
           userId: currentUser?.uid || currentUser?.id || null,
           shiftId: typeof window !== 'undefined' ? localStorage.getItem('pos_current_shift_id') : null,
           customerId: selectedSale.customer?.id && selectedSale.customer.id !== 'walk-in' ? selectedSale.customer.id : null,
+          approvedByUserId: approverRef.current?.userId ?? null,
+          approvedByName: approverRef.current?.name ?? null,
         }),
       });
 

@@ -105,6 +105,7 @@ import './exchange-balance.test';
 import './exchange-slip-generator.test';
 import './exchange-tender.test';
 import './return-vat.test';
+import './return-approver.test';
 import './unit-quantity.test';
 import './batch-expiration-edit.test';
 import './batch-expiration-write.test';

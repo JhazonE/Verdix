@@ -3,6 +3,7 @@ import { query, withTransaction, getNextMCNumber } from '@/lib/mysql';
 import { saveEJournalFiles } from '@/lib/ejournal/ejournal-writer';
 import { processReturnLeg } from '@/lib/pos/process-return-leg';
 import { vatOfLines } from '@/lib/tax-utils';
+import { ensureReturnApproverColumns, resolveReturnApprover, writeReturnApprover } from '@/lib/return-approver';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,6 +25,9 @@ export async function POST(request: NextRequest) {
     if (!saleId || !items || items.length === 0) {
       return NextResponse.json({ success: false, error: 'Sale ID and items are required' }, { status: 400 });
     }
+
+    // Before the transaction: adding a missing column commits implicitly.
+    const canRecordApprover = await ensureReturnApproverColumns();
 
     const result = await withTransaction(async (connection) => {
       // Find a valid user ID if none provided (last resort to avoid FK error)
@@ -125,6 +129,12 @@ export async function POST(request: NextRequest) {
         'UPDATE pos_transactions SET tax_amount = ? WHERE id = ?',
         [vatOfLines(writtenLines), posTransId]
       );
+
+      // Who authorised it (the POS return-authorization prompt), for the
+      // Merchandise Credit report's "Override By".
+      if (canRecordApprover) {
+        await writeReturnApprover(connection, posTransId, await resolveReturnApprover(connection, body));
+      }
 
       // 3. Update original sale status if needed (Optional: could mark as 'Returned' or keep it as 'Paid' but has return links)
       // For now, let's keep it simple and just record the return transaction.

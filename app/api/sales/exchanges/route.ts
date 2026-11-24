@@ -8,6 +8,7 @@ import { ensureCustomerCreditColumn } from '@/lib/ensure-customer-credit';
 import { saveEJournalFiles } from '@/lib/ejournal/ejournal-writer';
 import { EXCHANGE_CREDIT_TENDER, isExchangeBalanceTender } from '@/lib/pos/exchange-tender';
 import { mapVatStatusToTaxType, resolveEffectiveTaxType, vatOfLines } from '@/lib/tax-utils';
+import { ensureReturnApproverColumns, resolveReturnApprover, writeReturnApprover } from '@/lib/return-approver';
 
 /**
  * POST /api/sales/exchanges — 1-for-1 item exchange.
@@ -22,6 +23,8 @@ import { mapVatStatusToTaxType, resolveEffectiveTaxType, vatOfLines } from '@/li
 export async function POST(request: NextRequest) {
   try {
     await ensureCustomerCreditColumn();
+    // Before the transaction: adding a missing column commits implicitly.
+    const canRecordApprover = await ensureReturnApproverColumns();
     const body = await request.json();
     const {
       saleId,
@@ -186,6 +189,12 @@ export async function POST(request: NextRequest) {
           returnPosTransId,
         ]
       );
+
+      // Who authorised the exchange, on its return leg — the row the
+      // Merchandise Credit report lists.
+      if (canRecordApprover) {
+        await writeReturnApprover(connection, returnPosTransId, await resolveReturnApprover(connection, body));
+      }
 
       // --- SALE LEG TENDER ---
       // The sale leg is paid by (a) the returned item's value, up to newTotal,

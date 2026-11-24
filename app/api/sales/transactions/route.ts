@@ -7,9 +7,13 @@ import { deductFromBatches, getBatchCostingSettings } from '@/lib/batch-deductio
 import { isService } from '@/lib/product-type';
 import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 import { parseSalesSource } from '@/lib/sales-source';
+import { ensureReturnApproverColumns } from '@/lib/return-approver';
 
 export async function GET(request: NextRequest) {
   try {
+    // The list selects pt.approved_by_name; on a terminal that has not run
+    // migration 154 that would fail the whole page. Cached after the first call.
+    const hasApprover = await ensureReturnApproverColumns();
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('startDate'); // yyyy-MM-dd
     const endDate = searchParams.get('endDate');     // yyyy-MM-dd
@@ -48,6 +52,7 @@ export async function GET(request: NextRequest) {
         pt.transaction_time,
         pt.void_reason,
         pt.notes,
+        ${hasApprover ? 'pt.approved_by_name' : 'NULL'} AS approved_by_name,
         pt.payment_status,
         pt.user_id,
         u.display_name as cashier_name,
@@ -547,7 +552,10 @@ export async function GET(request: NextRequest) {
         originalSINumber: row.original_si_number || row.sales_trans_si_number || row.original_order_number || null,
         originalOrderNumber: row.original_order_number || null,
         originalTransactionTime: row.original_transaction_time || null,
-        originalCashierName: row.original_cashier_name || null
+        originalCashierName: row.original_cashier_name || null,
+        // Who authorised a return (POS return-authorization prompt); null when
+        // none was recorded. See migration 154.
+        approvedByName: row.approved_by_name || null,
       };
     });
 
@@ -654,6 +662,7 @@ export async function GET(request: NextRequest) {
           originalOrderNumber: null,
           originalTransactionTime: null,
           originalCashierName: null,
+          approvedByName: null,
         };
       });
     }

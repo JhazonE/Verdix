@@ -149,11 +149,11 @@ export default function ReturnedSalesPage() {
               soldByCashier: tx.originalCashierName || 'N/A',
               returnedDate: tx.date || '',
               returnedByCashier: tx.cashier || 'N/A',
-              // No approver is recorded for a return: the POS supervisor prompt
-              // (enableReturnAuth) does not pass on who approved it, and
-              // pos_transactions has no column for it. This used to show the
-              // CUSTOMER's name, or a literal "admin", as the approver.
-              overrideBy: '',
+              // Who authorised the return at the POS (migration 154). Empty —
+              // shown as "-" — when return auth was off or the return predates
+              // the column. This used to show the CUSTOMER's name, or a literal
+              // "admin", as the approver.
+              overrideBy: tx.approvedByName || '',
               salesAmount: Math.abs(tx.total || 0),
               cost: Math.abs(tx.cost || 0),
               // Amount and Cost are shown as positive figures, so profit is
