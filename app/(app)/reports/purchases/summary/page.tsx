@@ -72,6 +72,9 @@ export default function PurchasesSummaryPage() {
       // whole matching range. At 1000 a busier range was cut short and the
       // cards and exports silently described the first 1000 orders only.
       params.append('limit', '100000');
+      // Headers only: this report reads none of the line items, and loading
+      // them is one query per order (see the purchase-orders route).
+      params.append('items', 'false');
 
       const response = await fetch(getApiUrl(`/purchase-orders?${params.toString()}`), { signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS) });
       if (!response.ok) throw new Error(`API error ${response.status}`);

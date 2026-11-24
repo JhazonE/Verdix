@@ -18,6 +18,11 @@ export async function GET(request: NextRequest) {
     const supplierId = searchParams.get('supplierId');
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
+    // `items=false` returns PO headers only. Line items cost one query PER
+    // order, all issued at once on the shared pool; a report that never reads
+    // them (Purchases Summary, which loads a whole date range) would otherwise
+    // queue thousands of queries ahead of POS checkout.
+    const includeItems = searchParams.get('items') !== 'false';
 
     let sql = `
       SELECT
@@ -100,7 +105,7 @@ export async function GET(request: NextRequest) {
           ORDER BY poi.created_at ASC
         `;
 
-        const items = await query(itemsQuery, [row.id]);
+        const items = includeItems ? await query(itemsQuery, [row.id]) : [];
 
         return {
           id: row.id,
