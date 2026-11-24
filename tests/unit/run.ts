@@ -108,6 +108,7 @@ import './return-vat.test';
 import './return-approver.test';
 import './pos-charge-balance.test';
 import './po-receive-expiration.test';
+import './out-of-stock-report.test';
 import './unit-quantity.test';
 import './batch-expiration-edit.test';
 import './batch-expiration-write.test';

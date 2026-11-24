@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import Link from 'next/link';
-import { Package, PackageSearch, ArrowLeftRight, AlertTriangle, TrendingUp, ClipboardList, Receipt, Package2, Undo, Users, PhilippinePeso, ShoppingCart, Layers, CreditCard, ShieldCheck, Landmark, Calendar, CalendarClock, Tags, FileBarChart, ReceiptText, ClipboardCheck, ActivitySquare, ListChecks, FileSearch, CalendarDays, Ban, Banknote } from 'lucide-react';
+import { Package, PackageSearch, ArrowLeftRight, AlertTriangle, TrendingUp, ClipboardList, Receipt, Package2, Undo, Users, PhilippinePeso, ShoppingCart, Layers, CreditCard, ShieldCheck, Landmark, Calendar, CalendarClock, Tags, FileBarChart, ReceiptText, ClipboardCheck, ActivitySquare, ListChecks, FileSearch, CalendarDays, Ban, Banknote, PackageX } from 'lucide-react';
 
 export default function ReportsPage() {
   return (
@@ -66,6 +66,18 @@ export default function ReportsPage() {
                   Low Stock Report
                 </CardTitle>
                 <CardDescription>Products below reorder point.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+
+          <Link href="/reports/out-of-stock">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <PackageX className="h-5 w-5 text-red-500" />
+                  Out of Stock Report
+                </CardTitle>
+                <CardDescription>Products with nothing left on hand, with when they ran out and last sold. Flags oversold (negative) stock.</CardDescription>
               </CardHeader>
             </Card>
           </Link>
