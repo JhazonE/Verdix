@@ -30,7 +30,7 @@ function ExpandedDetail({ sale }: { sale: any }) {
           ['Cashier', sale.cashier || '-'],
           ['Customer', sale.customer?.name || 'Walk-in'],
           ['Payment', sale.paymentMethod || '-'],
-          ['Amount Paid', formatAmount(sale.amountPaid || sale.total)],
+          ['Amount Paid', formatAmount(sale.amountPaid ?? sale.total)],
           ['Balance', formatAmount(sale.balance)],
           ['Notes', sale.notes || '-'],
         ].map(([label, value]) => (

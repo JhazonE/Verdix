@@ -8,6 +8,7 @@ import { isService } from '@/lib/product-type';
 import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 import { parseSalesSource } from '@/lib/sales-source';
 import { ensureReturnApproverColumns } from '@/lib/return-approver';
+import { openInvoiceBalance, openInvoiceSql } from '@/lib/customer-balance';
 
 export async function GET(request: NextRequest) {
   try {
@@ -278,6 +279,9 @@ export async function GET(request: NextRequest) {
         COALESCE(SUM(pt.total_amount - pt.tax_amount), 0) as vatableSales,
         COALESCE(SUM(CASE WHEN pt.payment_method = 'Account' THEN pt.total_amount ELSE 0 END), 0) as accountPayments,
         COALESCE(SUM(item_costs.item_cost), 0) as cost,
+        -- What POS charge sales still owe, from their sales_invoices mirror
+        -- (see owedByReference below). Joined on the SALE row only.
+        COALESCE(SUM(pos_owed.owed), 0) as posOwed,
         -- Sales only. A return is a row in this list but not a transaction of
         -- its own; counting it made the Transactions card read one higher than
         -- Sales by Date, Analysis and Fiscal Year for the same period.
@@ -303,6 +307,12 @@ export async function GET(request: NextRequest) {
         LEFT JOIN sale_items si ON pti.sale_item_id = si.id
         GROUP BY pti.pos_transaction_id
       ) item_costs ON item_costs.pos_transaction_id = pt.id
+      LEFT JOIN (
+        SELECT reference, SUM(total - COALESCE(amount_paid, 0)) AS owed
+        FROM sales_invoices mi
+        WHERE mi.transaction_source = 'POS' AND ${openInvoiceSql('mi')}
+        GROUP BY reference
+      ) pos_owed ON pos_owed.reference = st.reference AND pt.transaction_type = 'sale'
       WHERE 1=1 ${totalsWhereClause}
     `;
     const totalsResult = await query(totalsSql, totalsParams);
@@ -313,6 +323,7 @@ export async function GET(request: NextRequest) {
     const aggVatableSales = parseFloat(totalsRow.vatableSales) || 0;
     const aggAccountPayments = parseFloat(totalsRow.accountPayments) || 0;
     const aggCost = parseFloat(totalsRow.cost) || 0;
+    const aggPosOwed = parseFloat(totalsRow.posOwed) || 0;
     const aggSaleCount = Number(totalsRow.saleCount) || 0;
 
     // Back-office invoices, summed in SQL over every match (not just this
@@ -348,10 +359,11 @@ export async function GET(request: NextRequest) {
     const totals = {
       discounts: aggDiscounts,
       revenue: totalRevenue,
-      // A POS sale is paid in full at the till; a back-office invoice is paid
-      // only to the extent amount_paid says so.
-      amountPaid: aggRevenue + bo.paid,
-      customerBalance: bo.revenue - bo.paid,
+      // A POS sale is paid at the till UNLESS it was charged to the customer's
+      // account; what a charge still owes is on its sales_invoices mirror. A
+      // back-office invoice is paid only to the extent amount_paid says so.
+      amountPaid: aggRevenue - aggPosOwed + bo.paid,
+      customerBalance: aggPosOwed + (bo.revenue - bo.paid),
       cost: totalCost,
       grossProfit: profitOf(totalRevenue, totalCost),
       vatableSales: aggVatableSales + (bo.revenue - bo.vat),
@@ -484,6 +496,32 @@ export async function GET(request: NextRequest) {
         });
     });
     
+    // What each POS sale still owes. A Charge sale is NOT paid at the till:
+    // checkout mirrors it into sales_invoices (transaction_source 'POS', same
+    // reference) and customer payments settle that mirror. Reading this as
+    // "paid in full" made every charge sale show Balance 0, and Sales by
+    // Customer show no outstanding balance at all. openInvoiceBalance keeps the
+    // customer pages' rule: a cancelled or settled invoice owes nothing.
+    // One lookup per page; sales_invoices.reference has no index.
+    const owedByReference = new Map<string, number>();
+    const saleRefs = Array.from(new Set(
+      transactions
+        .filter((t: any) => t.transaction_type === 'sale' && t.reference)
+        .map((t: any) => String(t.reference))
+    ));
+    for (let i = 0; i < saleRefs.length; i += 5000) {
+      const chunk = saleRefs.slice(i, i + 5000);
+      const mirrors: any[] = await query(
+        `SELECT reference, status, total, amount_paid FROM sales_invoices
+          WHERE transaction_source = 'POS' AND reference IN (${chunk.map(() => '?').join(',')})`,
+        chunk
+      );
+      for (const m of mirrors) {
+        const ref = String(m.reference);
+        owedByReference.set(ref, (owedByReference.get(ref) || 0) + openInvoiceBalance(m));
+      }
+    }
+
     // Transform logic if needed
     const posData = transactions.map((row: any) => {
       const totalAmount = parseFloat(row.total_amount) || 0;
@@ -503,8 +541,12 @@ export async function GET(request: NextRequest) {
       // For now, non-vat sales is 0 (all sales are VAT-inclusive)
       const nonVatSales = 0;
       
-      const balance = 0;
-      const amountPaid = totalAmount; // Assuming full payment for now as logic for partial isn't fully clear
+      // A return row shares its sale's reference; giving it the balance too
+      // would count what is owed twice. Only the sale row carries it.
+      const balance = row.transaction_type === 'sale'
+        ? Math.round((owedByReference.get(String(row.reference)) || 0) * 100) / 100
+        : 0;
+      const amountPaid = totalAmount - balance;
 
       // SI No. with fallback to legacy fields
       const siNumber = row.si_number || row.sales_trans_si_number || row.receipt_number || row.order_number;

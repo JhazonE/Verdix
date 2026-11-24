@@ -103,7 +103,7 @@ export function SalesTable({ table, isLoading, expandedRows, toggleRowExpansion,
                         <TableCell colSpan={row.getVisibleCells().length} className="py-3 px-4">
                           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-10 gap-4 text-xs">
                             <div className="flex flex-col"><span className="text-muted-foreground font-medium">Discount</span><span className="font-semibold">{formatAmount(sale.discount)}</span></div>
-                            <div className="flex flex-col"><span className="text-muted-foreground font-medium">Amount Paid</span><span className="font-semibold">{formatAmount(sale.amountPaid || sale.total)}</span></div>
+                            <div className="flex flex-col"><span className="text-muted-foreground font-medium">Amount Paid</span><span className="font-semibold">{formatAmount(sale.amountPaid ?? sale.total)}</span></div>
                             <div className="flex flex-col"><span className="text-muted-foreground font-medium">Balance</span><span className="font-semibold">{formatAmount(sale.balance)}</span></div>
                             <div className="flex flex-col"><span className="text-muted-foreground font-medium">Cost</span><span className="font-semibold">{formatAmount(sale.cost)}</span></div>
                             <div className="flex flex-col"><span className="text-muted-foreground font-medium">Profit</span><span className="font-semibold">{formatAmount(sale.profit)}</span></div>

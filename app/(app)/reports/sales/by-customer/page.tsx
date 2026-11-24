@@ -129,7 +129,7 @@ export default function SalesByCustomerPage() {
           // sales but is not a purchase of its own.
           if (tx.transactionType !== 'return') customer.transactionCount++;
           customer.totalSales += tx.total || 0;
-          customer.totalPaid += tx.amountPaid || tx.total || 0;
+          customer.totalPaid += (tx.amountPaid ?? tx.total) || 0;
           customer.outstandingBalance += tx.balance || 0;
           
           // Update last purchase date if newer
