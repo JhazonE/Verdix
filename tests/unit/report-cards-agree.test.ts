@@ -228,4 +228,12 @@ for (const rel of ['app/api/sales/z-reading/route.ts', 'app/api/sales/overall-re
   assert.ok(/si_number/.test(disc), 'statutory discount report must carry the SI number');
 }
 
+// Sales Transactions excludes training sales, as Sales by Date, Fiscal Year and
+// the readings do; it used to count them in its list and cards.
+{
+  const tx = stripComments(read('app/api/sales/transactions/route.ts'));
+  assert.ok(/whereClause \+= ' AND COALESCE\(pt\.is_training, 0\) = 0'/.test(tx),
+    'Sales Transactions must exclude training sales');
+}
+
 console.log('✓ report-cards-agree');

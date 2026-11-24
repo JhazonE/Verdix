@@ -113,6 +113,12 @@ export async function GET(request: NextRequest) {
     // sales_transactions.status, not transaction_type.
     whereClause += " AND COALESCE(st.status, '') NOT IN ('Voided', 'Void')";
 
+    // Training sales are rehearsals, not revenue: checkout gives them no BIR
+    // number, and Sales by Date, Fiscal Year and the X/Z-readings all leave
+    // them out (posSaleSql). Nothing here did, so a training sale inflated the
+    // cards and listed as a real sale. Excluded the same way voids are.
+    whereClause += ' AND COALESCE(pt.is_training, 0) = 0';
+
     // Status filter: tricky because pos_transactions has 'transaction_type' (sale, void, return)
     // while sales_transactions has 'status' (Paid, Returned, Void).
     if (status) {
