@@ -78,17 +78,24 @@ export default function OutOfStockReportPage() {
       ...(searchQuery ? { search: searchQuery } : {}),
     });
 
+  // Every matching row, page by page, for print and Excel. Throws rather than
+  // returning a partial list: falling back to the rows on screen, or stopping
+  // at the API's per-request cap, exported an incomplete report as if whole.
+  const EXPORT_PAGE = 5000;
   const fetchAll = async (): Promise<Product[]> => {
-    try {
-      const res = await fetch(getApiUrl(`/reports/out-of-stock?${buildParams(1, 10000).toString()}`), {
+    const all: Product[] = [];
+    for (let page = 1; ; page++) {
+      const res = await fetch(getApiUrl(`/reports/out-of-stock?${buildParams(page, EXPORT_PAGE).toString()}`), {
         signal: AbortSignal.timeout(REPORT_FETCH_TIMEOUT_MS),
       });
       const data = await res.json();
-      if (data.success && Array.isArray(data.data)) return data.data;
-    } catch {
-      // fall back to whatever is currently loaded
+      if (!res.ok || !data.success || !Array.isArray(data.data)) {
+        throw new Error(data?.error || `API error ${res.status}`);
+      }
+      all.push(...data.data);
+      const total = Number(data.pagination?.totalItems) || 0;
+      if (all.length >= total || data.data.length === 0) return all;
     }
-    return products;
   };
 
   useEffect(() => {
@@ -116,7 +123,14 @@ export default function OutOfStockReportPage() {
   }, [currentPage, searchQuery, limit, sort, includeNeverStocked]);
 
   const handlePrint = async () => {
-    const rows = await fetchAll();
+    let rows: Product[];
+    try {
+      rows = await fetchAll();
+    } catch (error) {
+      console.error('Failed to load the full out-of-stock list for printing:', error);
+      toast({ title: 'Print Failed', description: 'Could not load the full report. Please try again.', variant: 'destructive' });
+      return;
+    }
     const body = rows.length > 0
       ? rows.map((p) => `
           <tr>
