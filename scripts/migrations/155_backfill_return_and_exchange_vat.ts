@@ -1,5 +1,12 @@
 import { registerMigration, Migration } from './runner';
 import { query } from '../../lib/mysql';
+import {
+  applyRegistrationToTaxType,
+  mapVatStatusToTaxType,
+  parseTaxType,
+  resolveEffectiveTaxType,
+  vatOfLines,
+} from '../../lib/tax-utils';
 
 /**
  * Backfills pos_transactions.tax_amount on rows that were written with a
@@ -9,25 +16,31 @@ import { query } from '../../lib/mysql';
  *    number whose VAT the X-reading and e-journal read from this column.
  *
  * Left at 0, reports summing pt.total_amount and pt.tax_amount (Sales by Date,
- * Sales Transactions, the e-journal) netted a return out of revenue but not
- * out of VAT, and an exchange's sale reported no VAT. Line-based readings (the
- * Z-reading, BIR Sales Summary, Sta. Lucia) were already right and are
- * unaffected; this brings the column into line with them.
+ * Sales Transactions) netted a return out of revenue but not out of VAT, and an
+ * exchange's sale reported no VAT. Line-based readings (the Z-reading, BIR
+ * Sales Summary, Sta. Lucia) were already right and are unaffected.
  *
- * VAT is computed from each row's own pos_transaction_items, by the rule the
- * writers now use (lib/tax-utils.ts vatOfLines): 12/112 of each VAT line,
- * nothing for VAT_EXEMPT / ZERO_RATED / NON_VAT, signed like the line (so a
- * return's VAT is negative). A line with no tax_type predates tax tracking and
- * is resolved the way processReturnLeg resolves one: VAT, unless the store is
- * not VAT-registered — a NON_VAT store never books VAT.
+ * WHERE EACH LINE'S TAX TYPE COMES FROM. Not from the line itself: until
+ * cd264d87 (2026-11-13) the return and exchange writers did not set
+ * pos_transaction_items.tax_type, so those lines hold the column DEFAULT 'VAT'
+ * whatever the item really was (migration 148). Trusting it would book VAT on
+ * a non-VAT store's returns, and on returns of senior/PWD (VAT-exempt) lines.
+ *  - A RETURN line takes the tax type of the original sale line it reverses —
+ *    the oldest line of that product on that sale, the rule processReturnLeg
+ *    applies — because checkout always recorded that one correctly. An
+ *    original that is itself an exchange sale leg is not trusted either.
+ *  - An EXCHANGE SALE leg, and a return line with no trustworthy original,
+ *    are resolved from the product's vat_status and the store's registration,
+ *    the way the exchange route and checkout resolve a line.
+ * VAT is then 12/112 of each VAT line (vatOfLines), signed like the line.
  *
- * Only rows still at exactly 0 whose lines give a non-zero VAT are touched,
- * so it is idempotent and never overwrites a value something else wrote.
- * An ordinary (non-exchange) sale at 0 is NOT touched: that can be a genuinely
+ * Only rows still at 0 (or NULL) whose lines give a non-zero VAT are touched,
+ * so it is idempotent and never overwrites a value something else wrote. An
+ * ordinary (non-exchange) sale at 0 is NOT touched: that can be a genuinely
  * VAT-exempt sale, and checkout always wrote its own tax_amount.
  *
- * Every changed row's previous value is kept in pos_transactions_vat_backfill
- * so down() restores it exactly.
+ * Every changed row's previous value is kept in pos_transactions_vat_backfill,
+ * and down() restores only rows still holding the backfilled value.
  */
 
 const BACKUP = 'pos_transactions_vat_backfill';
@@ -38,7 +51,9 @@ const migration: Migration = {
 
   async up(): Promise<void> {
     const [settings]: any = await query('SELECT vat_registration FROM pos_settings LIMIT 1');
-    const nullLineType = settings?.vat_registration === 'NON_VAT' ? 'NON_VAT' : 'VAT';
+    const registration: string = settings?.vat_registration || 'VAT';
+    const fromProduct = (vatStatus: string | null) =>
+      resolveEffectiveTaxType(mapVatStatusToTaxType(vatStatus ?? undefined), undefined, 0, registration);
 
     await query(`
       CREATE TABLE IF NOT EXISTS ${BACKUP} (
@@ -49,39 +64,64 @@ const migration: Migration = {
       )
     `);
 
-    // The VAT each candidate row's lines carry.
-    const computed = `
+    // Lines of every candidate row, with the original sale line's tax type for
+    // a return (NULL when there is none, or it is itself an exchange sale leg).
+    const lines: any[] = await query(`
       SELECT pt.id AS pos_transaction_id,
-             COALESCE(pt.tax_amount, 0) AS previous_tax_amount,
-             ROUND(SUM(CASE WHEN COALESCE(pti.tax_type, ?) = 'VAT'
-                            THEN pti.line_total - pti.line_total / 1.12 ELSE 0 END), 2) AS new_tax_amount
+             pt.transaction_type,
+             pti.line_total,
+             p.vat_status,
+             CASE WHEN pt.transaction_type = 'return' THEN (
+               SELECT opti.tax_type
+                 FROM sale_items osi
+                 JOIN pos_transaction_items opti ON opti.sale_item_id = osi.id
+                 JOIN pos_transactions opt ON opt.id = opti.pos_transaction_id
+                WHERE osi.sale_id = pt.sale_id
+                  AND osi.product_id = pti.product_id
+                  AND osi.quantity > 0
+                  AND opt.transaction_type = 'sale'
+                  AND opt.exchange_group_id IS NULL
+                ORDER BY osi.created_at ASC
+                LIMIT 1
+             ) END AS original_tax_type
         FROM pos_transactions pt
         JOIN pos_transaction_items pti ON pti.pos_transaction_id = pt.id
+        LEFT JOIN products p ON p.id = pti.product_id
        WHERE COALESCE(pt.tax_amount, 0) = 0
          AND (pt.transaction_type = 'return'
               OR (pt.transaction_type = 'sale' AND pt.exchange_group_id IS NOT NULL))
-       GROUP BY pt.id
-      HAVING new_tax_amount <> 0
-    `;
+    `);
 
-    await query(
-      `INSERT IGNORE INTO ${BACKUP} (pos_transaction_id, previous_tax_amount, new_tax_amount)
-       SELECT pos_transaction_id, previous_tax_amount, new_tax_amount FROM (${computed}) c`,
-      [nullLineType]
-    );
+    const byRow = new Map<string, { lineTotal: number; taxType: string }[]>();
+    for (const l of lines) {
+      const original = parseTaxType(l.original_tax_type);
+      const taxType = original ?? fromProduct(l.vat_status);
+      const list = byRow.get(l.pos_transaction_id) || [];
+      list.push({ lineTotal: Number(l.line_total) || 0, taxType });
+      byRow.set(l.pos_transaction_id, list);
+    }
 
-    const result: any = await query(
-      `UPDATE pos_transactions pt
-         JOIN ${BACKUP} b ON b.pos_transaction_id = pt.id
-          SET pt.tax_amount = b.new_tax_amount
-        WHERE COALESCE(pt.tax_amount, 0) = b.previous_tax_amount`
-    );
-    const [summary]: any = await query(
-      `SELECT COUNT(*) AS n, COALESCE(SUM(new_tax_amount), 0) AS vat FROM ${BACKUP}`
-    );
+    let changed = 0;
+    let netVat = 0;
+    for (const [id, rowLines] of byRow) {
+      const vat = vatOfLines(rowLines);
+      if (vat === 0) continue;
+      await query(
+        `INSERT IGNORE INTO ${BACKUP} (pos_transaction_id, previous_tax_amount, new_tax_amount) VALUES (?, 0, ?)`,
+        [id, vat]
+      );
+      const result: any = await query(
+        'UPDATE pos_transactions SET tax_amount = ? WHERE id = ? AND COALESCE(tax_amount, 0) = 0',
+        [vat, id]
+      );
+      if (result?.affectedRows) {
+        changed += 1;
+        netVat += vat;
+      }
+    }
     console.log(
-      `✅ pos_transactions: backfilled VAT on ${result?.affectedRows ?? 0} row(s) ` +
-      `(${summary?.n ?? 0} recorded in ${BACKUP}, net VAT ${Number(summary?.vat || 0).toFixed(2)})`
+      `✅ pos_transactions: backfilled VAT on ${changed} row(s), net VAT ${netVat.toFixed(2)} ` +
+      `(registration ${applyRegistrationToTaxType('VAT', registration) === 'VAT' ? 'VAT' : 'NON_VAT'})`
     );
   },
 
