@@ -152,6 +152,7 @@ import './151_remove_orphan_price_level_rows';
 import './152_add_void_audit_to_sales_invoices';
 import './153_add_void_source_to_sales_transactions';
 import './154_add_return_approver_to_pos_transactions';
+import './155_backfill_return_and_exchange_vat';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';
