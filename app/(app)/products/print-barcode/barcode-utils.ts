@@ -4,11 +4,11 @@ import { jsPDF } from 'jspdf';
 import type { Product } from '@/lib/types';
 
 export const LABEL_SIZES = [
-  { label: '40 × 25 mm',  width: 40,  height: 25, fontSize: 6 },
-  { label: '50 × 25 mm',  width: 50,  height: 25, fontSize: 6 },
-  { label: '58 × 40 mm',  width: 58,  height: 40, fontSize: 7 },
-  { label: '60 × 40 mm',  width: 60,  height: 40, fontSize: 7 },
-  { label: '100 × 50 mm', width: 100, height: 50, fontSize: 8 },
+  { label: '40 × 25 mm',  width: 40,  height: 25, fontSize: 8 },
+  { label: '50 × 25 mm',  width: 50,  height: 25, fontSize: 8 },
+  { label: '58 × 40 mm',  width: 58,  height: 40, fontSize: 10 },
+  { label: '60 × 40 mm',  width: 60,  height: 40, fontSize: 10 },
+  { label: '100 × 50 mm', width: 100, height: 50, fontSize: 12 },
 ];
 
 export type LabelSize = (typeof LABEL_SIZES)[number];
@@ -47,6 +47,8 @@ export function generateBarcodeDataUrl(value: string, format: string): string | 
       height: 60,
       width: 2,
       margin: 10,
+      // Little top margin so the product name sits close to the bars.
+      marginTop: 2,
       textMargin: 4,
       font: 'monospace',
       background: '#ffffff',
@@ -231,6 +233,7 @@ export function buildPrintHTML(
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     width: 100%;
     height: 100%;
   }
@@ -242,16 +245,18 @@ export function buildPrintHTML(
     overflow: hidden;
     text-overflow: ellipsis;
     width: 100%;
-    line-height: 1.2;
-    margin-bottom: 0.4mm;
+    line-height: 1.1;
+    margin-bottom: 0;
     flex: none;
   }
-  /* barcode takes whatever height is left after name + price, so they never get clipped */
+  /* barcode keeps its natural height but shrinks if name + price need the room,
+     so the stack stays tight (name right above the bars) and nothing is clipped */
   .barcode-img {
     display: block;
-    flex: 1 1 0;
+    flex: 0 1 auto;
     min-height: 0;
     width: 100%;
+    height: auto;
     object-fit: contain;
   }
   .price {
@@ -318,7 +323,7 @@ export async function buildPrintPDF(
     const { dataUrl } = labels[i];
     const price = itemPrice(labels[i]);
     const imgAspect = aspectByUrl.get(dataUrl)!;
-    const nameHeightMm  = showName ? nameFontPt * MM_PER_PT * 1.3 : 0;
+    const nameHeightMm  = showName ? nameFontPt * MM_PER_PT * 1.1 : 0;
     const priceHeightMm = showPrice && price !== undefined ? priceFontPt * MM_PER_PT * 1.3 : 0;
     const priceText = price !== undefined ? `₱${price.toFixed(2)}` : '';
 
@@ -341,7 +346,7 @@ export async function buildPrintPDF(
       doc.setFont('courier', 'bold');
       doc.setFontSize(nameFontPt);
       const truncated = doc.splitTextToSize(itemName(labels[i]),size.width - 2)[0] as string;
-      doc.text(truncated, cellX + size.width / 2, cursorY + nameHeightMm * 0.7, { align: 'center' });
+      doc.text(truncated, cellX + size.width / 2, cursorY + nameHeightMm * 0.8, { align: 'center' });
       cursorY += nameHeightMm;
     }
 

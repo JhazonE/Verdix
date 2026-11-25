@@ -47,7 +47,9 @@ export function PreviewLabel({
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
+          justifyContent: 'center',
           width: '100%',
+          height: '100%',
           fontFamily: 'monospace',
         }}
       >
@@ -57,12 +59,13 @@ export function PreviewLabel({
               fontSize: nameFontPx,
               fontWeight: 700,
               textAlign: 'center',
-              lineHeight: 1.2,
+              lineHeight: 1.1,
+              flex: 'none',
               width: '100%',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              marginBottom: 3,
+              marginBottom: 0,
             }}
           >
             {product.name}
@@ -73,7 +76,8 @@ export function PreviewLabel({
           <img
             src={dataUrl}
             alt="barcode preview"
-            style={{ display: 'block', width: '100%', height: 'auto' }}
+            // Shrinks to leave room for name + price so neither gets clipped.
+            style={{ display: 'block', width: '100%', height: 'auto', flex: '0 1 auto', minHeight: 0, objectFit: 'contain' }}
           />
         ) : (
           <div style={{ fontSize: 12, color: '#9ca3af', padding: '6px 0' }}>
@@ -87,6 +91,8 @@ export function PreviewLabel({
               fontSize: priceFontPx,
               fontWeight: 700,
               textAlign: 'center',
+              lineHeight: 1.1,
+              flex: 'none',
               marginTop: 3,
             }}
           >
