@@ -448,6 +448,18 @@ export async function POST(request: NextRequest) {
         isTrainingMode
       ]);
 
+      // A charge's due date comes from the customer's payment terms. Read back
+      // what was filed rather than recomputing it, so the printed invoice
+      // cannot disagree with the account. Cash sales skip the round trip.
+      let dueDate: string | null = null;
+      if (isCharge) {
+        const [dueRows]: any = await connection.query(
+          "SELECT DATE_FORMAT(due_date, '%Y-%m-%d') AS due_date FROM sales_invoices WHERE id = ?",
+          [invoiceId]
+        );
+        dueDate = dueRows?.[0]?.due_date ?? null;
+      }
+
       // 3a. Auto-apply any available account credit against a new charge (utang).
       // Reduces the new invoice's outstanding balance and the customer's stored credit.
       let creditApplied = 0;
@@ -829,7 +841,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        data: { saleId, posTransId, invoiceId, paymentDetailsId, orderNumber, siNumber, birOrNumber, pointsEarned: totalPointsEarned, pointsRemaining, creditApplied },
+        data: { saleId, posTransId, invoiceId, paymentDetailsId, orderNumber, siNumber, birOrNumber, pointsEarned: totalPointsEarned, pointsRemaining, creditApplied, dueDate },
         message: 'Transaction saved successfully'
       });
     });

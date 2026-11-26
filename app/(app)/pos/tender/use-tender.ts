@@ -385,6 +385,7 @@ export function useTender({
         terminalPermitDateIssued: terminalPermitDateIssued ?? undefined,
         terminalName: terminalName,
         isTrainingMode: isTrainingMode,
+        dueDate: result.data.dueDate || undefined,
         taxBreakdown: {
           vatableSales,
           vatAmount: vatAmountResult,

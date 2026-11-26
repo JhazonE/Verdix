@@ -490,6 +490,7 @@ export interface SystemSettings {
   largeInvoiceShowCountedItems?: boolean | number | null;
   largeInvoiceShowChange?: boolean | number | null;
   largeInvoiceShowPayment?: boolean | number | null;
+  largeInvoiceShowCashier?: boolean | number | null;
 }
 
 export interface User {

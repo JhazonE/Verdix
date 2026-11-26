@@ -76,7 +76,8 @@ export async function GET(request: NextRequest) {
       { name: 'large_invoice_show_business_name', type: 'TINYINT(1) DEFAULT 1' },
       { name: 'large_invoice_show_counted_items', type: 'TINYINT(1) DEFAULT 1' },
       { name: 'large_invoice_show_change', type: 'TINYINT(1) DEFAULT 1' },
-      { name: 'large_invoice_show_payment', type: 'TINYINT(1) DEFAULT 1' }
+      { name: 'large_invoice_show_payment', type: 'TINYINT(1) DEFAULT 1' },
+      { name: 'large_invoice_show_cashier', type: 'TINYINT(1) DEFAULT 1' }
     ];
 
     const currentColumnsResult = await query(
@@ -206,7 +207,8 @@ export async function GET(request: NextRequest) {
         large_invoice_show_business_name AS largeInvoiceShowBusinessName,
         large_invoice_show_counted_items AS largeInvoiceShowCountedItems,
         large_invoice_show_change AS largeInvoiceShowChange,
-        large_invoice_show_payment AS largeInvoiceShowPayment
+        large_invoice_show_payment AS largeInvoiceShowPayment,
+        large_invoice_show_cashier AS largeInvoiceShowCashier
       FROM pos_settings
       LIMIT 1
     `;
@@ -474,7 +476,8 @@ export async function POST(request: NextRequest) {
         largeInvoiceShowBusinessName: 'large_invoice_show_business_name',
         largeInvoiceShowCountedItems: 'large_invoice_show_counted_items',
         largeInvoiceShowChange: 'large_invoice_show_change',
-        largeInvoiceShowPayment: 'large_invoice_show_payment'
+        largeInvoiceShowPayment: 'large_invoice_show_payment',
+        largeInvoiceShowCashier: 'large_invoice_show_cashier'
       };
 
       const updates: string[] = [];

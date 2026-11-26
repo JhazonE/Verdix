@@ -62,6 +62,7 @@ export function mapSaleToReceiptDetails(sale: Sale) {
     pointsUsedCount: sale.pointsUsedCount || 0,
     pointsBalance: sale.pointsBalance ?? 0,
     paymentReference: sale.paymentReference,
+    dueDate: sale.dueDate,
     taxBreakdown: {
       vatableSales,
       vatAmount: vatAmountResult,

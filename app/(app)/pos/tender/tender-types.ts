@@ -59,6 +59,8 @@ export interface CompletedSale {
   terminalPermitDateIssued?: string;
   terminalName?: string;
   isTrainingMode?: boolean;
+  /** Charge sales only: 'YYYY-MM-DD' from the customer's payment terms. */
+  dueDate?: string;
   taxBreakdown: {
     vatableSales: number;
     vatAmount: number;

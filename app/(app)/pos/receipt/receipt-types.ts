@@ -58,6 +58,8 @@ export interface ReceiptViewProps {
     isTrainingMode?: boolean;
     isReprint?: boolean;
     paymentReference?: string;
+    /** When a charge must be paid. Printed on the Large Invoice for Charge sales only. */
+    dueDate?: string | Date | null;
     taxBreakdown?: {
       vatableSales: number;
       vatAmount: number;
