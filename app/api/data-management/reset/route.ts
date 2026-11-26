@@ -236,7 +236,10 @@ export async function POST(request: NextRequest) {
             ['pm_bank_transfer', 'Bank Transfer', 1],
             ['pm_paypal', 'PayPal', 1],
             ['pm_gcash', 'GCash', 1],
-            ['pm_check', 'Check', 1]
+            ['pm_check', 'Check', 1],
+            // POS charge-to-account logic matches on the name 'CHARGE', so
+            // this row is what makes the Charge tender exist at all.
+            ['pm_charge', 'Charge', 1]
           ];
           for (const pm of defaultPaymentMethods) {
             await connection.query('INSERT INTO payment_methods (id, name, is_active) VALUES (?, ?, ?)', pm);
