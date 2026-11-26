@@ -184,7 +184,17 @@ export function useDataManagement() {
       }
       const res = await fetch(getApiUrl('/data-management/reset'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: resetAction }) });
       const data = await res.json();
-      if (res.ok) { toast({ title: 'Reset Successful', description: data.message }); setTimeout(() => window.location.reload(), 1500); }
+      if (res.ok) {
+        toast({ title: 'Reset Successful', description: data.message });
+        if (resetAction === 'factory_reset') {
+          // Every user account is gone (only the installer's default admin is
+          // back), so the stored session points at a user that no longer exists.
+          try { localStorage.removeItem('mock-user-session'); } catch {}
+          setTimeout(() => { window.location.href = '/login'; }, 1500);
+        } else {
+          setTimeout(() => window.location.reload(), 1500);
+        }
+      }
       else throw new Error(data.error || 'Reset failed');
     } catch (e: any) { toast({ title: 'Reset Failed', description: e.message, variant: 'destructive' }); }
     finally { setResetLoading(false); setResetDialogOpen(false); setResetAction(null); }

@@ -22,11 +22,39 @@ export function ResetDataTab({ onOpenResetDialog }: Props) {
             <div>
               <h3 className="text-lg font-medium text-red-900 dark:text-red-200">Clear Sales Data</h3>
               <p className="text-sm text-red-700 dark:text-red-300">
-                Deletes all sales transactions (POS, Orders, Invoices), purchase orders, payments, shifts, readings, and related approval queue items. Invoice numbering restarts at SI 000001.
+                Deletes all sales transactions (POS, Orders, Invoices), customer payments, shifts, readings, and related approval queue items. Invoice numbering restarts at SI 000001. Purchase orders are kept.
               </p>
             </div>
             <Button variant="destructive" onClick={() => onOpenResetDialog('clear_sales')}>
               <Trash2 className="mr-2 h-4 w-4" /> Clear Sales
+            </Button>
+          </div>
+        </div>
+
+        <div className="border border-red-200 rounded-lg p-4 bg-red-50 dark:bg-red-950/20">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-medium text-red-900 dark:text-red-200">Clear Purchase Orders</h3>
+              <p className="text-sm text-red-700 dark:text-red-300">
+                Deletes all purchase orders, supplier payments, and related approval queue items. Products and stock on hand are kept.
+              </p>
+            </div>
+            <Button variant="destructive" onClick={() => onOpenResetDialog('clear_purchase_orders')}>
+              <Trash2 className="mr-2 h-4 w-4" /> Clear Purchase Orders
+            </Button>
+          </div>
+        </div>
+
+        <div className="border border-orange-200 rounded-lg p-4 bg-orange-50 dark:bg-orange-950/20">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-medium text-orange-900 dark:text-orange-200">Reset Stock Quantity</h3>
+              <p className="text-sm text-orange-700 dark:text-orange-300">
+                Sets the stock of every product to 0. Products, prices, barcodes, and stock history are kept.
+              </p>
+            </div>
+            <Button variant="outline" className="border-orange-200 hover:bg-orange-100 dark:hover:bg-orange-900 text-orange-700 dark:text-orange-300" onClick={() => onOpenResetDialog('reset_stock')}>
+              <RotateCcw className="mr-2 h-4 w-4" /> Reset Stock to 0
             </Button>
           </div>
         </div>
@@ -81,8 +109,8 @@ export function ResetDataTab({ onOpenResetDialog }: Props) {
                 <h3 className="text-xl font-bold text-destructive">Full Factory Reset</h3>
               </div>
               <p className="text-sm font-medium text-muted-foreground">
-                This will wipe ALL data from the system except for existing user accounts and basic system settings.
-                The system will be returned to its initial empty state.
+                Returns the system to exactly the state of a fresh install: all data, settings, terminals, and user accounts are wiped,
+                and only the default admin account remains (default password). The license is kept.
               </p>
             </div>
             <Button variant="destructive" size="lg" className="px-8 shadow-lg shadow-destructive/20" onClick={() => onOpenResetDialog('factory_reset')}>

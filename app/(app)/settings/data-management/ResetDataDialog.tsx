@@ -8,11 +8,13 @@ import { AlertCircle, HardDrive, RefreshCw } from 'lucide-react';
 import type { ResetAction } from './data-management-types';
 
 const RESET_DESCRIPTIONS: Record<ResetAction, string> = {
-  clear_sales: 'This will permanently delete all sales history, purchase orders, shift records, and transaction logs including approval items related to sales.',
+  clear_sales: 'This will permanently delete all sales history, shift records, readings, and transaction logs including approval items related to sales. Purchase orders are kept.',
+  clear_purchase_orders: 'This will permanently delete all purchase orders and supplier payments. Products, stock on hand, and sales are kept.',
+  reset_stock: 'This will set the stock of EVERY product to 0. Products, prices, barcodes, and stock history are kept — each product gets a "reset to zero" entry in its stock movements.',
   reset_references: 'This will reset all transaction counters and terminal OR numbers. This may cause collision if you have existing records.',
   clear_inventory: 'This will permanently delete ALL products, stock movements, transfers, and warehouse management data.',
   clear_master_data: 'This will permanently delete all customer and supplier records, product categories, and brand definitions.',
-  factory_reset: 'CRITICAL: This will wipe the ENTIRE database (Transactions, Products, Customers, Suppliers, etc.). This action is IRREVERSIBLE.',
+  factory_reset: 'CRITICAL: This returns the system to a FRESH INSTALL. Everything is wiped — transactions, products, customers, suppliers, settings, terminals, and ALL user accounts. Only the default admin account remains, with its default password. The license is kept. This action is IRREVERSIBLE.',
 };
 
 interface Props {

@@ -55,6 +55,10 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 
+# Full Factory Reset (lib/factory-reset.ts) restores the installer's seed rows
+# from this snapshot, so a hosted install resets to the same state as a fresh one.
+COPY --from=builder /app/verdix_install.sql ./verdix_install.sql
+
 # Expose port
 EXPOSE 3000
 
