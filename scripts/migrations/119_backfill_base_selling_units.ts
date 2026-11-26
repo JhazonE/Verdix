@@ -1,9 +1,15 @@
 import { registerMigration, Migration } from './runner';
 import { query } from '../../lib/mysql';
+import { backfillBaseSellingUnits } from './base-selling-unit-backfill';
 
 /**
  * Gives every existing product a base selling unit (factor 1), carrying its
  * current unit_of_measure, barcode, cost and price.
+ *
+ * The PRICE is what the till charged before selling units: the product's
+ * default price-level row when it has one, else products.price. Copying the
+ * raw products.price instead made upgraded stores sell at cost wherever that
+ * column was stale — see base-selling-unit-backfill.ts for the full story.
  *
  * Without this, checkout has no unit to resolve and every sale for that product
  * fails — so it runs over the whole table, not a subset.
@@ -31,25 +37,8 @@ const migration: Migration = {
       );
     }
 
-    const result: any = await query(`
-      INSERT INTO product_selling_units
-        (id, product_id, name, barcode, factor, cost, price, is_base)
-      SELECT
-        CONCAT('psu_base_', p.id),
-        p.id,
-        COALESCE(NULLIF(TRIM(p.unit_of_measure), ''), 'Piece'),
-        NULLIF(TRIM(p.barcode), ''),
-        1,
-        p.cost,
-        COALESCE(p.price, 0),
-        1
-      FROM products p
-      WHERE NOT EXISTS (
-        SELECT 1 FROM product_selling_units u
-        WHERE u.product_id = p.id AND u.is_base = 1
-      )
-    `);
-    console.log(`✅ created ${result.affectedRows} base selling unit(s)`);
+    const created = await backfillBaseSellingUnits(query);
+    console.log(`✅ created ${created} base selling unit(s)`);
   },
 
   async down(): Promise<void> {

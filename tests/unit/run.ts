@@ -150,6 +150,8 @@ import './concurrent-checkout-deadlock.test';
 import './concurrent-product-edit.test';
 import './concurrent-stock-race.test';
 import './unit-of-measure-cascade.test';
+// Creates and drops its own throwaway database rather than touching DB_NAME.
+import './base-unit-backfill-price.test';
 //
 // Deliberately NOT imported: pool-acquire-timeout.test.ts and
 // query-acquire-timeout.test.ts. Each holds EVERY connection in the shared pool
