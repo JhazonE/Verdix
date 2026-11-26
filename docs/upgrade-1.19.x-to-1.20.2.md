@@ -93,8 +93,23 @@ a schema its code does not know about.
 
 ## 1. Pre-flight check
 
-From the repo, pointed at the customer's database (`.env` must have their
-`DB_*` values):
+**On the store's server PC (no repo needed, 1.20.12+):**
+
+- Install is older than 1.20.12 (e.g. 1.19.13): run
+  `Output\VendixPreflight_X.Y.Z.exe` — built from `preflight.iss`, same version
+  as the Setup you are about to install. It changes nothing in Vendix: it
+  unpacks the check to `C:\ProgramData\Verdix\preflight-kit` and runs it against
+  `C:\Program Files\Vendix\.env`. VendixSetup cannot do this for you, because it
+  applies the migrations while installing.
+- Install is 1.20.12 or newer: double-click `C:\Program Files\Vendix\preflight.bat`
+  (still use the kit of the NEW version if you want its migration list).
+
+Either way the report is shown and saved to `C:\ProgramData\Verdix\preflight.log`,
+and if warehouse-sibling barcodes are found it asks you to type `FIX` (same as
+`--fix` below — back up first).
+
+**Or from the repo**, pointed at the customer's database (`.env` must have their
+`DB_*` values, or pass them inline: `DB_HOST=… DB_NAME=… npm run upgrade:preflight`):
 
 ```bash
 npm run upgrade:preflight
