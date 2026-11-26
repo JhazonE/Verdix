@@ -43,20 +43,20 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
         <div
             ref={ref}
             className="printable-area bg-white text-black"
-            style={{ fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '14px', padding: '6mm 8mm', width: '8in', minHeight: '5in', boxSizing: 'border-box' }}
+            style={{ fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '17px', padding: '6mm 8mm', width: '8in', minHeight: '5in', boxSizing: 'border-box' }}
         >
             <div className="text-center" style={{ marginBottom: '8px' }}>
                 {showBusinessName && (
-                    <div className="font-bold uppercase" style={{ fontSize: '18px' }}>{settings?.businessName || 'VENDIX'}</div>
+                    <div className="font-bold uppercase" style={{ fontSize: '22px' }}>{settings?.businessName || 'VENDIX'}</div>
                 )}
-                {settings?.address && <div style={{ fontSize: '12px' }}>{settings.address}</div>}
-                {settings?.contactNumber && <div style={{ fontSize: '12px' }}>{settings.contactNumber}</div>}
+                {settings?.address && <div style={{ fontSize: '15px' }}>{settings.address}</div>}
+                {settings?.contactNumber && <div style={{ fontSize: '15px' }}>{settings.contactNumber}</div>}
                 {/* Same marker the thermal receipt carries, so a copy printed later
                     can never pass for the original invoice. */}
                 {saleDetails.isReprint && (
                     <div style={{ marginTop: '4px' }}>
-                        <div className="font-bold" style={{ fontSize: '14px' }}>*** REPRINT ***</div>
-                        <div style={{ fontSize: '11px' }}>Reprinted: {format(new Date(), 'MMM dd, yyyy h:mm a')}</div>
+                        <div className="font-bold" style={{ fontSize: '17px' }}>*** REPRINT ***</div>
+                        <div style={{ fontSize: '13px' }}>Reprinted: {format(new Date(), 'MMM dd, yyyy h:mm a')}</div>
                     </div>
                 )}
             </div>
@@ -65,8 +65,9 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
 
             {/* One header row: Reference #, Date, Bill To and Cashier side by side,
                 so the item table starts higher on the short continuous-form sheet.
-                It wraps rather than overflows if a customer name runs long. */}
-            <div className="flex flex-wrap" style={{ fontSize: '13px', marginTop: '8px', columnGap: '24px', rowGap: '2px' }}>
+                It never wraps: a long customer name is cut short with an ellipsis
+                instead, since Bill To is the only field of unbounded length. */}
+            <div className="flex" style={{ fontSize: '15px', marginTop: '8px', columnGap: '12px', justifyContent: 'space-between', flexWrap: 'nowrap' }}>
                 {([
                     ['Reference #', invoiceNumber],
                     ['Date', format(currentDate, 'MMM dd, yyyy')],
@@ -74,20 +75,25 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
                     ['Cashier', saleDetails.cashierName || 'Admin'],
                     ...(saleDetails.terminalName ? [['Terminal', saleDetails.terminalName]] : []),
                 ] as [string, string][]).map(([label, value]) => (
-                    <div key={label} style={{ whiteSpace: 'nowrap' }}>
+                    <div
+                        key={label}
+                        style={label === 'Bill To'
+                            ? { whiteSpace: 'nowrap', minWidth: 0, flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis' }
+                            : { whiteSpace: 'nowrap', flexShrink: 0 }}
+                    >
                         <span>{label}: </span>
                         <span className="font-bold">{value}</span>
                     </div>
                 ))}
             </div>
 
-            <table className="w-full" style={{ borderCollapse: 'collapse', margin: '8px 0', fontSize: '13px' }}>
+            <table className="w-full" style={{ borderCollapse: 'collapse', margin: '8px 0', fontSize: '16px' }}>
                 <thead>
                     <tr>
-                        <th style={{ padding: '3px 4px', borderBottom: '1px solid #000', textTransform: 'uppercase', textAlign: 'left' }}>Description</th>
-                        <th style={{ padding: '3px 4px', borderBottom: '1px solid #000', textTransform: 'uppercase', textAlign: 'center', width: '0.9in' }}>Qty</th>
-                        <th style={{ padding: '3px 4px', borderBottom: '1px solid #000', textTransform: 'uppercase', textAlign: 'right', width: '1in' }}>Price</th>
-                        <th style={{ padding: '3px 4px', borderBottom: '1px solid #000', textTransform: 'uppercase', textAlign: 'right', width: '1.1in' }}>Amount</th>
+                        <th style={{ padding: '3px 4px', borderTop: '1px solid #000', borderBottom: '1px solid #000', textTransform: 'uppercase', textAlign: 'left' }}>Description</th>
+                        <th style={{ padding: '3px 4px', borderTop: '1px solid #000', borderBottom: '1px solid #000', textTransform: 'uppercase', textAlign: 'center', width: '0.9in' }}>Qty</th>
+                        <th style={{ padding: '3px 4px', borderTop: '1px solid #000', borderBottom: '1px solid #000', textTransform: 'uppercase', textAlign: 'right', width: '1in' }}>Price</th>
+                        <th style={{ padding: '3px 4px', borderTop: '1px solid #000', borderBottom: '1px solid #000', textTransform: 'uppercase', textAlign: 'right', width: '1.1in' }}>Amount</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -115,7 +121,7 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
                 against what was physically handed over without re-reading the table. */}
             <div className="flex" style={{ marginTop: '8px', alignItems: 'flex-start' }}>
                 {showCountedItems && (
-                    <div className="font-bold" style={{ fontSize: '13px', paddingTop: '4px' }}>
+                    <div className="font-bold" style={{ fontSize: '16px', paddingTop: '4px' }}>
                         Counted Items: {countedItems}
                         {' '}({items.length} {items.length === 1 ? 'line' : 'lines'})
                     </div>
@@ -123,7 +129,7 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
 
                 <div style={{ width: '3.2in', marginLeft: 'auto' }}>
                     {/* No Subtotal line: with VAT removed it would just repeat Total. */}
-                    <div className="flex justify-between font-bold" style={{ fontSize: '16px', borderTop: '1px solid #000', paddingTop: '4px' }}>
+                    <div className="flex justify-between font-bold" style={{ fontSize: '20px', borderTop: '1px solid #000', paddingTop: '4px' }}>
                         <span>Total</span>
                         <span>{grandTotal.toFixed(2)}</span>
                     </div>
@@ -131,12 +137,12 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
                     {!showPayment ? null : payments && payments.length > 0 ? (
                         payments.map((p, idx) => (
                             <div key={idx}>
-                                <div className="flex justify-between" style={{ fontSize: '14px', padding: '1px 0' }}>
+                                <div className="flex justify-between" style={{ fontSize: '17px', padding: '1px 0' }}>
                                     <span>{p.method.toUpperCase() === 'CASH' ? 'Cash' : p.method}</span>
                                     <span>{Number(p.amount || 0).toFixed(2)}</span>
                                 </div>
                                 {p.reference && (
-                                    <div className="flex justify-between" style={{ fontSize: '11px', padding: '1px 0' }}>
+                                    <div className="flex justify-between" style={{ fontSize: '13px', padding: '1px 0' }}>
                                         <span>Ref No.</span>
                                         <span>{p.reference}</span>
                                     </div>
@@ -145,12 +151,12 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
                         ))
                     ) : (
                         <>
-                            <div className="flex justify-between" style={{ fontSize: '14px', padding: '1px 0' }}>
+                            <div className="flex justify-between" style={{ fontSize: '17px', padding: '1px 0' }}>
                                 <span>{paymentMethod?.toUpperCase() === 'CASH' ? 'Cash' : paymentMethod}</span>
                                 <span>{Number(saleDetails.amountTendered ?? (totalDue + change)).toFixed(2)}</span>
                             </div>
                             {saleDetails.paymentReference && (
-                                <div className="flex justify-between" style={{ fontSize: '11px', padding: '1px 0' }}>
+                                <div className="flex justify-between" style={{ fontSize: '13px', padding: '1px 0' }}>
                                     <span>Ref No.</span>
                                     <span>{saleDetails.paymentReference}</span>
                                 </div>
@@ -159,7 +165,7 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
                     )}
 
                     {showChange && change > 0 && (
-                        <div className="flex justify-between font-bold" style={{ fontSize: '14px', padding: '1px 0' }}>
+                        <div className="flex justify-between font-bold" style={{ fontSize: '17px', padding: '1px 0' }}>
                             <span>Change</span>
                             <span>{Number(change).toFixed(2)}</span>
                         </div>
@@ -171,7 +177,7 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
                 {['Prepared By', 'Checked By', 'Received By'].map(label => (
                     <div key={label} style={{ width: '31%', textAlign: 'center' }}>
                         <div style={{ borderTop: '1px solid #000', marginBottom: '3px' }}>&nbsp;</div>
-                        <div style={{ fontSize: '11px', textTransform: 'uppercase' }}>{label}</div>
+                        <div style={{ fontSize: '13px', textTransform: 'uppercase' }}>{label}</div>
                     </div>
                 ))}
             </div>
