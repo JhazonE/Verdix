@@ -4,12 +4,12 @@ import { jsPDF } from 'jspdf';
 import type { Product } from '@/lib/types';
 
 export const LABEL_SIZES = [
-  // fontSize drives the price; the product name is a little smaller (nameFontSize).
-  { label: '40 × 25 mm',  width: 40,  height: 25, fontSize: 8,  nameFontSize: 7 },
-  { label: '50 × 25 mm',  width: 50,  height: 25, fontSize: 8,  nameFontSize: 7 },
-  { label: '58 × 40 mm',  width: 58,  height: 40, fontSize: 10, nameFontSize: 8 },
-  { label: '60 × 40 mm',  width: 60,  height: 40, fontSize: 10, nameFontSize: 8 },
-  { label: '100 × 50 mm', width: 100, height: 50, fontSize: 12, nameFontSize: 10 },
+  // fontSize drives the price; the product name is sized on its own (nameFontSize).
+  { label: '40 × 25 mm',  width: 40,  height: 25, fontSize: 8,  nameFontSize: 10 },
+  { label: '50 × 25 mm',  width: 50,  height: 25, fontSize: 8,  nameFontSize: 10 },
+  { label: '58 × 40 mm',  width: 58,  height: 40, fontSize: 10, nameFontSize: 13 },
+  { label: '60 × 40 mm',  width: 60,  height: 40, fontSize: 10, nameFontSize: 13 },
+  { label: '100 × 50 mm', width: 100, height: 50, fontSize: 12, nameFontSize: 16 },
 ];
 
 export type LabelSize = (typeof LABEL_SIZES)[number];
