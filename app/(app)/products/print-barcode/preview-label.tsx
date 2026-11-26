@@ -21,7 +21,7 @@ export function PreviewLabel({
 }) {
   const previewH    = Math.round((size.height / size.width) * PREVIEW_W);
   const scale       = PREVIEW_W / (size.width * 3.78);
-  const nameFontPx  = Math.round(size.fontSize * 1.33 * scale);
+  const nameFontPx  = Math.round(size.nameFontSize * 1.33 * scale);
   const priceFontPx = Math.round((size.fontSize + 1) * 1.33 * scale);
 
   return (

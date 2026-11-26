@@ -4,11 +4,12 @@ import { jsPDF } from 'jspdf';
 import type { Product } from '@/lib/types';
 
 export const LABEL_SIZES = [
-  { label: '40 × 25 mm',  width: 40,  height: 25, fontSize: 8 },
-  { label: '50 × 25 mm',  width: 50,  height: 25, fontSize: 8 },
-  { label: '58 × 40 mm',  width: 58,  height: 40, fontSize: 10 },
-  { label: '60 × 40 mm',  width: 60,  height: 40, fontSize: 10 },
-  { label: '100 × 50 mm', width: 100, height: 50, fontSize: 12 },
+  // fontSize drives the price; the product name is a little smaller (nameFontSize).
+  { label: '40 × 25 mm',  width: 40,  height: 25, fontSize: 8,  nameFontSize: 7 },
+  { label: '50 × 25 mm',  width: 50,  height: 25, fontSize: 8,  nameFontSize: 7 },
+  { label: '58 × 40 mm',  width: 58,  height: 40, fontSize: 10, nameFontSize: 8 },
+  { label: '60 × 40 mm',  width: 60,  height: 40, fontSize: 10, nameFontSize: 8 },
+  { label: '100 × 50 mm', width: 100, height: 50, fontSize: 12, nameFontSize: 10 },
 ];
 
 export type LabelSize = (typeof LABEL_SIZES)[number];
@@ -238,7 +239,7 @@ export function buildPrintHTML(
     height: 100%;
   }
   .name {
-    font-size: ${size.fontSize}pt;
+    font-size: ${size.nameFontSize}pt;
     font-weight: bold;
     text-align: center;
     white-space: nowrap;
@@ -308,7 +309,7 @@ export async function buildPrintPDF(
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format });
 
-  const nameFontPt  = size.fontSize;
+  const nameFontPt  = size.nameFontSize;
   const priceFontPt = size.fontSize + 1;
 
   const originX = paperType === 'roll' ? 0 : SHEET_MARGIN_MM;
