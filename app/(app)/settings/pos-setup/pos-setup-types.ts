@@ -94,6 +94,7 @@ export interface PosSettings {
   largeInvoiceShowCountedItems?: boolean;
   largeInvoiceShowChange?: boolean;
   largeInvoiceShowPayment?: boolean;
+  largeInvoiceShowCashier?: boolean;
 }
 
 export const DEFAULT_POS_SETTINGS: PosSettings = {
@@ -192,4 +193,5 @@ export const DEFAULT_POS_SETTINGS: PosSettings = {
   largeInvoiceShowCountedItems: true,
   largeInvoiceShowChange: true,
   largeInvoiceShowPayment: true,
+  largeInvoiceShowCashier: true,
 };

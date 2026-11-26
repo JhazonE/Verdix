@@ -21,7 +21,13 @@ export async function GET(request: NextRequest) {
         c.contact_number as customer_contact,
         c.payment_terms as customer_payment_terms,
         st.date,
-        st.due_date,
+        -- POS checkout never writes sales_transactions.due_date; the charge's
+        -- due date (from the customer's payment terms) lives on its
+        -- sales_invoices mirror, so read it there first.
+        COALESCE(
+          (SELECT due_date FROM sales_invoices WHERE reference = st.reference AND transaction_source = 'POS' LIMIT 1),
+          st.due_date
+        ) as due_date,
         st.total,
         (SELECT COALESCE(amount_paid, 0) FROM sales_invoices WHERE reference = st.reference LIMIT 1) as amount_paid,
         st.payment_method,

@@ -58,6 +58,7 @@ export function GeneralSettingsCard({ settings, set }: Props) {
           <div className="ml-4 pl-4 border-l space-y-3">
             {([
               ['largeInvoiceShowBusinessName', 'Show Business Name Title', 'Print the business name as the heading of the large invoice'],
+              ['largeInvoiceShowCashier', 'Show Cashier Name', 'Print the cashier who rang up the sale in the header row, after the due date'],
               ['largeInvoiceShowCountedItems', 'Show Counted Items', 'Print the counted items total beside the invoice totals'],
               ['largeInvoiceShowPayment', 'Show Cash / Payment', 'Print the amount tendered and payment method (Cash, GCash, etc.) with its reference number'],
               ['largeInvoiceShowChange', 'Show Change', 'Print the change given back to the customer'],

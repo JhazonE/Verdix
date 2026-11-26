@@ -1,7 +1,7 @@
 'use client';
 
 import { forwardRef } from 'react';
-import { format } from 'date-fns';
+import { format, isValid, parseISO } from 'date-fns';
 import { formatQuantity } from '@/lib/utils';
 import { formatSINumber } from '@/lib/si-number';
 import { receiptLineQuantity } from '@/lib/receipt-uom';
@@ -38,24 +38,34 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
     const showCountedItems = largeInvoiceFlag(settings?.largeInvoiceShowCountedItems);
     const showChange = largeInvoiceFlag(settings?.largeInvoiceShowChange);
     const showPayment = largeInvoiceFlag(settings?.largeInvoiceShowPayment);
+    const showCashier = largeInvoiceFlag(settings?.largeInvoiceShowCashier);
+
+    // Only a Charge has a meaningful due date: a cash sale's mirror invoice is
+    // filed due the same day, which would just repeat Date.
+    const isCharge = paymentMethod?.toUpperCase() === 'CHARGE'
+        || !!payments?.some(p => p.method?.toUpperCase() === 'CHARGE');
+    const dueDate = isCharge && saleDetails.dueDate
+        ? (typeof saleDetails.dueDate === 'string' ? parseISO(saleDetails.dueDate) : saleDetails.dueDate)
+        : null;
+    const dueDateText = dueDate && isValid(dueDate) ? format(dueDate, 'MMM dd, yyyy') : null;
 
     return (
         <div
             ref={ref}
             className="printable-area bg-white text-black"
-            style={{ fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '17px', padding: '6mm 8mm', width: '8in', minHeight: '5in', boxSizing: 'border-box' }}
+            style={{ fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '13px', padding: '6mm 8mm', width: '8in', minHeight: '5in', boxSizing: 'border-box' }}
         >
             <div className="text-center" style={{ marginBottom: '8px' }}>
                 {showBusinessName && (
-                    <div className="font-bold uppercase" style={{ fontSize: '22px' }}>{settings?.businessName || 'VENDIX'}</div>
+                    <div className="font-bold uppercase" style={{ fontSize: '13px' }}>{settings?.businessName || 'VENDIX'}</div>
                 )}
-                {settings?.address && <div style={{ fontSize: '15px' }}>{settings.address}</div>}
-                {settings?.contactNumber && <div style={{ fontSize: '15px' }}>{settings.contactNumber}</div>}
+                {settings?.address && <div style={{ fontSize: '13px' }}>{settings.address}</div>}
+                {settings?.contactNumber && <div style={{ fontSize: '13px' }}>{settings.contactNumber}</div>}
                 {/* Same marker the thermal receipt carries, so a copy printed later
                     can never pass for the original invoice. */}
                 {saleDetails.isReprint && (
                     <div style={{ marginTop: '4px' }}>
-                        <div className="font-bold" style={{ fontSize: '17px' }}>*** REPRINT ***</div>
+                        <div className="font-bold" style={{ fontSize: '13px' }}>*** REPRINT ***</div>
                         <div style={{ fontSize: '13px' }}>Reprinted: {format(new Date(), 'MMM dd, yyyy h:mm a')}</div>
                     </div>
                 )}
@@ -63,16 +73,20 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
 
             <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }} />
 
-            {/* One header row: Reference #, Date, Bill To and Cashier side by side,
+            {/* One header row: Reference #, Date, Bill To, Due Date (charges only)
+                and Cashier (optional) side by side,
                 so the item table starts higher on the short continuous-form sheet.
                 It never wraps: a long customer name is cut short with an ellipsis
                 instead, since Bill To is the only field of unbounded length. */}
-            <div className="flex" style={{ fontSize: '15px', marginTop: '8px', columnGap: '12px', justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+            <div className="flex" style={{ fontSize: '13px', marginTop: '8px', columnGap: '12px', justifyContent: 'space-between', flexWrap: 'nowrap' }}>
                 {([
                     ['Reference #', invoiceNumber],
                     ['Date', format(currentDate, 'MMM dd, yyyy')],
                     ['Bill To', customer?.name || 'Walk-in Customer'],
-                    ['Cashier', saleDetails.cashierName || 'Admin'],
+                    // Due Date takes the slot Cashier used to hold; Cashier is
+                    // now optional and follows it when switched on.
+                    ...(dueDateText ? [['Due Date', dueDateText]] : []),
+                    ...(showCashier ? [['Cashier', saleDetails.cashierName || 'Admin']] : []),
                     ...(saleDetails.terminalName ? [['Terminal', saleDetails.terminalName]] : []),
                 ] as [string, string][]).map(([label, value]) => (
                     <div
@@ -87,7 +101,7 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
                 ))}
             </div>
 
-            <table className="w-full" style={{ borderCollapse: 'collapse', margin: '8px 0', fontSize: '16px' }}>
+            <table className="w-full" style={{ borderCollapse: 'collapse', margin: '8px 0', fontSize: '13px' }}>
                 <thead>
                     <tr>
                         <th style={{ padding: '3px 4px', borderTop: '1px solid #000', borderBottom: '1px solid #000', textTransform: 'uppercase', textAlign: 'left' }}>Description</th>
@@ -121,7 +135,7 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
                 against what was physically handed over without re-reading the table. */}
             <div className="flex" style={{ marginTop: '8px', alignItems: 'flex-start' }}>
                 {showCountedItems && (
-                    <div className="font-bold" style={{ fontSize: '16px', paddingTop: '4px' }}>
+                    <div className="font-bold" style={{ fontSize: '13px', paddingTop: '4px' }}>
                         Counted Items: {countedItems}
                         {' '}({items.length} {items.length === 1 ? 'line' : 'lines'})
                     </div>
@@ -129,7 +143,7 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
 
                 <div style={{ width: '3.2in', marginLeft: 'auto' }}>
                     {/* No Subtotal line: with VAT removed it would just repeat Total. */}
-                    <div className="flex justify-between font-bold" style={{ fontSize: '20px', borderTop: '1px solid #000', paddingTop: '4px' }}>
+                    <div className="flex justify-between font-bold" style={{ fontSize: '13px', borderTop: '1px solid #000', paddingTop: '4px' }}>
                         <span>Total</span>
                         <span>{grandTotal.toFixed(2)}</span>
                     </div>
@@ -137,7 +151,7 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
                     {!showPayment ? null : payments && payments.length > 0 ? (
                         payments.map((p, idx) => (
                             <div key={idx}>
-                                <div className="flex justify-between" style={{ fontSize: '17px', padding: '1px 0' }}>
+                                <div className="flex justify-between" style={{ fontSize: '13px', padding: '1px 0' }}>
                                     <span>{p.method.toUpperCase() === 'CASH' ? 'Cash' : p.method}</span>
                                     <span>{Number(p.amount || 0).toFixed(2)}</span>
                                 </div>
@@ -151,7 +165,7 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
                         ))
                     ) : (
                         <>
-                            <div className="flex justify-between" style={{ fontSize: '17px', padding: '1px 0' }}>
+                            <div className="flex justify-between" style={{ fontSize: '13px', padding: '1px 0' }}>
                                 <span>{paymentMethod?.toUpperCase() === 'CASH' ? 'Cash' : paymentMethod}</span>
                                 <span>{Number(saleDetails.amountTendered ?? (totalDue + change)).toFixed(2)}</span>
                             </div>
@@ -165,7 +179,7 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
                     )}
 
                     {showChange && change > 0 && (
-                        <div className="flex justify-between font-bold" style={{ fontSize: '17px', padding: '1px 0' }}>
+                        <div className="flex justify-between font-bold" style={{ fontSize: '13px', padding: '1px 0' }}>
                             <span>Change</span>
                             <span>{Number(change).toFixed(2)}</span>
                         </div>
