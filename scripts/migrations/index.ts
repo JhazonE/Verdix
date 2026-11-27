@@ -154,6 +154,7 @@ import './153_add_void_source_to_sales_transactions';
 import './154_add_return_approver_to_pos_transactions';
 import './155_backfill_return_and_exchange_vat';
 import './156_index_sales_invoices_source_reference';
+import './157_add_shipping_to_sales_invoices';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';

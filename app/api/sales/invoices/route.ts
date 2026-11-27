@@ -57,9 +57,15 @@ export async function POST(request: NextRequest) {
       const invoiceDate = toLocalYmd(new Date());
       const dueDate = order.delivery_date || invoiceDate;
 
+      // A sales order's `total` excludes shipping (it lives in its own column
+      // there), while an invoice's total is what the customer owes — so the
+      // shipping is added here, the same way Add Invoice folds it in.
+      const shipping = Number(order.shipping) > 0 ? Number(order.shipping) : 0;
+      const invoiceTotal = Number(order.total || 0) + shipping;
+
       await conn.execute(
-        `INSERT INTO sales_invoices (id, reference, sales_order_id, customer_id, invoice_date, due_date, total, payment_method, sales_person_id, status, transaction_source, notes, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Backoffice', ?, NOW(), NOW())`,
+        `INSERT INTO sales_invoices (id, reference, sales_order_id, customer_id, invoice_date, due_date, total, shipping, payment_method, sales_person_id, status, transaction_source, notes, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Backoffice', ?, NOW(), NOW())`,
         [
           invoiceId,
           invoiceReference,
@@ -67,7 +73,8 @@ export async function POST(request: NextRequest) {
           order.customer_id,
           invoiceDate,
           dueDate,
-          order.total,
+          invoiceTotal,
+          shipping,
           order.payment_method || 'CASH',
           order.sales_person_id || null,
           'Pending',
@@ -124,14 +131,14 @@ export async function POST(request: NextRequest) {
             quantity: Number(item.quantity),
             price: Number(item.price),
           })),
-          total: Number(order.total),
-          formattedTotal: `₱${Number(order.total).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          total: invoiceTotal,
+          formattedTotal: `₱${invoiceTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
           paymentMethod: order.payment_method || 'CASH',
           status: 'Pending',
           dueDate,
           salesPerson: order.sales_person || 'N/A',
           notes: order.notes || '',
-          shipping: 0,
+          shipping,
         },
       };
     });
