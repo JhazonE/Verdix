@@ -46,7 +46,8 @@ export class CreateSaleUseCase {
       itemsTotal += lineTotal;
       if (item.vatable) vatAmount += lineTotal * VAT_RATE;
     }
-    const total = itemsTotal + vatAmount + (request.shipping || 0);
+    const shipping = Number(request.shipping) > 0 ? Number(request.shipping) : 0;
+    const total = itemsTotal + vatAmount + shipping;
 
     // Generate reference if needed
     let finalReference = request.reference;
@@ -78,6 +79,7 @@ export class CreateSaleUseCase {
       total,
       amountPaid: settlement.amountPaid,
       vatAmount,
+      shipping,
       paymentMethod: request.paymentMethod,
       paymentReference: request.paymentReference,
       status: settlement.status as SaleEntity['status'],

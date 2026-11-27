@@ -10,6 +10,8 @@ export interface SaleEntity {
   amountPaid?: number;
   /** 12% VAT summed across this sale's vatable lines. Already folded into `total`. */
   vatAmount?: number;
+  /** Shipping fee charged on this invoice. Already folded into `total`. */
+  shipping?: number;
   paymentMethod: string;
   paymentReference?: string;
   status: 'Paid' | 'Partially Paid' | 'Pending' | 'Failed' | 'Shipped' | 'Delivered' | 'Returned' | 'Voided' | 'To Deliver' | 'Fully Delivered';

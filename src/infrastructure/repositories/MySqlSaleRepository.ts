@@ -16,6 +16,7 @@ export class MySqlSaleRepository implements SaleRepository {
         si.total,
         COALESCE(si.amount_paid, 0) as amountPaid,
         si.vat_amount as vatAmount,
+        COALESCE(si.shipping, 0) as shipping,
         si.payment_method as paymentMethod,
         si.payment_reference as paymentReference,
         si.status,
@@ -118,9 +119,9 @@ export class MySqlSaleRepository implements SaleRepository {
       // 1. Insert into sales_invoices
       const insertInvoiceSql = `
         INSERT INTO sales_invoices (
-          id, customer_id, reference, receipt_number, invoice_date, due_date, total, amount_paid, vat_amount, payment_method,
-          payment_reference, status, transaction_source, notes, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+          id, customer_id, reference, receipt_number, invoice_date, due_date, total, amount_paid, vat_amount, shipping,
+          payment_method, payment_reference, status, transaction_source, notes, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
       `;
 
       await connection.query(insertInvoiceSql, [
@@ -135,6 +136,7 @@ export class MySqlSaleRepository implements SaleRepository {
         // spot (Cash/GCash/PayPal), 0 for credit. Never inferred from status.
         sale.amountPaid ?? 0,
         sale.vatAmount || 0,
+        sale.shipping || 0,
         sale.paymentMethod,
         sale.paymentReference || null,
         sale.status,
