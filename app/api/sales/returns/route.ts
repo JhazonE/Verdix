@@ -4,6 +4,9 @@ import { saveEJournalFiles } from '@/lib/ejournal/ejournal-writer';
 import { processReturnLeg } from '@/lib/pos/process-return-leg';
 import { vatOfLines } from '@/lib/tax-utils';
 import { ensureReturnApproverColumns, resolveReturnApprover, writeReturnApprover } from '@/lib/return-approver';
+import { refundsInOrder } from '@/lib/pos/refund-amount';
+import { REFUND_ROWS_SQL, toRefundRows } from '@/lib/pos/refund-rows';
+import { toCents } from '@/lib/line-allocation';
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,6 +33,36 @@ export async function POST(request: NextRequest) {
     const canRecordApprover = await ensureReturnApproverColumns();
 
     const result = await withTransaction(async (connection) => {
+      // Serialise returns against this sale: the refund below is computed from
+      // what is already returned, so two tills returning from the same sale at
+      // once must not both see the same "left to return".
+      const [saleRows]: any = await connection.query(
+        'SELECT id FROM sales_transactions WHERE id = ? FOR UPDATE',
+        [saleId]
+      );
+      if (!saleRows || saleRows.length === 0) {
+        throw Object.assign(new Error('Sale not found'), { status: 404 });
+      }
+
+      // What each line gives back is what it CHARGED, net of earlier returns —
+      // never the client's price, which is the shelf price before the line's
+      // discount. See lib/pos/refund-amount.ts.
+      const [saleItemRows]: any = await connection.query(REFUND_ROWS_SQL, [saleId]);
+      const refunds = refundsInOrder(
+        toRefundRows(saleItemRows),
+        items.map((it: any) => ({
+          productId: String(it.productId),
+          sellingUnitId: it.sellingUnitId ?? null,
+          quantity: Number(it.quantity),
+        }))
+      );
+      const refundError = refunds.find(r => r.error);
+      if (refundError) {
+        throw Object.assign(new Error(refundError.error), { status: 400 });
+      }
+      const refundedCents = refunds.reduce((a, r) => a + toCents(r.amount), 0);
+      const refundedTotal = refundedCents / 100;
+
       // Find a valid user ID if none provided (last resort to avoid FK error)
       let finalUserId = userId;
       if (!finalUserId) {
@@ -71,8 +104,8 @@ export async function POST(request: NextRequest) {
         finalUserId,
         terminalId || null,
         mcNumber,
-        -totalAmount, // Negative since it's a return/outflow of money from business
-        -totalAmount,
+        -refundedTotal, // Negative since it's a return/outflow of money from business
+        -refundedTotal,
         reason || 'Merchandise Credit'
       ]);
 
@@ -86,8 +119,17 @@ export async function POST(request: NextRequest) {
 
       const writtenLines: { lineTotal: number; taxType: string }[] = [];
       for (let i = 0; i < items.length; i++) {
-        const item = items[i];
         const posItemId = `${posTransId}-DETAIL-${i + 1}`;
+        const returnedQty = Number(items[i].quantity);
+        const refund = refunds[i];
+        // Per-unit refund price, so every price-based reader of these rows
+        // (unit_price, sale_items.price) agrees with line_total.
+        const item = {
+          ...items[i],
+          price: refund.amount / returnedQty,
+          sellingUnitId: refund.basis?.unitId ?? items[i].sellingUnitId ?? null,
+          lineTotal: -refund.amount,
+        };
 
         // processReturnLeg resolves the selling unit, inserts the sale_items
         // row, and restores stock. It does not touch pos_transaction_items —
@@ -100,7 +142,6 @@ export async function POST(request: NextRequest) {
           itemIndex: i,
         });
 
-        const returnedQty = Number(item.quantity);
 
         // Create pos_transaction_item entry referencing the sale_item
         await connection.query(insertItemSql, [
@@ -111,13 +152,13 @@ export async function POST(request: NextRequest) {
           item.productName,
           -returnedQty, // Negative quantity
           item.price,
-          -(returnedQty * item.price),
+          -refund.amount,
           unitId,
           unitName,
           factor,
           taxType
         ]);
-        writtenLines.push({ lineTotal: -(returnedQty * item.price), taxType });
+        writtenLines.push({ lineTotal: -refund.amount, taxType });
       }
 
       // The row was inserted with tax_amount 0 because each line's tax type is
@@ -140,14 +181,20 @@ export async function POST(request: NextRequest) {
       // For now, let's keep it simple and just record the return transaction.
       // The returns page looks for transaction_type = 'return'.
 
+      // DATE_FORMAT, not DATE(): mysql2 turns a DATE into a JS Date, and
+      // String() of that ("Fri Nov 27 2026 00:00:00 GMT+0800") is not a date
+      // MySQL accepts — the e-journal save after every return failed on it.
       const [meta]: any = await connection.query(
-        `SELECT DATE(transaction_time) AS d, terminal_id AS t FROM pos_transactions WHERE id = ? LIMIT 1`,
+        `SELECT DATE_FORMAT(transaction_time, '%Y-%m-%d') AS d, terminal_id AS t FROM pos_transactions WHERE id = ? LIMIT 1`,
         [posTransId]
       );
       const d = meta?.[0]?.d ? String(meta[0].d) : null;
       const t = meta?.[0]?.t ?? 'all';
 
-      return { posTransId, mcNumber, d, t };
+      return {
+        posTransId, mcNumber, d, t, refundedTotal,
+        lines: refunds.map((r, i) => ({ productId: items[i].productId, quantity: Number(items[i].quantity), amount: r.amount })),
+      };
     });
 
     if (result.d) {
@@ -156,7 +203,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: { posTransId: result.posTransId, mcNumber: result.mcNumber },
+      // totalAmount/lines are what was ACTUALLY refunded; the credit slip
+      // prints these, not the client's own estimate.
+      data: { posTransId: result.posTransId, mcNumber: result.mcNumber, totalAmount: result.refundedTotal, lines: result.lines },
       message: 'Return processed successfully'
     });
 
@@ -164,7 +213,7 @@ export async function POST(request: NextRequest) {
     console.error('Error processing return:', error);
     return NextResponse.json(
       { success: false, error: error.message || 'Failed to process return' },
-      { status: 500 }
+      { status: error?.status || 500 }
     );
   }
 }

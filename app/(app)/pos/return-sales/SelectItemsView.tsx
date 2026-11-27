@@ -11,6 +11,7 @@ import type { Sale, SaleItem } from '@/lib/types';
 import { formatQuantity } from '@/lib/utils';
 import { formatSINumber } from '@/lib/si-number';
 import { peso } from './return-sales-utils';
+import { refundsForLines } from '@/lib/pos/refund-amount';
 
 interface SelectItemsViewProps {
   sale: Sale;
@@ -128,11 +129,16 @@ export function SelectItemsView({ sale, onReturnItems, onBack, onExchangeItem }:
     setReturnQuantities(prev => ({ ...prev, [index]: next }));
   };
 
-  const creditTotal = sale.items.reduce((sum, item, index) => {
-    if (!selectedItems.has(index)) return sum;
-    const qty = returnQuantities[index] || item.quantity;
-    return sum + item.price * qty;
-  }, 0);
+  // What each selected line will be credited — what it CHARGED, from the same
+  // basis the server refunds from. item.price is the pre-discount shelf price,
+  // so price × qty over-credited every discounted line.
+  const selectedIndexes = sale.items.map((_, i) => i).filter(i => selectedItems.has(i));
+  const selectedRefunds = refundsForLines(selectedIndexes.map(i => ({
+    ...sale.items[i],
+    quantity: returnQuantities[i] || sale.items[i].quantity,
+  })));
+  const refundByIndex = new Map(selectedIndexes.map((i, k) => [i, selectedRefunds[k]]));
+  const creditTotal = selectedRefunds.reduce((sum, a) => sum + Math.round(a * 100), 0) / 100;
 
   const totalReturnQty = sale.items.reduce((sum, item, index) =>
     selectedItems.has(index) ? sum + (returnQuantities[index] || item.quantity) : sum, 0
@@ -210,7 +216,7 @@ export function SelectItemsView({ sale, onReturnItems, onBack, onExchangeItem }:
                   <span className="shrink-0 text-xs text-muted-foreground">Not returning</span>
                 )}
                 <div className="ml-auto shrink-0 text-right font-mono text-sm font-semibold whitespace-nowrap">
-                  {checked ? peso(item.price * rQty) : '—'}
+                  {checked ? peso(refundByIndex.get(index) ?? 0) : '—'}
                 </div>
               </div>
             );

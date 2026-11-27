@@ -63,6 +63,7 @@ export function ReturnSalesDialog({
     isRecentLoading,
     posSettings,
     exchangeReturnItem,
+    exchangeReturnValue,
     replacementItem,
     exchangeBalance,
     exchangeResult,
@@ -144,7 +145,7 @@ export function ReturnSalesDialog({
               <SheetTitle className="sr-only">Settle Exchange Balance</SheetTitle>
               <ExchangeBalanceView
                 returnItemLabel={exchangeReturnItem.product.name}
-                returnTotal={exchangeReturnItem.price * exchangeReturnItem.quantity}
+                returnTotal={exchangeReturnValue}
                 newItemLabel={replacementItem.product.name}
                 newTotal={replacementItem.product.price * replacementItem.quantity}
                 balance={exchangeBalance ?? 0}
@@ -297,8 +298,8 @@ export function ReturnSalesDialog({
               returnedItem: {
                 name: exchangeReturnItem.product.name,
                 quantity: exchangeReturnItem.quantity,
-                price: exchangeReturnItem.price,
-                total: exchangeReturnItem.quantity * exchangeReturnItem.price,
+                price: exchangeReturnValue / exchangeReturnItem.quantity,
+                total: exchangeReturnValue,
               },
               newItem: {
                 name: replacementItem.product.name,
