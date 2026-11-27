@@ -40,14 +40,16 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
     const showPayment = largeInvoiceFlag(settings?.largeInvoiceShowPayment);
     const showCashier = largeInvoiceFlag(settings?.largeInvoiceShowCashier);
 
-    // Only a Charge has a meaningful due date: a cash sale's mirror invoice is
-    // filed due the same day, which would just repeat Date.
+    // Due Date is always printed. A Charge shows its real due date; a cash or
+    // walk-in sale is settled on the spot, so it is due on the sale date itself
+    // (the same day its mirror invoice is filed due).
     const isCharge = paymentMethod?.toUpperCase() === 'CHARGE'
         || !!payments?.some(p => p.method?.toUpperCase() === 'CHARGE');
-    const dueDate = isCharge && saleDetails.dueDate
+    const chargeDueDate = isCharge && saleDetails.dueDate
         ? (typeof saleDetails.dueDate === 'string' ? parseISO(saleDetails.dueDate) : saleDetails.dueDate)
         : null;
-    const dueDateText = dueDate && isValid(dueDate) ? format(dueDate, 'MMM dd, yyyy') : null;
+    const dueDate = chargeDueDate && isValid(chargeDueDate) ? chargeDueDate : currentDate;
+    const dueDateText = format(dueDate, 'MMM dd, yyyy');
 
     return (
         <div
@@ -73,7 +75,7 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
 
             <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }} />
 
-            {/* One header row: Reference #, Date, Bill To, Due Date (charges only)
+            {/* One header row: Reference #, Date, Bill To, Due Date
                 and Cashier (optional) side by side,
                 so the item table starts higher on the short continuous-form sheet.
                 It never wraps: a long customer name is cut short with an ellipsis
@@ -85,7 +87,7 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
                     ['Bill To', customer?.name || 'Walk-in Customer'],
                     // Due Date takes the slot Cashier used to hold; Cashier is
                     // now optional and follows it when switched on.
-                    ...(dueDateText ? [['Due Date', dueDateText]] : []),
+                    ['Due Date', dueDateText],
                     ...(showCashier ? [['Cashier', saleDetails.cashierName || 'Admin']] : []),
                     ...(saleDetails.terminalName ? [['Terminal', saleDetails.terminalName]] : []),
                 ] as [string, string][]).map(([label, value]) => (
