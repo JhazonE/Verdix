@@ -9,6 +9,7 @@ import { getApiUrl } from '@/lib/api-config';
 import { withTerminalPaperSize } from '@/lib/pos-paper-size';
 import { ZReadingPreview, ZReadingData } from '../../sales/z-reading/z-reading-preview';
 import type { BusinessSettings } from './z-reading-types';
+import { ReadingConfirm } from '../reading-confirm/ReadingConfirm';
 
 interface ZReadingReportViewProps {
   onPrint?: () => void;
@@ -50,7 +51,22 @@ export function ZReadingReportView({ onPrint }: ZReadingReportViewProps) {
     fetchData();
   }, [toast]);
 
-  const handlePrint = async () => {
+  const [isPrintConfirmOpen, setIsPrintConfirmOpen] = useState(false);
+
+  // Ask "Print?" before finalizing; either answer saves the reading.
+  const handleFinalizeClick = () => {
+    if (!data) return;
+    const isPreview = !data.id || data.id === 'PREVIEW';
+    if (isPreview) setIsPrintConfirmOpen(true);
+    else handlePrint(true);
+  };
+
+  const handlePrintChoice = (shouldPrint: boolean) => {
+    setIsPrintConfirmOpen(false);
+    handlePrint(shouldPrint);
+  };
+
+  const handlePrint = async (shouldPrint: boolean) => {
     if (!data) return;
 
     // RECORD FIRST. This button announces "Z-Reading Finalized / daily totals
@@ -80,6 +96,13 @@ export function ZReadingReportView({ onPrint }: ZReadingReportViewProps) {
       } finally {
         setIsSaving(false);
       }
+    }
+
+    // Operator answered "No" — recorded, not printed.
+    if (!shouldPrint) {
+      if (onPrint) onPrint();
+      toast({ title: 'Z-Reading Saved', description: `The reading was recorded${savedId ? ` as ${savedId}` : ''} without printing and the daily totals have been reset. You can print it later from Sales › Z-Reading.` });
+      return;
     }
 
     // Only now attempt the receipt. A print failure is reported as such and
@@ -129,11 +152,26 @@ export function ZReadingReportView({ onPrint }: ZReadingReportViewProps) {
         <ZReadingPreview data={data} printerFormat={businessSettings?.paperSize === '80mm' ? '80mm' : '58mm'} businessSettings={businessSettings} />
       </div>
       <div className="flex justify-center space-x-4 print:hidden">
-        <Button size="lg" onClick={handlePrint} disabled={isSaving}>
+        <Button size="lg" onClick={handleFinalizeClick} disabled={isSaving || isPrintConfirmOpen}>
           <Printer className="mr-2 h-5 w-5" />
-          {isSaving ? 'Finalizing…' : 'Print Z-Reading & Finalize Shift'}
+          {isSaving ? 'Finalizing…' : 'Finalize Z-Reading'}
         </Button>
       </div>
+      <ReadingConfirm
+        open={isPrintConfirmOpen}
+        title="Print Z-Reading?"
+        description={
+          <>
+            The reading will be <span className="font-medium text-foreground">saved either way</span>. Choose
+            No to save it without printing — you can still print it later from Sales › Z-Reading.
+          </>
+        }
+        yesLabel="Yes, Print & Save"
+        noLabel="No, Save Only"
+        onYes={() => handlePrintChoice(true)}
+        onNo={() => handlePrintChoice(false)}
+        onCancel={() => setIsPrintConfirmOpen(false)}
+      />
     </div>
   );
 }

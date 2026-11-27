@@ -14,8 +14,11 @@ import { getApiUrl } from '@/lib/api-config';
 import { withTerminalPaperSize } from '@/lib/pos-paper-size';
 import { useReactToPrint } from 'react-to-print';
 import type { ZReadingDialogProps } from './z-reading-report-types';
+import { ReadingConfirm, guardedSheetProps } from '../reading-confirm/ReadingConfirm';
 
-function ZReadingReportView({ onBack, printMode, terminalId, terminalName, initialData }: { onBack: () => void, printMode: 'browser' | 'escpos' | 'usb' | 'native', terminalId?: string, terminalName?: string, initialData?: ZReadingData | null }): JSX.Element {
+// onBack asks before closing (the back arrow); onDone closes outright, used
+// once a finalize has finished and there is nothing left to lose.
+function ZReadingReportView({ onBack, onDone, printMode, terminalId, terminalName, initialData }: { onBack: () => void, onDone: () => void, printMode: 'browser' | 'escpos' | 'usb' | 'native', terminalId?: string, terminalName?: string, initialData?: ZReadingData | null }): JSX.Element {
   const [data, setData] = useState<ZReadingData | null>(initialData || null);
   const [businessSettings, setBusinessSettings] = useState<BusinessSettings | null>(null);
   const [isLoading, setIsLoading] = useState(!initialData);
@@ -100,7 +103,22 @@ function ZReadingReportView({ onBack, printMode, terminalId, terminalName, initi
     }
   };
 
-  const handlePrintAndFinalize = async () => {
+  const [isPrintConfirmOpen, setIsPrintConfirmOpen] = useState(false);
+
+  // A new reading asks "Print?" first; either answer saves it. A historical
+  // report is already recorded, so its button is a plain reprint.
+  const handleFinalizeClick = () => {
+    if (!data) return;
+    if (data.id === 'PREVIEW') setIsPrintConfirmOpen(true);
+    else handlePrintAndFinalize(true);
+  };
+
+  const handlePrintChoice = (shouldPrint: boolean) => {
+    setIsPrintConfirmOpen(false);
+    handlePrintAndFinalize(shouldPrint);
+  };
+
+  const handlePrintAndFinalize = async (shouldPrint: boolean) => {
     if (!data) return;
 
     // A historical report is already recorded — nothing to persist, just print.
@@ -142,8 +160,16 @@ function ZReadingReportView({ onBack, printMode, terminalId, terminalName, initi
       setIsSaving(false);
     }
 
-    const printed = await attemptPrint(false);
     const label = savedId ? `Report ${savedId}` : 'The Z-Reading';
+
+    // Operator answered "No" — the reading is recorded, just not printed.
+    if (!shouldPrint) {
+      toast({ title: 'Z-Reading Saved', description: `${label} has been saved without printing. You can print it later from Sales › Z-Reading.` });
+      setTimeout(() => onDone(), 1500);
+      return;
+    }
+
+    const printed = await attemptPrint(false);
 
     // Distinguish "recorded but not printed" from "not recorded" — they need
     // different actions from the operator (reprint vs. re-run the Z-reading).
@@ -152,7 +178,7 @@ function ZReadingReportView({ onBack, printMode, terminalId, terminalName, initi
         ? { title: 'Z-Reading Finalized', description: `${label} has been saved successfully.` }
         : { title: 'Z-Reading Saved — Print Failed', description: `${label} was recorded successfully, but the receipt did not print. Reprint it from Sales › Z-Reading.`, variant: 'destructive' },
     );
-    setTimeout(() => onBack(), 1500);
+    setTimeout(() => onDone(), 1500);
   };
 
   if (isLoading) {
@@ -191,11 +217,26 @@ function ZReadingReportView({ onBack, printMode, terminalId, terminalName, initi
           </Button>
           <SheetTitle>Z-READING REPORT</SheetTitle>
         </div>
-        <Button size="sm" onClick={handlePrintAndFinalize} disabled={isLoading || isPrinting || isSaving}>
+        <Button size="sm" onClick={handleFinalizeClick} disabled={isLoading || isPrinting || isSaving || isPrintConfirmOpen}>
           {isPrinting || isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
-          {isSaving ? 'Recording…' : data.id === 'PREVIEW' ? 'Finalize & Print' : 'Print'}
+          {isSaving ? 'Recording…' : data.id === 'PREVIEW' ? 'Finalize' : 'Print'}
         </Button>
       </SheetHeader>
+      <ReadingConfirm
+        open={isPrintConfirmOpen}
+        title="Print Z-Reading?"
+        description={
+          <>
+            The reading will be <span className="font-medium text-foreground">saved either way</span>. Choose
+            No to save it without printing — you can still print it later from Sales › Z-Reading.
+          </>
+        }
+        yesLabel="Yes, Print & Save"
+        noLabel="No, Save Only"
+        onYes={() => handlePrintChoice(true)}
+        onNo={() => handlePrintChoice(false)}
+        onCancel={() => setIsPrintConfirmOpen(false)}
+      />
       <div className="flex-1 overflow-auto bg-muted/20 p-4 flex justify-center">
         <div ref={contentRef} className="bg-white shadow-lg h-fit w-fit">
           <ZReadingPreview data={data} businessSettings={businessSettings} printerFormat={paperSize} />
@@ -210,6 +251,7 @@ export function ZReadingDialog({ isOpen, onOpenChange, terminalId, terminalName,
   // POS Setup toggle being off. All three go straight to the report.
   const skipAuth = !!initialData || !!autoShow || !requireAuth;
   const [showReport, setShowReport] = useState(skipAuth);
+  const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -217,6 +259,7 @@ export function ZReadingDialog({ isOpen, onOpenChange, terminalId, terminalName,
     } else {
       setShowReport(false);
     }
+    setIsCloseConfirmOpen(false);
   }, [isOpen, skipAuth]);
 
   const authSucceededRef = useRef(false);
@@ -249,14 +292,31 @@ export function ZReadingDialog({ isOpen, onOpenChange, terminalId, terminalName,
         onSuccess={handleAuthSuccess}
       />
 
+      {/* Outside clicks never close the drawer; the back arrow and Escape
+          ask first (guardedSheetProps + the Close prompt below). */}
       <Sheet open={isOpen && showReport} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="w-full sm:max-w-2xl h-full overflow-hidden flex flex-col p-0 gap-0 [&>button]:hidden">
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-2xl h-full overflow-hidden flex flex-col p-0 gap-0 [&>button]:hidden"
+          {...guardedSheetProps(() => setIsCloseConfirmOpen(true))}
+        >
           <ZReadingReportView
-            onBack={() => onOpenChange(false)}
+            onBack={() => setIsCloseConfirmOpen(true)}
+            onDone={() => onOpenChange(false)}
             printMode={printMode}
             terminalId={terminalId}
             terminalName={terminalName}
             initialData={initialData}
+          />
+          <ReadingConfirm
+            open={isCloseConfirmOpen}
+            icon="close"
+            title="Close Z-Reading?"
+            description="Are you sure you want to close the Z-Reading report?"
+            yesLabel="Yes, Close"
+            noLabel="No"
+            onYes={() => { setIsCloseConfirmOpen(false); onOpenChange(false); }}
+            onNo={() => setIsCloseConfirmOpen(false)}
           />
         </SheetContent>
       </Sheet>
