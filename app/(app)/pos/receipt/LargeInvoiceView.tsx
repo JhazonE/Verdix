@@ -75,16 +75,17 @@ export const LargeInvoiceView = forwardRef<HTMLDivElement, ReceiptViewProps>(({ 
 
             <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }} />
 
-            {/* One header row: Reference #, Date, Bill To, Due Date
-                and Cashier (optional) side by side,
+            {/* One header row: Reference #, Bill To, Date, Due Date
+                and Cashier (optional) side by side — Date sits beside Due Date
+                so the two dates read together,
                 so the item table starts higher on the short continuous-form sheet.
                 It never wraps: a long customer name is cut short with an ellipsis
                 instead, since Bill To is the only field of unbounded length. */}
             <div className="flex" style={{ fontSize: '13px', marginTop: '8px', columnGap: '12px', justifyContent: 'space-between', flexWrap: 'nowrap' }}>
                 {([
                     ['Reference #', invoiceNumber],
-                    ['Date', format(currentDate, 'MMM dd, yyyy')],
                     ['Bill To', customer?.name || 'Walk-in Customer'],
+                    ['Date', format(currentDate, 'MMM dd, yyyy')],
                     // Due Date takes the slot Cashier used to hold; Cashier is
                     // now optional and follows it when switched on.
                     ['Due Date', dueDateText],
