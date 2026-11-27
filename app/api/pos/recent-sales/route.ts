@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
+import { buildRefundBasis } from '@/lib/pos/refund-amount';
+import { REFUND_ROWS_SQL, toRefundRows } from '@/lib/pos/refund-rows';
 
 export async function GET(request: NextRequest) {
   try {
@@ -109,20 +111,21 @@ export async function GET(request: NextRequest) {
     // 2. Fetch items for each sale
     const salesWithItems = await Promise.all(
       sales.map(async (sale: any) => {
-        // Returns are stored as negative-quantity sale_items on the same sale.
-        // Split the sums so a fully-returned product stays visible (marked with its
-        // returned qty) instead of vanishing when original + return net to zero:
-        //   original_quantity  = sum of the positive (sold) rows
-        //   returned_quantity  = abs sum of the negative (returned) rows
-        //   quantity           = remaining returnable (original - returned)
+        // The SOLD lines only. Returns are negative-quantity sale_items on the
+        // same sale, and are netted below rather than in this GROUP BY: grouping
+        // by si.price used to fold a return into its line only when the two
+        // prices matched, and a discounted line's sale row (discounted unit
+        // price) never matches its return row, so the return was never counted
+        // and the line stayed fully returnable.
         const itemsQuery = `
           SELECT
             MIN(si.id) as id,
             si.product_id,
             si.product_name,
-            SUM(GREATEST(si.quantity, 0)) as original_quantity,
-            ABS(SUM(LEAST(si.quantity, 0))) as returned_quantity,
-            SUM(si.quantity) as quantity,
+            si.selling_unit_id,
+            MIN(si.selling_unit_name) as selling_unit_name,
+            MIN(si.selling_unit_factor) as selling_unit_factor,
+            SUM(si.quantity) as original_quantity,
             COALESCE(MIN(pti.unit_price), si.price) as original_price,
             su.barcode as base_unit_barcode,
             p.barcode,
@@ -133,11 +136,31 @@ export async function GET(request: NextRequest) {
           LEFT JOIN products p ON si.product_id = p.id
           LEFT JOIN product_selling_units su ON su.product_id = p.id AND su.is_base = 1
           LEFT JOIN pos_transaction_items pti ON si.id = pti.sale_item_id
-          WHERE si.sale_id = ?
-          GROUP BY si.product_id, si.product_name, si.price, su.barcode, p.barcode, p.unit_of_measure, p.vat_status
-          HAVING SUM(GREATEST(si.quantity, 0)) > 0
+          WHERE si.sale_id = ? AND si.quantity > 0
+          GROUP BY si.product_id, si.product_name, si.selling_unit_id, si.price, su.barcode, p.barcode, p.unit_of_measure, p.vat_status
+          ORDER BY MIN(si.created_at), CHAR_LENGTH(MIN(si.id)), MIN(si.id)
         `;
-        const items = await query(itemsQuery, [sale.id]);
+        const items = await query(itemsQuery, [sale.id]) as any[];
+
+        // Returned quantity and refund basis per product + unit pool — the same
+        // basis /api/sales/returns refunds from (lib/pos/refund-amount.ts), so
+        // the dialog shows exactly what will be credited. A pool's returned
+        // quantity is spread over its lines in order:
+        //   originalQuantity = sold on this line
+        //   returnedQuantity = returned against it
+        //   quantity         = remaining returnable
+        const refundRows = toRefundRows(await query(REFUND_ROWS_SQL, [sale.id]) as any[]);
+        const returnedLeftByPool = new Map<string, number>();
+        const lineReturns = items.map((item: any) => {
+          const basis = buildRefundBasis(refundRows, String(item.product_id), item.selling_unit_id ?? null);
+          const sold = parseFloat(item.original_quantity);
+          if (!basis) return { basis: null, sold, returned: 0 };
+          if (!returnedLeftByPool.has(basis.poolKey)) returnedLeftByPool.set(basis.poolKey, basis.returnedQty);
+          const left = returnedLeftByPool.get(basis.poolKey)!;
+          const returned = Math.min(sold, left);
+          returnedLeftByPool.set(basis.poolKey, left - returned);
+          return { basis, sold, returned };
+        });
 
         // 3. Fetch payment details for split payments
         const paymentsQuery = `
@@ -185,7 +208,7 @@ export async function GET(request: NextRequest) {
           terminalPermitNo: sale.terminal_permit_no,
           terminalAccreditationNo: sale.terminal_accreditation_no,
           terminalPermitDateIssued: sale.terminal_permit_date_issued,
-          items: items.map((item: any) => ({
+          items: items.map((item: any, idx: number) => ({
             product: {
               id: item.product_id,
               name: item.product_name,
@@ -202,11 +225,16 @@ export async function GET(request: NextRequest) {
             },
             // quantity = remaining returnable (net). originalQuantity/returnedQuantity
             // let the UI keep fully-returned lines visible and show what was returned.
-            quantity: parseFloat(item.quantity),
-            originalQuantity: parseFloat(item.original_quantity ?? item.quantity),
-            returnedQuantity: parseFloat(item.returned_quantity ?? 0),
+            quantity: lineReturns[idx].sold - lineReturns[idx].returned,
+            originalQuantity: lineReturns[idx].sold,
+            returnedQuantity: lineReturns[idx].returned,
             price: parseFloat(item.original_price || item.price),
-            discount: parseFloat(item.discount_amount || 0)
+            discount: parseFloat(item.discount_amount || 0),
+            sellingUnitId: item.selling_unit_id ?? undefined,
+            sellingUnitName: item.selling_unit_name ?? undefined,
+            sellingUnitFactor: item.selling_unit_factor != null ? Number(item.selling_unit_factor) : undefined,
+            // What a return of this line refunds — see lib/pos/refund-amount.ts.
+            refundBasis: lineReturns[idx].basis ?? undefined,
           })),
         };
       })

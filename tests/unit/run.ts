@@ -67,6 +67,7 @@ import './sales-by-date-excludes-voids.test';
 import './backoffice-sales-in-reports.test';
 import './report-cards-agree.test';
 import './line-allocation.test';
+import './refund-amount.test';
 import './pos-sale-predicate.test';
 import './due-date.test';
 import './invoice-settlement.test';

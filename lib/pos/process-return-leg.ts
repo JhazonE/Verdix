@@ -12,6 +12,11 @@ export interface ReturnLegItem {
   sellingUnitId?: string | null;
   sellingUnitName?: string | null;
   sellingUnitFactor?: number | null;
+  /**
+   * Signed (negative) amount refunded for this line, from
+   * lib/pos/refund-amount.ts. When absent, -(quantity × price) rounded.
+   */
+  lineTotal?: number;
 }
 
 export interface ReturnLegResult {
@@ -162,7 +167,7 @@ export async function processReturnLeg(
     -returnedQty,
     item.price,
     // Same amount the caller writes to pos_transaction_items.line_total.
-    toCents(-(returnedQty * Number(item.price))) / 100,
+    item.lineTotal ?? toCents(-(returnedQty * Number(item.price))) / 100,
     unitId,
     unitName,
     factor,

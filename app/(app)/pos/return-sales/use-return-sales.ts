@@ -11,6 +11,7 @@ import { getApiUrl } from '@/lib/api-config';
 import { useReactToPrint } from 'react-to-print';
 import { buildRecentSalesQuery } from '../transaction-search/build-recent-sales-query';
 import { calculateExchangeBalance } from '@/lib/pos/exchange-balance';
+import { refundsForLines } from '@/lib/pos/refund-amount';
 import type { ExchangeReplacementItem, ExchangeResult } from './return-sales-types';
 import type { AuthApprover } from '../admin-auth/admin-auth-types';
 
@@ -54,9 +55,13 @@ export function useReturnSales({
   const [replacementItem, setReplacementItem] = useState<ExchangeReplacementItem | null>(null);
   const [exchangeResult, setExchangeResult] = useState<ExchangeResult | null>(null);
 
+  // What the returned item is credited at: what its line charged, from the
+  // same basis /api/sales/exchanges books — never exchangeReturnItem.price,
+  // which is the shelf price before the line's discount.
+  const exchangeReturnValue = exchangeReturnItem ? refundsForLines([exchangeReturnItem])[0] : 0;
   const exchangeBalance = replacementItem && exchangeReturnItem
     ? calculateExchangeBalance(
-        { quantity: exchangeReturnItem.quantity, price: exchangeReturnItem.price },
+        { quantity: 1, price: exchangeReturnValue },
         { quantity: replacementItem.quantity, price: replacementItem.product.price }
       )
     : null;
@@ -185,7 +190,10 @@ export function useReturnSales({
     if (selectedSale && items.length > 0) {
       setIsLoading(true);
       try {
-        const totalAmount = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        // An estimate for the request only: the server computes the refund
+        // itself from what each line charged, and the slip prints ITS figures.
+        const estimates = refundsForLines(items);
+        const totalAmount = estimates.reduce((sum, a) => sum + Math.round(a * 100), 0) / 100;
 
         const response = await fetch(getApiUrl('/sales/returns'), {
           method: 'POST',
@@ -196,7 +204,10 @@ export function useReturnSales({
               productId: item.product.id,
               productName: item.product.name,
               quantity: item.quantity,
-              price: item.price
+              price: item.price,
+              // Which line pool this returns from, so a product sold in two
+              // units refunds and restocks the right one.
+              sellingUnitId: item.sellingUnitId ?? null,
             })),
             terminalId: terminalId || posSettings?.terminalId,
             userId: currentUser?.uid || currentUser?.id || null,
@@ -215,8 +226,13 @@ export function useReturnSales({
 
         const result = await response.json();
         if (result.success) {
-          setReturnedTotal(totalAmount);
-          setReturnedItems(items);
+          const amounts: number[] = Array.isArray(result.data?.lines)
+            ? result.data.lines.map((l: any) => Number(l.amount))
+            : estimates;
+          setReturnedTotal(result.data?.totalAmount != null ? Number(result.data.totalAmount) : totalAmount);
+          // The slip prints price × quantity per line, so carry the refunded
+          // amount per unit rather than the pre-discount shelf price.
+          setReturnedItems(items.map((it, i) => ({ ...it, price: amounts[i] / Number(it.quantity) })));
           setMcNumber(result.data?.mcNumber || '');
           setStep('success');
         } else {
@@ -353,7 +369,7 @@ export function useReturnSales({
           quantity: item.quantity,
           unitOfMeasure: item.product.unitOfMeasure,
           price: item.price,
-          total: item.quantity * item.price
+          total: Math.round(item.quantity * item.price * 100) / 100
         })),
         totalAmount: returnedTotal,
         businessSettings: {
@@ -403,8 +419,8 @@ export function useReturnSales({
         returnedItem: {
           name: exchangeReturnItem.product.name,
           quantity: exchangeReturnItem.quantity,
-          price: exchangeReturnItem.price,
-          total: exchangeReturnItem.quantity * exchangeReturnItem.price,
+          price: exchangeReturnValue / exchangeReturnItem.quantity,
+          total: exchangeReturnValue,
         },
         newItem: {
           name: replacementItem.product.name,
@@ -434,7 +450,7 @@ export function useReturnSales({
       console.error("Print error", err);
       toast({ title: "Print Failed", description: "Could not send data to printer.", variant: "destructive" });
     }
-  }, [exchangeReturnItem, replacementItem, exchangeResult, selectedSale, printMode, isConnected, connect, print, posSettings, currentUser, handleBrowserPrintExchange, toast]);
+  }, [exchangeReturnItem, exchangeReturnValue, replacementItem, exchangeResult, selectedSale, printMode, isConnected, connect, print, posSettings, currentUser, handleBrowserPrintExchange, toast]);
 
   return {
     step,
@@ -456,6 +472,7 @@ export function useReturnSales({
     isRecentLoading,
     posSettings,
     exchangeReturnItem,
+    exchangeReturnValue,
     replacementItem,
     exchangeBalance,
     exchangeResult,

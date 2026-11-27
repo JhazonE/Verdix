@@ -155,6 +155,12 @@ export interface SaleItem {
   sellingUnitFactor?: number;
   /** Whether this line charged 12% VAT (Backoffice sales invoices only). */
   vatable?: boolean;
+  /**
+   * What returning this line refunds (POS recent sales only): the amount it
+   * charged, net of earlier returns. `price` is the pre-discount shelf price
+   * and must not be used as a refund value. See lib/pos/refund-amount.ts.
+   */
+  refundBasis?: import('./pos/refund-amount').RefundBasis;
 }
 
 export interface Sale {

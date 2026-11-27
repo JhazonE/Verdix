@@ -9,6 +9,8 @@ import { saveEJournalFiles } from '@/lib/ejournal/ejournal-writer';
 import { EXCHANGE_CREDIT_TENDER, isExchangeBalanceTender } from '@/lib/pos/exchange-tender';
 import { mapVatStatusToTaxType, resolveEffectiveTaxType, vatOfLines } from '@/lib/tax-utils';
 import { ensureReturnApproverColumns, resolveReturnApprover, writeReturnApprover } from '@/lib/return-approver';
+import { refundsInOrder } from '@/lib/pos/refund-amount';
+import { REFUND_ROWS_SQL, toRefundRows } from '@/lib/pos/refund-rows';
 
 /**
  * POST /api/sales/exchanges — 1-for-1 item exchange.
@@ -44,7 +46,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'User ID is required' }, { status: 400 });
     }
 
-    const returnTotal = Number(returnItem.quantity) * Number(returnItem.price);
+    // The returned item is worth what its line CHARGED (net of any earlier
+    // return), not returnItem.price — that is the shelf price before the
+    // line's discount, which over-credited every discounted exchange. Computed
+    // here for the tender check, and again under the sale lock below.
+    const exchangeRefund = async (run: (sql: string, p: any[]) => Promise<any[]>) => {
+      const rows = await run(REFUND_ROWS_SQL, [saleId]);
+      const [r] = refundsInOrder(toRefundRows(rows), [{
+        productId: String(returnItem.productId),
+        sellingUnitId: returnItem.sellingUnitId ?? null,
+        quantity: Number(returnItem.quantity),
+      }]);
+      return r;
+    };
+    const preRefund = await exchangeRefund(async (sql, p) => (await query(sql, p)) as any[]);
+    if (preRefund.error) {
+      return NextResponse.json({ success: false, error: preRefund.error }, { status: 400 });
+    }
+    const returnTotal = preRefund.amount;
     const newTotal = Number(newItem.quantity) * Number(newItem.price);
     const balance = Math.round((newTotal - returnTotal) * 100) / 100;
 
@@ -115,6 +134,21 @@ export async function POST(request: NextRequest) {
     const exchangeGroupId = `EXG-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
 
     const result = await withTransaction(async (connection) => {
+      // Lock the original sale and re-check the refund: a return from another
+      // till between the tender check above and here would otherwise let this
+      // exchange credit quantity that is no longer there.
+      await connection.query('SELECT id FROM sales_transactions WHERE id = ? FOR UPDATE', [saleId]);
+      const lockedRefund = await exchangeRefund(async (sql, p) => (await connection.query(sql, p))[0] as any[]);
+      if (lockedRefund.error || lockedRefund.amount !== returnTotal) {
+        throw Object.assign(
+          new Error(lockedRefund.error || 'This sale changed while the exchange was being processed. Please try again.'),
+          { status: 409 }
+        );
+      }
+      const returnQty = Number(returnItem.quantity);
+      // Per-unit refund price, so unit_price / sale_items.price agree with line_total.
+      const returnUnitPrice = returnTotal / returnQty;
+
       let finalUserId = userId;
       const [userResult]: any = await connection.query('SELECT uid FROM users WHERE uid = ? LIMIT 1', [userId]);
       if (!userResult || userResult.length === 0) {
@@ -156,7 +190,12 @@ export async function POST(request: NextRequest) {
 
       const returnLegResult = await processReturnLeg(connection, {
         saleId,
-        item: returnItem,
+        item: {
+          ...returnItem,
+          price: returnUnitPrice,
+          sellingUnitId: lockedRefund.basis?.unitId ?? returnItem.sellingUnitId ?? null,
+          lineTotal: -returnTotal,
+        },
         posTransId: returnPosTransId,
         itemIndex: 0,
       });
@@ -170,7 +209,7 @@ export async function POST(request: NextRequest) {
         [
           `${returnPosTransId}-DETAIL-1`, returnPosTransId, returnLegResult.saleItemId,
           returnItem.productId, returnItem.productName,
-          -Number(returnItem.quantity), returnItem.price, -(Number(returnItem.quantity) * returnItem.price),
+          -returnQty, returnUnitPrice, -returnTotal,
           returnLegResult.unitId, returnLegResult.unitName, returnLegResult.factor,
           returnLegResult.taxType,
         ]
@@ -183,7 +222,7 @@ export async function POST(request: NextRequest) {
         'UPDATE pos_transactions SET tax_amount = ? WHERE id = ?',
         [
           vatOfLines([{
-            lineTotal: -(Number(returnItem.quantity) * returnItem.price),
+            lineTotal: -returnTotal,
             taxType: returnLegResult.taxType,
           }]),
           returnPosTransId,
@@ -321,7 +360,9 @@ export async function POST(request: NextRequest) {
       }
 
       const [meta]: any = await connection.query(
-        `SELECT DATE(transaction_time) AS d, terminal_id AS t FROM pos_transactions WHERE id = ? LIMIT 1`,
+        // DATE_FORMAT, not DATE(): String() of the JS Date mysql2 returns for a
+        // DATE is not a value MySQL accepts back, so the e-journal save failed.
+        `SELECT DATE_FORMAT(transaction_time, '%Y-%m-%d') AS d, terminal_id AS t FROM pos_transactions WHERE id = ? LIMIT 1`,
         [salePosTransId]
       );
 
@@ -350,13 +391,15 @@ export async function POST(request: NextRequest) {
         mcNumber: result.mcNumber,
         siNumber: result.siNumber,
         balance: result.balance,
+        // What the returned item was actually credited at; the slip prints it.
+        returnTotal,
       },
     });
   } catch (error: any) {
     console.error('Error processing exchange:', error);
     return NextResponse.json(
       { success: false, error: error.message || 'Failed to process exchange' },
-      { status: 500 }
+      { status: error?.status || 500 }
     );
   }
 }
