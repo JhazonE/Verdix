@@ -306,6 +306,18 @@ export default function ReportsPage() {
             </Card>
           </Link>
 
+          <Link href="/reports/sales/gross-profit">
+            <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full border-green-200">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5 text-green-600" />
+                  Sales, COGS &amp; Gross Profit Monitoring
+                </CardTitle>
+                <CardDescription>Day-by-day sales, cost of goods sold, gross profit, margin % and markup on cost for a month, with totals and daily averages.</CardDescription>
+              </CardHeader>
+            </Card>
+          </Link>
+
           <Link href="/reports/sales/batch-profit">
             <Card className="hover:bg-muted/50 transition-colors cursor-pointer h-full border-amber-200">
               <CardHeader>

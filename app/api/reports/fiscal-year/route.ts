@@ -7,6 +7,7 @@ import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 import { posSaleSql } from '@/lib/pos-sales';
 import { parseSalesSource } from '@/lib/sales-source';
 import { saleItemRevenueSql } from '@/lib/sale-item-revenue';
+import { salesCostByPeriod } from '@/lib/sales-cost-by-period';
 
 export async function GET(request: NextRequest) {
   try {
@@ -108,74 +109,10 @@ export async function GET(request: NextRequest) {
     const revenue = parseFloat(summaryRow.revenue) + parseFloat(returnRow.returned) + parseFloat(boSummary.revenue);
     const profit = profitOf(revenue, parseFloat(costRow.cost) + parseFloat(boCost.cost));
 
-    // Per-calendar-month revenue/transactions.
-    const monthlyRevRows = await query(
-      `SELECT DATE_FORMAT(st.invoice_date, '%Y-%m') AS ym,
-              COALESCE(SUM(st.total), 0) AS revenue,
-              COUNT(*) AS transactions
-       FROM sales_transactions st
-       WHERE ${posWhere} AND st.invoice_date >= ? AND st.invoice_date <= ?
-       GROUP BY DATE_FORMAT(st.invoice_date, '%Y-%m')`,
-      [startStr, endStr]
-    ) as any[];
-
-    // Per-calendar-month cost (profit = that month's revenue - cost).
-    const monthlyCostRows = await query(
-      `SELECT DATE_FORMAT(${saleDate}, '%Y-%m') AS ym,
-              COALESCE(SUM(${lineCostExpr('si', 'p', { hasCostAtSale: true })}), 0) AS cost
-       FROM sale_items si
-       JOIN sales_transactions st ON si.sale_id = st.id
-       JOIN products p ON si.product_id = p.id
-       WHERE ${posWhere} AND DATE(${saleDate}) >= ? AND DATE(${saleDate}) <= ?
-       GROUP BY DATE_FORMAT(${saleDate}, '%Y-%m')`,
-      [startStr, endStr]
-    ) as any[];
-
-    // Per-calendar-month returned value (negative), by the month it was returned.
-    const monthlyReturnRows = await query(
-      `SELECT DATE_FORMAT(si.created_at, '%Y-%m') AS ym,
-              COALESCE(SUM(${saleItemRevenueSql('si')}), 0) AS returned
-       FROM sale_items si
-       JOIN sales_transactions st ON si.sale_id = st.id
-       WHERE ${posWhere} AND si.quantity < 0
-         AND DATE(si.created_at) >= ? AND DATE(si.created_at) <= ?
-       GROUP BY DATE_FORMAT(si.created_at, '%Y-%m')`,
-      [startStr, endStr]
-    ) as any[];
-
-    // Back-office invoices per calendar month: revenue/count, and cost.
-    const monthlyBoRevRows = await query(
-      `SELECT DATE_FORMAT(sinv.invoice_date, '%Y-%m') AS ym,
-              COALESCE(SUM(sinv.total), 0) AS revenue,
-              COUNT(*) AS transactions
-       FROM sales_invoices sinv
-       WHERE ${boWhere}
-       GROUP BY DATE_FORMAT(sinv.invoice_date, '%Y-%m')`,
-      [startStr, endStr]
-    ) as any[];
-    const monthlyBoCostRows = await query(
-      `SELECT DATE_FORMAT(sinv.invoice_date, '%Y-%m') AS ym,
-              COALESCE(SUM(${lineCostExpr('sii', 'p', { hasCostAtSale: true })}), 0) AS cost
-       FROM sales_invoice_items sii
-       JOIN sales_invoices sinv ON sii.sales_invoice_id = sinv.id
-       JOIN products p ON sii.product_id = p.id
-       WHERE ${boWhere}
-       GROUP BY DATE_FORMAT(sinv.invoice_date, '%Y-%m')`,
-      [startStr, endStr]
-    ) as any[];
-
-    const returnedByYm = new Map<string, number>();
-    for (const r of monthlyReturnRows) returnedByYm.set(r.ym, parseFloat(r.returned));
-
-    const revByYm = new Map<string, { revenue: number; transactions: number }>();
-    for (const r of monthlyRevRows) revByYm.set(r.ym, { revenue: parseFloat(r.revenue), transactions: parseInt(r.transactions) });
-    for (const r of monthlyBoRevRows) {
-      const prev = revByYm.get(r.ym) || { revenue: 0, transactions: 0 };
-      revByYm.set(r.ym, { revenue: prev.revenue + parseFloat(r.revenue), transactions: prev.transactions + parseInt(r.transactions) });
-    }
-    const costByYm = new Map<string, number>();
-    for (const r of monthlyCostRows) costByYm.set(r.ym, parseFloat(r.cost));
-    for (const r of monthlyBoCostRows) costByYm.set(r.ym, (costByYm.get(r.ym) || 0) + parseFloat(r.cost));
+    // Per-calendar-month sales, cost and count. Shared with the daily Sales,
+    // COGS & Gross Profit Monitoring report, so a month here always equals the
+    // sum of its days there.
+    const byYm = await salesCostByPeriod({ startStr, endStr, source, period: 'month' });
 
     // Build 12 fiscal periods in order, each mapped to its actual calendar month.
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -185,14 +122,13 @@ export async function GET(request: NextRequest) {
       const y = d.getFullYear();
       const m = d.getMonth(); // 0-11
       const ym = `${y}-${String(m + 1).padStart(2, '0')}`;
-      const rev = revByYm.get(ym) || { revenue: 0, transactions: 0 };
-      const netRevenue = rev.revenue + (returnedByYm.get(ym) || 0);
+      const p = byYm.get(ym) || { revenue: 0, cost: 0, transactions: 0 };
       months.push({
         period: period + 1,
         monthLabel: `${MONTHS[m]} ${y}`,
-        revenue: netRevenue,
-        transactions: rev.transactions,
-        profit: profitOf(netRevenue, costByYm.get(ym) || 0),
+        revenue: p.revenue,
+        transactions: p.transactions,
+        profit: profitOf(p.revenue, p.cost),
       });
     }
 

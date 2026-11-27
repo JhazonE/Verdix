@@ -1023,6 +1023,7 @@ export const CHAPTERS: Chapter[] = [
               ['Batch Profit', '/reports/sales/batch-profit', 'Profit calculated per FIFO cost batch, showing which stock batches were most profitable.'],
               ['Discounts', '/reports/sales/discounts', 'All discounts given, by cashier, product, or period.'],
               ['Merchandise Credits', '/sales/returns', 'Merchandise credits and returned items. Listed under POS Reports.'],
+              ['Sales, COGS & Gross Profit Monitoring', '/reports/sales/gross-profit', 'One row per day of a chosen month: sales, cost of goods sold, gross profit, gross profit margin % and markup on cost %, with month totals and the average per selling day.'],
               ['BIR Summary', '/reports/sales/bir-summary', 'Official BIR-format summary of sales invoice numbers and totals for tax filing.'],
               ['Purchases Summary', '/reports/purchases/summary', 'Total purchase spend for a chosen period.'],
               ['Purchases by Supplier', '/reports/purchases/by-supplier', 'Purchases grouped by supplier, showing who you buy the most from.'],

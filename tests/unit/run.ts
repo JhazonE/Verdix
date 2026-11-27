@@ -69,6 +69,7 @@ import './report-cards-agree.test';
 import './line-allocation.test';
 import './refund-amount.test';
 import './pos-sale-predicate.test';
+import './gross-profit-report.test';
 import './due-date.test';
 import './invoice-settlement.test';
 import './z-reading-returns-source.test';
