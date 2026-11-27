@@ -51,7 +51,6 @@ export function ManageWarehousesDialog({ trigger, onChange, open, onOpenChange }
                     <TableHead>ID</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Location</TableHead>
-                    <TableHead>Active</TableHead>
                     <TableHead>Created At</TableHead>
                     <TableHead><span className="sr-only">Actions</span></TableHead>
                   </TableRow>
@@ -68,7 +67,7 @@ export function ManageWarehousesDialog({ trigger, onChange, open, onOpenChange }
                   ))}
                   {!m.isLoading && m.warehouses?.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center h-24">No warehouses found.</TableCell>
+                      <TableCell colSpan={5} className="text-center h-24">No warehouses found.</TableCell>
                     </TableRow>
                   )}
                 </TableBody>
