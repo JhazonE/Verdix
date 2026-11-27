@@ -4,6 +4,7 @@ import { getFiscalYearRange, getCurrentFiscalYear, toLocalYmd } from '@/lib/fisc
 import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 import { posSaleSql } from '@/lib/pos-sales';
 import { lineDateExpr } from '@/lib/profit';
+import { saleItemRevenueSql } from '@/lib/sale-item-revenue';
 
 export async function GET(request: NextRequest) {
     try {
@@ -24,6 +25,8 @@ export async function GET(request: NextRequest) {
         // This used to be status = 'Paid', which dropped credit sales and kept
         // training sales. See lib/pos-sales.ts.
         const POS = posSaleSql('st');
+        // Charged amount of a sale_items line — see lib/sale-item-revenue.ts.
+        const SI_REV = saleItemRevenueSql('si');
 
         // RETURNS. A return is a NEGATIVE sale_items line under the original
         // sale, and st.total does not shrink when one is added, so a revenue
@@ -32,7 +35,7 @@ export async function GET(request: NextRequest) {
         // Sales by Date and Fiscal Year (lib/profit.ts). This expression is the
         // (negative) returned value; callers add a date condition.
         const returnedSql = (dateCond: string) => `
-            SELECT COALESCE(SUM(si.price * si.quantity), 0)
+            SELECT COALESCE(SUM(${SI_REV}), 0)
             FROM sale_items si JOIN sales_transactions st ON si.sale_id = st.id
             WHERE ${POS} AND si.quantity < 0 ${dateCond}`;
 
@@ -45,7 +48,7 @@ export async function GET(request: NextRequest) {
                 FROM sales_transactions st
                 WHERE ${POS} AND st.invoice_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
                 UNION ALL
-                SELECT DATE_FORMAT(si.created_at, '%Y-%m-%d') as date, si.price * si.quantity as sales
+                SELECT DATE_FORMAT(si.created_at, '%Y-%m-%d') as date, ${SI_REV} as sales
                 FROM sale_items si JOIN sales_transactions st ON si.sale_id = st.id
                 WHERE ${POS} AND si.quantity < 0 AND DATE(si.created_at) >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
             ) d
@@ -71,7 +74,7 @@ export async function GET(request: NextRequest) {
             SELECT
                 si.product_id as product_id,
                 si.product_name as name,
-                SUM(si.quantity * si.price) as sales
+                SUM(${SI_REV}) as sales
             FROM sale_items si
             JOIN sales_transactions st ON si.sale_id = st.id
             WHERE ${POS}
@@ -102,7 +105,7 @@ export async function GET(request: NextRequest) {
         const salesByCategoryQuery = `
             SELECT
                 IFNULL(p.category, 'Uncategorized') as name,
-                SUM(si.quantity * si.price) as value
+                SUM(${SI_REV}) as value
             FROM sale_items si
             JOIN sales_transactions st ON si.sale_id = st.id
             JOIN products p ON si.product_id = p.id

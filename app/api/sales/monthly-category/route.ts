@@ -4,6 +4,7 @@ import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 import { posSaleSql } from '@/lib/pos-sales';
 import { parseSalesSource } from '@/lib/sales-source';
 import { lineDateExpr } from '@/lib/profit';
+import { saleItemRevenueSql } from '@/lib/sale-item-revenue';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     const sql = `
       SELECT category, SUM(sales) AS total_sales FROM (
-        SELECT COALESCE(NULLIF(p.category, ''), 'Uncategorized') AS category, si.quantity * si.price AS sales
+        SELECT COALESCE(NULLIF(p.category, ''), 'Uncategorized') AS category, ${saleItemRevenueSql('si')} AS sales
         FROM sale_items si
         JOIN sales_transactions st ON si.sale_id = st.id
         JOIN products p ON si.product_id = p.id

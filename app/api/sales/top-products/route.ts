@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/mysql';
 import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 import { posSaleSql } from '@/lib/pos-sales';
+import { saleItemRevenueSql } from '@/lib/sale-item-revenue';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
     const sql = `
       SELECT product_id, MAX(name) AS name, SUM(quantity) AS quantity, SUM(revenue) AS total_revenue
       FROM (
-        SELECT si.product_id, si.product_name AS name, si.quantity, si.quantity * si.price AS revenue
+        SELECT si.product_id, si.product_name AS name, si.quantity, ${saleItemRevenueSql('si')} AS revenue
         FROM sale_items si
         JOIN sales_transactions st ON si.sale_id = st.id
         WHERE ${posSaleSql('st')}
