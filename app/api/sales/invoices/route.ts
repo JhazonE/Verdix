@@ -62,10 +62,14 @@ export async function POST(request: NextRequest) {
       // shipping is added here, the same way Add Invoice folds it in.
       const shipping = Number(order.shipping) > 0 ? Number(order.shipping) : 0;
       const invoiceTotal = Number(order.total || 0) + shipping;
+      // The order's total already includes its VAT; carry the amount across
+      // so the invoice can show it. Without it the invoice view and prints
+      // rebuilt GRAND TOTAL as items + shipping and dropped the VAT.
+      const vatAmount = Number(order.vat_amount || 0);
 
       await conn.execute(
-        `INSERT INTO sales_invoices (id, reference, sales_order_id, customer_id, invoice_date, due_date, total, shipping, payment_method, sales_person_id, status, transaction_source, notes, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Backoffice', ?, NOW(), NOW())`,
+        `INSERT INTO sales_invoices (id, reference, sales_order_id, customer_id, invoice_date, due_date, total, vat_amount, shipping, payment_method, sales_person_id, status, transaction_source, notes, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Backoffice', ?, NOW(), NOW())`,
         [
           invoiceId,
           invoiceReference,
@@ -74,6 +78,7 @@ export async function POST(request: NextRequest) {
           invoiceDate,
           dueDate,
           invoiceTotal,
+          vatAmount,
           shipping,
           order.payment_method || 'CASH',
           order.sales_person_id || null,
@@ -85,13 +90,14 @@ export async function POST(request: NextRequest) {
       // Create invoice items. Carry the order line's selling unit forward —
       // sales_order_items already records it — so a later void of this
       // invoice restocks by the right factor instead of assuming base units.
+      // `vatable` comes across too, so each line's VAT box matches the order.
       for (const item of items as any[]) {
         const itemId = `INV-ITEM-${uuidv4()}`;
         await conn.execute(
           `INSERT INTO sales_invoice_items (
              id, sales_invoice_id, product_id, product_name, quantity, price,
-             selling_unit_id, selling_unit_name, selling_unit_factor, created_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+             selling_unit_id, selling_unit_name, selling_unit_factor, vatable, created_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
           [
             itemId,
             invoiceId,
@@ -102,6 +108,7 @@ export async function POST(request: NextRequest) {
             item.selling_unit_id ?? null,
             item.selling_unit_name ?? null,
             item.selling_unit_factor ?? null,
+            item.vatable ? 1 : 0,
           ]
         );
       }
@@ -130,7 +137,9 @@ export async function POST(request: NextRequest) {
             },
             quantity: Number(item.quantity),
             price: Number(item.price),
+            vatable: Boolean(item.vatable),
           })),
+          vatAmount,
           total: invoiceTotal,
           formattedTotal: `₱${invoiceTotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
           paymentMethod: order.payment_method || 'CASH',

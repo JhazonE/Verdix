@@ -76,4 +76,41 @@ test.describe('Sales invoice shipping', () => {
     expect(Number(rows[0].total)).toBe(Number(order[0].total) + 75);
     expect(invRes.data.total).toBe(Number(order[0].total) + 75);
   });
+
+  test('Invoice gikan sa Sales Order: ang VAT sa order ma-kopya sa invoice ug sa matag linya', async ({ request }) => {
+    const orderRes = await request.post('/api/sales/orders', {
+      data: {
+        customer: { id: SO_CUSTOMER.id, name: SO_CUSTOMER.name },
+        orderDate: '2026-11-27',
+        deliveryDate: '2026-11-27',
+        paymentMethod: 'CASH',
+        status: 'Pending',
+        items: [{ ...line(1), vatable: true }],
+      },
+    });
+    const orderBody = await orderRes.json();
+    expect(orderBody.success, `order failed: ${JSON.stringify(orderBody)}`).toBe(true);
+    const orderId = orderBody.data.id as string;
+
+    const deliver = await (await request.post(`/api/sales/orders/${orderId}/deliver`, { data: {} })).json();
+    expect(deliver.success, `deliver failed: ${JSON.stringify(deliver)}`).toBe(true);
+
+    const invRes = await (await request.post('/api/sales/invoices', { data: { orderId } })).json();
+    expect(invRes.success, `invoice failed: ${JSON.stringify(invRes)}`).toBe(true);
+
+    const vat = Math.round(SO_PRODUCT.price * 0.12 * 100) / 100;
+    const inv: any = await testQuery(
+      'SELECT id, total, vat_amount FROM sales_invoices WHERE sales_order_id = ?',
+      [orderId],
+    );
+    expect(Number(inv[0].vat_amount)).toBe(vat);
+    // Ang total wala mausab: items + VAT, parehas sa order.
+    expect(Number(inv[0].total)).toBe(SO_PRODUCT.price + vat);
+
+    const lines: any = await testQuery(
+      'SELECT vatable FROM sales_invoice_items WHERE sales_invoice_id = ?',
+      [inv[0].id],
+    );
+    expect(lines.map((l: any) => Number(l.vatable))).toEqual([1]);
+  });
 });
