@@ -6,6 +6,7 @@ import { profitOf, lineDateExpr } from '@/lib/profit';
 import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 import { posSaleSql } from '@/lib/pos-sales';
 import { parseSalesSource } from '@/lib/sales-source';
+import { saleItemRevenueSql } from '@/lib/sale-item-revenue';
 
 export async function GET(request: NextRequest) {
   try {
@@ -62,7 +63,7 @@ export async function GET(request: NextRequest) {
     // day it was returned, and the same negative lines reduce cost below. Without
     // this, revenue ignored a return while cost netted it, overstating profit.
     const [returnRow] = await query(
-      `SELECT COALESCE(SUM(si.price * si.quantity), 0) AS returned
+      `SELECT COALESCE(SUM(${saleItemRevenueSql('si')}), 0) AS returned
        FROM sale_items si
        JOIN sales_transactions st ON si.sale_id = st.id
        WHERE ${posWhere} AND si.quantity < 0
@@ -133,7 +134,7 @@ export async function GET(request: NextRequest) {
     // Per-calendar-month returned value (negative), by the month it was returned.
     const monthlyReturnRows = await query(
       `SELECT DATE_FORMAT(si.created_at, '%Y-%m') AS ym,
-              COALESCE(SUM(si.price * si.quantity), 0) AS returned
+              COALESCE(SUM(${saleItemRevenueSql('si')}), 0) AS returned
        FROM sale_items si
        JOIN sales_transactions st ON si.sale_id = st.id
        WHERE ${posWhere} AND si.quantity < 0

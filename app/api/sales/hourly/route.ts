@@ -4,6 +4,7 @@ import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 import { posSaleSql } from '@/lib/pos-sales';
 import { lineDateExpr } from '@/lib/profit';
 import { parseSalesSource } from '@/lib/sales-source';
+import { saleItemRevenueSql } from '@/lib/sale-item-revenue';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
     const sql = `
       SELECT hour, SUM(sales) AS sales, SUM(is_sale) AS count FROM (
         SELECT HOUR(${lineTime}) AS hour,
-               si.price * si.quantity AS sales,
+               ${saleItemRevenueSql('si')} AS sales,
                0 AS is_sale
         FROM sale_items si
         JOIN sales_transactions st ON si.sale_id = st.id

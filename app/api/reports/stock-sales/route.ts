@@ -3,6 +3,7 @@ import { query } from '@/lib/mysql';
 import { posSaleSql } from '@/lib/pos-sales';
 import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 import { lineDateExpr } from '@/lib/profit';
+import { saleItemRevenueSql } from '@/lib/sale-item-revenue';
 
 /**
  * Stock & Sales Summary.
@@ -127,7 +128,7 @@ export async function GET(request: NextRequest) {
     // Revenue uses the raw quantity against the raw price: both are already
     // per SELLING unit, so scaling by the factor here would multiply a case
     // price by the pieces in the case. Returns subtract themselves.
-    const revenueExpr = `COALESCE(SUM(si.quantity * si.price), 0)`;
+    const revenueExpr = `COALESCE(SUM(${saleItemRevenueSql('si')}), 0)`;
     // What is LEFT. Normally `products.stock` as it stands now.
     //
     // With an as-of date, stock is reconstructed by subtracting every movement

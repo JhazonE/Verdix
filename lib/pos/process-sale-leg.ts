@@ -4,6 +4,12 @@ import { updateStockAndRecordMovement } from '../stock-movements';
 import { deductFromBatches } from '../batch-deduction';
 import { resolveCostAtSale } from '../selling-unit-cost';
 import { isService } from '../product-type';
+import { toCents } from '../line-allocation';
+
+function lineNetCents(item: SaleLegItem): number {
+  const gross = Number(item.price) * Number(item.quantity);
+  return toCents(gross - (gross * (Number(item.discount) || 0)) / 100);
+}
 
 export interface SaleLegItem {
   id: string;
@@ -25,6 +31,12 @@ export interface SaleLegItem {
    */
   priceLevelId?: string | null;
   priceLevelName?: string | null;
+  /**
+   * The line's net amount, centavo-exact, as allocated against the sale total
+   * by lib/line-allocation.ts. When absent (a single-line caller) it is the
+   * line's own net rounded the way the column would round it.
+   */
+  lineTotal?: number;
 }
 
 export interface SaleLegResult {
@@ -147,12 +159,19 @@ export async function processSaleLeg(
     }
   }
 
+  // `price` is the discounted price PER UNIT, rounded by its DECIMAL(10,2)
+  // column — so price × quantity can sit a centavo off the amount actually
+  // charged for the line (₱12.99 at 20% off is 10.392 a unit: stored 10.39,
+  // × 5 = 51.95, but the line was 51.96). `line_total` records the charged
+  // amount itself; revenue readers use it via lib/sale-item-revenue.ts.
+  const lineTotal = item.lineTotal ?? lineNetCents(item) / 100;
+
   await connection.query(`
     INSERT INTO sale_items (
-      id, sale_id, product_id, product_name, quantity, price, cost_at_sale, batch_source,
+      id, sale_id, product_id, product_name, quantity, price, line_total, cost_at_sale, batch_source,
       selling_unit_id, selling_unit_name, selling_unit_factor,
       price_level_id, price_level_name, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
   `, [
     itemId,
     saleId,
@@ -160,6 +179,7 @@ export async function processSaleLeg(
     item.name,
     item.quantity,
     item.price * (1 - (item.discount || 0) / 100),
+    lineTotal,
     costAtSale,
     batchSource,
     unitId,

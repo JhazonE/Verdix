@@ -156,6 +156,7 @@ import './155_backfill_return_and_exchange_vat';
 import './156_index_sales_invoices_source_reference';
 import './157_add_shipping_to_sales_invoices';
 import './158_backfill_order_invoice_vat';
+import './159_add_line_total_to_sale_items';
 
 // Import runner functions
 import { migrateUp, migrateDown } from './runner';

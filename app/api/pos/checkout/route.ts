@@ -11,6 +11,7 @@ import { startCheckoutTimer } from '@/lib/pos/checkout-timing';
 import { getBaseUnitsForProducts, type SellingUnit } from '@/lib/selling-units';
 import { checkCreditLimit, creditLimitMessage } from '@/lib/credit-limit';
 import { openInvoiceSql } from '@/lib/customer-balance';
+import { allocateLineTotals } from '@/lib/line-allocation';
 
 // Cached per process — the columns can't disappear once ensured, so don't pay
 // an INFORMATION_SCHEMA round trip on every checkout.
@@ -356,6 +357,21 @@ export async function POST(request: NextRequest) {
       // iteration doesn't pay for it mid-flight.
       const batchCostingSettings = await getBCS();
 
+      // Each line's net amount, rounded to the centavo so the lines add up to
+      // totalDue EXACTLY. Written unrounded, MySQL rounded every line on its
+      // own and the line-level reports (By Tax Type, BIR Summary, By Product)
+      // drifted a centavo or two from Sales by Date and the Z-reading on any
+      // discounted sale. Computed once here and reused by both sale_items and
+      // pos_transaction_items so the two line tables cannot disagree either.
+      const allocatedLines = allocateLineTotals(
+        items.map((it: any) => ({
+          price: Number(it.price),
+          quantity: Number(it.quantity),
+          discountPercent: Number(it.discount) || 0,
+        })),
+        Number(totalDue)
+      );
+
       // 2. Deduct batches + stock and insert sale_items (cost folded into the
       //    insert — no separate UPDATE per item).
       timer.phase('txn:itemLoop(saleLeg+FIFO+stock)');
@@ -375,6 +391,7 @@ export async function POST(request: NextRequest) {
             priceLevelName: item.priceLevelId
               ? priceLevelNameById.get(String(item.priceLevelId)) ?? null
               : null,
+            lineTotal: allocatedLines[i].lineTotal,
           },
           saleId,
           itemIndex: i,
@@ -546,8 +563,9 @@ export async function POST(request: NextRequest) {
 
         const originalPrice = item.price;
         const discountPercent = item.discount || 0;
-        const discAmount = (originalPrice * item.quantity) * (discountPercent / 100);
-        const lTotal = (originalPrice * item.quantity) - discAmount;
+        // Centavo-exact and summing to totalDue — see allocatedLines above.
+        const discAmount = allocatedLines[i].discountAmount;
+        const lTotal = allocatedLines[i].lineTotal;
 
         const effectiveTaxType = resolveEffectiveTaxType(item.taxType || 'VAT', item.discountType, discountPercent, vatRegistration);
 

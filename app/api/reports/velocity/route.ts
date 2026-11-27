@@ -3,6 +3,7 @@ import { query } from '@/lib/mysql';
 import { posSaleSql } from '@/lib/pos-sales';
 import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 import { lineDateExpr } from '@/lib/profit';
+import { saleItemRevenueSql } from '@/lib/sale-item-revenue';
 
 export async function GET(request: NextRequest) {
   try {
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
     const soldLines = `
       SELECT si.product_id,
              si.quantity * COALESCE(si.selling_unit_factor, 1) AS base_qty,
-             si.quantity * si.price AS revenue
+             ${saleItemRevenueSql('si')} AS revenue
         FROM sale_items si
         JOIN sales_transactions st ON si.sale_id = st.id
        WHERE ${[posSaleSql('st'), ...posDate].join(' AND ')}

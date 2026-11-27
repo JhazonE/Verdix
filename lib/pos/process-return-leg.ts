@@ -2,6 +2,7 @@ import mysql from 'mysql2/promise';
 import { baseQuantity, getBaseUnit } from '../selling-units';
 import { updateStockAndRecordMovement } from '../stock-movements';
 import { applyRegistrationToTaxType } from '../tax-utils';
+import { toCents } from '../line-allocation';
 
 export interface ReturnLegItem {
   productId: string;
@@ -149,9 +150,9 @@ export async function processReturnLeg(
 
   const insertSaleItemSql = `
     INSERT INTO sale_items (
-      id, sale_id, product_id, product_name, quantity, price,
+      id, sale_id, product_id, product_name, quantity, price, line_total,
       selling_unit_id, selling_unit_name, selling_unit_factor, cost_at_sale, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
   `;
   await connection.query(insertSaleItemSql, [
     saleItemId,
@@ -160,6 +161,8 @@ export async function processReturnLeg(
     item.productName,
     -returnedQty,
     item.price,
+    // Same amount the caller writes to pos_transaction_items.line_total.
+    toCents(-(returnedQty * Number(item.price))) / 100,
     unitId,
     unitName,
     factor,

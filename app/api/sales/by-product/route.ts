@@ -5,6 +5,7 @@ import { profitOf, lineDateExpr } from '@/lib/profit';
 import { parseTaxType, taxTypeFilterSql } from '@/lib/tax-utils';
 import { backofficeInvoiceSql } from '@/lib/backoffice-sales';
 import { parseSalesSource } from '@/lib/sales-source';
+import { saleItemRevenueSql } from '@/lib/sale-item-revenue';
 
 export async function GET(request: NextRequest) {
   try {
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
              p.brand,
              p.unit_of_measure,
              SUM(si.quantity) as units_sold,
-             SUM(si.price * si.quantity) as total_revenue,
+             SUM(${saleItemRevenueSql('si')}) as total_revenue,
              SUM(GREATEST(0, COALESCE(pti.discount_amount, 0))) as total_discount,
              -- Cost must be per SELLING unit, matching si.price/si.quantity.
              -- See lib/cost-of-sale.ts: p.cost alone costs a case as a bottle.
@@ -128,6 +129,7 @@ export async function GET(request: NextRequest) {
               sii.product_id,
               sii.quantity,
               sii.price,
+              sii.price * sii.quantity as line_revenue,
               ${unitCostExpr('sii', 'p_cost', { hasCostAtSale: true })} as unit_cost,
               0 as discount_amount,
               sinv.id as source_id,
@@ -155,6 +157,7 @@ export async function GET(request: NextRequest) {
               soi.product_id,
               soi.quantity,
               soi.price,
+              soi.price * soi.quantity as line_revenue,
               -- sales_order_items has no cost_at_sale column, so this leg can
               -- only use the scaled products.cost fallback.
               ${unitCostExpr('soi', 'p_cost', { hasCostAtSale: false })} as unit_cost,
@@ -186,6 +189,9 @@ export async function GET(request: NextRequest) {
               si.product_id,
               si.quantity,
               si.price,
+              -- The amount charged, not the rounded unit price × quantity.
+              -- See lib/sale-item-revenue.ts.
+              ${saleItemRevenueSql('si')} as line_revenue,
               -- Cost per SELLING unit, resolved per source table because only
               -- some of them carry cost_at_sale. See lib/cost-of-sale.ts.
               ${unitCostExpr('si', 'p_cost', { hasCostAtSale: true })} as unit_cost,
@@ -226,7 +232,7 @@ export async function GET(request: NextRequest) {
             p.brand,
             p.unit_of_measure,
             SUM(asi.quantity) as units_sold,
-            SUM(asi.price * asi.quantity) as total_revenue,
+            SUM(asi.line_revenue) as total_revenue,
             SUM(asi.discount_amount) as total_discount,
             SUM(asi.quantity * COALESCE(asi.unit_cost, 0)) as total_cost,
             COUNT(DISTINCT asi.source_id) as number_of_sales,
