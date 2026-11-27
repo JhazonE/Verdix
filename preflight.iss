@@ -19,7 +19,7 @@
 ; Build:  "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=x.y.z preflight.iss
 
 #ifndef AppVersion
-  #define AppVersion "1.20.12"
+  #define AppVersion "1.20.13"
 #endif
 
 [Setup]
